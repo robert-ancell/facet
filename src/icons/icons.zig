@@ -20,7 +20,7 @@ pub const font_data = @embedFile("MaterialIcons.ttf");
 
 /// The character an icon is in the font.
 pub fn codepoint(icon: Icon) u21 {
-    return generated.codepoints[@intFromEnum(icon)];
+    return generated.codepoints[@backingInt(icon)];
 }
 
 /// The icon as UTF-8 text in the icon font.

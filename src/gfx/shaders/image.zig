@@ -19,7 +19,7 @@ export fn vertex() callconv(.spirv_vertex) void {
 const f_uv = gpu.fragmentInput(gpu.Vec2, 0);
 const f_color = gpu.fragmentInput(gpu.Vec4, 1);
 
-export fn fragment() callconv(.spirv_fragment) void {
+export fn fragment() callconv(.{ .spirv_fragment = .{} }) void {
     const t = gpu.texture(f_uv.*);
     const c = f_color.*;
     gpu.color.* = .{ t[0] * c[0], t[1] * c[1], t[2] * c[2], t[3] * c[3] };

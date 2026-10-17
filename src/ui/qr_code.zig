@@ -35,8 +35,8 @@ const versions = [max_version]VersionSpec{
 /// A generated QR Code matrix.
 pub const Matrix = struct {
     size: u8 = 21,
-    modules: [max_size][max_size]bool = .{.{false} ** max_size} ** max_size,
-    is_function: [max_size][max_size]bool = .{.{false} ** max_size} ** max_size,
+    modules: [max_size][max_size]bool = @splat(@splat(false)),
+    is_function: [max_size][max_size]bool = @splat(@splat(false)),
 
     pub fn get(self: *const Matrix, x: usize, y: usize) bool {
         return self.modules[y][x];
@@ -127,7 +127,7 @@ pub fn encode(data: []const u8) ?Matrix {
     const size: u8 = 17 + 4 * version;
 
     // 1. Build data codewords in Byte mode (0100, 8-bit length, payload, terminator, padding).
-    var data_cw: [232]u8 = .{0} ** 232;
+    var data_cw: [232]u8 = @splat(0);
     var bit_len: usize = 0;
     appendBits(&data_cw, &bit_len, 0b0100, 4);
     appendBits(&data_cw, &bit_len, @intCast(data.len), 8);
@@ -264,7 +264,7 @@ fn gfMul(a: u8, b: u8) u8 {
 }
 
 fn computeReedSolomon(data: []const u8, degree: u8, out_ec: []u8) void {
-    var gen: [30]u8 = .{0} ** 30;
+    var gen: [30]u8 = @splat(0);
     gen[degree - 1] = 1;
     var root: u8 = 1;
     for (0..degree) |_| {

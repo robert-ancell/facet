@@ -139,7 +139,7 @@ pub const WaylandWindow = struct {
     repeat_rate: u32 = 25,
     repeat_delay_ms: u32 = 600,
     repeat: ?struct { code: u32, next_ns: u64 } = null,
-    keys_down: std.StaticBitSet(256) = .initEmpty(),
+    keys_down: std.bit_set.Static(256) = .empty,
     pointer_pos: [2]f32 = .{ 0, 0 },
     input: [64]InputEvent = undefined,
     input_len: usize = 0,
@@ -999,7 +999,7 @@ pub const WaylandWindow = struct {
                 while (it.next()) |code| {
                     w.pushInput(.{ .key = .{ .code = @intCast(code), .pressed = false } });
                 }
-                w.keys_down = .initEmpty();
+                w.keys_down = .empty;
             },
             p.wl_keyboard.event.repeat_info => {
                 const rate = r.int() catch return;

@@ -9,7 +9,7 @@ pub const Vec3 = @Vector(3, f32);
 pub const Vec4 = @Vector(4, f32);
 
 /// The vertex's position in clip space (vertex shaders write it).
-pub const position = std.gpu.position_out;
+pub const position = std.spirv.position_out;
 
 /// The fragment's colour, straight (not premultiplied) RGBA.
 pub const color = @extern(*addrspace(.output) Vec4, .{ .name = "facet_color", .decoration = .{ .location = 0 } });
@@ -39,22 +39,24 @@ pub fn uniforms(comptime T: type) *addrspace(.uniform) T {
     return @extern(*addrspace(.uniform) T, .{ .name = "facet_uniforms", .decoration = .{ .descriptor = .{ .binding = 0, .set = 0 } } });
 }
 
+const Image2D = @SpirvType(.{ .image = .{
+    .usage = .{ .sampled = f32 },
+    .format = .unknown,
+    .dim = .@"2d",
+    .depth = .not_depth,
+    .access = .unknown,
+    .arrayed = false,
+    .multisampled = false,
+} });
+const SampledImage2D = @SpirvType(.{ .sampled_image = Image2D });
+const tex = @extern(*addrspace(.constant) SampledImage2D, .{
+    .name = "facet_texture",
+    .decoration = .{ .descriptor = .{ .set = 0, .binding = 1 } },
+});
+
 /// Samples the draw's texture at `coord` (0 to 1 across it), as RGBA.
 pub fn texture(coord: Vec2) Vec4 {
-    return asm volatile (
-        \\%f32 = OpTypeFloat 32
-        \\%v4 = OpTypeVector %f32 4
-        \\%img = OpTypeImage %f32 2D 0 0 0 1 Unknown
-        \\%simg = OpTypeSampledImage %img
-        \\%ptr = OpTypePointer UniformConstant %simg
-        \\%tex = OpVariable %ptr UniformConstant
-        \\OpDecorate %tex DescriptorSet 0
-        \\OpDecorate %tex Binding 1
-        \\%s = OpLoad %simg %tex
-        \\%ret = OpImageSampleImplicitLod %v4 %s %coord
-        : [ret] "" (-> Vec4),
-        : [coord] "" (coord),
-    );
+    return std.spirv.imageSampleImplicitLod(tex, coord);
 }
 
 pub fn splat2(x: f32) Vec2 {

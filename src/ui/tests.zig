@@ -747,7 +747,7 @@ test "images fit the space given, keeping their shape, and text can have its own
     u.frame(300, 200, 0, App{ .pic = &pic, .width = 300 });
     try testing.expectEqual(ui.Size{ .w = 4, .h = 2 }, find(u.root.?, ui.Image).?.size);
     // Bigger: made to fit, keeping its shape (and drawn, top red, bottom blue).
-    const big = gfx.Image.init(&(.{0xffff0000} ** (200 * 50) ++ .{0xff0000ff} ** (200 * 50)), 200, 100);
+    const big = gfx.Image.init(&(@as([200 * 50]u32, @splat(0xffff0000)) ++ @as([200 * 50]u32, @splat(0xff0000ff))), 200, 100);
     u.frame(300, 200, 1, App{ .pic = &big, .width = 100 });
     const node = find(u.root.?, ui.Image).?;
     try testing.expectEqual(ui.Size{ .w = 100, .h = 50 }, node.size);

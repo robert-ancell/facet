@@ -524,7 +524,7 @@ pub const Canvas = struct {
     fn note(c: *Canvas, op: Op, bounds: Rect, params: anytype, data: []const u8) void {
         const rec = c.recorder orelse return;
         var buf: [128]u8 = undefined;
-        buf[0] = @intFromEnum(op);
+        buf[0] = @backingInt(op);
         var len: usize = 1;
         // Field by field: the tuple's padding is not set.
         inline for (params) |field| {

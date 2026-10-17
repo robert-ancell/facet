@@ -99,7 +99,7 @@ pub const Painter = struct {
     pub fn gpuWith(p: *Painter, options: GpuOptions, ctx: anytype, comptime f: anytype) void {
         const Ctx = @TypeOf(ctx);
         const FnInfo = @typeInfo(@TypeOf(f)).@"fn";
-        const TargetPtr = FnInfo.params[1].type.?;
+        const TargetPtr = FnInfo.param_types[1].?;
         const box = p.boxRect();
         const vp = viewport(box) orelse return;
         var scissor: ?gfx.Viewport = null;

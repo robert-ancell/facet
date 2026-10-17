@@ -27,11 +27,11 @@ pub fn main(init: std.process.Init) !void {
     const data = try cwd.readFileAlloc(init.io, args[1], arena, .limited(16 << 20));
     const names = try cwd.readFileAlloc(init.io, args[2], arena, .limited(1 << 20));
 
-    const fields = @typeInfo(Icon).@"enum".fields;
-    var codepoints: [fields.len]u21 = undefined;
-    inline for (fields, &codepoints) |f, *cp| {
-        cp.* = lookup(names, f.name) orelse {
-            std.debug.print("subset_icons: no icon called \"{s}\" in {s}\n", .{ f.name, args[2] });
+    const field_names = @typeInfo(Icon).@"enum".field_names;
+    var codepoints: [field_names.len]u21 = undefined;
+    inline for (field_names, &codepoints) |field_name, *cp| {
+        cp.* = lookup(names, field_name) orelse {
+            std.debug.print("subset_icons: no icon called \"{s}\" in {s}\n", .{ field_name, args[2] });
             std.process.exit(1);
         };
     }

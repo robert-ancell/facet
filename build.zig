@@ -11,13 +11,13 @@ fn addIconFont(b: *std.Build) IconFont {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/subset_icons.zig"),
             .target = b.graph.host,
-            .optimize = .ReleaseSafe,
+            .optimize = .safe,
         }),
     });
     const host_font = b.createModule(.{
         .root_source_file = b.path("src/font/font.zig"),
         .target = b.graph.host,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     });
     host_font.addAnonymousImport("FiraSans-Regular.ttf", .{ .root_source_file = b.path("fonts/FiraSans-Regular.ttf") });
     host_font.addAnonymousImport("TwemojiMozilla.ttf", .{ .root_source_file = b.path("fonts/TwemojiMozilla.ttf") });
@@ -25,7 +25,7 @@ fn addIconFont(b: *std.Build) IconFont {
     tool.root_module.addImport("icon_names", b.createModule(.{
         .root_source_file = b.path("src/icons/names.zig"),
         .target = b.graph.host,
-        .optimize = .ReleaseSafe,
+        .optimize = .safe,
     }));
     const run = b.addRunArtifact(tool);
     run.addFileArg(b.path("fonts/MaterialIcons-Regular.ttf"));
@@ -40,14 +40,14 @@ fn addSpirv(b: *std.Build, name: []const u8, source: []const u8) std.Build.LazyP
     const gpu = b.createModule(.{
         .root_source_file = b.path("src/gfx/shaders/gpu.zig"),
         .target = spirv_target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
     });
     const obj = b.addObject(.{
         .name = name,
         .root_module = b.createModule(.{
             .root_source_file = b.path(source),
             .target = spirv_target,
-            .optimize = .ReleaseFast,
+            .optimize = .fast,
             .imports = &.{.{ .name = "gpu", .module = gpu }},
         }),
         .use_llvm = false,
@@ -69,7 +69,7 @@ pub fn createModules(
     b: *std.Build,
     name: []const u8,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     icon_font: IconFont,
 ) Modules {
     const wayland = b.createModule(.{
@@ -172,7 +172,45 @@ pub fn build(b: *std.Build) void {
     const icon_font = addIconFont(b);
     const mods = createModules(b, "facet", target, optimize, icon_font);
 
+    const examples = [_]struct {
+        name: []const u8,
+        source: []const u8,
+        desc: []const u8,
+    }{
+        .{ .name = "hello", .source = "examples/hello.zig", .desc = "Run the Hello World counter example" },
+        .{ .name = "controls", .source = "examples/controls.zig", .desc = "Run the Material 3 controls example" },
+        .{ .name = "navigation", .source = "examples/navigation.zig", .desc = "Run the navigation, dialog, and snackbar example" },
+        .{ .name = "lists", .source = "examples/lists_and_drag.zig", .desc = "Run the LazyGrid and drag-and-drop example" },
+        .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted TextArea editor example" },
+        .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the custom 2D canvas and QR code example" },
+        .{ .name = "showcase", .source = "examples/showcase.zig", .desc = "Run the interactive Material 3 widget showcase" },
+    };
+
+    const examples_step = b.step("examples", "Build all example applications");
     const test_step = b.step("test", "Run all unit tests");
+
+    for (examples) |ex| {
+        const mod = b.createModule(.{
+            .root_source_file = b.path(ex.source),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+        });
+        const exe = b.addExecutable(.{
+            .name = ex.name,
+            .root_module = mod,
+        });
+        const install_exe = b.addInstallArtifact(exe, .{});
+        examples_step.dependOn(&install_exe.step);
+
+        const run_cmd = b.addRunArtifact(exe);
+        const run_step = b.step(b.fmt("run-{s}", .{ex.name}), ex.desc);
+        run_step.dependOn(&run_cmd.step);
+
+        const ex_test = b.addTest(.{ .root_module = mod });
+        test_step.dependOn(&b.addRunArtifact(ex_test).step);
+    }
+
     for ([_]*std.Build.Module{
         mods.font,
         mods.icons,
@@ -186,3 +224,4 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(t).step);
     }
 }
+

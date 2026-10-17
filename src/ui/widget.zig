@@ -239,8 +239,8 @@ fn makeVTable(comptime T: type) VTable {
             return @ptrCast(@alignCast(ptr));
         }
         fn build(ptr: *const anyopaque, cx: *Context, state: ?*anyopaque) Widget {
-            const params = @typeInfo(@TypeOf(T.build)).@"fn".params;
-            if (params.len == 3) return T.build(self(ptr), cx, @ptrCast(@alignCast(state.?)));
+            const param_types = @typeInfo(@TypeOf(T.build)).@"fn".param_types;
+            if (param_types.len == 3) return T.build(self(ptr), cx, @ptrCast(@alignCast(state.?)));
             return T.build(self(ptr), cx);
         }
         fn children(ptr: *const anyopaque) []const Widget {
@@ -332,10 +332,11 @@ pub const Context = struct {
         const T = @TypeOf(value);
         const p = cx.arena.create(T) catch return Widget.of(Missing, &missing);
         p.* = value;
-        inline for (@typeInfo(T).@"struct".fields) |field| {
-            switch (@typeInfo(field.type)) {
-                .pointer => |ptr| if (ptr.size == .slice and ptr.is_const and ptr.child != u8) {
-                    @field(p, field.name) = cx.arena.dupe(ptr.child, @field(value, field.name)) catch &.{};
+        const info = @typeInfo(T).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, FieldType| {
+            switch (@typeInfo(FieldType)) {
+                .pointer => |ptr| if (ptr.size == .slice and ptr.attrs.@"const" and ptr.child != u8) {
+                    @field(p, field_name) = cx.arena.dupe(ptr.child, @field(value, field_name)) catch &.{};
                 },
                 else => {},
             }
@@ -345,7 +346,7 @@ pub const Context = struct {
 
     /// Text formatted into the frame's arena.
     pub fn fmt(cx: *Context, comptime f: []const u8, args: anytype) []const u8 {
-        return std.fmt.allocPrint(cx.arena, f, args) catch "…";
+        return cx.arena.print(f, args) catch "…";
     }
 
     pub fn theme(cx: *const Context) *const @import("theme.zig").Theme {

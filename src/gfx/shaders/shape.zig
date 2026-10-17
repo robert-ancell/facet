@@ -43,7 +43,7 @@ fn coverage(d: f32, sides: Vec2, inset: f32) f32 {
     return @min(by_distance, c[0] * c[1]);
 }
 
-export fn fragment() callconv(.spirv_fragment) void {
+export fn fragment() callconv(.{ .spirv_fragment = .{} }) void {
     const g = f_geometry.*;
     const p = Vec2{ g[0], g[1] };
     const half = Vec2{ g[2], g[3] };

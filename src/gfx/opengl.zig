@@ -106,10 +106,10 @@ pub const Procs = struct {
 
     pub fn load(get_proc: GetProcAddress) !Procs {
         var p: Procs = undefined;
-        inline for (std.meta.fields(Procs)) |field| {
-            const name: [*:0]const u8 = "gl" ++ field.name;
+        inline for (@typeInfo(Procs).@"struct".field_names) |field_name| {
+            const name: [*:0]const u8 = "gl" ++ field_name;
             const sym = get_proc(name) orelse return error.MissingGlFunction;
-            @field(p, field.name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(sym);
         }
         return p;
     }

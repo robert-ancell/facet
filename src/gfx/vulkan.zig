@@ -133,10 +133,10 @@ pub const DeviceProcs = struct {
 
     pub fn load(device: VkDevice, get_proc: GetDeviceProcAddr) !DeviceProcs {
         var p: DeviceProcs = undefined;
-        inline for (std.meta.fields(DeviceProcs)) |field| {
-            const name: [*:0]const u8 = "vk" ++ field.name;
+        inline for (@typeInfo(DeviceProcs).@"struct".field_names) |field_name| {
+            const name: [*:0]const u8 = "vk" ++ field_name;
             const sym = get_proc(device, name) orelse return error.MissingVulkanFunction;
-            @field(p, field.name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(sym);
         }
         return p;
     }
@@ -469,7 +469,7 @@ test "VulkanRenderer creates SPIR-V shader modules, prepares vertex buffers, and
 
         fn createShaderModule(_: VkDevice, info: *const VkShaderModuleCreateInfo, _: ?*const anyopaque, out: *VkShaderModule) callconv(.c) VkResult {
             // Verify SPIR-V magic number (0x07230203)
-            if (info.codeSize < 4 or info.pCode[0] != 0x07230203) return @enumFromInt(-1);
+            if (info.codeSize < 4 or info.pCode[0] != 0x07230203) return @fromBackingInt(-1);
             out.* = next_handle;
             next_handle += 1;
             return .success;

@@ -23,8 +23,131 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
   - Pure-Zig OpenType/TrueType parser, shaper, and rasterizer (`kern`/`GPOS`, `liga`/`GSUB`, `COLR`/`CPAL` color emoji).
   - Includes **Fira Sans** (`font.default_font_data`), **Twemoji Mozilla** (`font.emoji_font_data`), and build-time subsetted **Material Icons** out of the box via `Ui.createDefault(gpa)`, while allowing custom fonts or `null` via `Ui.create(gpa, my_font)`.
 
-## Running Tests
+## Getting Started
+
+### 1. Add Facet to Your Project
+
+Fetch Facet into your `build.zig.zon`:
 
 ```sh
-zig build test
+zig fetch --save git+https://github.com/robert-ancell/facet
+```
+
+Then import the `facet` module in your `build.zig`:
+
+```zig
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const facet_dep = b.dependency("facet", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "my-app",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "facet", .module = facet_dep.module("facet") },
+            },
+        }),
+    });
+    b.installArtifact(exe);
+
+    const run_cmd = b.addRunArtifact(exe);
+    const run_step = b.step("run", "Run the application");
+    run_step.dependOn(&run_cmd.step);
+}
+```
+
+### 2. Hello World Example
+
+In Facet, any struct with a `build` method is a composite widget, and declaring `pub const State = struct { ... }` makes it stateful across frames.
+
+```zig
+const std = @import("std");
+const facet = @import("facet");
+
+pub const Counter = struct {
+    greeting: []const u8 = "Hello, Facet!",
+
+    pub const State = struct {
+        count: i32 = 0,
+
+        pub fn increment(s: *State) void {
+            s.count += 1;
+        }
+
+        pub fn decrement(s: *State) void {
+            s.count -= 1;
+        }
+    };
+
+    pub fn build(self: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
+        const t = cx.theme();
+        return cx.make(facet.Column{
+            .cross_axis_alignment = .stretch,
+            .children = &.{
+                cx.make(facet.TitleBar{ .title = "Hello Facet" }),
+                cx.make(facet.Expanded{
+                    .child = cx.make(facet.Center{
+                        .child = cx.make(facet.Card{
+                            .variant = .elevated,
+                            .padding = .all(24),
+                            .child = cx.make(facet.Column{
+                                .main_axis_size = .min,
+                                .cross_axis_alignment = .center,
+                                .spacing = 16,
+                                .children = &.{
+                                    cx.make(facet.Text{
+                                        .text = self.greeting,
+                                        .style = .{ .size = t.title_size, .color = t.on_surface },
+                                    }),
+                                    cx.make(facet.Text{
+                                        .text = cx.fmt("Count: {d}", .{state.count}),
+                                        .style = .{ .size = 32, .color = t.primary },
+                                    }),
+                                    cx.make(facet.Row{
+                                        .main_axis_size = .min,
+                                        .spacing = 12,
+                                        .children = &.{
+                                            cx.make(facet.OutlinedButton{
+                                                .label = "−1",
+                                                .on_press = .of(state, State.decrement),
+                                            }),
+                                            cx.make(facet.FilledButton{
+                                                .label = "+1",
+                                                .icon = .add,
+                                                .on_press = .of(state, State.increment),
+                                            }),
+                                        },
+                                    }),
+                                },
+                            }),
+                        }),
+                    }),
+                }),
+            },
+        });
+    }
+};
+
+pub fn main(init: std.process.Init) !void {
+    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+        .title = "Hello Facet",
+        .size = .{ 480, 320 },
+    });
+    defer app.close();
+
+    while (try app.step(std.math.maxInt(u64))) {
+        app.takeInput();
+        try app.draw(facet.window.nowNs(), Counter{});
+    }
+}
 ```

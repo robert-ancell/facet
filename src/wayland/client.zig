@@ -188,7 +188,7 @@ pub fn socketPath(buf: []u8, runtime_dir: ?[]const u8, wayland_display: ?[]const
     const name = wayland_display orelse "wayland-0";
     if (name.len > 0 and name[0] == '/') return name;
     const dir = runtime_dir orelse return error.NoRuntimeDir;
-    return std.fmt.bufPrint(buf, "{s}/{s}", .{ dir, name }) catch error.NoRuntimeDir;
+    return std.mem.print(buf, "{s}/{s}", .{ dir, name }) catch error.NoRuntimeDir;
 }
 
 /// The socket path for `environ`'s $XDG_RUNTIME_DIR and $WAYLAND_DISPLAY.
