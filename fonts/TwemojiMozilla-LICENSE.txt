@@ -1,0 +1,9 @@
+Twemoji Mozilla
+https://github.com/mozilla/twemoji-colr
+
+Copyright 2016-2022, Mozilla Foundation
+Emoji artwork Copyright 2020 Twitter, Inc. and other contributors (https://github.com/twitter/twemoji)
+
+Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0);
+the emoji graphics are licensed under the Creative Commons Attribution 4.0 International
+License (CC-BY 4.0, https://creativecommons.org/licenses/by/4.0/).

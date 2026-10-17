@@ -1,0 +1,793 @@
+//! TextArea: many lines of text to edit, wrapped at the widget's width
+//! (between words, or within a word too long for a line), scrolling with
+//! the wheel or a finger and following the cursor. The text is the app's
+//! (`Document`), so it can be any size and kept or saved as the app likes.
+//!
+//! Clicking puts the cursor there and dragging selects; the arrows, Home,
+//! End, Page Up and Page Down move it (with Shift, selecting); Enter starts
+//! a line and Tab types four spaces; Backspace and Delete take whole
+//! characters. Ctrl+A selects everything, and Ctrl+X, Ctrl+C and Ctrl+V cut,
+//! copy and paste (through the UI's clipboard), as the menu does (the
+//! right button, or a touch held down).
+//!
+//! Code can be coloured: a `highlighter` says what each byte of the text
+//! is (a keyword, a string, ...), and each is drawn in the theme's colour
+//! for it.
+
+const std = @import("std");
+const gfx = @import("gfx");
+const font = @import("font");
+const geometry = @import("geometry.zig");
+const widget = @import("widget.zig");
+const painter_mod = @import("painter.zig");
+const keymap = @import("keymap.zig");
+const menu = @import("menu.zig");
+const Highlight = @import("theme.zig").Highlight;
+
+const Node = widget.Node;
+const Event = widget.Event;
+const Painter = painter_mod.Painter;
+const Constraints = geometry.Constraints;
+const Size = geometry.Size;
+const Point = geometry.Point;
+
+/// The text being edited, with the cursor and selection: the app's, kept
+/// as long as it is edited.
+pub const Document = struct {
+    gpa: std.mem.Allocator,
+    bytes: std.ArrayList(u8) = .empty,
+    /// Where typing goes (a byte index), and the other end of the
+    /// selection, if there is one.
+    cursor: usize = 0,
+    anchor: ?usize = null,
+    /// Counts the changes to the text (the app saves when it changes).
+    version: u64 = 0,
+
+    pub fn init(gpa: std.mem.Allocator, initial: []const u8) !Document {
+        var d: Document = .{ .gpa = gpa };
+        try d.bytes.ensureTotalCapacity(gpa, initial.len);
+        d.insert(initial);
+        d.cursor = 0;
+        d.version = 0;
+        return d;
+    }
+
+    pub fn deinit(d: *Document) void {
+        d.bytes.deinit(d.gpa);
+    }
+
+    pub fn text(d: *const Document) []const u8 {
+        return d.bytes.items;
+    }
+
+    /// The selected bytes' start and end, if any are.
+    pub fn selection(d: *const Document) ?[2]usize {
+        const a = d.anchor orelse return null;
+        if (a == d.cursor) return null;
+        return .{ @min(a, d.cursor), @max(a, d.cursor) };
+    }
+
+    pub fn selectAll(d: *Document) void {
+        d.anchor = 0;
+        d.cursor = d.bytes.items.len;
+    }
+
+    /// Moves the cursor, extending the selection or dropping it.
+    pub fn moveTo(d: *Document, to: usize, extend: bool) void {
+        if (extend) {
+            if (d.anchor == null) d.anchor = d.cursor;
+        } else d.anchor = null;
+        d.cursor = d.snap(to);
+    }
+
+    fn remove(d: *Document, from: usize, to: usize) void {
+        if (to <= from) return;
+        d.bytes.replaceRangeAssumeCapacity(from, to - from, &.{});
+        d.version += 1;
+    }
+
+    /// Removes the selection's text. Returns whether there was any.
+    pub fn deleteSelection(d: *Document) bool {
+        const sel = d.selection() orelse return false;
+        d.remove(sel[0], sel[1]);
+        d.cursor = sel[0];
+        d.anchor = null;
+        return true;
+    }
+
+    /// Deletes `before_len` bytes before the cursor and `after_len` bytes
+    /// after it (`zwp_text_input_v3.delete_surrounding_text`).
+    pub fn deleteSurrounding(d: *Document, before_len: u32, after_len: u32) bool {
+        _ = d.deleteSelection();
+        const from = d.snap(d.cursor -| @min(@as(usize, before_len), d.cursor));
+        const to = d.snap(@min(d.bytes.items.len, d.cursor + @as(usize, after_len)));
+        if (to <= from) return false;
+        d.remove(from, to);
+        d.cursor = from;
+        return true;
+    }
+
+    /// Puts `t` (UTF-8) at the cursor, over the selection: its characters
+    /// but control ones (tabs as four spaces, "\r\n" as "\n").
+    pub fn insert(d: *Document, t: []const u8) void {
+        _ = d.deleteSelection();
+        var at: usize = 0;
+        while (at < t.len) {
+            const n = std.unicode.utf8ByteSequenceLength(t[at]) catch {
+                at += 1;
+                continue;
+            };
+            if (at + n > t.len) break;
+            const c = std.unicode.utf8Decode(t[at..][0..n]) catch {
+                at += 1;
+                continue;
+            };
+            const piece = t[at .. at + n];
+            at += n;
+            const out: []const u8 = switch (c) {
+                '\n' => "\n",
+                '\t' => "    ",
+                0...0x08, 0x0a + 1...0x1f, 0x7f...0x9f => continue,
+                else => piece,
+            };
+            d.bytes.insertSlice(d.gpa, d.cursor, out) catch return;
+            d.cursor += out.len;
+            d.version += 1;
+        }
+    }
+
+    /// The character boundary at or before byte `i`.
+    pub fn snap(d: *const Document, i: usize) usize {
+        if (i >= d.bytes.items.len) return d.bytes.items.len;
+        var j = i;
+        while (j > 0 and d.bytes.items[j] & 0xc0 == 0x80) j -= 1;
+        return j;
+    }
+
+    /// The character boundary before byte `i` (0 at the start).
+    pub fn before(d: *const Document, i: usize) usize {
+        var j = @min(i, d.bytes.items.len) -| 1;
+        while (j > 0 and d.bytes.items[j] & 0xc0 == 0x80) j -= 1;
+        return j;
+    }
+
+    /// The character boundary after byte `i` (the end at the end).
+    pub fn after(d: *const Document, i: usize) usize {
+        const t = d.bytes.items;
+        if (i >= t.len) return t.len;
+        var j = i + 1;
+        while (j < t.len and t[j] & 0xc0 == 0x80) j += 1;
+        return j;
+    }
+};
+
+/// A line as shown: bytes `start` to `end` of the text (a wrapped line's
+/// end is where the next starts; a line's newline is not in it).
+const Line = struct { start: usize, end: usize };
+
+pub const TextArea = struct {
+    doc: *Document,
+    /// Text size; the theme's body size if null.
+    size: ?f32 = null,
+    /// The text changed (by typing, cutting or pasting).
+    on_changed: ?widget.Callback = null,
+    /// Take the keyboard when it first appears.
+    autofocus: bool = false,
+    /// Says what each byte of the text is, for its colour (`out` is as long
+    /// as the text, and all `plain` to start with).
+    highlighter: ?Highlighter = null,
+
+    pub const Highlighter = *const fn (text: []const u8, out: []Highlight) void;
+
+    pub const pad = 12;
+
+    pub const State = struct {
+        gpa: ?std.mem.Allocator = null,
+        /// How far down it is scrolled, in pixels.
+        scroll: f32 = 0,
+        focused: bool = false,
+        autofocused: bool = false,
+        dragging: bool = false,
+        /// Bring the cursor into view at the next layout.
+        reveal: bool = true,
+        /// Where up and down aim for (from where they started).
+        goal_x: ?f32 = null,
+        /// The wrapped lines, for the text's version and the width.
+        lines: std.ArrayList(Line) = .empty,
+        lines_version: u64 = std.math.maxInt(u64),
+        lines_width: f32 = -1,
+        lines_doc: ?*Document = null,
+        /// What each byte is, for the text's version (if highlighted).
+        colours: std.ArrayList(Highlight) = .empty,
+        colours_version: u64 = std.math.maxInt(u64),
+        colours_doc: ?*Document = null,
+        colours_by: ?Highlighter = null,
+        /// What the menu's actions need, from the widget as last seen.
+        doc: ?*Document = null,
+        node: ?*Node = null,
+        on_changed: ?widget.Callback = null,
+        preedit_buf: [128]u8 = undefined,
+        preedit_len: usize = 0,
+        last_change_other: bool = false,
+
+        pub fn deinit(s: *State) void {
+            if (s.gpa) |g| {
+                s.lines.deinit(g);
+                s.colours.deinit(g);
+            }
+        }
+
+        fn changed(s: *State) void {
+            s.reveal = true;
+            if (s.on_changed) |f| f.call();
+            if (s.node) |n| n.ui.needs_frame = true;
+        }
+
+        pub fn cut(s: *State) void {
+            const d = s.doc orelse return;
+            s.copy();
+            if (d.deleteSelection()) s.changed();
+        }
+
+        pub fn copy(s: *State) void {
+            const d = s.doc orelse return;
+            const sel = d.selection() orelse return;
+            if (s.node) |n| n.ui.copyText(d.text()[sel[0]..sel[1]]);
+        }
+
+        pub fn paste(s: *State) void {
+            const n = s.node orelse return;
+            n.ui.pasteText(n, .of(s, State.pasted));
+        }
+
+        fn pasted(s: *State, t: []const u8) void {
+            const d = s.doc orelse return;
+            s.last_change_other = true;
+            d.insert(t);
+            s.changed();
+        }
+
+        pub fn selectAll(s: *State) void {
+            const d = s.doc orelse return;
+            d.selectAll();
+            if (s.node) |n| n.ui.needs_frame = true;
+        }
+    };
+
+    fn style(self: *const TextArea, n: *const Node) ?font.Style {
+        const f = n.ui.font orelse return null;
+        return .{ .font = f, .size = self.size orelse n.ui.theme.body_size };
+    }
+
+    fn remember(self: *const TextArea, n: *Node) *State {
+        const st = n.state(State);
+        st.gpa = n.ui.gpa;
+        st.doc = self.doc;
+        st.node = n;
+        st.on_changed = self.on_changed;
+        return st;
+    }
+
+    pub fn cursor(_: *const TextArea, _: *Node, _: Point) ?widget.Cursor {
+        return .text;
+    }
+
+    pub fn textInput(self: *const TextArea, n: *Node) ?widget.TextInputInfo {
+        const st = n.state(State);
+        const d = self.doc;
+        const t = d.text();
+        var cx_px: i32 = pad;
+        var cy_px: i32 = pad;
+        var ch_px: i32 = 20;
+        if (self.style(n)) |s| {
+            const lh = s.lineHeight();
+            ch_px = @max(1, @as(i32, @intFromFloat(@round(lh))));
+            const lines = st.lines.items;
+            const li = lineOf(lines, d.cursor);
+            if (li < lines.len or lines.len == 0) {
+                const l = if (lines.len == 0) Line{ .start = 0, .end = 0 } else lines[li];
+                const x = pad + font.measure(s, t[l.start..@min(d.cursor, l.end)]);
+                const top = pad + @as(f32, @floatFromInt(li)) * lh - st.scroll;
+                cx_px = @intFromFloat(@round(x));
+                cy_px = @intFromFloat(@round(top));
+            }
+        }
+        const window_start = d.snap(d.cursor -| 128);
+        const window_end = d.snap(@min(t.len, window_start + 256));
+        const cur: u32 = @intCast(d.cursor - window_start);
+        const anc_abs = d.anchor orelse d.cursor;
+        const anc: u32 = @intCast(std.math.clamp(anc_abs, window_start, window_end) - window_start);
+        return .{
+            .surrounding_text = t[window_start..window_end],
+            .cursor = cur,
+            .anchor = anc,
+            .cursor_rect = .{ cx_px, cy_px, 2, ch_px },
+            .password = false,
+            .multiline = true,
+            .change_cause_other = st.last_change_other,
+        };
+    }
+
+    pub fn layout(self: *const TextArea, n: *Node, c: Constraints) Size {
+        const st = self.remember(n);
+        if (self.autofocus and !st.autofocused) {
+            st.autofocused = true;
+            n.ui.focus(n);
+        }
+        const size = c.constrain(.{ .w = if (c.boundedWidth()) c.max_w else 480, .h = if (c.boundedHeight()) c.max_h else 320 });
+        self.wrap(n, size.w);
+        // Kept in range, and following the cursor.
+        if (self.style(n)) |s| {
+            const lh = s.lineHeight();
+            const content = @as(f32, @floatFromInt(st.lines.items.len)) * lh + 2 * pad;
+            if (st.reveal) {
+                st.reveal = false;
+                const y = @as(f32, @floatFromInt(lineOf(st.lines.items, self.doc.cursor))) * lh;
+                if (y < st.scroll) st.scroll = y;
+                if (y + lh + 2 * pad > st.scroll + size.h) st.scroll = y + lh + 2 * pad - size.h;
+            }
+            st.scroll = std.math.clamp(st.scroll, 0, @max(0, content - size.h));
+        }
+        return size;
+    }
+
+    /// Wraps the text at `width` (again only if it or the text changed).
+    fn wrap(self: *const TextArea, n: *Node, width: f32) void {
+        const st = n.state(State);
+        const d = self.doc;
+        if (st.lines_doc == d and st.lines_version == d.version and st.lines_width == width) return;
+        st.lines_doc = d;
+        st.lines_version = d.version;
+        st.lines_width = width;
+        st.lines.clearRetainingCapacity();
+        const s = self.style(n) orelse return;
+        wrapText(n.ui.gpa, &st.lines, s, d.text(), width - 2 * pad);
+    }
+
+    /// What each byte of the text is (again only if it changed), or null
+    /// if it is not highlighted.
+    fn highlight(self: *const TextArea, n: *Node) ?[]const Highlight {
+        const h = self.highlighter orelse return null;
+        const st = n.state(State);
+        const d = self.doc;
+        if (st.colours_doc != d or st.colours_version != d.version or st.colours_by != h) {
+            st.colours_doc = d;
+            st.colours_version = d.version;
+            st.colours_by = h;
+            st.colours.resize(n.ui.gpa, d.text().len) catch {
+                st.colours_doc = null;
+                return null;
+            };
+            @memset(st.colours.items, .plain);
+            h(d.text(), st.colours.items);
+        }
+        return st.colours.items;
+    }
+
+    pub fn paint(self: *const TextArea, n: *Node, p: *Painter) void {
+        const t = &n.ui.theme;
+        const st = n.state(State);
+        const c = p.canvas();
+        const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };
+        if (st.focused) c.strokeRoundedRect(r.outset(-1), .all(4), 2, t.primary) else c.strokeRoundedRect(r.outset(-0.5), .all(4), 1, t.outline);
+        const s = self.style(n) orelse return;
+        const lh = s.lineHeight();
+        const old = p.clipTo(.{ .x = 1, .y = 1, .w = n.size.w - 2, .h = n.size.h - 2 });
+        defer p.restoreClip(old);
+        const d = self.doc;
+        const text = d.text();
+        const lines = st.lines.items;
+        const first: usize = @intFromFloat(@max(0, @floor((st.scroll - pad) / lh)));
+        const sel = d.selection();
+        const colours = self.highlight(n);
+        var i = first;
+        while (i < lines.len) : (i += 1) {
+            const top = pad + @as(f32, @floatFromInt(i)) * lh - st.scroll;
+            if (top > n.size.h) break;
+            const l = lines[i];
+            const baseline = top + s.ascent();
+            if (sel) |range| if (range[0] <= l.end and range[1] >= l.start and range[0] != range[1]) {
+                const a = @max(range[0], l.start);
+                const b = @min(range[1], l.end);
+                const x0 = font.measure(s, text[l.start..a]);
+                // A selected newline shows as a little more.
+                const x1 = font.measure(s, text[l.start..b]) + @as(f32, if (range[1] > l.end) s.size * 0.3 else 0);
+                c.fillRect(.{ .x = pad + x0, .y = top, .w = x1 - x0, .h = lh }, t.primary.withAlpha(if (st.focused) 0.35 else 0.15));
+            };
+            const cs = colours orelse {
+                _ = p.text(s.size, pad, baseline, text[l.start..l.end], t.on_surface);
+                continue;
+            };
+            // In runs of one colour.
+            var x: f32 = pad;
+            var at = l.start;
+            while (at < l.end) {
+                var end = @min(d.after(at), l.end);
+                while (end < l.end and cs[end] == cs[at]) end = @min(d.after(end), l.end);
+                x = p.text(s.size, x, baseline, text[at..end], t.syntax.color(cs[at], t.on_surface));
+                at = end;
+            }
+        }
+        if (st.focused and sel == null) {
+            const li = lineOf(lines, d.cursor);
+            if (li < lines.len or lines.len == 0) {
+                const l = if (lines.len == 0) Line{ .start = 0, .end = 0 } else lines[li];
+                const x = pad + font.measure(s, text[l.start..@min(d.cursor, l.end)]);
+                const top = pad + @as(f32, @floatFromInt(li)) * lh - st.scroll;
+                if (st.preedit_len > 0) {
+                    const pre = st.preedit_buf[0..st.preedit_len];
+                    const pre_w = font.measure(s, pre);
+                    const baseline = top + s.ascent();
+                    c.fillRect(.{ .x = @round(x), .y = baseline + 1, .w = pre_w, .h = 1 }, t.primary);
+                    _ = p.text(s.size, @round(x), baseline, pre, t.primary);
+                } else {
+                    c.fillRect(.{ .x = @round(x), .y = top, .w = 2, .h = lh }, t.primary);
+                }
+            }
+        }
+    }
+
+    pub fn event(self: *const TextArea, n: *Node, e: Event) bool {
+        const st = self.remember(n);
+        const d = self.doc;
+        switch (e) {
+            .press => |pr| {
+                if (pr.button != widget.btn_left) return false;
+                n.ui.focus(n);
+                d.moveTo(self.offsetAt(n, pr.pos), false);
+                d.anchor = d.cursor;
+                st.dragging = true;
+                st.goal_x = null;
+                st.last_change_other = true;
+                n.ui.needs_frame = true;
+                return true;
+            },
+            .motion => |pos| if (st.dragging) {
+                d.cursor = self.offsetAt(n, pos);
+                st.reveal = true;
+                st.last_change_other = true;
+                n.ui.needs_frame = true;
+            },
+            .release => {
+                st.dragging = false;
+                if (d.selection() == null) d.anchor = null;
+                return true;
+            },
+            .scroll => |sc| {
+                st.scroll += sc.dy;
+                n.ui.needs_frame = true;
+                return true;
+            },
+            .focus => st.focused = true,
+            .blur => {
+                st.focused = false;
+                st.preedit_len = 0;
+            },
+            .key => |k| {
+                if (!k.pressed) return true;
+                st.last_change_other = true;
+                if (self.key(n, st, k)) st.changed() else n.ui.needs_frame = true;
+                return true;
+            },
+            .text_commit => |t| {
+                st.preedit_len = 0;
+                st.last_change_other = false;
+                d.insert(t);
+                st.changed();
+                return true;
+            },
+            .text_delete_surrounding => |del| {
+                st.last_change_other = false;
+                if (d.deleteSurrounding(del.before_length, del.after_length)) st.changed();
+                return true;
+            },
+            .text_preedit => |pre| {
+                const len = @min(pre.text.len, st.preedit_buf.len);
+                @memcpy(st.preedit_buf[0..len], pre.text[0..len]);
+                st.preedit_len = len;
+                n.ui.needs_frame = true;
+                return true;
+            },
+            .context => |pos| {
+                n.ui.focus(n);
+                st.dragging = false;
+                const at = self.offsetAt(n, pos);
+                const inside = if (d.selection()) |sel| at >= sel[0] and at <= sel[1] else false;
+                if (!inside) d.moveTo(at, false);
+                const can_copy = d.selection() != null;
+                const origin = n.position();
+                n.ui.openMenu(n, .{ origin[0] + pos[0], origin[1] + pos[1] }, &.{
+                    .{ .label = "Cut", .shortcut = "Ctrl+X", .enabled = can_copy, .on_press = .of(st, State.cut) },
+                    .{ .label = "Copy", .shortcut = "Ctrl+C", .enabled = can_copy, .on_press = .of(st, State.copy) },
+                    .{ .label = "Paste", .shortcut = "Ctrl+V", .on_press = .of(st, State.paste) },
+                    .{ .label = "Select all", .shortcut = "Ctrl+A", .enabled = d.text().len > 0, .on_press = .of(st, State.selectAll) },
+                });
+                return true;
+            },
+            else => {},
+        }
+        return false;
+    }
+
+    /// Edits or moves for a key; returns whether the text changed.
+    fn key(self: *const TextArea, n: *Node, st: *State, k: Event.Key) bool {
+        const d = self.doc;
+        st.reveal = true;
+        if (k.ctrl) {
+            switch (k.code) {
+                keymap.key_a => d.selectAll(),
+                keymap.key_c => st.copy(),
+                keymap.key_x => if (d.selection() != null) {
+                    st.copy();
+                    return d.deleteSelection();
+                },
+                // The text comes later (see `State.pasted`).
+                keymap.key_v => st.paste(),
+                keymap.home => d.moveTo(0, k.shift),
+                keymap.end => d.moveTo(d.text().len, k.shift),
+                else => {},
+            }
+            return false;
+        }
+        const vertical = k.code == keymap.up or k.code == keymap.down or k.code == keymap.page_up or k.code == keymap.page_down;
+        if (!vertical) st.goal_x = null;
+        switch (k.code) {
+            keymap.backspace => {
+                if (d.deleteSelection()) return true;
+                if (d.cursor == 0) return false;
+                const from = d.before(d.cursor);
+                d.remove(from, d.cursor);
+                d.cursor = from;
+                return true;
+            },
+            keymap.delete => {
+                if (d.deleteSelection()) return true;
+                if (d.cursor == d.text().len) return false;
+                d.remove(d.cursor, d.after(d.cursor));
+                return true;
+            },
+            keymap.enter, keymap.keypad_enter => {
+                d.insert("\n");
+                return true;
+            },
+            keymap.tab => {
+                d.insert("\t");
+                return true;
+            },
+            // Without Shift, a selection collapses to its start or end.
+            keymap.left => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[0], false) else d.moveTo(d.before(d.cursor), k.shift),
+            keymap.right => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[1], false) else d.moveTo(d.after(d.cursor), k.shift),
+            keymap.home, keymap.end => {
+                const lines = st.lines.items;
+                if (lines.len > 0) {
+                    const l = lines[lineOf(lines, d.cursor)];
+                    d.moveTo(if (k.code == keymap.home) l.start else l.end, k.shift);
+                }
+            },
+            keymap.up, keymap.down, keymap.page_up, keymap.page_down => {
+                const s = self.style(n) orelse return false;
+                const lines = st.lines.items;
+                if (lines.len == 0) return false;
+                const li = lineOf(lines, d.cursor);
+                const l = lines[li];
+                const x = st.goal_x orelse font.measure(s, d.text()[l.start..d.cursor]);
+                st.goal_x = x;
+                const page: usize = @max(1, @as(usize, @intFromFloat(@max(0, (n.size.h - 2 * pad) / s.lineHeight()))) -| 1);
+                const target: usize = switch (k.code) {
+                    keymap.up => if (li == 0) return d.moveTo(0, k.shift) != {} and false else li - 1,
+                    keymap.down => if (li + 1 >= lines.len) return d.moveTo(d.text().len, k.shift) != {} and false else li + 1,
+                    keymap.page_up => li -| page,
+                    else => @min(li + page, lines.len - 1),
+                };
+                d.moveTo(self.offsetInLine(s, lines[target], x), k.shift);
+            },
+            else => if (k.char) |c| {
+                var enc: [4]u8 = undefined;
+                const len = std.unicode.utf8Encode(c, &enc) catch return false;
+                d.insert(enc[0..len]);
+                return true;
+            },
+        }
+        return false;
+    }
+
+    /// The byte offset nearest `pos` (in the widget).
+    fn offsetAt(self: *const TextArea, n: *Node, pos: Point) usize {
+        const st = n.state(State);
+        const s = self.style(n) orelse return 0;
+        const lines = st.lines.items;
+        if (lines.len == 0) return 0;
+        const row = @as(isize, @intFromFloat(@floor((pos[1] + st.scroll - pad) / s.lineHeight())));
+        const li: usize = @intCast(std.math.clamp(row, 0, @as(isize, @intCast(lines.len - 1))));
+        return self.offsetInLine(s, lines[li], pos[0] - pad);
+    }
+
+    /// The character boundary in `l` nearest `x`.
+    fn offsetInLine(self: *const TextArea, s: font.Style, l: Line, x: f32) usize {
+        const text = self.doc.text();
+        var best = l.start;
+        var best_d = @abs(x);
+        var i = l.start;
+        while (i < l.end) {
+            i += std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+            i = @min(i, l.end);
+            const dist = @abs(font.measure(s, text[l.start..i]) - x);
+            if (dist < best_d) {
+                best = i;
+                best_d = dist;
+            }
+        }
+        return best;
+    }
+};
+
+/// The line (an index) the cursor at `offset` is on: at a wrap, the line
+/// after.
+fn lineOf(lines: []const Line, offset: usize) usize {
+    if (lines.len == 0) return 0;
+    var lo: usize = 0;
+    var hi: usize = lines.len;
+    // The last line starting at or before it.
+    while (hi - lo > 1) {
+        const mid = (lo + hi) / 2;
+        if (lines[mid].start <= offset) lo = mid else hi = mid;
+    }
+    return lo;
+}
+
+/// Wraps `text` into lines of at most `width` (between words, or within a
+/// word too long for a line).
+fn wrapText(gpa: std.mem.Allocator, out: *std.ArrayList(Line), s: font.Style, text: []const u8, width: f32) void {
+    var start: usize = 0;
+    while (true) {
+        const nl = std.mem.indexOfScalarPos(u8, text, start, '\n') orelse text.len;
+        wrapLine(gpa, out, s, text, start, nl, width);
+        if (nl == text.len) return;
+        start = nl + 1;
+    }
+}
+
+fn wrapLine(gpa: std.mem.Allocator, out: *std.ArrayList(Line), s: font.Style, text: []const u8, from: usize, to: usize, width: f32) void {
+    var start = from;
+    while (true) {
+        if (font.measure(s, text[start..to]) <= width) {
+            out.append(gpa, .{ .start = start, .end = to }) catch return;
+            return;
+        }
+        // The last space that still fits: break after it.
+        var brk: ?usize = null;
+        var i = start;
+        while (i < to) : (i += 1) {
+            if (text[i] != ' ') continue;
+            if (font.measure(s, text[start..i]) > width) break;
+            brk = i + 1;
+        }
+        // No space fits: as many characters as fit (one, at least).
+        const end = brk orelse blk: {
+            var j = start;
+            var fit = start;
+            while (j < to) {
+                j += std.unicode.utf8ByteSequenceLength(text[j]) catch 1;
+                j = @min(j, to);
+                if (font.measure(s, text[start..j]) > width and fit > start) break;
+                fit = j;
+            }
+            break :blk fit;
+        };
+        out.append(gpa, .{ .start = start, .end = end }) catch return;
+        start = end;
+        if (start >= to) return;
+    }
+}
+
+// --- Tests ---------------------------------------------------------------------
+
+const testing = std.testing;
+const Padding = @import("padding.zig").Padding;
+
+test "a document: typing, selecting and deleting whole characters" {
+    var d = try Document.init(testing.allocator, "héllo");
+    defer d.deinit();
+    d.moveTo(3, false);
+    try testing.expectEqual(@as(usize, 1), d.before(3));
+    try testing.expectEqual(@as(usize, 6), d.after(3) + 2);
+    d.insert("\tx\r\ny\x07");
+    try testing.expectEqualStrings("hé    x\nyllo", d.text());
+    d.moveTo(0, false);
+    d.moveTo(3, true);
+    d.insert("H");
+    try testing.expectEqualStrings("H    x\nyllo", d.text());
+    try testing.expect(d.version > 0);
+}
+
+test "a document: init normalizes UTF-8 and moveTo snaps to character boundaries" {
+    var d = try Document.init(testing.allocator, "café\r\n\t—🌍\xff");
+    defer d.deinit();
+    try testing.expectEqual(@as(usize, 0), d.cursor);
+    try testing.expectEqual(@as(u64, 0), d.version);
+    try testing.expectEqualStrings("café\n    —🌍", d.text());
+    // "caf" is 3 bytes, "é" is bytes 3..5; moving to byte 4 snaps back to byte 3.
+    d.moveTo(4, false);
+    try testing.expectEqual(@as(usize, 3), d.cursor);
+    try testing.expectEqual(@as(usize, 5), d.after(d.cursor));
+    // "—" is 3 bytes (10..13), "🌍" is 4 bytes (13..17); moving to byte 15 snaps to 13.
+    d.moveTo(15, true);
+    try testing.expectEqual(@as(usize, 13), d.cursor);
+    try testing.expectEqual([2]usize{ 3, 13 }, d.selection().?);
+    _ = d.deleteSelection();
+    try testing.expectEqualStrings("caf🌍", d.text());
+}
+
+test "lines wrap between words, or within one too long" {
+    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const s: font.Style = .{ .font = &f, .size = 16 };
+    var lines: std.ArrayList(Line) = .empty;
+    defer lines.deinit(testing.allocator);
+    const text = "the quick brown fox\n\nsupercalifragilistic";
+    wrapText(testing.allocator, &lines, s, text, font.measure(s, "the quick brown"));
+    // "the quick brown ", "fox", "", then the long word in pieces.
+    try testing.expectEqualStrings("the quick brown ", text[lines.items[0].start..lines.items[0].end]);
+    try testing.expectEqualStrings("fox", text[lines.items[1].start..lines.items[1].end]);
+    try testing.expectEqual(lines.items[2].start, lines.items[2].end);
+    try testing.expect(lines.items.len > 4);
+    var joined: std.ArrayList(u8) = .empty;
+    defer joined.deinit(testing.allocator);
+    for (lines.items[3..]) |l| try joined.appendSlice(testing.allocator, text[l.start..l.end]);
+    try testing.expectEqualStrings("supercalifragilistic", joined.items);
+    // A word too long for a line, in pieces.
+    lines.clearRetainingCapacity();
+    wrapText(testing.allocator, &lines, s, "supercalifragilistic", font.measure(s, "super"));
+    try testing.expect(lines.items.len >= 4);
+    for (lines.items[0 .. lines.items.len - 1], lines.items[1..]) |a, b| try testing.expectEqual(a.end, b.start);
+    try testing.expectEqual(@as(usize, 20), lines.items[lines.items.len - 1].end);
+    lines.clearRetainingCapacity();
+    wrapText(testing.allocator, &lines, s, text, font.measure(s, "the quick brown"));
+    // The cursor at a wrap is on the next line.
+    try testing.expectEqual(@as(usize, 1), lineOf(lines.items, lines.items[1].start));
+    try testing.expectEqual(@as(usize, 0), lineOf(lines.items, 3));
+}
+
+test "typing into a text area, moving up and down, and copying" {
+    const Ui = @import("runtime.zig").Ui;
+    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const u = try Ui.create(testing.allocator, &f);
+    defer u.destroy();
+    var d = try Document.init(testing.allocator, "first line\nsecond line");
+    defer d.deinit();
+    const App = struct {
+        doc: *Document,
+        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+            return cx.make(Padding{ .padding = .all(10), .child = cx.make(TextArea{ .doc = self.doc, .autofocus = true }) });
+        }
+    };
+    u.frame(500, 300, 0, App{ .doc = &d });
+    const press = struct {
+        fn key(uu: *Ui, code: u32) void {
+            uu.keyEvent(code, true);
+            uu.keyEvent(code, false);
+        }
+    }.key;
+    // At the start; down, then End: the end of the second line.
+    press(u, keymap.down);
+    u.frame(500, 300, 1, App{ .doc = &d });
+    try testing.expectEqual(@as(usize, 11), d.cursor);
+    press(u, keymap.end);
+    try testing.expectEqual(d.text().len, d.cursor);
+    press(u, keymap.enter);
+    press(u, 30); // a
+    try testing.expectEqualStrings("first line\nsecond line\na", d.text());
+    // Up twice: the first line; Shift+End selects it, and Ctrl+C copies.
+    u.frame(500, 300, 2, App{ .doc = &d });
+    press(u, keymap.up);
+    press(u, keymap.up);
+    press(u, keymap.home);
+    u.keyEvent(keymap.left_shift, true);
+    press(u, keymap.end);
+    u.keyEvent(keymap.left_shift, false);
+    u.keyEvent(keymap.left_ctrl, true);
+    press(u, keymap.key_c);
+    u.keyEvent(keymap.left_ctrl, false);
+    try testing.expectEqualStrings("first line", u.local_clipboard.items);
+    press(u, keymap.backspace);
+    try testing.expectEqualStrings("\nsecond line\na", d.text());
+}

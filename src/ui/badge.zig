@@ -1,0 +1,94 @@
+//! Badge: Material 3's status dot or count indicator, shown standalone or
+//! at the top-right corner of a `child` widget.
+
+const gfx = @import("gfx");
+const geometry = @import("geometry.zig");
+const widget = @import("widget.zig");
+const Center = @import("center.zig").Center;
+const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
+const Decorated = @import("decorated.zig").Decorated;
+const Padding = @import("padding.zig").Padding;
+const SizedBox = @import("sized_box.zig").SizedBox;
+const Text = @import("text.zig").Text;
+
+const Size = geometry.Size;
+const Constraints = geometry.Constraints;
+const Widget = widget.Widget;
+const Context = widget.Context;
+const Node = widget.Node;
+const Color = gfx.Color;
+
+pub const Badge = struct {
+    /// When set, shows the count (or "99+" above 99); when null and `label`
+    /// is empty, shows a small 8px status dot.
+    count: ?u32 = null,
+    label: []const u8 = "",
+    show: bool = true,
+    color: ?Color = null,
+    text_color: ?Color = null,
+    child: ?Widget = null,
+
+    pub fn build(self: *const Badge, cx: *Context) Widget {
+        if (!self.show) return self.child orelse cx.make(@import("empty.zig").Empty{});
+        const pill = self.makePill(cx);
+        const child = self.child orelse return pill;
+        return cx.make(BadgedChild{ .children = &.{ child, pill } });
+    }
+
+    fn makePill(self: *const Badge, cx: *Context) Widget {
+        const t = cx.theme();
+        const bg = self.color orelse t.@"error";
+        const fg = self.text_color orelse Color.rgb(0xffffff);
+        const text = if (self.label.len > 0)
+            self.label
+        else if (self.count) |n|
+            (if (n > 99) "99+" else cx.fmt("{d}", .{n}))
+        else
+            "";
+
+        if (text.len == 0) {
+            return cx.make(Decorated{
+                .color = bg,
+                .radius = .all(4),
+                .child = cx.make(SizedBox{ .width = 8, .height = 8 }),
+            });
+        }
+
+        return cx.make(Decorated{
+            .color = bg,
+            .radius = .all(9),
+            .child = cx.make(ConstrainedBox{
+                .constraints = .{ .min_w = 18, .min_h = 18 },
+                .child = cx.make(Padding{
+                    .padding = .symmetric(5, 1),
+                    .child = cx.make(Center{
+                        .width_factor = 1,
+                        .height_factor = 1,
+                        .child = cx.make(Text{
+                            .text = text,
+                            .style = .{ .size = 11, .color = fg },
+                            .wrap = false,
+                        }),
+                    }),
+                }),
+            }),
+        });
+    }
+};
+
+const BadgedChild = struct {
+    children: []const Widget,
+
+    pub fn layout(_: *const BadgedChild, n: *Node, c: Constraints) Size {
+        if (n.childCount() < 2) return c.smallest();
+        const ch = n.child(0);
+        const pill = n.child(1);
+        const cs = ch.layout(c.loosen());
+        const ps = pill.layout(c.loosen());
+        const w = @max(cs.w, ps.w);
+        const h = @max(cs.h, ps.h);
+        ch.place(0, @max(0, h - cs.h));
+        pill.place(@max(0, w - ps.w), 0);
+        return c.constrain(.{ .w = w, .h = h });
+    }
+};

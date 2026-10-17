@@ -1,0 +1,121 @@
+//! The Material icons Facet includes, by their Material names (see
+//! fonts/MaterialIcons-Regular.codepoints). Only these are in the bundled
+//! icon font: tools/subset_icons.zig makes it, with just their glyphs,
+//! from the full font (leaving out the icons not listed here). To include
+//! another icon, add its name here.
+
+pub const Icon = enum {
+    // Window title bars.
+    close,
+    crop_square,
+    filter_none,
+    // Controls.
+    check,
+    arrow_back,
+    arrow_forward,
+    arrow_upward,
+    chevron_right,
+    expand_more,
+    visibility,
+    visibility_off,
+    // Files and navigation.
+    person,
+    folder,
+    description,
+    terminal,
+    memory,
+    help_outline,
+    link,
+    link_off,
+    lock,
+    sort_by_alpha,
+    schedule,
+    grid_view,
+    view_list,
+    create_new_folder,
+    warning,
+    usb,
+    content_paste,
+    eject,
+    // System and connectivity.
+    settings,
+    wifi,
+    lan,
+    speed,
+    info,
+    developer_board,
+    settings_input_component,
+    language,
+    // Devices.
+    keyboard,
+    mouse,
+    device_hub,
+    headphones,
+    videocam,
+    print,
+    sports_esports,
+    article,
+    wifi_1_bar,
+    wifi_2_bar,
+    wifi_password,
+    // Media and playback.
+    view_in_ar,
+    fast_rewind,
+    fast_forward,
+    pause,
+    play_arrow,
+    // Actions.
+    apps,
+    download,
+    delete,
+    refresh,
+    restart_alt,
+    // Camera.
+    photo_camera,
+    no_photography,
+    // Scene and objects.
+    landscape,
+    person_add,
+    computer,
+    // Charts and recording.
+    show_chart,
+    fiber_manual_record,
+    stop,
+    save,
+    add,
+    zoom_in,
+    zoom_out,
+    delete_sweep,
+    // Text editing.
+    edit_note,
+    edit,
+    note_add,
+    // Maps and view.
+    public,
+    layers,
+    my_location,
+    fullscreen,
+    fullscreen_exit,
+    // Development and widgets.
+    code,
+    widgets,
+    // Messaging.
+    chat,
+    forum,
+    group,
+    logout,
+    send,
+    // Audio and sound.
+    volume_up,
+    volume_down,
+    volume_mute,
+    volume_off,
+    speaker,
+    tv,
+    music_note,
+    audio_file,
+    // Appearance.
+    palette,
+    dark_mode,
+    light_mode,
+};
