@@ -49,7 +49,6 @@ pub const pressable = @import("pressable.zig");
 pub const drag = @import("drag.zig");
 pub const text = @import("text.zig");
 pub const theme = @import("theme.zig");
-pub const outlined_button = @import("outlined_button.zig");
 pub const button = @import("button.zig");
 pub const icon_button = @import("icon_button.zig");
 pub const pill_bar = @import("pill_bar.zig");
@@ -139,7 +138,7 @@ pub const TextAlign = text.TextAlign;
 
 pub const Theme = theme.Theme;
 pub const Highlight = theme.Highlight;
-pub const OutlinedButton = outlined_button.OutlinedButton;
+pub const OutlinedButton = button.OutlinedButton;
 pub const FilledButton = button.FilledButton;
 pub const TonalButton = button.TonalButton;
 pub const TextButton = button.TextButton;
@@ -203,7 +202,6 @@ test {
     _ = pressable;
     _ = text;
     _ = theme;
-    _ = outlined_button;
     _ = button;
     _ = icon_button;
     _ = pill_bar;

@@ -7,7 +7,8 @@ const icons = @import("icons");
 const widget = @import("widget.zig");
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const MenuItem = @import("menu.zig").Item;
-const OutlinedButton = @import("outlined_button.zig").OutlinedButton;
+const button = @import("button.zig");
+const OutlinedButton = button.OutlinedButton;
 
 const Widget = widget.Widget;
 const Context = widget.Context;
@@ -25,7 +26,7 @@ pub const DropdownMenu = struct {
     icon: ?icons.Icon = null,
     width: ?f32 = null,
 
-    pub const height = OutlinedButton.height;
+    pub const height = button.height;
     pub const max_options = 32;
 
     const Pick = struct {
