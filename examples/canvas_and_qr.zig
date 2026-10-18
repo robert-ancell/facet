@@ -14,23 +14,39 @@ pub const WaveCanvas = struct {
     animate: bool = true,
     frequency: f32 = 2.0,
 
+    pub const State = struct {
+        phase: f32 = 0,
+        last_ns: ?u64 = null,
+    };
+
     pub fn layout(_: *const WaveCanvas, _: *facet.Node, c: facet.Constraints) facet.Size {
         return c.constrain(.{ .w = 340, .h = 200 });
     }
 
     pub fn paint(self: *const WaveCanvas, n: *facet.Node, p: *facet.Painter) void {
-        if (self.animate) n.ui.needs_frame = true;
+        const state = n.state(State);
+        if (self.animate) {
+            if (state.last_ns) |prev| {
+                const dt_ns = n.ui.now_ns -| prev;
+                const dt_s: f32 = @floatCast(@as(f64, @floatFromInt(dt_ns)) / std.time.ns_per_s);
+                state.phase = @mod(state.phase + dt_s * std.math.tau * 0.4, std.math.tau);
+            }
+            state.last_ns = n.ui.now_ns;
+            n.ui.needs_frame = true;
+        } else {
+            state.last_ns = null;
+        }
 
         const t = &n.ui.theme;
         const c = p.canvas();
         const w = n.size.w;
         const h = n.size.h;
-        const phase: f32 = @floatCast(@as(f64, @floatFromInt(n.ui.now_ns % (10 * std.time.ns_per_s))) / std.time.ns_per_s * std.math.tau * 0.4);
+        const phase = state.phase;
 
         c.fillRoundedRect(.{ .x = 0, .y = 0, .w = w, .h = h }, .all(12), t.surface_container_highest);
         c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1 }, .all(12), 1, t.outline_variant);
 
-        const steps = 48;
+        const steps = 256;
         var points: [steps]facet.Point = undefined;
         for (&points, 0..) |*pt, i| {
             const u = @as(f32, @floatFromInt(i)) / @as(f32, steps - 1);
@@ -198,3 +214,25 @@ test "CanvasAndQrDemo example computes minimum window size and has no overflow" 
     try std.testing.expectEqual(ui.min_size[1], ui.frame_size[1]);
     try std.testing.expect(!hasOverflow(ui.root.?));
 }
+
+test "WaveCanvas freezes phase when animation is disabled" {
+    const ui = try facet.Ui.createDefault(std.testing.allocator);
+    defer ui.destroy();
+
+    ui.frame(340, 200, 100 * std.time.ns_per_ms, WaveCanvas{ .animate = true, .frequency = 5.0 });
+    try std.testing.expect(ui.needs_frame);
+    ui.frame(340, 200, 300 * std.time.ns_per_ms, WaveCanvas{ .animate = true, .frequency = 5.0 });
+    const paused_phase = ui.root.?.state(WaveCanvas.State).phase;
+    try std.testing.expect(paused_phase > 0);
+
+    // Turning animation off freezes phase even as now_ns advances on later frames.
+    ui.frame(340, 200, 500 * std.time.ns_per_ms, WaveCanvas{ .animate = false, .frequency = 5.0 });
+    try std.testing.expect(!ui.needs_frame);
+    try std.testing.expectEqual(paused_phase, ui.root.?.state(WaveCanvas.State).phase);
+
+    ui.frame(340, 200, 900 * std.time.ns_per_ms, WaveCanvas{ .animate = false, .frequency = 5.0 });
+    try std.testing.expect(!ui.needs_frame);
+    try std.testing.expect(!ui.changed());
+    try std.testing.expectEqual(paused_phase, ui.root.?.state(WaveCanvas.State).phase);
+}
+

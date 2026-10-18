@@ -97,7 +97,7 @@ fn dedupe(buf: []Point, points: []const Point) []Point {
     return buf[0..n];
 }
 
-pub const max_points = 256;
+pub const max_points = 512;
 
 /// Fills a simple polygon (convex or concave, not self-intersecting).
 pub fn fillPolygon(out: Sink, points_in: []const Point) void {
