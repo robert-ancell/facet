@@ -27,6 +27,7 @@
 
 const std = @import("std");
 const gfx = @import("gfx");
+const window_mod = @import("window");
 const geometry = @import("geometry.zig");
 const painter_mod = @import("painter.zig");
 const runtime = @import("runtime.zig");
@@ -367,6 +368,36 @@ pub const Context = struct {
     pub fn requestFrame(cx: *Context) void {
         cx.ui.needs_frame = true;
     }
+
+    /// Information about the active windowing platform, surface buffer
+    /// transport (`wl_shm`, `linux_dmabuf`, ...), and 2D rendering backend
+    /// (`software`, `opengl`, `vulkan`, ...).
+    pub fn backend(cx: *const Context) BackendInfo {
+        return cx.ui.backend();
+    }
+};
+
+/// Describes the active windowing platform, surface buffer transport, and
+/// rendering backend for the UI.
+pub const BackendInfo = struct {
+    /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
+    platform: window_mod.Platform = .headless,
+    /// Surface buffer transport (`wl_shm`, `linux_dmabuf`, `memory`, `swapchain`, `custom`).
+    buffer_transport: window_mod.BufferTransport = .memory,
+    /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `custom`).
+    renderer: gfx.RenderBackend = .software,
+    /// Logical window size in pixels.
+    logical_size: [2]u32 = .{ 0, 0 },
+    /// Physical target buffer size in pixels (`logical_size * scale`).
+    physical_size: [2]u32 = .{ 0, 0 },
+    /// HiDPI integer buffer scale factor.
+    scale: u32 = 1,
+    /// Active keyboard layout (`us`, `gb`).
+    keyboard: window_mod.Keyboard = .us,
+    /// Window state flags.
+    maximized: bool = false,
+    fullscreen: bool = false,
+    tiled: bool = false,
 };
 
 pub const Edges = struct {

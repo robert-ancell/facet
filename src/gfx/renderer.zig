@@ -92,12 +92,30 @@ pub fn covers(damage: ?[]const Viewport, vp: Viewport) bool {
     return false;
 }
 
+/// Identifies the 2D rendering backend implementation.
+pub const RenderBackend = enum {
+    software,
+    opengl,
+    vulkan,
+    custom,
+
+    pub fn name(b: RenderBackend) []const u8 {
+        return switch (b) {
+            .software => "Software",
+            .opengl => "OpenGL",
+            .vulkan => "Vulkan",
+            .custom => "Custom",
+        };
+    }
+};
+
 /// Type-erased rendering backend interface.
 pub const Renderer = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
+        backend: RenderBackend = .custom,
         /// Uploads vertex batches, dirty glyph atlas rows, and image textures
         /// for all canvases in the frame.
         prepare: *const fn (ptr: *anyopaque, canvases: []const *const Canvas) anyerror!void,
@@ -119,6 +137,7 @@ pub const Renderer = struct {
             .ptr = impl,
             .vtable = &struct {
                 const vtable: VTable = .{
+                    .backend = if (@hasDecl(T, "backend")) T.backend else .custom,
                     .prepare = prepareFn,
                     .record = recordFn,
                     .deinit = if (@hasDecl(T, "deinit")) deinitFn else null,
@@ -137,6 +156,10 @@ pub const Renderer = struct {
                 }
             }.vtable,
         };
+    }
+
+    pub fn backend(r: Renderer) RenderBackend {
+        return r.vtable.backend;
     }
 
     pub fn prepare(r: Renderer, canvases: []const *const Canvas) !void {

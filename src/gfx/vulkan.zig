@@ -300,6 +300,8 @@ pub const VulkanRenderer = struct {
         r.shader_modules.deinit(r.device, &r.vk);
     }
 
+    pub const backend: renderer_mod.RenderBackend = .vulkan;
+
     pub fn renderer(r: *VulkanRenderer) renderer_mod.Renderer {
         return .of(r);
     }

@@ -222,6 +222,12 @@ pub const Buffer = struct {
 };
 
 pub const WaylandWindow = struct {
+    pub const platform: window_mod.Platform = .wayland;
+
+    pub fn bufferTransport(_: *const WaylandWindow) window_mod.BufferTransport {
+        return .wl_shm;
+    }
+
     gpa: std.mem.Allocator,
     conn: *client.Display,
     globals: client.Globals = .{},

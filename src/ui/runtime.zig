@@ -312,6 +312,25 @@ pub const Ui = struct {
         ui.scale = @max(w.scale(), 1);
     }
 
+    /// Returns information about the active windowing platform, surface buffer
+    /// transport, and 2D rendering backend.
+    pub fn backend(ui: *const Ui) widget.BackendInfo {
+        const s = @max(ui.scale, 1);
+        const lsize = if (ui.win) |w| w.size() else ui.logical_size;
+        return .{
+            .platform = if (ui.win) |w| w.platform() else .headless,
+            .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
+            .renderer = if (ui.renderer) |r| r.backend() else .software,
+            .logical_size = lsize,
+            .physical_size = .{ lsize[0] * s, lsize[1] * s },
+            .scale = s,
+            .keyboard = ui.keyboard,
+            .maximized = ui.maximized,
+            .fullscreen = ui.fullscreen,
+            .tiled = ui.tiled,
+        };
+    }
+
     /// The pointer cursor shape requested by the currently dragged,
     /// captured, or hovered widget.
     pub fn cursor(ui: *const Ui) widget.Cursor {

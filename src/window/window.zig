@@ -91,12 +91,54 @@ pub const InputEvent = union(enum) {
     drop: [2]f32,
 };
 
+/// Windowing system / display server backend.
+pub const Platform = enum {
+    headless,
+    wayland,
+    x11,
+    windows,
+    macos,
+    custom,
+
+    pub fn name(p: Platform) []const u8 {
+        return switch (p) {
+            .headless => "Headless",
+            .wayland => "Wayland",
+            .x11 => "X11",
+            .windows => "Windows",
+            .macos => "macOS",
+            .custom => "Custom",
+        };
+    }
+};
+
+/// Surface buffer presentation mechanism.
+pub const BufferTransport = enum {
+    memory,
+    wl_shm,
+    linux_dmabuf,
+    swapchain,
+    custom,
+
+    pub fn name(t: BufferTransport) []const u8 {
+        return switch (t) {
+            .memory => "CPU Memory",
+            .wl_shm => "wl_shm",
+            .linux_dmabuf => "linux_dmabuf",
+            .swapchain => "Swapchain",
+            .custom => "Custom",
+        };
+    }
+};
+
 /// Generic window interface (`Window.of(&impl)`).
 pub const Window = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const VTable = struct {
+        platform: *const fn (ptr: *anyopaque) Platform,
+        bufferTransport: *const fn (ptr: *anyopaque) BufferTransport,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
         wait: *const fn (ptr: *anyopaque, timeout_ns: u64) anyerror!void,
         takeInput: *const fn (ptr: *anyopaque) []const InputEvent,
@@ -127,6 +169,20 @@ pub const Window = struct {
         const gen = struct {
             fn self(p: *anyopaque) *T {
                 return @ptrCast(@alignCast(p));
+            }
+            fn platformFn(p: *anyopaque) Platform {
+                if (@hasDecl(T, "platform")) {
+                    if (@TypeOf(T.platform) == Platform) return T.platform;
+                    return self(p).platform();
+                }
+                if (@hasField(T, "platform")) return self(p).platform;
+                return .custom;
+            }
+            fn bufferTransportFn(p: *anyopaque) BufferTransport {
+                if (@hasDecl(T, "bufferTransport")) return self(p).bufferTransport();
+                if (@hasDecl(T, "buffer_transport")) return T.buffer_transport;
+                if (@hasField(T, "buffer_transport")) return self(p).buffer_transport;
+                return .custom;
             }
             fn pollFn(p: *anyopaque) anyerror!void {
                 if (@hasDecl(T, "poll")) return self(p).poll();
@@ -218,6 +274,8 @@ pub const Window = struct {
                 if (@hasDecl(T, "paste")) s.paste(sink) else if (@hasField(T, "clipboard")) s.clipboard.paste(sink);
             }
             const vt = VTable{
+                .platform = platformFn,
+                .bufferTransport = bufferTransportFn,
                 .poll = pollFn,
                 .wait = waitFn,
                 .takeInput = takeInputFn,
@@ -245,6 +303,12 @@ pub const Window = struct {
         return .{ .ptr = @ptrCast(@constCast(impl)), .vtable = &gen.vt };
     }
 
+    pub fn platform(w: Window) Platform {
+        return w.vtable.platform(w.ptr);
+    }
+    pub fn bufferTransport(w: Window) BufferTransport {
+        return w.vtable.bufferTransport(w.ptr);
+    }
     pub fn poll(w: Window) !void {
         return w.vtable.poll(w.ptr);
     }

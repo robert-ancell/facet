@@ -288,6 +288,8 @@ pub const OpenGlRenderer = struct {
         }
     }
 
+    pub const backend: renderer_mod.RenderBackend = .opengl;
+
     pub fn supportsSpirv(r: *const OpenGlRenderer) bool {
         return r.spirv_supported;
     }

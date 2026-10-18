@@ -37,6 +37,7 @@ pub const Viewport = renderer.Viewport;
 pub const GpuArea = renderer.GpuArea;
 pub const GpuDraw = renderer.GpuDraw;
 pub const Segment = renderer.Segment;
+pub const RenderBackend = renderer.RenderBackend;
 pub const Renderer = renderer.Renderer;
 pub const SoftwareRenderer = software.SoftwareRenderer;
 pub const OpenGlRenderer = opengl.OpenGlRenderer;

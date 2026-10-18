@@ -77,6 +77,8 @@ pub const Image = struct {
 /// Software implementation of `gfx.Renderer`. Target passed to `record` or
 /// `Renderer.renderSegments` is `*const Image` or `*Image`.
 pub const SoftwareRenderer = struct {
+    pub const backend: renderer_mod.RenderBackend = .software;
+
     pub fn init() SoftwareRenderer {
         return .{};
     }
