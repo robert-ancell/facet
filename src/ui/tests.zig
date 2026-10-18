@@ -1467,6 +1467,13 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     const u = try ui.Ui.createDefault(testing.allocator);
     defer u.destroy();
 
+    const expected_renderer: gfx.RenderBackend = if (u.vulkan_renderer != null)
+        .vulkan
+    else if (u.opengl_renderer != null)
+        .opengl
+    else
+        .software;
+
     const Probe = struct {
         out: *ui.BackendInfo,
         pub fn build(self: *const @This(), cx: *Context) Widget {
@@ -1480,7 +1487,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     try testing.expectEqual(window.Platform.headless, info.platform);
     try testing.expectEqual(window.Decorations.none, info.decorations);
     try testing.expectEqual(window.BufferTransport.memory, info.buffer_transport);
-    try testing.expectEqual(gfx.RenderBackend.software, info.renderer);
+    try testing.expectEqual(expected_renderer, info.renderer);
 
     var wl_win: window.WaylandWindow = .{
         .gpa = testing.allocator,
@@ -1496,7 +1503,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     try testing.expectEqual(window.Platform.wayland, info.platform);
     try testing.expectEqual(window.Decorations.client, info.decorations);
     try testing.expectEqual(window.BufferTransport.wl_shm, info.buffer_transport);
-    try testing.expectEqual(gfx.RenderBackend.software, info.renderer);
+    try testing.expectEqual(expected_renderer, info.renderer);
     try testing.expectEqual([2]u32{ 800, 600 }, info.logical_size);
     try testing.expectEqual([2]u32{ 1600, 1200 }, info.physical_size);
     try testing.expectEqual(@as(u32, 2), info.scale);
@@ -1506,5 +1513,53 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     u.frame(800, 600, 2, Probe{ .out = &info });
     try testing.expectEqual(window.Decorations.server, info.decorations);
 }
+
+test "VulkanRenderer, OpenGlRenderer, and SoftwareRenderer render UI widgets and text" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    u.theme = .light;
+
+    var clicked = false;
+    u.frame(200, 80, 0, ui.FilledButton{
+        .label = "GPU 2D",
+        .icon = .check,
+        .on_press = .of(&clicked, struct {
+            fn f(flag: *bool) void {
+                flag.* = true;
+            }
+        }.f),
+    });
+
+    // 1. Default renderer (Vulkan -> OpenGL -> Software)
+    {
+        const img = try Image.init(u, 200, 80);
+        defer img.deinit();
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(20, 20));
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(180, 60));
+    }
+
+    // 2. Explicitly test OpenGlRenderer if available
+    if (gfx.OpenGlRenderer.initDefault(testing.allocator)) |gl_val| {
+        var gl = gl_val;
+        defer gl.deinit();
+        u.attachRenderer(gl.renderer(), false);
+        try testing.expectEqual(gfx.RenderBackend.opengl, u.renderer.?.backend());
+        const img = try Image.init(u, 200, 80);
+        defer img.deinit();
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(20, 20));
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(180, 60));
+    } else |_| {}
+
+    // 3. Explicitly test SoftwareRenderer fallback
+    {
+        u.attachRenderer(u.software_renderer.renderer(), false);
+        try testing.expectEqual(gfx.RenderBackend.software, u.renderer.?.backend());
+        const img = try Image.init(u, 200, 80);
+        defer img.deinit();
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(20, 20));
+        try testing.expectEqual(u.theme.primary.toArgb(), img.at(180, 60));
+    }
+}
+
 
 

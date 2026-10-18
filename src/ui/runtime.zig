@@ -91,6 +91,8 @@ pub const Ui = struct {
     theme: Theme = .dark,
     last_surface: ?gfx.Color = null,
     atlas: gfx.Atlas,
+    vulkan_renderer: ?gfx.VulkanRenderer = null,
+    opengl_renderer: ?gfx.OpenGlRenderer = null,
     software_renderer: gfx.SoftwareRenderer = .{},
     renderer: ?gfx.Renderer = null,
     owns_renderer: bool = false,
@@ -200,6 +202,8 @@ pub const Ui = struct {
 
     /// Creates a `Ui` with the given `font` (`null` for no text font; icons
     /// still use the bundled Material Icons font).
+    /// Tries initializing the Vulkan 2D renderer first, then OpenGL, before
+    /// falling back to Software.
     pub fn create(gpa: std.mem.Allocator, f: ?*const font.Font) !*Ui {
         const ui = try gpa.create(Ui);
         errdefer gpa.destroy(ui);
@@ -210,7 +214,17 @@ pub const Ui = struct {
             .atlas = try gfx.Atlas.init(gpa),
             .arenas = .{ .init(gpa), .init(gpa) },
         };
-        ui.renderer = ui.software_renderer.renderer();
+        if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
+            ui.vulkan_renderer = vk;
+            ui.renderer = ui.vulkan_renderer.?.renderer();
+            ui.owns_renderer = true;
+        } else |_| if (gfx.OpenGlRenderer.initDefault(gpa)) |gl| {
+            ui.opengl_renderer = gl;
+            ui.renderer = ui.opengl_renderer.?.renderer();
+            ui.owns_renderer = true;
+        } else |_| {
+            ui.renderer = ui.software_renderer.renderer();
+        }
         return ui;
     }
 
@@ -284,6 +298,8 @@ pub const Ui = struct {
     /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`).
     pub fn attachRenderer(ui: *Ui, r: gfx.Renderer, take_ownership: bool) void {
         if (ui.owns_renderer) if (ui.renderer) |old| old.deinit();
+        ui.vulkan_renderer = null;
+        ui.opengl_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
     }

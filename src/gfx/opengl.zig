@@ -132,6 +132,10 @@ pub const Procs = struct {
     Viewport: *const fn (GLint, GLint, GLsizei, GLsizei) callconv(.c) void,
     Scissor: *const fn (GLint, GLint, GLsizei, GLsizei) callconv(.c) void,
     BindFramebuffer: *const fn (GLenum, GLuint) callconv(.c) void,
+    GenFramebuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteFramebuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    FramebufferTexture2D: *const fn (GLenum, GLenum, GLenum, GLuint, GLint) callconv(.c) void,
+    ReadPixels: *const fn (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, *anyopaque) callconv(.c) void,
     GenBuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
     DeleteBuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
     BindBuffer: *const fn (GLenum, GLuint) callconv(.c) void,
@@ -195,7 +199,7 @@ pub const Procs = struct {
     }
 };
 
-/// Framebuffer target for `OpenGlRenderer.record`.
+/// Framebuffer target for `OpenGlRenderer.recordTarget`.
 pub const Target = struct {
     width: u32,
     height: u32,
@@ -206,6 +210,11 @@ pub const Target = struct {
 pub const OpenGlRenderer = struct {
     gpa: std.mem.Allocator,
     gl: Procs,
+    egl_lib: ?std.DynLib = null,
+    egl: ?EglProcs = null,
+    dpy: EGLDisplay = null,
+    surf: EGLSurface = null,
+    ctx: EGLContext = null,
     spirv_supported: bool = false,
     shape_prog: GLuint = 0,
     solid_prog: GLuint = 0,
@@ -222,6 +231,72 @@ pub const OpenGlRenderer = struct {
     atlas_stale: ?atlas_mod.Rect = null,
     images: std.AutoHashMapUnmanaged(u64, GLuint) = .empty,
     rgba_scratch: std.ArrayList(u8) = .empty,
+    fbo: GLuint = 0,
+    fbo_tex: GLuint = 0,
+    fbo_w: u32 = 0,
+    fbo_h: u32 = 0,
+    pixel_scratch: std.ArrayList(u32) = .empty,
+
+    /// Initializes a self-contained headless EGL + OpenGL 3.3+/4.6 Core 2D
+    /// renderer that renders `Canvas` batches into `*software.Image`.
+    pub fn initDefault(gpa: std.mem.Allocator) !OpenGlRenderer {
+        var egl_lib = std.DynLib.open("libEGL.so.1") catch try std.DynLib.open("libEGL.so");
+        errdefer egl_lib.close();
+        const egl = try EglProcs.load(&egl_lib);
+
+        const dpy = egl.GetDisplay(EGL_DEFAULT_DISPLAY);
+        if (dpy == EGL_NO_DISPLAY) return error.NoEglDisplay;
+        if (egl.Initialize(dpy, null, null) == EGL_FALSE) return error.EglInitFailed;
+        errdefer _ = egl.Terminate(dpy);
+
+        if (egl.BindAPI(EGL_OPENGL_API) == EGL_FALSE) return error.EglBindApiFailed;
+
+        const cfg_attribs = [_]EGLint{
+            EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+            EGL_RED_SIZE,        8,
+            EGL_GREEN_SIZE,      8,
+            EGL_BLUE_SIZE,       8,
+            EGL_ALPHA_SIZE,      8,
+            EGL_NONE,
+        };
+        var config: EGLConfig = null;
+        var num_configs: EGLint = 0;
+        if (egl.ChooseConfig(dpy, &cfg_attribs, @ptrCast(&config), 1, &num_configs) == EGL_FALSE or num_configs == 0) {
+            return error.EglChooseConfigFailed;
+        }
+
+        const pbuf_attribs = [_]EGLint{ EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE };
+        const surf = egl.CreatePbufferSurface(dpy, config, &pbuf_attribs);
+        errdefer if (surf != EGL_NO_SURFACE) {
+            _ = egl.DestroySurface(dpy, surf);
+        };
+
+        const versions = [_][2]EGLint{ .{ 4, 6 }, .{ 4, 5 }, .{ 3, 3 } };
+        var ctx: EGLContext = EGL_NO_CONTEXT;
+        for (versions) |ver| {
+            const ctx_attribs = [_]EGLint{
+                EGL_CONTEXT_MAJOR_VERSION,       ver[0],
+                EGL_CONTEXT_MINOR_VERSION,       ver[1],
+                EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+                EGL_NONE,
+            };
+            ctx = egl.CreateContext(dpy, config, EGL_NO_CONTEXT, &ctx_attribs);
+            if (ctx != EGL_NO_CONTEXT) break;
+        }
+        if (ctx == EGL_NO_CONTEXT) return error.EglCreateContextFailed;
+        errdefer _ = egl.DestroyContext(dpy, ctx);
+
+        if (egl.MakeCurrent(dpy, surf, surf, ctx) == EGL_FALSE) return error.EglMakeCurrentFailed;
+
+        var r = try init(gpa, egl.GetProcAddress);
+        r.egl_lib = egl_lib;
+        r.egl = egl;
+        r.dpy = dpy;
+        r.surf = surf;
+        r.ctx = ctx;
+        return r;
+    }
 
     pub fn init(gpa: std.mem.Allocator, get_proc: GetProcAddress) !OpenGlRenderer {
         const gl = try Procs.load(get_proc);
@@ -265,7 +340,16 @@ pub const OpenGlRenderer = struct {
         return r;
     }
 
+    fn makeCurrent(r: *const OpenGlRenderer) void {
+        if (r.egl) |egl| {
+            if (r.dpy != EGL_NO_DISPLAY) {
+                _ = egl.MakeCurrent(r.dpy, r.surf, r.surf, r.ctx);
+            }
+        }
+    }
+
     pub fn deinit(r: *OpenGlRenderer) void {
+        r.makeCurrent();
         var it = r.images.valueIterator();
         while (it.next()) |tex| {
             const t = [1]GLuint{tex.*};
@@ -273,6 +357,15 @@ pub const OpenGlRenderer = struct {
         }
         r.images.deinit(r.gpa);
         r.rgba_scratch.deinit(r.gpa);
+        r.pixel_scratch.deinit(r.gpa);
+        if (r.fbo != 0) {
+            const fbos = [1]GLuint{r.fbo};
+            r.gl.DeleteFramebuffers(1, &fbos);
+        }
+        if (r.fbo_tex != 0) {
+            const t = [1]GLuint{r.fbo_tex};
+            r.gl.DeleteTextures(1, &t);
+        }
         if (r.atlas_tex != 0) {
             const t = [1]GLuint{r.atlas_tex};
             r.gl.DeleteTextures(1, &t);
@@ -285,6 +378,19 @@ pub const OpenGlRenderer = struct {
         if (r.shape_vao != 0) r.gl.DeleteVertexArrays(3, &vaos);
         for ([_]GLuint{ r.shape_prog, r.solid_prog, r.text_prog, r.image_prog }) |prog| {
             if (prog != 0) r.gl.DeleteProgram(prog);
+        }
+        if (r.egl) |egl| {
+            if (r.dpy != EGL_NO_DISPLAY) {
+                _ = egl.MakeCurrent(r.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                if (r.ctx != EGL_NO_CONTEXT) _ = egl.DestroyContext(r.dpy, r.ctx);
+                if (r.surf != EGL_NO_SURFACE) _ = egl.DestroySurface(r.dpy, r.surf);
+                _ = egl.Terminate(r.dpy);
+                r.dpy = EGL_NO_DISPLAY;
+            }
+        }
+        if (r.egl_lib) |*lib| {
+            lib.close();
+            r.egl_lib = null;
         }
     }
 
@@ -372,6 +478,7 @@ pub const OpenGlRenderer = struct {
     }
 
     pub fn prepare(r: *OpenGlRenderer, canvases: []const *const Canvas) !void {
+        r.makeCurrent();
         var bytes: usize = 0;
         for (canvases) |c| for (c.batches.items) |*b| {
             bytes += std.mem.alignForward(usize, b.floats.items.len * 4, 16);
@@ -496,7 +603,113 @@ pub const OpenGlRenderer = struct {
         };
     }
 
-    pub fn record(r: *OpenGlRenderer, c: *const Canvas, target: *const Target, damage: ?[]const Viewport) !void {
+    fn ensureFbo(r: *OpenGlRenderer, w: u32, h: u32) void {
+        if (r.fbo != 0 and r.fbo_w == w and r.fbo_h == h) return;
+        if (r.fbo == 0) {
+            var fbos: [1]GLuint = undefined;
+            r.gl.GenFramebuffers(1, &fbos);
+            r.fbo = fbos[0];
+            var tex: [1]GLuint = undefined;
+            r.gl.GenTextures(1, &tex);
+            r.fbo_tex = tex[0];
+        }
+        r.gl.ActiveTexture(GL_TEXTURE0);
+        r.gl.BindTexture(GL_TEXTURE_2D, r.fbo_tex);
+        r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        r.gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, @intCast(w), @intCast(h), 0, GL_BGRA, GL_UNSIGNED_BYTE, null);
+
+        r.gl.BindFramebuffer(GL_FRAMEBUFFER, r.fbo);
+        r.gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, r.fbo_tex, 0);
+        r.fbo_w = w;
+        r.fbo_h = h;
+    }
+
+    /// Renders a prepared 2D `Canvas` into `target: *software.Image`, preserving
+    /// existing background pixels and clipping to `damage` viewports when provided.
+    pub fn record(r: *OpenGlRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {
+        if (target.width == 0 or target.height == 0) return;
+        var has_work = false;
+        for (c.batches.items) |*b| {
+            if (b.floats.items.len == 0) continue;
+            const area = if (b.clip) |clip| b.bounds.intersect(clip) orelse continue else b.bounds;
+            if (renderer_mod.covers(damage, renderer_mod.scissor(area))) {
+                has_work = true;
+                break;
+            }
+        }
+        if (!has_work) return;
+
+        r.makeCurrent();
+        r.ensureFbo(target.width, target.height);
+
+        const full_vp: Viewport = .{ .x = 0, .y = 0, .width = target.width, .height = target.height };
+        const fallback_regions = [1]Viewport{full_vp};
+        const regions = damage orelse &fallback_regions;
+        const stride = target.rowStride();
+
+        // Upload active regions from `target` into `r.fbo_tex` (flipping top-down rows to OpenGL bottom-up rows).
+        r.gl.ActiveTexture(GL_TEXTURE0);
+        r.gl.BindTexture(GL_TEXTURE_2D, r.fbo_tex);
+        r.gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        for (regions) |reg| {
+            const sc = full_vp.intersect(reg) orelse continue;
+            const count = @as(usize, sc.width) * sc.height;
+            try r.pixel_scratch.resize(r.gpa, count);
+            const sx: usize = @intCast(sc.x);
+            const sy: usize = @intCast(sc.y);
+            for (0..sc.height) |row| {
+                const gl_row = sc.height - 1 - row;
+                const src = target.pixels[(sy + row) * stride + sx ..][0..sc.width];
+                @memcpy(r.pixel_scratch.items[gl_row * sc.width ..][0..sc.width], src);
+            }
+            const gl_y: GLint = @as(i32, @intCast(target.height)) - (sc.y + @as(i32, @intCast(sc.height)));
+            r.gl.TexSubImage2D(
+                GL_TEXTURE_2D,
+                0,
+                sc.x,
+                gl_y,
+                @intCast(sc.width),
+                @intCast(sc.height),
+                GL_BGRA,
+                GL_UNSIGNED_BYTE,
+                r.pixel_scratch.items.ptr,
+            );
+        }
+
+        const fbo_target: Target = .{ .width = target.width, .height = target.height, .fbo = r.fbo };
+        try r.recordTarget(c, &fbo_target, damage);
+
+        // Read back active regions from `r.fbo` into `target` (flipping OpenGL bottom-up rows to top-down rows).
+        r.gl.BindFramebuffer(GL_FRAMEBUFFER, r.fbo);
+        r.gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+        for (regions) |reg| {
+            const sc = full_vp.intersect(reg) orelse continue;
+            const count = @as(usize, sc.width) * sc.height;
+            try r.pixel_scratch.resize(r.gpa, count);
+            const gl_y: GLint = @as(i32, @intCast(target.height)) - (sc.y + @as(i32, @intCast(sc.height)));
+            r.gl.ReadPixels(
+                sc.x,
+                gl_y,
+                @intCast(sc.width),
+                @intCast(sc.height),
+                GL_BGRA,
+                GL_UNSIGNED_BYTE,
+                r.pixel_scratch.items.ptr,
+            );
+            const dx: usize = @intCast(sc.x);
+            const dy: usize = @intCast(sc.y);
+            for (0..sc.height) |row| {
+                const gl_row = sc.height - 1 - row;
+                const src = r.pixel_scratch.items[gl_row * sc.width ..][0..sc.width];
+                @memcpy(target.pixels[(dy + row) * stride + dx ..][0..sc.width], src);
+            }
+        }
+    }
+
+    pub fn recordTarget(r: *OpenGlRenderer, c: *const Canvas, target: *const Target, damage: ?[]const Viewport) !void {
         if (target.width == 0 or target.height == 0) return;
         r.gl.BindFramebuffer(GL_FRAMEBUFFER, target.fbo);
         r.gl.Viewport(0, 0, @intCast(target.width), @intCast(target.height));
@@ -1240,6 +1453,15 @@ test "OpenGlRenderer prepares batches, uploads atlas and images, and records dra
             last_scissor = .{ x, y, w, h };
         }
         fn bindFramebuffer(_: GLenum, _: GLuint) callconv(.c) void {}
+        fn genFramebuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
+            for (0..@intCast(n)) |i| {
+                out[i] = next_id;
+                next_id += 1;
+            }
+        }
+        fn deleteFramebuffers(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
+        fn framebufferTexture2D(_: GLenum, _: GLenum, _: GLenum, _: GLuint, _: GLint) callconv(.c) void {}
+        fn readPixels(_: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLenum, _: GLenum, _: *anyopaque) callconv(.c) void {}
         fn genBuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
             for (0..@intCast(n)) |i| {
                 out[i] = next_id;
@@ -1310,6 +1532,10 @@ test "OpenGlRenderer prepares batches, uploads atlas and images, and records dra
         .Viewport = MockGl.viewport,
         .Scissor = MockGl.scissor,
         .BindFramebuffer = MockGl.bindFramebuffer,
+        .GenFramebuffers = MockGl.genFramebuffers,
+        .DeleteFramebuffers = MockGl.deleteFramebuffers,
+        .FramebufferTexture2D = MockGl.framebufferTexture2D,
+        .ReadPixels = MockGl.readPixels,
         .GenBuffers = MockGl.genBuffers,
         .DeleteBuffers = MockGl.deleteBuffers,
         .BindBuffer = MockGl.bindBuffer,
@@ -1351,9 +1577,37 @@ test "OpenGlRenderer prepares batches, uploads atlas and images, and records dra
     c.setClip(.{ .x = 10, .y = 20, .w = 50, .h = 30 });
     c.fillRoundedRect(.{ .x = 10, .y = 20, .w = 50, .h = 30 }, .all(6), .rgb(0x6750a4));
 
-    const target: Target = .{ .width = 200, .height = 100 };
+    const pixels = try std.testing.allocator.alloc(u32, 200 * 100);
+    defer std.testing.allocator.free(pixels);
+    var target: software.Image = .{ .pixels = pixels, .width = 200, .height = 100 };
+    target.clear(0xff000000);
     try gl_renderer.renderer().draw(&c, &target);
     try std.testing.expectEqual(@as(usize, 3), MockGl.draws);
     // OpenGL scissor flips Y: 100 - (20 + 30) = 50
     try std.testing.expectEqual([4]GLint{ 10, 50, 50, 30 }, MockGl.last_scissor);
+}
+
+test "OpenGlRenderer.initDefault renders 2D Canvas shapes and images into software.Image" {
+    var gl_renderer = OpenGlRenderer.initDefault(std.testing.allocator) catch return;
+    defer gl_renderer.deinit();
+
+    const w: u32 = 100;
+    const h: u32 = 80;
+    const pixels = try std.testing.allocator.alloc(u32, w * h);
+    defer std.testing.allocator.free(pixels);
+    var img: software.Image = .{ .pixels = pixels, .width = w, .height = h };
+    img.clear(0xff112233);
+
+    var c = Canvas.init(std.testing.allocator);
+    defer c.deinit();
+    c.begin(w, h);
+    c.fillRoundedRect(.{ .x = 10, .y = 10, .w = 40, .h = 30 }, .all(4), .rgb(0xff0000));
+    const tex_px = [_]u32{ 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00 };
+    const pic = canvas_mod.Image.init(&tex_px, 2, 2);
+    c.drawImage(&pic, .{ .x = 60, .y = 10, .w = 20, .h = 20 }, 1.0);
+
+    try gl_renderer.renderer().draw(&c, &img);
+    try std.testing.expectEqual(@as(u32, 0xff112233), img.pixels[2 * w + 2]);
+    try std.testing.expectEqual(@as(u32, 0xffff0000), img.pixels[25 * w + 30]);
+    try std.testing.expectEqual(@as(u32, 0xff00ff00), img.pixels[20 * w + 70]);
 }

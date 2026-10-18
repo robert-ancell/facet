@@ -52,6 +52,7 @@ pub const VkDeviceMemory = u64;
 pub const VkDescriptorSetLayout = u64;
 pub const VkDescriptorPool = u64;
 pub const VkDescriptorSet = u64;
+pub const VkSampler = u64;
 pub const VkFence = u64;
 
 pub const VK_NULL_HANDLE: u64 = 0;
@@ -78,6 +79,7 @@ pub const VkStructureType = enum(u32) {
     pipeline_dynamic_state_create_info = 27,
     graphics_pipeline_create_info = 28,
     pipeline_layout_create_info = 30,
+    sampler_create_info = 31,
     descriptor_set_layout_create_info = 32,
     descriptor_pool_create_info = 33,
     descriptor_set_allocate_info = 34,
@@ -88,10 +90,12 @@ pub const VkStructureType = enum(u32) {
     command_buffer_allocate_info = 40,
     command_buffer_begin_info = 42,
     render_pass_begin_info = 43,
+    image_memory_barrier = 45,
     _,
 };
 
 pub const VkBufferUsageFlags = VkFlags;
+pub const VK_BUFFER_USAGE_TRANSFER_SRC_BIT: VkBufferUsageFlags = 0x00000001;
 pub const VK_BUFFER_USAGE_TRANSFER_DST_BIT: VkBufferUsageFlags = 0x00000002;
 pub const VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT: VkBufferUsageFlags = 0x00000010;
 pub const VK_BUFFER_USAGE_INDEX_BUFFER_BIT: VkBufferUsageFlags = 0x00000040;
@@ -216,7 +220,7 @@ pub const Options = struct {
     textures: TextureHooks = .{},
 };
 
-/// Active Vulkan command buffer target for `VulkanRenderer.record`.
+/// Active Vulkan command buffer target for `VulkanRenderer.recordTarget`.
 pub const Target = struct {
     cmd: VkCommandBuffer,
     width: u32,
@@ -248,6 +252,7 @@ pub const VulkanRenderer = struct {
     pipelines: Pipelines,
     textures: TextureHooks,
     host_memory_type: u32,
+    owned: ?*Owned2DContext = null,
 
     vbo: VkBuffer = VK_NULL_HANDLE,
     vbo_mem: VkDeviceMemory = VK_NULL_HANDLE,
@@ -258,6 +263,27 @@ pub const VulkanRenderer = struct {
     atlas_stale: ?atlas_mod.Rect = null,
     atlas_set: VkDescriptorSet = VK_NULL_HANDLE,
     images: std.AutoHashMapUnmanaged(u64, VkDescriptorSet) = .empty,
+
+    /// Initializes a self-contained Vulkan 1.1+ 2D renderer that compiles SPIR-V
+    /// pipelines (`shape`, `solid`, `opaque`, `text`, `image`), manages glyph
+    /// atlas and image textures, and renders `Canvas` batches into `*software.Image`.
+    pub fn initDefault(gpa: std.mem.Allocator) !VulkanRenderer {
+        const owned = try Owned2DContext.create(gpa);
+        errdefer owned.destroy();
+
+        const dev_procs = try DeviceProcs.load(owned.device, owned.inst_procs.GetDeviceProcAddr);
+        var r = try initWithProcs(gpa, owned.device, dev_procs, .{
+            .host_visible_memory_type = owned.host_mem_type,
+            .pipelines = .{},
+            .textures = owned.textureHooks(),
+        });
+        errdefer r.deinit();
+
+        try owned.initPipelines(r.shader_modules);
+        r.pipelines = owned.pipelines;
+        r.owned = owned;
+        return r;
+    }
 
     pub fn init(gpa: std.mem.Allocator, device: VkDevice, get_proc: GetDeviceProcAddr, options: Options) !VulkanRenderer {
         const vk = try DeviceProcs.load(device, get_proc);
@@ -291,6 +317,9 @@ pub const VulkanRenderer = struct {
     }
 
     pub fn deinit(r: *VulkanRenderer) void {
+        if (r.owned) |owned| {
+            _ = owned.vk.DeviceWaitIdle(owned.device);
+        }
         if (r.textures.releaseImage) |rel| {
             var it = r.images.keyIterator();
             while (it.next()) |id| rel(r.textures.ctx, id.*);
@@ -298,6 +327,10 @@ pub const VulkanRenderer = struct {
         r.images.deinit(r.gpa);
         r.destroyVbo();
         r.shader_modules.deinit(r.device, &r.vk);
+        if (r.owned) |owned| {
+            owned.destroy();
+            r.owned = null;
+        }
     }
 
     pub const backend: renderer_mod.RenderBackend = .vulkan;
@@ -423,7 +456,35 @@ pub const VulkanRenderer = struct {
         }
     }
 
-    pub fn record(r: *VulkanRenderer, c: *const Canvas, target: *const Target, damage: ?[]const Viewport) !void {
+    /// Renders a prepared 2D `Canvas` into `target: *software.Image`, preserving
+    /// existing background pixels and clipping to `damage` viewports when provided.
+    pub fn record(r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {
+        if (target.width == 0 or target.height == 0) return;
+        var has_work = false;
+        for (c.batches.items) |*b| {
+            if (b.floats.items.len == 0) continue;
+            const area = if (b.clip) |clip| b.bounds.intersect(clip) orelse continue else b.bounds;
+            if (renderer_mod.covers(damage, renderer_mod.scissor(area))) {
+                has_work = true;
+                break;
+            }
+        }
+        if (!has_work) return;
+
+        if (r.owned) |ctx| {
+            try ctx.renderCanvasToImage(r, c, target, damage);
+        } else {
+            var dummy_cmd: u8 = 0;
+            const cmd_target: Target = .{
+                .cmd = @ptrCast(&dummy_cmd),
+                .width = target.width,
+                .height = target.height,
+            };
+            try r.recordTarget(c, &cmd_target, damage);
+        }
+    }
+
+    pub fn recordTarget(r: *VulkanRenderer, c: *const Canvas, target: *const Target, damage: ?[]const Viewport) !void {
         if (target.width == 0 or target.height == 0) return;
         const w_f: f32 = @floatFromInt(target.width);
         const h_f: f32 = @floatFromInt(target.height);
@@ -506,8 +567,9 @@ pub const VulkanRenderer = struct {
     }
 };
 
-// --- Offscreen Vulkan 1.1+ Context for `VulkanArea` --------------------------
+// --- Offscreen Vulkan 1.1+ Context for `VulkanRenderer` and `VulkanArea` -----
 
+pub const VK_FORMAT_R8_UNORM: u32 = 9;
 pub const VK_FORMAT_B8G8R8A8_UNORM: u32 = 44;
 pub const VK_FORMAT_R32_SFLOAT: u32 = 100;
 pub const VK_FORMAT_R32G32_SFLOAT: u32 = 103;
@@ -515,10 +577,14 @@ pub const VK_FORMAT_R32G32B32_SFLOAT: u32 = 106;
 pub const VK_FORMAT_R32G32B32A32_SFLOAT: u32 = 109;
 pub const VK_FORMAT_D32_SFLOAT: u32 = 126;
 
+pub const VK_COMPONENT_SWIZZLE_R: u32 = 3;
+
 pub const VK_IMAGE_LAYOUT_UNDEFINED: u32 = 0;
 pub const VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: u32 = 2;
 pub const VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: u32 = 3;
+pub const VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: u32 = 5;
 pub const VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: u32 = 6;
+pub const VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: u32 = 7;
 
 pub const VK_ATTACHMENT_LOAD_OP_LOAD: u32 = 0;
 pub const VK_ATTACHMENT_LOAD_OP_CLEAR: u32 = 1;
@@ -527,6 +593,8 @@ pub const VK_ATTACHMENT_STORE_OP_STORE: u32 = 0;
 pub const VK_ATTACHMENT_STORE_OP_DONT_CARE: u32 = 1;
 
 pub const VK_IMAGE_USAGE_TRANSFER_SRC_BIT: VkFlags = 0x00000001;
+pub const VK_IMAGE_USAGE_TRANSFER_DST_BIT: VkFlags = 0x00000002;
+pub const VK_IMAGE_USAGE_SAMPLED_BIT: VkFlags = 0x00000004;
 pub const VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT: VkFlags = 0x00000010;
 pub const VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT: VkFlags = 0x00000020;
 
@@ -541,7 +609,20 @@ pub const VK_SHADER_STAGE_VERTEX_BIT: VkFlags = 0x00000001;
 pub const VK_SHADER_STAGE_FRAGMENT_BIT: VkFlags = 0x00000010;
 pub const VK_SHADER_STAGE_ALL_GRAPHICS: VkFlags = 0x0000001F;
 
+pub const VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT: VkFlags = 0x00000001;
+pub const VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT: VkFlags = 0x00000080;
+pub const VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT: VkFlags = 0x00000400;
+pub const VK_PIPELINE_STAGE_TRANSFER_BIT: VkFlags = 0x00001000;
+
+pub const VK_ACCESS_SHADER_READ_BIT: VkFlags = 0x00000020;
+pub const VK_ACCESS_COLOR_ATTACHMENT_READ_BIT: VkFlags = 0x00000080;
+pub const VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT: VkFlags = 0x00000100;
+pub const VK_ACCESS_TRANSFER_READ_BIT: VkFlags = 0x00000800;
+pub const VK_ACCESS_TRANSFER_WRITE_BIT: VkFlags = 0x00001000;
+
+pub const VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: u32 = 1;
 pub const VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: u32 = 8;
+pub const VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT: VkFlags = 0x00000001;
 pub const VK_INDEX_TYPE_UINT16: u32 = 0;
 pub const VK_INDEX_TYPE_UINT32: u32 = 1;
 
@@ -844,6 +925,46 @@ const VkDescriptorSetAllocateInfo = extern struct {
     pSetLayouts: [*]const VkDescriptorSetLayout,
 };
 
+const VkSamplerCreateInfo = extern struct {
+    sType: VkStructureType = .sampler_create_info,
+    pNext: ?*const anyopaque = null,
+    flags: VkFlags = 0,
+    magFilter: u32,
+    minFilter: u32,
+    mipmapMode: u32 = 0,
+    addressModeU: u32 = 2, // CLAMP_TO_EDGE
+    addressModeV: u32 = 2, // CLAMP_TO_EDGE
+    addressModeW: u32 = 2, // CLAMP_TO_EDGE
+    mipLodBias: f32 = 0.0,
+    anisotropyEnable: VkBool32 = VK_FALSE,
+    maxAnisotropy: f32 = 1.0,
+    compareEnable: VkBool32 = VK_FALSE,
+    compareOp: u32 = 0,
+    minLod: f32 = 0.0,
+    maxLod: f32 = 0.0,
+    borderColor: u32 = 0,
+    unnormalizedCoordinates: VkBool32 = VK_FALSE,
+};
+
+const VkDescriptorImageInfo = extern struct {
+    sampler: VkSampler,
+    imageView: VkImageView,
+    imageLayout: u32,
+};
+
+const VkImageMemoryBarrier = extern struct {
+    sType: VkStructureType = .image_memory_barrier,
+    pNext: ?*const anyopaque = null,
+    srcAccessMask: VkFlags,
+    dstAccessMask: VkFlags,
+    oldLayout: u32,
+    newLayout: u32,
+    srcQueueFamilyIndex: u32 = 0xFFFFFFFF,
+    dstQueueFamilyIndex: u32 = 0xFFFFFFFF,
+    image: VkImage,
+    subresourceRange: VkImageSubresourceRange,
+};
+
 const VkDescriptorBufferInfo = extern struct {
     buffer: VkBuffer,
     offset: VkDeviceSize,
@@ -858,7 +979,7 @@ const VkWriteDescriptorSet = extern struct {
     dstArrayElement: u32 = 0,
     descriptorCount: u32 = 1,
     descriptorType: u32,
-    pImageInfo: ?*const anyopaque = null,
+    pImageInfo: ?*const VkDescriptorImageInfo = null,
     pBufferInfo: ?*const VkDescriptorBufferInfo = null,
     pTexelBufferView: ?*const anyopaque = null,
 };
@@ -1086,7 +1207,10 @@ pub const ContextProcs = struct {
     CreateDescriptorPool: *const fn (VkDevice, *const VkDescriptorPoolCreateInfo, ?*const anyopaque, *VkDescriptorPool) callconv(.c) VkResult,
     DestroyDescriptorPool: *const fn (VkDevice, VkDescriptorPool, ?*const anyopaque) callconv(.c) void,
     AllocateDescriptorSets: *const fn (VkDevice, *const VkDescriptorSetAllocateInfo, [*]VkDescriptorSet) callconv(.c) VkResult,
+    FreeDescriptorSets: *const fn (VkDevice, VkDescriptorPool, u32, [*]const VkDescriptorSet) callconv(.c) VkResult,
     UpdateDescriptorSets: *const fn (VkDevice, u32, [*]const VkWriteDescriptorSet, u32, ?*const anyopaque) callconv(.c) void,
+    CreateSampler: *const fn (VkDevice, *const VkSamplerCreateInfo, ?*const anyopaque, *VkSampler) callconv(.c) VkResult,
+    DestroySampler: *const fn (VkDevice, VkSampler, ?*const anyopaque) callconv(.c) void,
     CreatePipelineLayout: *const fn (VkDevice, *const VkPipelineLayoutCreateInfo, ?*const anyopaque, *VkPipelineLayout) callconv(.c) VkResult,
     DestroyPipelineLayout: *const fn (VkDevice, VkPipelineLayout, ?*const anyopaque) callconv(.c) void,
     CreateGraphicsPipelines: *const fn (VkDevice, VkPipelineCache, u32, [*]const VkGraphicsPipelineCreateInfo, ?*const anyopaque, [*]VkPipeline) callconv(.c) VkResult,
@@ -1110,7 +1234,9 @@ pub const ContextProcs = struct {
     CmdPushConstants: *const fn (VkCommandBuffer, VkPipelineLayout, VkFlags, u32, u32, *const anyopaque) callconv(.c) void,
     CmdDraw: *const fn (VkCommandBuffer, u32, u32, u32, u32) callconv(.c) void,
     CmdDrawIndexed: *const fn (VkCommandBuffer, u32, u32, u32, i32, u32) callconv(.c) void,
+    CmdCopyBufferToImage: *const fn (VkCommandBuffer, VkBuffer, VkImage, u32, u32, [*]const VkBufferImageCopy) callconv(.c) void,
     CmdCopyImageToBuffer: *const fn (VkCommandBuffer, VkImage, u32, VkBuffer, u32, [*]const VkBufferImageCopy) callconv(.c) void,
+    CmdPipelineBarrier: *const fn (VkCommandBuffer, VkFlags, VkFlags, VkFlags, u32, ?*const anyopaque, u32, ?*const anyopaque, u32, ?[*]const VkImageMemoryBarrier) callconv(.c) void,
 
     pub fn load(device: VkDevice, get_proc: GetDeviceProcAddr) !ContextProcs {
         var p: ContextProcs = undefined;
@@ -1120,6 +1246,828 @@ pub const ContextProcs = struct {
             @field(p, field_name) = @ptrCast(sym);
         }
         return p;
+    }
+};
+
+const Owned2DContext = struct {
+    const GpuTexture = struct {
+        img: VkImage,
+        mem: VkDeviceMemory,
+        view: VkImageView,
+        set: VkDescriptorSet,
+    };
+
+    gpa: std.mem.Allocator,
+    vk_lib: std.DynLib,
+    instance: VkInstance,
+    inst_procs: InstanceProcs,
+    phys_dev: VkPhysicalDevice,
+    mem_props: VkPhysicalDeviceMemoryProperties,
+    host_mem_type: u32,
+    device: VkDevice,
+    vk: ContextProcs,
+    queue: VkQueue,
+    cmd_pool: VkCommandPool = VK_NULL_HANDLE,
+    cmd: VkCommandBuffer = undefined,
+    upload_cmd: VkCommandBuffer = undefined,
+    render_pass: VkRenderPass = VK_NULL_HANDLE,
+    set_layout: VkDescriptorSetLayout = VK_NULL_HANDLE,
+    desc_pool: VkDescriptorPool = VK_NULL_HANDLE,
+    nearest_sampler: VkSampler = VK_NULL_HANDLE,
+    linear_sampler: VkSampler = VK_NULL_HANDLE,
+    pipelines: Pipelines = .{},
+
+    atlas_img: VkImage = VK_NULL_HANDLE,
+    atlas_mem: VkDeviceMemory = VK_NULL_HANDLE,
+    atlas_view: VkImageView = VK_NULL_HANDLE,
+    atlas_set: VkDescriptorSet = VK_NULL_HANDLE,
+    atlas_initialized: bool = false,
+
+    upload_buf: VkBuffer = VK_NULL_HANDLE,
+    upload_mem: VkDeviceMemory = VK_NULL_HANDLE,
+    upload_map: []u8 = &.{},
+
+    textures: std.AutoHashMapUnmanaged(u64, GpuTexture) = .empty,
+
+    fb_w: u32 = 0,
+    fb_h: u32 = 0,
+    color_img: VkImage = VK_NULL_HANDLE,
+    color_mem: VkDeviceMemory = VK_NULL_HANDLE,
+    color_view: VkImageView = VK_NULL_HANDLE,
+    framebuffer: VkFramebuffer = VK_NULL_HANDLE,
+    staging_buf: VkBuffer = VK_NULL_HANDLE,
+    staging_mem: VkDeviceMemory = VK_NULL_HANDLE,
+    staging_map: []u32 = &.{},
+
+    fn create(gpa: std.mem.Allocator) !*Owned2DContext {
+        var vk_lib = std.DynLib.open("libvulkan.so.1") catch try std.DynLib.open("libvulkan.so");
+        errdefer vk_lib.close();
+
+        const get_inst_proc = vk_lib.lookup(GetInstanceProcAddr, "vkGetInstanceProcAddr") orelse return error.MissingVkGetInstanceProcAddr;
+        const create_instance: *const fn (*const VkInstanceCreateInfo, ?*const anyopaque, *VkInstance) callconv(.c) VkResult =
+            @ptrCast(get_inst_proc(null, "vkCreateInstance") orelse return error.MissingVkCreateInstance);
+
+        const app_info: VkApplicationInfo = .{};
+        const inst_info: VkInstanceCreateInfo = .{ .pApplicationInfo = &app_info };
+        var instance: VkInstance = undefined;
+        if (create_instance(&inst_info, null, &instance) != .success) return error.VkCreateInstanceFailed;
+
+        const inst_procs = try InstanceProcs.load(instance, get_inst_proc);
+        errdefer inst_procs.DestroyInstance(instance, null);
+
+        var dev_count: u32 = 0;
+        if (inst_procs.EnumeratePhysicalDevices(instance, &dev_count, null) != .success or dev_count == 0) {
+            return error.NoVulkanPhysicalDevice;
+        }
+        var phys_devs: [16]VkPhysicalDevice = undefined;
+        var count: u32 = @min(dev_count, phys_devs.len);
+        _ = inst_procs.EnumeratePhysicalDevices(instance, &count, &phys_devs);
+
+        var chosen_phys: ?VkPhysicalDevice = null;
+        var chosen_qfam: u32 = 0;
+        outer: for (phys_devs[0..count]) |pd| {
+            var qf_count: u32 = 0;
+            inst_procs.GetPhysicalDeviceQueueFamilyProperties(pd, &qf_count, null);
+            var qfs: [16]VkQueueFamilyProperties = undefined;
+            var qc: u32 = @min(qf_count, qfs.len);
+            inst_procs.GetPhysicalDeviceQueueFamilyProperties(pd, &qc, &qfs);
+            for (qfs[0..qc], 0..) |qf, qi| {
+                if ((qf.queueFlags & 0x00000001) != 0) {
+                    chosen_phys = pd;
+                    chosen_qfam = @intCast(qi);
+                    break :outer;
+                }
+            }
+        }
+        const phys_dev = chosen_phys orelse return error.NoVulkanGraphicsQueue;
+
+        var mem_props: VkPhysicalDeviceMemoryProperties = undefined;
+        inst_procs.GetPhysicalDeviceMemoryProperties(phys_dev, &mem_props);
+
+        var host_mem_type: ?u32 = null;
+        const req_host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (0..mem_props.memoryTypeCount) |i| {
+            if ((mem_props.memoryTypes[i].propertyFlags & req_host) == req_host) {
+                host_mem_type = @intCast(i);
+                break;
+            }
+        }
+        const host_mt = host_mem_type orelse return error.NoSuitableVulkanMemoryType;
+
+        const prio = [1]f32{1.0};
+        const q_info = [1]VkDeviceQueueCreateInfo{.{
+            .queueFamilyIndex = chosen_qfam,
+            .pQueuePriorities = &prio,
+        }};
+        const dev_info: VkDeviceCreateInfo = .{ .pQueueCreateInfos = &q_info };
+        var device: VkDevice = undefined;
+        if (inst_procs.CreateDevice(phys_dev, &dev_info, null, &device) != .success) return error.VkCreateDeviceFailed;
+
+        const vk = try ContextProcs.load(device, inst_procs.GetDeviceProcAddr);
+        var queue: VkQueue = undefined;
+        vk.GetDeviceQueue(device, chosen_qfam, 0, &queue);
+
+        const self = try gpa.create(Owned2DContext);
+        self.* = .{
+            .gpa = gpa,
+            .vk_lib = vk_lib,
+            .instance = instance,
+            .inst_procs = inst_procs,
+            .phys_dev = phys_dev,
+            .mem_props = mem_props,
+            .host_mem_type = host_mt,
+            .device = device,
+            .vk = vk,
+            .queue = queue,
+        };
+        errdefer self.destroy();
+
+        const pool_info: VkCommandPoolCreateInfo = .{ .queueFamilyIndex = chosen_qfam };
+        if (self.vk.CreateCommandPool(device, &pool_info, null, &self.cmd_pool) != .success) return error.VkCreateCommandPoolFailed;
+
+        const cb_info: VkCommandBufferAllocateInfo = .{ .commandPool = self.cmd_pool, .commandBufferCount = 2 };
+        var cmds: [2]VkCommandBuffer = undefined;
+        if (self.vk.AllocateCommandBuffers(device, &cb_info, &cmds) != .success) return error.VkAllocateCommandBufferFailed;
+        self.cmd = cmds[0];
+        self.upload_cmd = cmds[1];
+
+        const attachments = [1]VkAttachmentDescription{.{
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .samples = 1,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        }};
+        const color_ref = [1]VkAttachmentReference{.{
+            .attachment = 0,
+            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        }};
+        const subpass = [1]VkSubpassDescription{.{
+            .pColorAttachments = &color_ref,
+        }};
+        const rp_info: VkRenderPassCreateInfo = .{
+            .attachmentCount = attachments.len,
+            .pAttachments = &attachments,
+            .pSubpasses = &subpass,
+        };
+        if (self.vk.CreateRenderPass(device, &rp_info, null, &self.render_pass) != .success) return error.VkCreateRenderPassFailed;
+
+        const bindings = [1]VkDescriptorSetLayoutBinding{.{
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        }};
+        const dsl_info: VkDescriptorSetLayoutCreateInfo = .{
+            .bindingCount = 1,
+            .pBindings = &bindings,
+        };
+        if (self.vk.CreateDescriptorSetLayout(device, &dsl_info, null, &self.set_layout) != .success) return error.VkCreateDescriptorSetLayoutFailed;
+
+        const pool_sizes = [1]VkDescriptorPoolSize{.{
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 256,
+        }};
+        const dp_info: VkDescriptorPoolCreateInfo = .{
+            .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+            .maxSets = 256,
+            .poolSizeCount = 1,
+            .pPoolSizes = &pool_sizes,
+        };
+        if (self.vk.CreateDescriptorPool(device, &dp_info, null, &self.desc_pool) != .success) return error.VkCreateDescriptorPoolFailed;
+
+        const nearest_info: VkSamplerCreateInfo = .{ .magFilter = 0, .minFilter = 0 };
+        if (self.vk.CreateSampler(device, &nearest_info, null, &self.nearest_sampler) != .success) return error.VkCreateSamplerFailed;
+
+        const linear_info: VkSamplerCreateInfo = .{ .magFilter = 1, .minFilter = 1 };
+        if (self.vk.CreateSampler(device, &linear_info, null, &self.linear_sampler) != .success) return error.VkCreateSamplerFailed;
+
+        return self;
+    }
+
+    fn initPipelines(self: *Owned2DContext, mods: ShaderModules) !void {
+        const set_layouts = [1]VkDescriptorSetLayout{self.set_layout};
+        const pl_info: VkPipelineLayoutCreateInfo = .{
+            .setLayoutCount = 1,
+            .pSetLayouts = &set_layouts,
+        };
+        if (self.vk.CreatePipelineLayout(self.device, &pl_info, null, &self.pipelines.layout) != .success) {
+            return error.VkCreatePipelineLayoutFailed;
+        }
+        self.pipelines.shape = try self.create2DPipeline(mods.shape, shaders.shape_layout, true);
+        self.pipelines.solid = try self.create2DPipeline(mods.solid, shaders.solid_layout, true);
+        self.pipelines.@"opaque" = try self.create2DPipeline(mods.solid, shaders.solid_layout, false);
+        self.pipelines.text = try self.create2DPipeline(mods.text, shaders.text_layout, true);
+        self.pipelines.image = try self.create2DPipeline(mods.image, shaders.text_layout, true);
+    }
+
+    fn create2DPipeline(self: *Owned2DContext, shader_mod: VkShaderModule, layout: shaders.Layout, blend: bool) !VkPipeline {
+        const stages = [2]VkPipelineShaderStageCreateInfo{
+            .{ .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = shader_mod, .pName = "vertex" },
+            .{ .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = shader_mod, .pName = "fragment" },
+        };
+        const binding = [1]VkVertexInputBindingDescription{.{ .stride = layout.vertex_stride }};
+        var attrs: [8]VkVertexInputAttributeDescription = undefined;
+        const attr_count = @min(layout.attributes.len, attrs.len);
+        for (layout.attributes[0..attr_count], attrs[0..attr_count]) |a, *out| {
+            out.* = .{
+                .location = a.location,
+                .format = switch (a.components) {
+                    1 => VK_FORMAT_R32_SFLOAT,
+                    2 => VK_FORMAT_R32G32_SFLOAT,
+                    3 => VK_FORMAT_R32G32B32_SFLOAT,
+                    else => VK_FORMAT_R32G32B32A32_SFLOAT,
+                },
+                .offset = a.offset,
+            };
+        }
+        const vertex_input: VkPipelineVertexInputStateCreateInfo = .{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &binding,
+            .vertexAttributeDescriptionCount = @intCast(attr_count),
+            .pVertexAttributeDescriptions = &attrs,
+        };
+        const input_assembly: VkPipelineInputAssemblyStateCreateInfo = .{};
+        const viewport_state: VkPipelineViewportStateCreateInfo = .{};
+        const raster: VkPipelineRasterizationStateCreateInfo = .{
+            .cullMode = VK_CULL_MODE_NONE,
+            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        };
+        const multisample: VkPipelineMultisampleStateCreateInfo = .{
+            .rasterizationSamples = 1,
+        };
+        const depth_stencil: VkPipelineDepthStencilStateCreateInfo = .{
+            .depthTestEnable = VK_FALSE,
+            .depthWriteEnable = VK_FALSE,
+        };
+        const blend_att = [1]VkPipelineColorBlendAttachmentState{if (blend) .{
+            .blendEnable = VK_TRUE,
+            .srcColorBlendFactor = 6, // VK_BLEND_FACTOR_SRC_ALPHA
+            .dstColorBlendFactor = 7, // VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+            .colorBlendOp = 0, // VK_BLEND_OP_ADD
+            .srcAlphaBlendFactor = 1, // VK_BLEND_FACTOR_ONE
+            .dstAlphaBlendFactor = 7, // VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+            .alphaBlendOp = 0, // VK_BLEND_OP_ADD
+            .colorWriteMask = 0xF,
+        } else .{
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = 0xF,
+        }};
+        const color_blend: VkPipelineColorBlendStateCreateInfo = .{ .pAttachments = &blend_att };
+        const dyn_states = [2]u32{ 0, 1 }; // VIEWPORT, SCISSOR
+        const dynamic_state: VkPipelineDynamicStateCreateInfo = .{
+            .dynamicStateCount = dyn_states.len,
+            .pDynamicStates = &dyn_states,
+        };
+        const gp_info = [1]VkGraphicsPipelineCreateInfo{.{
+            .pStages = &stages,
+            .pVertexInputState = &vertex_input,
+            .pInputAssemblyState = &input_assembly,
+            .pViewportState = &viewport_state,
+            .pRasterizationState = &raster,
+            .pMultisampleState = &multisample,
+            .pDepthStencilState = &depth_stencil,
+            .pColorBlendState = &color_blend,
+            .pDynamicState = &dynamic_state,
+            .layout = self.pipelines.layout,
+            .renderPass = self.render_pass,
+        }};
+        var out_pipe: [1]VkPipeline = undefined;
+        if (self.vk.CreateGraphicsPipelines(self.device, VK_NULL_HANDLE, 1, &gp_info, null, &out_pipe) != .success) {
+            return error.VkCreateGraphicsPipelineFailed;
+        }
+        return out_pipe[0];
+    }
+
+    fn destroy(self: *Owned2DContext) void {
+        _ = self.vk.DeviceWaitIdle(self.device);
+        self.destroyTarget();
+        if (self.upload_map.len > 0) self.vk.UnmapMemory(self.device, self.upload_mem);
+        if (self.upload_buf != VK_NULL_HANDLE) self.vk.DestroyBuffer(self.device, self.upload_buf, null);
+        if (self.upload_mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, self.upload_mem, null);
+
+        var it = self.textures.valueIterator();
+        while (it.next()) |t| {
+            if (t.view != VK_NULL_HANDLE) self.vk.DestroyImageView(self.device, t.view, null);
+            if (t.img != VK_NULL_HANDLE) self.vk.DestroyImage(self.device, t.img, null);
+            if (t.mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, t.mem, null);
+        }
+        self.textures.deinit(self.gpa);
+
+        if (self.atlas_view != VK_NULL_HANDLE) self.vk.DestroyImageView(self.device, self.atlas_view, null);
+        if (self.atlas_img != VK_NULL_HANDLE) self.vk.DestroyImage(self.device, self.atlas_img, null);
+        if (self.atlas_mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, self.atlas_mem, null);
+
+        for ([_]VkPipeline{
+            self.pipelines.shape,
+            self.pipelines.solid,
+            self.pipelines.@"opaque",
+            self.pipelines.text,
+            self.pipelines.image,
+        }) |p| {
+            if (p != VK_NULL_HANDLE) self.vk.DestroyPipeline(self.device, p, null);
+        }
+        if (self.pipelines.layout != VK_NULL_HANDLE) self.vk.DestroyPipelineLayout(self.device, self.pipelines.layout, null);
+        if (self.nearest_sampler != VK_NULL_HANDLE) self.vk.DestroySampler(self.device, self.nearest_sampler, null);
+        if (self.linear_sampler != VK_NULL_HANDLE) self.vk.DestroySampler(self.device, self.linear_sampler, null);
+        if (self.desc_pool != VK_NULL_HANDLE) self.vk.DestroyDescriptorPool(self.device, self.desc_pool, null);
+        if (self.set_layout != VK_NULL_HANDLE) self.vk.DestroyDescriptorSetLayout(self.device, self.set_layout, null);
+        if (self.render_pass != VK_NULL_HANDLE) self.vk.DestroyRenderPass(self.device, self.render_pass, null);
+        if (self.cmd_pool != VK_NULL_HANDLE) self.vk.DestroyCommandPool(self.device, self.cmd_pool, null);
+        self.vk.DestroyDevice(self.device, null);
+        self.inst_procs.DestroyInstance(self.instance, null);
+        self.vk_lib.close();
+        self.gpa.destroy(self);
+    }
+
+    fn findMemoryType(self: *const Owned2DContext, type_bits: u32, req_flags: VkFlags) !u32 {
+        for (0..self.mem_props.memoryTypeCount) |i| {
+            const bit = @as(u32, 1) << @intCast(i);
+            if ((type_bits & bit) != 0 and (self.mem_props.memoryTypes[i].propertyFlags & req_flags) == req_flags) {
+                return @intCast(i);
+            }
+        }
+        return error.NoSuitableVulkanMemoryType;
+    }
+
+    fn ensureUploadBuf(self: *Owned2DContext, min_bytes: usize) !void {
+        if (self.upload_map.len >= min_bytes) return;
+        if (self.upload_map.len > 0) {
+            self.vk.UnmapMemory(self.device, self.upload_mem);
+            self.upload_map = &.{};
+        }
+        if (self.upload_buf != VK_NULL_HANDLE) {
+            self.vk.DestroyBuffer(self.device, self.upload_buf, null);
+            self.upload_buf = VK_NULL_HANDLE;
+        }
+        if (self.upload_mem != VK_NULL_HANDLE) {
+            self.vk.FreeMemory(self.device, self.upload_mem, null);
+            self.upload_mem = VK_NULL_HANDLE;
+        }
+        const cap = std.mem.alignForward(usize, min_bytes, 64 * 1024);
+        const buf_info: VkBufferCreateInfo = .{
+            .size = cap,
+            .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        };
+        if (self.vk.CreateBuffer(self.device, &buf_info, null, &self.upload_buf) != .success) return error.VkCreateBufferFailed;
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetBufferMemoryRequirements(self.device, self.upload_buf, &req);
+        const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const alloc_info: VkMemoryAllocateInfo = .{
+            .allocationSize = @max(req.size, cap),
+            .memoryTypeIndex = mem_type,
+        };
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &self.upload_mem) != .success) return error.VkAllocateMemoryFailed;
+        if (self.vk.BindBufferMemory(self.device, self.upload_buf, self.upload_mem, 0) != .success) return error.VkBindBufferMemoryFailed;
+        var ptr: ?*anyopaque = null;
+        if (self.vk.MapMemory(self.device, self.upload_mem, 0, cap, 0, &ptr) != .success or ptr == null) return error.VkMapMemoryFailed;
+        self.upload_map = @as([*]u8, @ptrCast(ptr.?))[0..cap];
+    }
+
+    fn textureHooks(self: *Owned2DContext) TextureHooks {
+        return .{
+            .ctx = self,
+            .uploadAtlas = uploadAtlasHook,
+            .acquireImage = acquireImageHook,
+            .releaseImage = releaseImageHook,
+        };
+    }
+
+    fn uploadAtlasHook(raw: ?*anyopaque, pixels: []const u8, width: u32, height: u32, y0: u32, y1: u32) anyerror!VkDescriptorSet {
+        const self: *Owned2DContext = @ptrCast(@alignCast(raw.?));
+        if (self.atlas_img == VK_NULL_HANDLE) {
+            const img_info: VkImageCreateInfo = .{
+                .format = VK_FORMAT_R8_UNORM,
+                .extent = .{ .width = width, .height = height },
+                .samples = 1,
+                .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            };
+            if (self.vk.CreateImage(self.device, &img_info, null, &self.atlas_img) != .success) return error.VkCreateImageFailed;
+            var req: VkMemoryRequirements = undefined;
+            self.vk.GetImageMemoryRequirements(self.device, self.atlas_img, &req);
+            const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            const alloc_info: VkMemoryAllocateInfo = .{ .allocationSize = req.size, .memoryTypeIndex = mem_type };
+            if (self.vk.AllocateMemory(self.device, &alloc_info, null, &self.atlas_mem) != .success) return error.VkAllocateMemoryFailed;
+            if (self.vk.BindImageMemory(self.device, self.atlas_img, self.atlas_mem, 0) != .success) return error.VkBindImageMemoryFailed;
+
+            const view_info: VkImageViewCreateInfo = .{
+                .image = self.atlas_img,
+                .format = VK_FORMAT_R8_UNORM,
+                .components = .{
+                    .r = VK_COMPONENT_SWIZZLE_R,
+                    .g = VK_COMPONENT_SWIZZLE_R,
+                    .b = VK_COMPONENT_SWIZZLE_R,
+                    .a = VK_COMPONENT_SWIZZLE_R,
+                },
+                .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+            };
+            if (self.vk.CreateImageView(self.device, &view_info, null, &self.atlas_view) != .success) return error.VkCreateImageViewFailed;
+
+            const layouts = [1]VkDescriptorSetLayout{self.set_layout};
+            const dsa_info: VkDescriptorSetAllocateInfo = .{
+                .descriptorPool = self.desc_pool,
+                .pSetLayouts = &layouts,
+            };
+            var sets: [1]VkDescriptorSet = undefined;
+            if (self.vk.AllocateDescriptorSets(self.device, &dsa_info, &sets) != .success) return error.VkAllocateDescriptorSetsFailed;
+            self.atlas_set = sets[0];
+
+            const img_desc: VkDescriptorImageInfo = .{
+                .sampler = self.nearest_sampler,
+                .imageView = self.atlas_view,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            };
+            const write = [1]VkWriteDescriptorSet{.{
+                .dstSet = self.atlas_set,
+                .dstBinding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &img_desc,
+            }};
+            self.vk.UpdateDescriptorSets(self.device, 1, &write, 0, null);
+            self.atlas_initialized = false;
+        }
+
+        if (y1 > y0) {
+            const row_h = y1 - y0;
+            const byte_len = @as(usize, width) * row_h;
+            try self.ensureUploadBuf(byte_len);
+            const src = pixels[@as(usize, y0) * width ..][0..byte_len];
+            @memcpy(self.upload_map[0..byte_len], src);
+
+            _ = self.vk.ResetCommandBuffer(self.upload_cmd, 0);
+            const begin_info: VkCommandBufferBeginInfo = .{};
+            if (self.vk.BeginCommandBuffer(self.upload_cmd, &begin_info) != .success) return error.VkBeginCommandBufferFailed;
+
+            const to_dst = [1]VkImageMemoryBarrier{.{
+                .srcAccessMask = if (self.atlas_initialized) VK_ACCESS_SHADER_READ_BIT else 0,
+                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .oldLayout = if (self.atlas_initialized) VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL else VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .image = self.atlas_img,
+                .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+            }};
+            self.vk.CmdPipelineBarrier(
+                self.upload_cmd,
+                if (self.atlas_initialized) VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT else VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                0,
+                0,
+                null,
+                0,
+                null,
+                1,
+                &to_dst,
+            );
+
+            const region = [1]VkBufferImageCopy{.{
+                .bufferOffset = 0,
+                .bufferRowLength = width,
+                .bufferImageHeight = row_h,
+                .imageOffset = .{ .x = 0, .y = @intCast(y0), .z = 0 },
+                .imageExtent = .{ .width = width, .height = row_h, .depth = 1 },
+            }};
+            self.vk.CmdCopyBufferToImage(self.upload_cmd, self.upload_buf, self.atlas_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+            const to_read = [1]VkImageMemoryBarrier{.{
+                .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .image = self.atlas_img,
+                .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+            }};
+            self.vk.CmdPipelineBarrier(
+                self.upload_cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0,
+                0,
+                null,
+                0,
+                null,
+                1,
+                &to_read,
+            );
+
+            if (self.vk.EndCommandBuffer(self.upload_cmd) != .success) return error.VkEndCommandBufferFailed;
+            const cmds = [1]VkCommandBuffer{self.upload_cmd};
+            const submits = [1]VkSubmitInfo{.{ .pCommandBuffers = &cmds }};
+            if (self.vk.QueueSubmit(self.queue, 1, &submits, VK_NULL_HANDLE) != .success) return error.VkQueueSubmitFailed;
+            _ = self.vk.QueueWaitIdle(self.queue);
+            self.atlas_initialized = true;
+        }
+        return self.atlas_set;
+    }
+
+    fn acquireImageHook(raw: ?*anyopaque, id: u64, pixels: []const u32, width: u32, height: u32) anyerror!VkDescriptorSet {
+        const self: *Owned2DContext = @ptrCast(@alignCast(raw.?));
+        if (self.textures.get(id)) |existing| return existing.set;
+
+        const img_info: VkImageCreateInfo = .{
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .extent = .{ .width = width, .height = height },
+            .samples = 1,
+            .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        };
+        var img: VkImage = VK_NULL_HANDLE;
+        if (self.vk.CreateImage(self.device, &img_info, null, &img) != .success) return error.VkCreateImageFailed;
+        errdefer self.vk.DestroyImage(self.device, img, null);
+
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetImageMemoryRequirements(self.device, img, &req);
+        const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        const alloc_info: VkMemoryAllocateInfo = .{ .allocationSize = req.size, .memoryTypeIndex = mem_type };
+        var mem: VkDeviceMemory = VK_NULL_HANDLE;
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &mem) != .success) return error.VkAllocateMemoryFailed;
+        errdefer self.vk.FreeMemory(self.device, mem, null);
+
+        if (self.vk.BindImageMemory(self.device, img, mem, 0) != .success) return error.VkBindImageMemoryFailed;
+
+        const view_info: VkImageViewCreateInfo = .{
+            .image = img,
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        };
+        var view: VkImageView = VK_NULL_HANDLE;
+        if (self.vk.CreateImageView(self.device, &view_info, null, &view) != .success) return error.VkCreateImageViewFailed;
+        errdefer self.vk.DestroyImageView(self.device, view, null);
+
+        const layouts = [1]VkDescriptorSetLayout{self.set_layout};
+        const dsa_info: VkDescriptorSetAllocateInfo = .{
+            .descriptorPool = self.desc_pool,
+            .pSetLayouts = &layouts,
+        };
+        var sets: [1]VkDescriptorSet = undefined;
+        if (self.vk.AllocateDescriptorSets(self.device, &dsa_info, &sets) != .success) return error.VkAllocateDescriptorSetsFailed;
+        const set = sets[0];
+
+        const img_desc: VkDescriptorImageInfo = .{
+            .sampler = self.linear_sampler,
+            .imageView = view,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        const write = [1]VkWriteDescriptorSet{.{
+            .dstSet = set,
+            .dstBinding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &img_desc,
+        }};
+        self.vk.UpdateDescriptorSets(self.device, 1, &write, 0, null);
+
+        const bytes = std.mem.sliceAsBytes(pixels);
+        try self.ensureUploadBuf(bytes.len);
+        @memcpy(self.upload_map[0..bytes.len], bytes);
+
+        _ = self.vk.ResetCommandBuffer(self.upload_cmd, 0);
+        const begin_info: VkCommandBufferBeginInfo = .{};
+        if (self.vk.BeginCommandBuffer(self.upload_cmd, &begin_info) != .success) return error.VkBeginCommandBufferFailed;
+
+        const to_dst = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .image = img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        }};
+        self.vk.CmdPipelineBarrier(self.upload_cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &to_dst);
+
+        const region = [1]VkBufferImageCopy{.{
+            .imageExtent = .{ .width = width, .height = height, .depth = 1 },
+        }};
+        self.vk.CmdCopyBufferToImage(self.upload_cmd, self.upload_buf, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        const to_read = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .image = img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        }};
+        self.vk.CmdPipelineBarrier(self.upload_cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, null, 0, null, 1, &to_read);
+
+        if (self.vk.EndCommandBuffer(self.upload_cmd) != .success) return error.VkEndCommandBufferFailed;
+        const cmds = [1]VkCommandBuffer{self.upload_cmd};
+        const submits = [1]VkSubmitInfo{.{ .pCommandBuffers = &cmds }};
+        if (self.vk.QueueSubmit(self.queue, 1, &submits, VK_NULL_HANDLE) != .success) return error.VkQueueSubmitFailed;
+        _ = self.vk.QueueWaitIdle(self.queue);
+
+        try self.textures.put(self.gpa, id, .{ .img = img, .mem = mem, .view = view, .set = set });
+        return set;
+    }
+
+    fn releaseImageHook(raw: ?*anyopaque, id: u64) void {
+        const self: *Owned2DContext = @ptrCast(@alignCast(raw.?));
+        if (self.textures.fetchRemove(id)) |kv| {
+            _ = self.vk.DeviceWaitIdle(self.device);
+            const t = kv.value;
+            if (t.view != VK_NULL_HANDLE) self.vk.DestroyImageView(self.device, t.view, null);
+            if (t.img != VK_NULL_HANDLE) self.vk.DestroyImage(self.device, t.img, null);
+            if (t.mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, t.mem, null);
+            if (t.set != VK_NULL_HANDLE) {
+                const sets = [1]VkDescriptorSet{t.set};
+                _ = self.vk.FreeDescriptorSets(self.device, self.desc_pool, 1, &sets);
+            }
+        }
+    }
+
+    fn destroyTarget(self: *Owned2DContext) void {
+        if (self.staging_map.len > 0) {
+            self.vk.UnmapMemory(self.device, self.staging_mem);
+            self.staging_map = &.{};
+        }
+        if (self.staging_buf != VK_NULL_HANDLE) {
+            self.vk.DestroyBuffer(self.device, self.staging_buf, null);
+            self.staging_buf = VK_NULL_HANDLE;
+        }
+        if (self.staging_mem != VK_NULL_HANDLE) {
+            self.vk.FreeMemory(self.device, self.staging_mem, null);
+            self.staging_mem = VK_NULL_HANDLE;
+        }
+        if (self.framebuffer != VK_NULL_HANDLE) {
+            self.vk.DestroyFramebuffer(self.device, self.framebuffer, null);
+            self.framebuffer = VK_NULL_HANDLE;
+        }
+        if (self.color_view != VK_NULL_HANDLE) {
+            self.vk.DestroyImageView(self.device, self.color_view, null);
+            self.color_view = VK_NULL_HANDLE;
+        }
+        if (self.color_img != VK_NULL_HANDLE) {
+            self.vk.DestroyImage(self.device, self.color_img, null);
+            self.color_img = VK_NULL_HANDLE;
+        }
+        if (self.color_mem != VK_NULL_HANDLE) {
+            self.vk.FreeMemory(self.device, self.color_mem, null);
+            self.color_mem = VK_NULL_HANDLE;
+        }
+        self.fb_w = 0;
+        self.fb_h = 0;
+    }
+
+    fn ensureTarget(self: *Owned2DContext, w: u32, h: u32) !void {
+        if (self.fb_w == w and self.fb_h == h and self.framebuffer != VK_NULL_HANDLE) return;
+        self.destroyTarget();
+        errdefer self.destroyTarget();
+
+        const img_info: VkImageCreateInfo = .{
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .extent = .{ .width = w, .height = h },
+            .samples = 1,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        };
+        if (self.vk.CreateImage(self.device, &img_info, null, &self.color_img) != .success) return error.VkCreateImageFailed;
+
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetImageMemoryRequirements(self.device, self.color_img, &req);
+        const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        const alloc_info: VkMemoryAllocateInfo = .{ .allocationSize = req.size, .memoryTypeIndex = mem_type };
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &self.color_mem) != .success) return error.VkAllocateMemoryFailed;
+        if (self.vk.BindImageMemory(self.device, self.color_img, self.color_mem, 0) != .success) return error.VkBindImageMemoryFailed;
+
+        const view_info: VkImageViewCreateInfo = .{
+            .image = self.color_img,
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        };
+        if (self.vk.CreateImageView(self.device, &view_info, null, &self.color_view) != .success) return error.VkCreateImageViewFailed;
+
+        const views = [1]VkImageView{self.color_view};
+        const fb_info: VkFramebufferCreateInfo = .{
+            .renderPass = self.render_pass,
+            .attachmentCount = 1,
+            .pAttachments = &views,
+            .width = w,
+            .height = h,
+        };
+        if (self.vk.CreateFramebuffer(self.device, &fb_info, null, &self.framebuffer) != .success) return error.VkCreateFramebufferFailed;
+
+        const pixel_count = @as(usize, w) * h;
+        const byte_size: VkDeviceSize = pixel_count * 4;
+        const buf_info: VkBufferCreateInfo = .{
+            .size = byte_size,
+            .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        };
+        if (self.vk.CreateBuffer(self.device, &buf_info, null, &self.staging_buf) != .success) return error.VkCreateBufferFailed;
+        var buf_req: VkMemoryRequirements = undefined;
+        self.vk.GetBufferMemoryRequirements(self.device, self.staging_buf, &buf_req);
+        const buf_mt = try self.findMemoryType(buf_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const buf_alloc: VkMemoryAllocateInfo = .{
+            .allocationSize = @max(buf_req.size, byte_size),
+            .memoryTypeIndex = buf_mt,
+        };
+        if (self.vk.AllocateMemory(self.device, &buf_alloc, null, &self.staging_mem) != .success) return error.VkAllocateMemoryFailed;
+        if (self.vk.BindBufferMemory(self.device, self.staging_buf, self.staging_mem, 0) != .success) return error.VkBindBufferMemoryFailed;
+        var ptr: ?*anyopaque = null;
+        if (self.vk.MapMemory(self.device, self.staging_mem, 0, byte_size, 0, &ptr) != .success or ptr == null) return error.VkMapMemoryFailed;
+        self.staging_map = @as([*]u32, @ptrCast(@alignCast(ptr.?)))[0..pixel_count];
+
+        self.fb_w = w;
+        self.fb_h = h;
+    }
+
+    fn renderCanvasToImage(self: *Owned2DContext, r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {
+        const w = target.width;
+        const h = target.height;
+        try self.ensureTarget(w, h);
+
+        const full_vp: Viewport = .{ .x = 0, .y = 0, .width = w, .height = h };
+        const fallback_regions = [1]Viewport{full_vp};
+        const regions = if (damage) |d| (if (d.len <= 16) d else &fallback_regions) else &fallback_regions;
+        const stride = target.rowStride();
+
+        var copy_regions: [16]VkBufferImageCopy = undefined;
+        var copy_count: u32 = 0;
+        for (regions) |reg| {
+            const sc = full_vp.intersect(reg) orelse continue;
+            const sx: usize = @intCast(sc.x);
+            const sy: usize = @intCast(sc.y);
+            for (0..sc.height) |row| {
+                const src = target.pixels[(sy + row) * stride + sx ..][0..sc.width];
+                @memcpy(self.staging_map[(sy + row) * w + sx ..][0..sc.width], src);
+            }
+            copy_regions[copy_count] = .{
+                .bufferOffset = (@as(VkDeviceSize, @intCast(sy)) * w + @as(VkDeviceSize, @intCast(sx))) * 4,
+                .bufferRowLength = w,
+                .bufferImageHeight = h,
+                .imageOffset = .{ .x = sc.x, .y = sc.y, .z = 0 },
+                .imageExtent = .{ .width = sc.width, .height = sc.height, .depth = 1 },
+            };
+            copy_count += 1;
+        }
+        if (copy_count == 0) return;
+
+        _ = self.vk.ResetCommandBuffer(self.cmd, 0);
+        const begin_info: VkCommandBufferBeginInfo = .{};
+        if (self.vk.BeginCommandBuffer(self.cmd, &begin_info) != .success) return error.VkBeginCommandBufferFailed;
+
+        const to_dst = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .image = self.color_img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &to_dst);
+
+        self.vk.CmdCopyBufferToImage(self.cmd, self.staging_buf, self.color_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy_count, &copy_regions);
+
+        const to_color = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .image = self.color_img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, null, 0, null, 1, &to_color);
+
+        const dummy_clear = [1]VkClearValue{.{ .color = .{ 0, 0, 0, 0 } }};
+        const rp_begin: VkRenderPassBeginInfo = .{
+            .renderPass = self.render_pass,
+            .framebuffer = self.framebuffer,
+            .renderArea = .{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = .{ .width = w, .height = h },
+            },
+            .clearValueCount = 0,
+            .pClearValues = &dummy_clear,
+        };
+        self.vk.CmdBeginRenderPass(self.cmd, &rp_begin, 0);
+
+        const cmd_target: Target = .{ .cmd = self.cmd, .width = w, .height = h, .flip_viewport_y = true };
+        try r.recordTarget(c, &cmd_target, damage);
+
+        self.vk.CmdEndRenderPass(self.cmd);
+
+        const to_readback = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = self.color_img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &to_readback);
+
+        self.vk.CmdCopyImageToBuffer(self.cmd, self.color_img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, self.staging_buf, copy_count, &copy_regions);
+
+        if (self.vk.EndCommandBuffer(self.cmd) != .success) return error.VkEndCommandBufferFailed;
+        const cmds = [1]VkCommandBuffer{self.cmd};
+        const submits = [1]VkSubmitInfo{.{ .pCommandBuffers = &cmds }};
+        if (self.vk.QueueSubmit(self.queue, 1, &submits, VK_NULL_HANDLE) != .success) return error.VkQueueSubmitFailed;
+        _ = self.vk.QueueWaitIdle(self.queue);
+
+        for (regions) |reg| {
+            const sc = full_vp.intersect(reg) orelse continue;
+            const dx: usize = @intCast(sc.x);
+            const dy: usize = @intCast(sc.y);
+            for (0..sc.height) |row| {
+                const src = self.staging_map[(dy + row) * w + dx ..][0..sc.width];
+                @memcpy(target.pixels[(dy + row) * stride + dx ..][0..sc.width], src);
+            }
+        }
     }
 };
 
@@ -1923,7 +2871,6 @@ test "VulkanRenderer creates SPIR-V shader modules, prepares vertex buffers, and
     };
 
     var dummy_dev: u8 = 0;
-    var dummy_cmd: u8 = 0;
     var vk_renderer = try VulkanRenderer.initWithProcs(
         std.testing.allocator,
         @ptrCast(&dummy_dev),
@@ -1955,11 +2902,39 @@ test "VulkanRenderer creates SPIR-V shader modules, prepares vertex buffers, and
     c.setClip(.{ .x = 12, .y = 18, .w = 60, .h = 40 });
     c.fillRoundedRect(.{ .x = 12, .y = 18, .w = 60, .h = 40 }, .all(8), .rgb(0x6750a4));
 
-    const target: Target = .{ .cmd = @ptrCast(&dummy_cmd), .width = 200, .height = 100 };
+    const pixels = try std.testing.allocator.alloc(u32, 200 * 100);
+    defer std.testing.allocator.free(pixels);
+    var target: software.Image = .{ .pixels = pixels, .width = 200, .height = 100 };
+    target.clear(0xff000000);
     try vk_renderer.renderer().draw(&c, &target);
     try std.testing.expectEqual(@as(usize, 3), MockVk.draws);
     try std.testing.expectEqual(@as(i32, 12), MockVk.last_scissor.offset.x);
     try std.testing.expectEqual(@as(i32, 18), MockVk.last_scissor.offset.y);
     try std.testing.expectEqual(@as(u32, 60), MockVk.last_scissor.extent.width);
     try std.testing.expectEqual(@as(u32, 40), MockVk.last_scissor.extent.height);
+}
+
+test "VulkanRenderer.initDefault renders 2D Canvas shapes and images into software.Image" {
+    var vk_renderer = VulkanRenderer.initDefault(std.testing.allocator) catch return;
+    defer vk_renderer.deinit();
+
+    const w: u32 = 100;
+    const h: u32 = 80;
+    const pixels = try std.testing.allocator.alloc(u32, w * h);
+    defer std.testing.allocator.free(pixels);
+    var img: software.Image = .{ .pixels = pixels, .width = w, .height = h };
+    img.clear(0xff112233);
+
+    var c = Canvas.init(std.testing.allocator);
+    defer c.deinit();
+    c.begin(w, h);
+    c.fillRoundedRect(.{ .x = 10, .y = 10, .w = 40, .h = 30 }, .all(4), .rgb(0xff0000));
+    const tex_px = [_]u32{ 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00 };
+    const pic = canvas_mod.Image.init(&tex_px, 2, 2);
+    c.drawImage(&pic, .{ .x = 60, .y = 10, .w = 20, .h = 20 }, 1.0);
+
+    try vk_renderer.renderer().draw(&c, &img);
+    try std.testing.expectEqual(@as(u32, 0xff112233), img.pixels[2 * w + 2]);
+    try std.testing.expectEqual(@as(u32, 0xffff0000), img.pixels[25 * w + 30]);
+    try std.testing.expectEqual(@as(u32, 0xff00ff00), img.pixels[20 * w + 70]);
 }
