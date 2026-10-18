@@ -134,7 +134,10 @@ pub const Theme = struct {
     on_surface_variant: Color,
     outline: Color,
     outline_variant: Color,
+    /// For problems and destructive actions: text, and fills (badges).
     @"error": Color,
+    /// Text and icons on `error`.
+    on_error: Color,
     /// The colours of code's parts (see `Highlight`).
     syntax: Syntax,
     body_size: f32 = 14,
@@ -156,6 +159,7 @@ pub const Theme = struct {
         .outline = .rgb(0x79747e),
         .outline_variant = .rgb(0xcac4d0),
         .@"error" = .rgb(0xb3261e),
+        .on_error = .rgb(0xffffff),
         .syntax = .{
             .keyword = .rgb(0x8e24aa),
             .type = .rgb(0x00796b),
@@ -183,7 +187,10 @@ pub const Theme = struct {
         .on_surface_variant = .rgb(0xcac4d0),
         .outline = .rgb(0x938f99),
         .outline_variant = .rgb(0x49454f),
-        .@"error" = .rgb(0xf2b8b5),
+        // Material's error tone 60, rather than its tone 80: still clear
+        // (5.9:1) as text on the surface, but red rather than pink.
+        .@"error" = .rgb(0xff5449),
+        .on_error = .rgb(0xffffff),
         .syntax = .{
             .keyword = .rgb(0xd0a8ff),
             .type = .rgb(0x80cbc4),

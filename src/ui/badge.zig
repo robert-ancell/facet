@@ -38,7 +38,7 @@ pub const Badge = struct {
     fn makePill(self: *const Badge, cx: *Context) Widget {
         const t = cx.theme();
         const bg = self.color orelse t.@"error";
-        const fg = self.text_color orelse Color.rgb(0xffffff);
+        const fg = self.text_color orelse t.on_error;
         const text = if (self.label.len > 0)
             self.label
         else if (self.count) |n|
