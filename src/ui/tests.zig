@@ -203,6 +203,17 @@ test "buttons call back, state lasts between frames, and hovering tints" {
     u.pointerMotion(.{ 299, 199 });
     u.pointerButton(.{ 299, 199 }, ui.btn_left, false);
     try testing.expectEqual(@as(u32, 2), u.root.?.state(Counter.State).count);
+
+    // Another button going up while the left is held is not a click; the
+    // left going up is.
+    const over: ui.Point = .{ at[0] + 5, at[1] + 20 };
+    u.pointerMotion(over);
+    u.pointerButton(over, ui.btn_left, true);
+    u.pointerButton(over, ui.btn_right, true);
+    u.pointerButton(over, ui.btn_right, false);
+    try testing.expectEqual(@as(u32, 2), u.root.?.state(Counter.State).count);
+    u.pointerButton(over, ui.btn_left, false);
+    try testing.expectEqual(@as(u32, 3), u.root.?.state(Counter.State).count);
 }
 
 var freed: u32 = 0;

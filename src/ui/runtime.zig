@@ -114,6 +114,9 @@ pub const Ui = struct {
     hover_scratch: std.ArrayList(*Node) = .empty,
     /// The handler that took the pointer when a button went down.
     captured: ?*Node = null,
+    /// The button that went down when it was taken (only its release
+    /// gives it back).
+    captured_button: u32 = widget.btn_left,
     /// The widget keys go to.
     focused: ?*Node = null,
     shift: u2 = 0,
@@ -899,12 +902,14 @@ pub const Ui = struct {
             if (button == widget.btn_right) for (ui.hovered.items) |n| if (send(n, .{ .context = local(n, pos) })) return;
             for (ui.hovered.items) |n| if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button } })) {
                 ui.captured = n;
+                ui.captured_button = button;
                 return;
             };
         } else if (ui.swallow_release) {
             ui.swallow_release = false;
             ui.hold = null;
         } else if (ui.captured) |n| {
+            if (button != ui.captured_button) return;
             ui.hold = null;
             ui.captured = null;
             const inside = std.mem.indexOfScalar(*Node, ui.hovered.items, n) != null;
@@ -974,7 +979,7 @@ pub const Ui = struct {
     fn cancelPress(ui: *Ui) void {
         const n = ui.captured orelse return;
         ui.captured = null;
-        _ = send(n, .{ .release = .{ .pos = .{ -1, -1 }, .button = widget.btn_left, .inside = false } });
+        _ = send(n, .{ .release = .{ .pos = .{ -1, -1 }, .button = ui.captured_button, .inside = false } });
         ui.needs_frame = true;
     }
 
