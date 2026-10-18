@@ -11,7 +11,7 @@
 //!     canvas.fillRoundedRect(.{ .x = 16, .y = 16, .w = 200, .h = 56 }, .all(28), .rgb(0x6750a4));
 //!     canvas.strokePolyline(&points, false, 2, .rgb(0x1d1b20));
 //!     _ = canvas.drawText(&atlas, .{ .font = &fira, .size = 16 }, 16, 120, "Hello", .rgb(0x1d1b20));
-//!     try software.renderCanvas(&canvas, img);
+//!     try software.render(&canvas, img);
 
 pub const geometry = @import("geometry.zig");
 pub const atlas = @import("atlas.zig");
@@ -19,7 +19,6 @@ pub const shaders = @import("shaders.zig");
 pub const canvas = @import("canvas.zig");
 pub const renderer = @import("renderer.zig");
 pub const software = @import("software.zig");
-pub const preview = software;
 pub const opengl = @import("opengl.zig");
 pub const vulkan = @import("vulkan.zig");
 pub const png = @import("png.zig");

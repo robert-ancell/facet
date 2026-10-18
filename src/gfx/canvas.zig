@@ -796,12 +796,11 @@ test "things drawn alike share batches, in order" {
     try std.testing.expectEqual(one, c.batches.items.len);
     // Drawn, every icon shows its layers in order: the mark over the
     // small card over the big one.
-    const preview = @import("software.zig");
+    const software = @import("software.zig");
     const pixels = try std.testing.allocator.alloc(u32, 400 * 200);
     defer std.testing.allocator.free(pixels);
     @memset(pixels, 0xff000000);
-    const programs = preview.Programs.load();
-    try preview.render(&c, &programs, .{ .pixels = pixels, .width = 400, .height = 200 });
+    try software.render(&c, .{ .pixels = pixels, .width = 400, .height = 200 });
     for (0..4) |row| for (0..8) |col| {
         const x = 10 + col * 48;
         const y = 10 + row * 48;
@@ -842,7 +841,7 @@ test "records tell what was drawn, and where" {
 }
 
 test "colour emoji renders multi-coloured layers through the text shader" {
-    const preview = @import("software.zig");
+    const software = @import("software.zig");
     var fira = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
     const emoji = try font.Font.init(@embedFile("TwemojiMozilla.ttf"));
     fira.fallback = &emoji;
@@ -857,8 +856,7 @@ test "colour emoji renders multi-coloured layers through the text shader" {
     const pixels = try std.testing.allocator.alloc(u32, 120 * 48);
     defer std.testing.allocator.free(pixels);
     @memset(pixels, 0xff000000);
-    const programs = preview.Programs.load();
-    try preview.render(&c, &programs, .{ .pixels = pixels, .width = 120, .height = 48 });
+    try software.render(&c, .{ .pixels = pixels, .width = 120, .height = 48 });
 
     var has_yellow = false;
     var has_red = false;

@@ -28,12 +28,12 @@ fn findAll(n: *Node, comptime T: type, out: *std.ArrayList(*Node)) !void {
 
 const Image = struct {
     pixels: []u32,
-    img: gfx.preview.Image,
+    img: gfx.software.Image,
 
     fn init(u: *ui.Ui, w: u32, h: u32) !Image {
         const pixels = try testing.allocator.alloc(u32, w * h);
         @memset(pixels, 0xff000000);
-        const img: gfx.preview.Image = .{ .pixels = pixels, .width = w, .height = h };
+        const img: gfx.software.Image = .{ .pixels = pixels, .width = w, .height = h };
         try u.preview(img);
         return .{ .pixels = pixels, .img = img };
     }

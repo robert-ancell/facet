@@ -17,14 +17,6 @@ const Canvas = canvas_mod.Canvas;
 const Color = canvas_mod.Color;
 const Viewport = renderer_mod.Viewport;
 
-/// Compatibility stub for callers that previously loaded shader programs for
-/// CPU preview rendering.
-pub const Programs = struct {
-    pub fn load() Programs {
-        return .{};
-    }
-};
-
 /// A 32-bit `0xAARRGGBB` pixel buffer target for software rendering.
 pub const Image = struct {
     pixels: []u32,
@@ -100,23 +92,8 @@ pub const SoftwareRenderer = struct {
     }
 };
 
-/// Renders `c` into `img` (compatible with both 2-argument `render(&c, img)`
-/// and 3-argument `render(&c, &programs, img)` callers).
-pub fn render(c: *const Canvas, arg1: anytype, arg2: anytype) !void {
-    if (@TypeOf(arg1) == Image) {
-        return renderWithDamage(c, arg1, arg2);
-    } else {
-        const img: Image = if (@TypeOf(arg2) == Image) arg2 else .{
-            .pixels = arg2.pixels,
-            .width = arg2.width,
-            .height = arg2.height,
-        };
-        return renderWithDamage(c, img, null);
-    }
-}
-
 /// Renders `c` into `img` across the whole buffer.
-pub fn renderCanvas(c: *const Canvas, img: Image) !void {
+pub fn render(c: *const Canvas, img: Image) !void {
     return renderWithDamage(c, img, null);
 }
 
@@ -511,14 +488,13 @@ fn expectNear(want: u32, got: u32, tolerance: i32) !void {
 }
 
 test "rounded rectangles: solid inside, clear outside, smooth corners and edges" {
-    const programs = Programs.load();
     var c = Canvas.init(testing.allocator);
     defer c.deinit();
     c.begin(64, 48);
     c.fillRoundedRect(.{ .x = 8, .y = 8, .w = 48, .h = 32 }, .all(10), Color.rgb(0xff0000));
     var pixels: [64 * 48]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 64, .height = 48 };
-    try render(&c, &programs, img);
+    try render(&c, img);
     // Inside, in the solid centre and in a corner cell.
     try expectNear(0xffff0000, img.at(32, 24), 1);
     try expectNear(0xffff0000, img.at(12, 14), 1);
@@ -535,7 +511,6 @@ test "rounded rectangles: solid inside, clear outside, smooth corners and edges"
 }
 
 test "edges at half pixels are half covered, and blending mixes colours" {
-    const programs = Programs.load();
     var c = Canvas.init(testing.allocator);
     defer c.deinit();
     c.begin(32, 32);
@@ -545,7 +520,7 @@ test "edges at half pixels are half covered, and blending mixes colours" {
     c.fillRect(.{ .x = 16, .y = 16, .w = 10, .h = 10 }, Color.rgb(0x0000ff).withAlpha(0.5));
     var pixels: [32 * 32]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 32, .height = 32 };
-    try render(&c, &programs, img);
+    try render(&c, img);
     try expectNear(0xff808080, img.at(4, 10), 2);
     try expectNear(0xff808080, img.at(10, 4), 2);
     // A corner pixel: a quarter.
@@ -556,7 +531,6 @@ test "edges at half pixels are half covered, and blending mixes colours" {
 }
 
 test "strokes and polygons" {
-    const programs = Programs.load();
     var c = Canvas.init(testing.allocator);
     defer c.deinit();
     c.begin(40, 40);
@@ -564,7 +538,7 @@ test "strokes and polygons" {
     c.strokeRoundedRect(.{ .x = 10, .y = 10, .w = 20, .h = 20 }, .all(4), 2, Color.rgb(0x00ff00));
     var pixels: [40 * 40]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 40, .height = 40 };
-    try render(&c, &programs, img);
+    try render(&c, img);
     try expectNear(0xff00ff00, img.at(10, 20), 1);
     try expectNear(0xff00ff00, img.at(11, 20), 1);
     try expectNear(0xff000000, img.at(12, 20), 1);
@@ -575,7 +549,7 @@ test "strokes and polygons" {
     c.begin(40, 40);
     c.fillPolygon(&.{ .{ 5, 35 }, .{ 20, 5 }, .{ 35, 35 } }, Color.rgb(0xffffff));
     @memset(&pixels, 0xff000000);
-    try render(&c, &programs, img);
+    try render(&c, img);
     try expectNear(0xffffffff, img.at(20, 25), 1);
     try expectNear(0xff000000, img.at(5, 10), 1);
 }
@@ -584,7 +558,6 @@ test "text matches the font renderer's own drawing" {
     const f = try font.Font.init(font.default_font_data);
     var atlas = try atlas_mod.Atlas.init(testing.allocator);
     defer atlas.deinit();
-    const programs = Programs.load();
     var c = Canvas.init(testing.allocator);
     defer c.deinit();
     c.begin(120, 40);
@@ -593,7 +566,7 @@ test "text matches the font renderer's own drawing" {
     try testing.expectApproxEqAbs(4.25 + font.measure(style, "Facet"), end, 0.001);
     var pixels: [120 * 40]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 120, .height = 40 };
-    try render(&c, &programs, img);
+    try render(&c, img);
 
     var cache = font.GlyphCache.init(testing.allocator);
     defer cache.deinit();
@@ -608,7 +581,6 @@ test "text matches the font renderer's own drawing" {
 }
 
 test "images are drawn from their own textures, stretched, tinted by how opaque" {
-    const programs = Programs.load();
     var c = Canvas.init(testing.allocator);
     defer c.deinit();
     c.begin(64, 32);
@@ -620,7 +592,7 @@ test "images are drawn from their own textures, stretched, tinted by how opaque"
     try testing.expectEqual(@as(usize, 1), c.batches.items.len);
     var pixels: [64 * 32]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 64, .height = 32 };
-    try render(&c, &programs, img);
+    try render(&c, img);
     try testing.expectEqual(@as(u32, 0xffff0000), img.at(4, 4));
     try testing.expectEqual(@as(u32, 0xff00ff00), img.at(15, 4));
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(4, 15));

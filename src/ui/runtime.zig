@@ -751,7 +751,7 @@ pub const Ui = struct {
     pub fn preview(ui: *Ui, img: gfx.software.Image) !void {
         var mutable_img = img;
         for (ui.segments.items) |s| switch (s) {
-            .canvas => |c| try gfx.software.renderCanvas(c, mutable_img),
+            .canvas => |c| try gfx.software.render(c, mutable_img),
             .gpu => |g| try g.f(g.ctx, @ptrCast(&mutable_img), g.area),
         };
     }
