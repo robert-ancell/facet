@@ -1885,3 +1885,66 @@ test "a GPU draw can also say how to draw straight into a GPU frame, which the C
     try testing.expect(try seg.direct.?(seg.ctx, .vulkan, &frame, seg.area));
     try testing.expect(!try seg.direct.?(seg.ctx, .opengl, &frame, seg.area));
 }
+
+test "an animated widget makes its child from how far through it is, and stops asking for frames at the end" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    const Anim = struct {
+        t: f32 = -1,
+        restart: u64 = 0,
+        repeat: ui.AnimatedWidget.Repeat = .once,
+        fn child(a: *@This(), cx: *Context, t: f32) Widget {
+            a.t = t;
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 10 + 90 * t, .height = 10 }) });
+        }
+    };
+    const AnimRoot = struct {
+        a: *Anim,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.AnimatedWidget{
+                .duration_ns = 1000,
+                .delay_ns = 100,
+                .repeat = self.a.repeat,
+                .restart = self.a.restart,
+                .builder = .of(self.a, Anim.child),
+            });
+        }
+    };
+    var a: Anim = .{};
+    // It starts the first frame it is built, waits out its delay, and
+    // runs for its duration.
+    u.frame(200, 100, 5000, AnimRoot{ .a = &a });
+    try testing.expectEqual(@as(f32, 0), a.t);
+    try testing.expect(u.needs_frame);
+    u.frame(200, 100, 5100, AnimRoot{ .a = &a });
+    try testing.expectEqual(@as(f32, 0), a.t);
+    u.frame(200, 100, 5350, AnimRoot{ .a = &a });
+    try testing.expectApproxEqAbs(@as(f32, 0.25), a.t, 1e-6);
+    try testing.expect(u.needs_frame);
+    // The child is made afresh from it.
+    try testing.expectEqual(@as(f32, 32.5), find(u.root.?, ui.SizedBox).?.size.w);
+    // At the end, it stays at 1 and asks for no more frames.
+    u.frame(200, 100, 6100, AnimRoot{ .a = &a });
+    try testing.expectEqual(@as(f32, 1), a.t);
+    try testing.expect(!u.needs_frame);
+    u.frame(200, 100, 9000, AnimRoot{ .a = &a });
+    try testing.expectEqual(@as(f32, 1), a.t);
+    try testing.expect(!u.needs_frame);
+    // Changing `restart` starts it over.
+    a.restart += 1;
+    u.frame(200, 100, 10_000, AnimRoot{ .a = &a });
+    try testing.expectEqual(@as(f32, 0), a.t);
+    u.frame(200, 100, 10_600, AnimRoot{ .a = &a });
+    try testing.expectApproxEqAbs(@as(f32, 0.5), a.t, 1e-6);
+    // Looping, it goes from 0 to 1 over and over; reversing, back and forth.
+    a.repeat = .loop;
+    u.frame(200, 100, 11_850, AnimRoot{ .a = &a });
+    try testing.expectApproxEqAbs(@as(f32, 0.75), a.t, 1e-6);
+    try testing.expect(u.needs_frame);
+    a.repeat = .reverse;
+    u.frame(200, 100, 11_850, AnimRoot{ .a = &a });
+    try testing.expectApproxEqAbs(@as(f32, 0.25), a.t, 1e-6);
+    u.frame(200, 100, 12_350, AnimRoot{ .a = &a });
+    try testing.expectApproxEqAbs(@as(f32, 0.25), a.t, 1e-6);
+    try testing.expect(u.needs_frame);
+}

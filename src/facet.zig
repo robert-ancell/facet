@@ -110,6 +110,9 @@ pub const LazyGrid = ui.LazyGrid;
 pub const Icon = ui.Icon;
 pub const Image = ui.Image;
 pub const QrCode = ui.QrCode;
+pub const AnimatedWidget = ui.AnimatedWidget;
+/// Easing functions and interpolation for `AnimatedWidget`.
+pub const tween = ui.tween;
 pub const OpenGlArea = ui.OpenGlArea;
 pub const VulkanArea = ui.VulkanArea;
 

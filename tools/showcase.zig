@@ -53,7 +53,7 @@ pub const Page = enum {
             .feedback => "Progress, counts, questions and messages",
             .containers => "Grouping, listing and scrolling content",
             .layout => "Arranging, sizing, decorating, pressing and dragging",
-            .special => "QR codes, images, icons, custom painting, 3D and the title bar",
+            .special => "QR codes, images, icons, custom painting, animation, 3D and the title bar",
         };
     }
 };

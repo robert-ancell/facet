@@ -39,9 +39,13 @@ pub const State = struct {
     last_ns: ?u64 = null,
     maximized: bool = false,
     log: common.Log = .{},
+    plays: u64 = 0,
 
     fn setQr(s: *State, v: []const u8) void {
         s.qr.set(v);
+    }
+    fn play(s: *State) void {
+        s.plays += 1;
     }
     fn setSpinning(s: *State, v: bool) void {
         s.spinning = v;
@@ -121,6 +125,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         common.section(cx, "Custom painting", "A widget of its own, painting shapes and lines on the canvas each frame", &.{
             cx.make(Lissajous{}),
         }),
+        common.section(cx, "Animation", "A widget made afresh each frame from how far through its time it is, eased by a tweening function", animation(cx, s)),
         common.section(cx, "3D", "A scene drawn on the GPU in a widget, with Vulkan and with OpenGL", &.{
             cx.make(facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning), .label = "Spin" }),
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
@@ -161,6 +166,75 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 cx.make(facet.BarButton{ .icon = .more_vert, .size = 34, .on_press = common.pressed(cx, &s.log, "More") }),
             }),
         }),
+    });
+}
+
+const Easing = struct { []const u8, facet.tween.Easing };
+
+const easings = [_]Easing{
+    .{ "linear", facet.tween.linear },
+    .{ "inOutCubic", facet.tween.inOutCubic },
+    .{ "outBack", facet.tween.outBack },
+    .{ "outBounce", facet.tween.outBounce },
+    .{ "standard", facet.tween.standard },
+    .{ "emphasized", facet.tween.emphasized_decelerate },
+    .{ "steps(5)", facet.tween.steps(5) },
+};
+
+fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
+    const t = cx.theme();
+    const rows = cx.arena.alloc(facet.Widget, easings.len + 2) catch return &.{};
+    rows[0] = cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = &.{
+        cx.make(facet.FilledButton{ .label = "Play", .icon = .bolt, .on_press = .of(s, State.play) }),
+        common.status(cx, "Each dot crosses in a second, eased differently"),
+    } });
+    for (rows[1..][0..easings.len], &easings) |*row, *e| {
+        row.* = common.labelled(cx, e[0], &.{cx.make(facet.Expanded{ .child = cx.make(facet.Decorated{
+            .color = t.surface_container,
+            .radius = .all(14),
+            .child = cx.make(facet.SizedBox{ .height = 28, .child = cx.make(facet.Padding{
+                .padding = .all(4),
+                .child = cx.make(facet.AnimatedWidget{
+                    .duration_ns = std.time.ns_per_s,
+                    .restart = s.plays,
+                    .builder = .of(e, dot),
+                }),
+            }) }),
+        }) })});
+    }
+    rows[easings.len + 1] = common.labelled(cx, "Back and forth", &.{cx.make(facet.Expanded{ .child = cx.make(facet.SizedBox{
+        .height = 28,
+        .child = cx.make(facet.AnimatedWidget{
+            .duration_ns = 1500 * std.time.ns_per_ms,
+            .repeat = .reverse,
+            .builder = .func(pulse),
+        }),
+    }) })});
+    return rows;
+}
+
+/// A dot across its track, eased `t` of the way along (inset a little,
+/// for easings that overshoot).
+fn dot(e: *const Easing, cx: *facet.Context, t: f32) facet.Widget {
+    return cx.make(facet.Align{
+        .alignment = .{ .x = facet.tween.lerp(@as(f32, -0.8), 0.8, e[1](t)), .y = 0 },
+        .child = cx.make(facet.SizedBox{ .width = 20, .height = 20, .child = cx.make(facet.Decorated{
+            .color = cx.theme().primary,
+            .radius = .all(10),
+        }) }),
+    });
+}
+
+/// A bar growing and changing colour, and back.
+fn pulse(cx: *facet.Context, t: f32) facet.Widget {
+    const th = cx.theme();
+    const e = facet.tween.inOutSine(t);
+    return cx.make(facet.Align{
+        .alignment = .center_left,
+        .child = cx.make(facet.SizedBox{ .width = facet.tween.lerp(@as(f32, 40), 240, e), .height = 28, .child = cx.make(facet.Decorated{
+            .color = facet.tween.lerp(th.primary, th.@"error", e),
+            .radius = .all(14),
+        }) }),
     });
 }
 
