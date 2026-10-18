@@ -20,7 +20,7 @@ pub const DroppedData = clipboard_mod.DroppedData;
 pub const InputEvent = window_mod.InputEvent;
 pub const TextInputState = window_mod.TextInputState;
 pub const Cursor = window_mod.Cursor;
-pub const Keyboard = window_mod.Keyboard;
+const xkb = window_mod.xkb;
 pub const nowNs = clipboard_mod.nowNs;
 
 const default_size = [2]u32{ 1280, 720 };
@@ -743,7 +743,10 @@ pub const WaylandWindow = struct {
     pointer_locked: bool = false,
 
     clipboard: Clipboard,
-    layout: Keyboard = .us,
+    /// What the keys type (from `wl_keyboard.keymap`), and the modifiers
+    /// and layout in effect (from `wl_keyboard.modifiers`).
+    keymap: ?xkb.Keymap = null,
+    xkb_state: xkb.State = .{},
     wake_fd: ?linux.fd_t = null,
     wake_fds: [4]?linux.fd_t = @splat(null),
     pointer: ?client.Proxy = null,
@@ -958,6 +961,8 @@ pub const WaylandWindow = struct {
             w.popups[i] = null;
         }
         w.clipboard.deinit();
+        if (w.keymap) |*km| km.deinit();
+        w.keymap = null;
         for (&w.buffers) |*slot| if (slot.*) |*b| w.freeBuffer(b, slot);
         if (w.syncobj_surface) |ss| {
             if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
@@ -1501,7 +1506,28 @@ pub const WaylandWindow = struct {
         if (now_ns < rep.next_ns) return;
         const step = std.time.ns_per_s / @as(u64, w.repeat_rate);
         rep.next_ns = if (now_ns - rep.next_ns < step) rep.next_ns + step else now_ns + step;
-        w.pushInput(.{ .key = .{ .code = rep.code, .pressed = true } });
+        w.pushInput(w.keyInput(rep.code, true));
+    }
+
+    /// A key going down or up, with what it types and the modifiers held
+    /// (by the keymap and the modifiers now: so in order with the
+    /// compositor's changes to them).
+    fn keyInput(w: *const WaylandWindow, code: u32, pressed: bool) window_mod.InputEvent {
+        const km = &(w.keymap orelse return .{ .key = .{ .code = code, .pressed = pressed } });
+        const mods = w.xkb_state.mods();
+        return .{ .key = .{
+            .code = code,
+            .pressed = pressed,
+            .char = if (pressed) km.char(code, w.xkb_state) else null,
+            .shift = mods & xkb.shift_mask != 0,
+            .ctrl = mods & xkb.control_mask != 0,
+        } };
+    }
+
+    /// The keyboard layout in use.
+    pub fn layout(w: *const WaylandWindow) window_mod.Layout {
+        const km = &(w.keymap orelse return .{});
+        return .init(km.layoutName(w.xkb_state), km.layoutCode(w.xkb_state));
     }
 
     pub fn applyConfigure(w: *WaylandWindow) !?[2]u32 {
@@ -2386,7 +2412,19 @@ pub const WaylandWindow = struct {
                 const fd = r.fd() catch return;
                 defer _ = linux.close(fd);
                 const size = r.uint() catch return;
-                if (keyboardFromKeymap(fd, size)) |k| w.layout = k;
+                if (keymapFrom(w.gpa, fd, size)) |km| {
+                    if (w.keymap) |*old| old.deinit();
+                    w.keymap = km;
+                    w.xkb_state = .{};
+                }
+            },
+            p.wl_keyboard.event.modifiers => {
+                _ = r.uint() catch return;
+                const depressed = r.uint() catch return;
+                const latched = r.uint() catch return;
+                const locked = r.uint() catch return;
+                const group = r.uint() catch return;
+                w.xkb_state = .{ .depressed = depressed, .latched = latched, .locked = locked, .group = group };
             },
             p.wl_keyboard.event.key => {
                 const serial = r.uint() catch return;
@@ -2409,7 +2447,7 @@ pub const WaylandWindow = struct {
                 } else if (w.repeat) |rep| {
                     if (rep.code == code) w.repeat = null;
                 }
-                w.pushInput(.{ .key = .{ .code = code, .pressed = pressed } });
+                w.pushInput(w.keyInput(code, pressed));
             },
             p.wl_keyboard.event.leave => {
                 w.repeat = null;
@@ -2532,27 +2570,16 @@ pub const WaylandWindow = struct {
     }
 };
 
-fn keyboardFromKeymap(fd: linux.fd_t, size: u32) ?Keyboard {
-    if (size == 0 or size > 1 << 20) return null;
+/// The keymap the compositor sent in `fd` (`size` bytes of text, ending in
+/// a nul), if it can be read.
+fn keymapFrom(gpa: std.mem.Allocator, fd: linux.fd_t, size: u32) ?xkb.Keymap {
+    if (size == 0 or size > 16 << 20) return null;
     const rc = linux.mmap(null, size, .{ .READ = true }, .{ .TYPE = .PRIVATE }, fd, 0);
     if (linux.errno(rc) != .SUCCESS) return null;
     const text = @as([*]const u8, @ptrFromInt(rc))[0..size];
     defer _ = linux.munmap(text.ptr, size);
-    return layoutNamed(text);
-}
-
-fn layoutNamed(keymap: []const u8) ?Keyboard {
-    const key = "xkb_symbols \"";
-    const at = std.mem.indexOf(u8, keymap, key) orelse return null;
-    const rest = keymap[at + key.len ..];
-    const end = std.mem.indexOfScalar(u8, rest, '"') orelse return null;
-    return Keyboard.fromCode(rest[0..end]);
-}
-
-test "the layout is named in the keymap" {
-    try std.testing.expectEqual(Keyboard.gb, layoutNamed("xkb_keymap {\nxkb_symbols \"gb\" {\n").?);
-    try std.testing.expect(layoutNamed("xkb_symbols \"pc+us+inet(evdev)\" {") == null);
-    try std.testing.expect(layoutNamed("nothing") == null);
+    const end = std.mem.indexOfScalar(u8, text, 0) orelse text.len;
+    return xkb.Keymap.parse(gpa, text[0..end]) catch null;
 }
 
 test "held keys repeat after the delay, except modifiers, and stop on release or leave" {
@@ -2942,4 +2969,49 @@ test "a popup acks each configure, and commits again for one after it shows" {
     r = .{ .data = std.mem.sliceAsBytes(&serial), .c = undefined };
     WaylandWindow.popupXdgSurfaceEvent(&win, disp, 21, p.xdg_surface.event.configure, &r);
     try std.testing.expectEqualSlices([2]u32, &.{ .{ 21, p.xdg_surface.request.ack_configure }, .{ 20, p.wl_surface.request.commit } }, try Sent.read(fds[1]));
+}
+
+test "keys type what the keymap says, with the compositor's modifiers at the time" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    defer win.clipboard.deinit();
+    try std.testing.expectEqualStrings("", win.layout().name());
+    win.keymap = try xkb.Keymap.parse(std.testing.allocator, xkb.testdata.gb_ru);
+    defer win.keymap.?.deinit();
+    var disp: client.Display = undefined;
+    const send = struct {
+        fn f(w: *WaylandWindow, d: *client.Display, opcode: u16, args: []const u32) void {
+            var r = wire.Reader{ .data = std.mem.sliceAsBytes(args), .c = undefined };
+            WaylandWindow.keyboardEvent(w, d, 0, opcode, &r);
+        }
+    }.f;
+    const ev = p.wl_keyboard.event;
+    const pressed = p.wl_keyboard.key_state.pressed;
+    const released = p.wl_keyboard.key_state.released;
+    // Shift+3 types £: the key comes after the compositor says Shift is
+    // down, and the next 3 after it says it is up.
+    send(&win, &disp, ev.key, &.{ 1, 0, 42, pressed });
+    send(&win, &disp, ev.modifiers, &.{ 2, xkb.shift_mask, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 3, 0, 4, pressed });
+    send(&win, &disp, ev.key, &.{ 4, 0, 4, released });
+    send(&win, &disp, ev.key, &.{ 5, 0, 42, released });
+    send(&win, &disp, ev.modifiers, &.{ 6, 0, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 7, 0, 4, pressed });
+    // The second layout (group), Russian.
+    send(&win, &disp, ev.modifiers, &.{ 8, 0, 0, 0, 1 });
+    send(&win, &disp, ev.key, &.{ 9, 0, 30, pressed });
+    const events = win.takeInput();
+    try std.testing.expectEqual(@as(usize, 6), events.len);
+    try std.testing.expectEqual(@as(?u21, null), events[0].key.char);
+    try std.testing.expectEqual(@as(?u21, '£'), events[1].key.char);
+    try std.testing.expect(events[1].key.shift);
+    try std.testing.expectEqual(@as(?u21, null), events[2].key.char);
+    try std.testing.expectEqual(@as(?u21, '3'), events[4].key.char);
+    try std.testing.expect(!events[4].key.shift);
+    try std.testing.expectEqual(@as(?u21, 'ф'), events[5].key.char);
+    try std.testing.expectEqualStrings("Russian", win.layout().name());
+    try std.testing.expectEqualStrings("ru", win.layout().code());
 }

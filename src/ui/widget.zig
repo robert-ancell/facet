@@ -125,9 +125,9 @@ pub const Event = union(enum) {
         /// A Linux key code (see keymap.zig).
         code: u32,
         pressed: bool,
-        /// The character it types (on the keyboard `Ui.keyboard`), if
-        /// any: none while Control is held.
-        char: ?u21,
+        /// The character it types, by the keymap (the window's, or
+        /// `Ui.loadKeymap`'s), if any: none while Control is held.
+        char: ?u21 = null,
         /// Modifiers held.
         ctrl: bool = false,
         shift: bool = false,
@@ -394,8 +394,8 @@ pub const BackendInfo = struct {
     physical_size: [2]u32 = .{ 0, 0 },
     /// HiDPI integer buffer scale factor.
     scale: u32 = 1,
-    /// Active keyboard layout (`us`, `gb`).
-    keyboard: window_mod.Keyboard = .us,
+    /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
+    keyboard: window_mod.Layout = .{},
     /// Window state flags.
     maximized: bool = false,
     fullscreen: bool = false,

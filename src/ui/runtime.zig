@@ -118,13 +118,12 @@ pub const Ui = struct {
     last_press: ?struct { ns: u64, pos: Point, button: u32, clicks: u8 } = null,
     /// The widget keys go to.
     focused: ?*Node = null,
-    shift: u2 = 0,
-    ctrl: u2 = 0,
-    /// The right Alt, for a keyboard's third characters (the UK's €).
-    altgr: u2 = 0,
-    caps_lock: bool = false,
-    /// The keyboard's layout: what character each key types.
-    keyboard: window_mod.Keyboard = .us,
+    /// The keyboard layout in use (from the window, or `loaded_keymap`).
+    keyboard: window_mod.Layout = .{},
+    /// A keymap of its own (`loadKeymap`), for keys from `keyEvent` that
+    /// say nothing of what they type, and the modifiers it keeps.
+    loaded_keymap: ?window_mod.xkb.Keymap = null,
+    key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
     /// Whether the window fills the work area (for `TitleBar`).
@@ -282,6 +281,7 @@ pub const Ui = struct {
         }
         ui.closeMenu();
         ui.endDrag(false);
+        if (ui.loaded_keymap) |*km| km.deinit();
         if (ui.title_bar_root) |tb| tb.destroy();
         if (ui.menu_root) |m| m.destroy();
         if (ui.drag_root) |d| d.destroy();
@@ -328,7 +328,7 @@ pub const Ui = struct {
     /// window is shown redraws all of it.
     pub fn syncWindow(ui: *Ui, win: anytype) void {
         const w = window_mod.Window.from(win);
-        ui.keyboard = w.layout();
+        if (ui.loaded_keymap == null) ui.keyboard = w.layout();
         const fullscreen = w.isFullscreen();
         const maximized = w.isMaximized();
         const tiled = w.isTiled();
@@ -982,7 +982,10 @@ pub const Ui = struct {
             .motion => |pos| ui.pointerMotion(pos),
             .button => |b| ui.pointerButton(b.pos, b.code, b.pressed),
             .scroll => |s| ui.pointerScroll(s.pos, s.dx, s.dy),
-            .key => |k| ui.keyEvent(k.code, k.pressed),
+            .key => |k| if (ui.loaded_keymap != null)
+                ui.keyEvent(k.code, k.pressed)
+            else
+                ui.key(.{ .code = k.code, .pressed = k.pressed, .char = k.char, .shift = k.shift, .ctrl = k.ctrl }),
             .leave => ui.pointerLeave(),
             .touch_down => |t| ui.touchDown(t.id, t.pos),
             .touch_motion => |t| ui.touchMotion(t.id, t.pos),
@@ -1174,39 +1177,50 @@ pub const Ui = struct {
         ui.needs_frame = true;
     }
 
+    /// Gives it a keymap of its own (XKB's text format), for keys from
+    /// `keyEvent`: what they type, and the modifiers they change. (Keys from
+    /// a window with a keymap come with what they type.)
+    pub fn loadKeymap(ui: *Ui, text: []const u8) !void {
+        var km = try window_mod.xkb.Keymap.parse(ui.gpa, text);
+        if (ui.loaded_keymap) |*old| old.deinit();
+        ui.loaded_keymap = km;
+        ui.key_state = .{};
+        ui.keyboard = .init(km.layoutName(.{}), km.layoutCode(.{}));
+    }
+
+    /// A key went down or up: what it types, by `loaded_keymap` if it has
+    /// one.
     pub fn keyEvent(ui: *Ui, code: u32, pressed: bool) void {
-        switch (code) {
-            keymap.left_shift, keymap.right_shift => {
-                ui.shift = if (pressed) ui.shift +| 1 else ui.shift -| 1;
-                return;
-            },
-            keymap.left_ctrl, keymap.right_ctrl => {
-                ui.ctrl = if (pressed) ui.ctrl +| 1 else ui.ctrl -| 1;
-                return;
-            },
-            keymap.right_alt => {
-                ui.altgr = if (pressed) ui.altgr +| 1 else ui.altgr -| 1;
-                return;
-            },
-            keymap.caps_lock => if (pressed) {
-                ui.caps_lock = !ui.caps_lock;
-            },
-            keymap.escape => if (pressed and ui.menu != null) {
+        const km = &(ui.loaded_keymap orelse return ui.key(.{ .code = code, .pressed = pressed }));
+        const mods = ui.key_state.mods();
+        const char = if (pressed) km.char(code, ui.key_state) else null;
+        km.update(&ui.key_state, code, pressed);
+        ui.key(.{
+            .code = code,
+            .pressed = pressed,
+            .char = char,
+            .shift = mods & window_mod.xkb.shift_mask != 0,
+            .ctrl = mods & window_mod.xkb.control_mask != 0,
+        });
+    }
+
+    /// A key went down or up, with what it types (if anything) and the
+    /// modifiers held.
+    pub fn key(ui: *Ui, k: widget.Event.Key) void {
+        switch (k.code) {
+            // Modifiers only change what other keys do.
+            keymap.left_shift, keymap.right_shift, keymap.left_ctrl, keymap.right_ctrl, keymap.right_alt => return,
+            keymap.escape => if (k.pressed and ui.menu != null) {
                 ui.closeMenu();
                 return;
             },
             else => {},
         }
         const n = ui.focused orelse return;
-        const ctrl = ui.ctrl > 0;
-        const shift = ui.shift > 0;
-        _ = send(n, .{ .key = .{
-            .code = code,
-            .pressed = pressed,
-            .char = if (pressed and !ctrl) ui.keyboard.char(code, shift, ui.caps_lock, ui.altgr > 0) else null,
-            .ctrl = ctrl,
-            .shift = shift,
-        } });
+        var e = k;
+        // Control and a key is a shortcut, not typing.
+        if (!k.pressed or k.ctrl) e.char = null;
+        _ = send(n, .{ .key = e });
         ui.needs_frame = true;
     }
 

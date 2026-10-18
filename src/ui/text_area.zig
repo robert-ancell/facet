@@ -811,6 +811,7 @@ test "typing into a text area, moving up and down, and copying" {
     const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
+    try u.loadKeymap(@import("window").xkb.testdata.us);
     var d = try Document.init(testing.allocator, "first line\nsecond line");
     defer d.deinit();
     const App = struct {

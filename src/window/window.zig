@@ -1,6 +1,6 @@
 //! Window abstraction (`Window` vtable interface), input events (`InputEvent`),
 //! text input state (`TextInputState`), window controls (`Controls`), keyboard
-//! layout (`Keyboard`), and the built-in Wayland client window backend
+//! layout (`Layout`) and keymaps (`xkb`), and the built-in Wayland client window backend
 //! (`WaylandWindow`).
 //!
 //! Apps can either use `WaylandWindow` directly or implement custom window
@@ -70,7 +70,9 @@ pub const InputEvent = union(enum) {
     /// A Linux button code (BTN_LEFT, ...), and where the pointer was.
     button: struct { pos: [2]f32, code: u32, pressed: bool },
     /// A Linux key code (KEY_A, ...).
-    key: struct { code: u32, pressed: bool },
+    /// What it types (from the keymap), and the modifiers held, if the
+    /// window has a keymap.
+    key: struct { code: u32, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },
     /// The wheel turned: by `dy` pixels down (and `dx` right), with the
     /// pointer at `pos`.
     scroll: struct { pos: [2]f32, dx: f32, dy: f32 },
@@ -275,7 +277,7 @@ pub const Window = struct {
         takeDrop: *const fn (ptr: *anyopaque) ?DroppedData,
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
-        layout: *const fn (ptr: *anyopaque) Keyboard,
+        layout: *const fn (ptr: *anyopaque) Layout,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
@@ -456,10 +458,9 @@ pub const Window = struct {
                 if (@hasDecl(T, "nextPresentationNs")) return self(p).nextPresentationNs(now_ns);
                 return now_ns;
             }
-            fn layoutFn(p: *anyopaque) Keyboard {
-                const s = self(p);
-                if (@hasField(T, "layout")) return s.layout;
-                return .us;
+            fn layoutFn(p: *anyopaque) Layout {
+                if (@hasDecl(T, "layout")) return self(p).layout();
+                return .{};
             }
             fn refreshNsFn(p: *anyopaque) u64 {
                 if (@hasDecl(T, "refreshNs")) return self(p).refreshNs();
@@ -686,7 +687,8 @@ pub const Window = struct {
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
-    pub fn layout(w: Window) Keyboard {
+    /// The keyboard layout in use.
+    pub fn layout(w: Window) Layout {
         return w.vtable.layout(w.ptr);
     }
     /// The display's refresh period, or 0 if unknown.
@@ -806,116 +808,38 @@ pub const Controls = struct {
     }
 };
 
-/// The keyboard layouts: which character each key types (by Linux key
-/// code), alone, with Shift, and with AltGr (the right Alt).
-pub const Keyboard = enum {
-    us,
-    gb,
+/// Keymaps: what each key types, from the compositor.
+pub const xkb = @import("xkb.zig");
 
-    pub fn name(k: Keyboard) []const u8 {
-        return switch (k) {
-            .us => "English (US)",
-            .gb => "English (UK)",
-        };
+/// The keyboard layout in use: its name ("English (UK)") and XKB code
+/// ("gb"), from the keymap the compositor gave.
+pub const Layout = struct {
+    name_buf: [64]u8 = undefined,
+    name_len: u8 = 0,
+    code_buf: [32]u8 = undefined,
+    code_len: u8 = 0,
+
+    pub fn init(name_: []const u8, code_: []const u8) Layout {
+        var l: Layout = .{};
+        l.name_len = @intCast(@min(name_.len, l.name_buf.len));
+        @memcpy(l.name_buf[0..l.name_len], name_[0..l.name_len]);
+        l.code_len = @intCast(@min(code_.len, l.code_buf.len));
+        @memcpy(l.code_buf[0..l.code_len], code_[0..l.code_len]);
+        return l;
     }
 
-    /// Its XKB name.
-    pub fn code(k: Keyboard) []const u8 {
-        return @tagName(k);
+    /// Its name, or "" if no keymap has been given.
+    pub fn name(l: *const Layout) []const u8 {
+        return l.name_buf[0..l.name_len];
     }
 
-    pub fn fromCode(text_: []const u8) ?Keyboard {
-        return std.meta.stringToEnum(Keyboard, text_);
+    pub fn code(l: *const Layout) []const u8 {
+        return l.code_buf[0..l.code_len];
     }
-
-    /// The keys that type characters, and what they type.
-    pub fn keys(k: Keyboard) []const Key {
-        return switch (k) {
-            .us => &us_keys,
-            .gb => &gb_keys,
-        };
-    }
-
-    /// The character a key types, if it types one. Caps Lock shifts
-    /// letters only.
-    pub fn char(k: Keyboard, key_code: u32, shift: bool, caps: bool, altgr: bool) ?u21 {
-        for (k.keys()) |key| if (key.code == key_code) {
-            if (altgr) return key.altgr;
-            const letter = key.plain >= 'a' and key.plain <= 'z';
-            const up = if (letter) shift != caps else shift;
-            return if (up) key.shifted else key.plain;
-        };
-        if (altgr) return null;
-        return switch (key_code) {
-            55 => '*',
-            71 => '7',
-            72 => '8',
-            73 => '9',
-            74 => '-',
-            75 => '4',
-            76 => '5',
-            77 => '6',
-            78 => '+',
-            79 => '1',
-            80 => '2',
-            81 => '3',
-            82 => '0',
-            83 => '.',
-            98 => '/',
-            117 => '=',
-            else => null,
-        };
-    }
-};
-
-pub const Key = struct {
-    code: u8,
-    plain: u21,
-    shifted: u21,
-    altgr: ?u21 = null,
-};
-
-fn row(comptime first: u8, comptime plain: []const u8, comptime shifted: []const u8) [plain.len]Key {
-    var out: [plain.len]Key = undefined;
-    for (&out, plain, shifted, 0..) |*k, p, s, i| k.* = .{ .code = first + i, .plain = p, .shifted = s };
-    return out;
-}
-
-const us_keys = row(2, "1234567890-=", "!@#$%^&*()_+") ++
-    row(16, "qwertyuiop[]", "QWERTYUIOP{}") ++
-    row(30, "asdfghjkl;'`", "ASDFGHJKL:\"~") ++
-    [_]Key{.{ .code = 43, .plain = '\\', .shifted = '|' }} ++
-    row(44, "zxcvbnm,./", "ZXCVBNM<>?") ++
-    [_]Key{
-        .{ .code = 57, .plain = ' ', .shifted = ' ' },
-        .{ .code = 86, .plain = '<', .shifted = '>' },
-    };
-
-const gb_keys = blk: {
-    var keys = us_keys;
-    for (&keys) |*k| switch (k.code) {
-        3 => k.shifted = '"',
-        4 => k.shifted = '£',
-        5 => k.altgr = '€',
-        40 => k.shifted = '@',
-        41 => {
-            k.shifted = '¬';
-            k.altgr = '¦';
-        },
-        43 => {
-            k.plain = '#';
-            k.shifted = '~';
-        },
-        86 => {
-            k.plain = '\\';
-            k.shifted = '|';
-        },
-        else => {},
-    };
-    break :blk keys;
 };
 
 test {
     _ = clipboard;
     _ = wayland;
+    _ = xkb;
 }

@@ -679,6 +679,7 @@ test "typing into a text field" {
     const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
+    try u.loadKeymap(@import("window").xkb.testdata.us);
     const Sink = struct {
         text: [64]u8 = undefined,
         len: usize = 0,
@@ -741,6 +742,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
+    try u.loadKeymap(@import("window").xkb.testdata.us);
     // The system's clipboard, as the app gives it.
     const Board = struct {
         text: [64]u8 = undefined,
@@ -982,6 +984,7 @@ test "a field asked for takes the keyboard by itself, once" {
     const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
+    try u.loadKeymap(@import("window").xkb.testdata.us);
     var text: [64]u8 = undefined;
     var len: usize = 0;
     const Sink = struct {
@@ -1016,7 +1019,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
     const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
-    u.keyboard = .gb;
+    try u.loadKeymap(@import("window").xkb.testdata.gb_ru);
     var text: [64]u8 = undefined;
     var len: usize = 0;
     const Sink = struct {
@@ -1063,7 +1066,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
     press(u, keymap.delete);
     try testing.expectEqualStrings("@#", text[0..len]);
     // A US keyboard types what the US has there.
-    u.keyboard = .us;
+    try u.loadKeymap(@import("window").xkb.testdata.us);
     u.keyEvent(keymap.left_shift, true);
     press(u, 4);
     u.keyEvent(keymap.left_shift, false);

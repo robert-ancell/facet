@@ -1,11 +1,5 @@
 //! Linux key codes (input-event-codes.h) the toolkit handles itself. What
-//! character a key types depends on the keyboard (`Ui.keyboard`).
-
-const std = @import("std");
-const window = @import("window");
-
-pub const Keyboard = window.Keyboard;
-pub const Key = window.Key;
+//! character a key types is the keymap's to say (`window.xkb`).
 
 pub const escape = 1;
 pub const backspace = 14;
@@ -31,14 +25,3 @@ pub const end = 107;
 pub const delete = 111;
 pub const keypad_enter = 96;
 pub const right_alt = 100;
-
-test "US and UK keyboard layouts map characters and modifiers" {
-    try std.testing.expectEqual(@as(?u21, 'a'), Keyboard.us.char(30, false, false, false));
-    try std.testing.expectEqual(@as(?u21, 'A'), Keyboard.us.char(30, true, false, false));
-    try std.testing.expectEqual(@as(?u21, 'A'), Keyboard.us.char(30, false, true, false));
-    try std.testing.expectEqual(@as(?u21, 'a'), Keyboard.us.char(30, true, true, false));
-    try std.testing.expectEqual(@as(?u21, '@'), Keyboard.us.char(3, true, false, false));
-    try std.testing.expectEqual(@as(?u21, '"'), Keyboard.gb.char(3, true, false, false));
-    try std.testing.expectEqual(@as(?u21, '£'), Keyboard.gb.char(4, true, false, false));
-    try std.testing.expectEqual(@as(?u21, '€'), Keyboard.gb.char(5, false, false, true));
-}
