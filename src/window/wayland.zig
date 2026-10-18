@@ -21,6 +21,7 @@ pub const InputEvent = window_mod.InputEvent;
 pub const TextInputState = window_mod.TextInputState;
 pub const Cursor = window_mod.Cursor;
 const xkb = window_mod.xkb;
+const compose = window_mod.compose;
 pub const nowNs = clipboard_mod.nowNs;
 
 const default_size = [2]u32{ 1280, 720 };
@@ -747,6 +748,12 @@ pub const WaylandWindow = struct {
     /// and layout in effect (from `wl_keyboard.modifiers`).
     keymap: ?xkb.Keymap = null,
     xkb_state: xkb.State = .{},
+    /// Dead keys' and the Compose key's sequences (loaded on the first
+    /// press of one), where to find them, and how far into one typing is.
+    compose_table: ?compose.Table = null,
+    compose_tried: bool = false,
+    compose_env: compose.Env = .{},
+    compose_state: compose.State = .{},
     wake_fd: ?linux.fd_t = null,
     wake_fds: [4]?linux.fd_t = @splat(null),
     pointer: ?client.Proxy = null,
@@ -773,7 +780,9 @@ pub const WaylandWindow = struct {
     pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*WaylandWindow {
         var path_buf: [256]u8 = undefined;
         const path = try client.environSocketPath(&path_buf, environ);
-        return openPath(gpa, path, options);
+        const w = try openPath(gpa, path, options);
+        w.compose_env = .from(environ);
+        return w;
     }
 
     /// Connects to the compositor listening on `path` and opens a window.
@@ -963,6 +972,8 @@ pub const WaylandWindow = struct {
         w.clipboard.deinit();
         if (w.keymap) |*km| km.deinit();
         w.keymap = null;
+        if (w.compose_table) |*t| t.deinit();
+        w.compose_table = null;
         for (&w.buffers) |*slot| if (slot.*) |*b| w.freeBuffer(b, slot);
         if (w.syncobj_surface) |ss| {
             if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
@@ -1506,7 +1517,59 @@ pub const WaylandWindow = struct {
         if (now_ns < rep.next_ns) return;
         const step = std.time.ns_per_s / @as(u64, w.repeat_rate);
         rep.next_ns = if (now_ns - rep.next_ns < step) rep.next_ns + step else now_ns + step;
-        w.pushInput(w.keyInput(rep.code, true));
+        w.pushKey(rep.code, true, true);
+    }
+
+    /// Passes on a key going down or up (or repeating), composing it with
+    /// the keys before it where they are a dead key or Compose.
+    fn pushKey(w: *WaylandWindow, code: u32, pressed: bool, repeat: bool) void {
+        var ev = w.keyInput(code, pressed);
+        const km = &(w.keymap orelse return w.pushInput(ev));
+        if (!pressed) return w.pushInput(ev);
+        const sym = km.keysym(code, w.xkb_state);
+        if (repeat) {
+            // A dead key, Compose, or a key in a sequence does not repeat.
+            if (w.compose_state.composing() or compose.starts(sym)) ev.key.char = null;
+            return w.pushInput(ev);
+        }
+        const table = w.composeTable(sym) orelse return w.pushInput(ev);
+        switch (w.compose_state.feed(table, sym)) {
+            .none => w.pushInput(ev),
+            .composing, .cancelled => {
+                ev.key.char = null;
+                w.pushInput(ev);
+            },
+            .composed => |r| {
+                // One character comes with the key; more as text.
+                const view = std.unicode.Utf8View.init(r.text) catch {
+                    ev.key.char = null;
+                    return w.pushInput(ev);
+                };
+                var it = view.iterator();
+                const first = it.nextCodepoint();
+                const one = first != null and it.nextCodepoint() == null;
+                ev.key.char = if (one) first else null;
+                w.pushInput(ev);
+                if (!one and r.text.len > 0) {
+                    var commit: window_mod.InputEvent = .{ .text_commit = .{} };
+                    const n: u8 = @intCast(@min(r.text.len, commit.text_commit.buf.len));
+                    @memcpy(commit.text_commit.buf[0..n], r.text[0..n]);
+                    commit.text_commit.len = n;
+                    w.pushInput(commit);
+                }
+            },
+        }
+    }
+
+    /// The Compose sequences, once a key that starts one is pressed: the
+    /// user's or the locale's, or the built-in dead keys if neither can be
+    /// read.
+    fn composeTable(w: *WaylandWindow, sym: u32) ?*const compose.Table {
+        if (w.compose_table) |*t| return t;
+        if (w.compose_tried or !compose.starts(sym)) return null;
+        w.compose_tried = true;
+        w.compose_table = compose.Table.load(w.gpa, w.compose_env) orelse compose.Table.builtin(w.gpa) catch null;
+        return if (w.compose_table) |*t| t else null;
     }
 
     /// A key going down or up, with what it types and the modifiers held
@@ -2416,6 +2479,7 @@ pub const WaylandWindow = struct {
                     if (w.keymap) |*old| old.deinit();
                     w.keymap = km;
                     w.xkb_state = .{};
+                    w.compose_state.reset();
                 }
             },
             p.wl_keyboard.event.modifiers => {
@@ -2447,10 +2511,11 @@ pub const WaylandWindow = struct {
                 } else if (w.repeat) |rep| {
                     if (rep.code == code) w.repeat = null;
                 }
-                w.pushInput(w.keyInput(code, pressed));
+                w.pushKey(code, pressed, false);
             },
             p.wl_keyboard.event.leave => {
                 w.repeat = null;
+                w.compose_state.reset();
                 var it = w.keys_down.iterator(.{});
                 while (it.next()) |code| {
                     w.pushInput(.{ .key = .{ .code = @intCast(code), .pressed = false } });
@@ -3014,4 +3079,69 @@ test "keys type what the keymap says, with the compositor's modifiers at the tim
     try std.testing.expectEqual(@as(?u21, 'ф'), events[5].key.char);
     try std.testing.expectEqualStrings("Russian", win.layout().name());
     try std.testing.expectEqualStrings("ru", win.layout().code());
+}
+
+test "dead keys and Compose combine with the keys after them" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    defer win.clipboard.deinit();
+    win.keymap = try xkb.Keymap.parse(std.testing.allocator, xkb.testdata.gb_ru);
+    defer win.keymap.?.deinit();
+    win.compose_table = try compose.Table.parse(std.testing.allocator,
+        \\<dead_grave> <a> : "à"
+        \\<Multi_key> <c> <o> : "©"
+        \\<Multi_key> <f> <f> : "ff!"
+    , .{});
+    win.compose_tried = true;
+    defer win.compose_table.?.deinit();
+    var disp: client.Display = undefined;
+    const send = struct {
+        fn f(w: *WaylandWindow, d: *client.Display, opcode: u16, args: []const u32) void {
+            var r = wire.Reader{ .data = std.mem.sliceAsBytes(args), .c = undefined };
+            WaylandWindow.keyboardEvent(w, d, 0, opcode, &r);
+        }
+    }.f;
+    const ev = p.wl_keyboard.event;
+    const down = p.wl_keyboard.key_state.pressed;
+    const up = p.wl_keyboard.key_state.released;
+    const mod5: u32 = 1 << 7;
+    // AltGr+# is the UK's dead grave: it types nothing, nor when it
+    // repeats, and then a is à.
+    send(&win, &disp, ev.modifiers, &.{ 1, mod5, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 2, 0, 43, down });
+    win.serviceRepeat(nowNs() + 10 * std.time.ns_per_s);
+    send(&win, &disp, ev.key, &.{ 3, 0, 43, up });
+    send(&win, &disp, ev.modifiers, &.{ 4, 0, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 5, 0, 30, down });
+    var events = win.takeInput();
+    try std.testing.expectEqual(@as(usize, 4), events.len);
+    try std.testing.expectEqual(@as(?u21, null), events[0].key.char);
+    try std.testing.expectEqual(@as(?u21, null), events[1].key.char);
+    try std.testing.expectEqual(@as(?u21, 'à'), events[3].key.char);
+    // A dead key and a key it does not go with: nothing, and the next key
+    // types as usual.
+    send(&win, &disp, ev.modifiers, &.{ 6, mod5, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 7, 0, 43, down });
+    send(&win, &disp, ev.modifiers, &.{ 8, 0, 0, 0, 0 });
+    send(&win, &disp, ev.key, &.{ 9, 0, 48, down });
+    send(&win, &disp, ev.key, &.{ 10, 0, 48, down });
+    events = win.takeInput();
+    try std.testing.expectEqual(@as(?u21, null), events[1].key.char);
+    try std.testing.expectEqual(@as(?u21, 'b'), events[2].key.char);
+    // Several characters come as text after the key. (Compose is fed as a
+    // keysym here: the UK keymap has no Compose key.)
+    _ = win.compose_state.feed(&win.compose_table.?, compose.multi_key);
+    send(&win, &disp, ev.key, &.{ 11, 0, 33, down });
+    send(&win, &disp, ev.key, &.{ 12, 0, 33, down });
+    events = win.takeInput();
+    try std.testing.expectEqual(@as(usize, 3), events.len);
+    try std.testing.expectEqual(@as(?u21, null), events[1].key.char);
+    try std.testing.expectEqualStrings("ff!", events[2].text_commit.slice());
+    // Leaving the window ends a sequence.
+    _ = win.compose_state.feed(&win.compose_table.?, compose.multi_key);
+    send(&win, &disp, ev.leave, &.{ 13, 0 });
+    try std.testing.expect(!win.compose_state.composing());
 }

@@ -810,6 +810,8 @@ pub const Controls = struct {
 
 /// Keymaps: what each key types, from the compositor.
 pub const xkb = @import("xkb.zig");
+/// Dead keys and the Compose key.
+pub const compose = @import("compose.zig");
 
 /// The keyboard layout in use: its name ("English (UK)") and XKB code
 /// ("gb"), from the keymap the compositor gave.
@@ -842,4 +844,5 @@ test {
     _ = clipboard;
     _ = wayland;
     _ = xkb;
+    _ = compose;
 }
