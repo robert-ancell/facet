@@ -150,3 +150,5 @@ Run any of the included examples from the repository root:
 | `zig build run-vulkan` | `examples/vulkan.zig` | Interactive 3D Platonic solid viewer rendered with Vulkan |
 | `zig build run-showcase` | `examples/showcase.zig` | Interactive gallery of Material 3 widgets across four pages |
 
+To see which windowing, buffer, synchronization and rendering backends facet picks on your system, run `zig build run-info` (`tools/info.zig`).
+

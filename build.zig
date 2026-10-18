@@ -219,6 +219,22 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(ex_test).step);
     }
 
+    // A tool reporting the backends facet picks on this system.
+    const info_mod = b.createModule(.{
+        .root_source_file = b.path("tools/info.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "facet", .module = mods.facet }},
+    });
+    const info_exe = b.addExecutable(.{
+        .name = "facet-info",
+        .root_module = info_mod,
+    });
+    b.installArtifact(info_exe);
+    const run_info = b.step("run-info", "Show the windowing, buffer, sync and rendering backends in use");
+    run_info.dependOn(&b.addRunArtifact(info_exe).step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = info_mod })).step);
+
     for ([_]*std.Build.Module{
         mods.font,
         mods.icons,
