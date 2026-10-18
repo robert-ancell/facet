@@ -1,8 +1,4 @@
-//! Hello World example: demonstrates basic layout, interactivity, and
-//! widget state management with Facet.
-//!
-//! Run with:
-//!     zig build run-hello
+//! Interactive counter application (`zig build run-hello`).
 
 const std = @import("std");
 const facet = @import("facet");

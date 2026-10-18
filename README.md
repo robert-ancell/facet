@@ -10,11 +10,11 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
   - Layout: `Row`, `Column`, `Flex`, `Expanded`, `Grid`, `LazyGrid`, `ScrollView`, `Overlay`, `Padding`, `Align`, `Center`, `SizedBox`, `ConstrainedBox`
   - Controls & Buttons: `FilledButton`, `TonalButton`, `OutlinedButton`, `TextButton`, `IconButton`, `PillBar`, `Checkbox`, `Radio`, `Switch`, `Slider`, `DropdownMenu`, `Select`
   - Containers & Navigation: `Card`, `ListItem`, `Chip`, `Badge`, `Divider`, `NavigationRail`, `TabBar`, `Dialog`, `Snackbar`, `Tooltip`, `Menu`, `TitleBar`
-  - Text & Media: `Text`, `TextField`, `TextArea` (`TextDocument` with syntax highlighting), `Icon`, `Image`, `QrCode`, `Spinner`, `ProgressBar`
+  - Text, Media & 3D: `Text`, `TextField`, `TextArea` (`TextDocument` with syntax highlighting), `Icon`, `Image`, `QrCode`, `Spinner`, `ProgressBar`, `OpenGlArea`, `VulkanArea`
 - **Pluggable Rendering Backends (`facet.gfx`):**
   - **Software (`SoftwareRenderer`):** Zero-dependency CPU rasterizer for all 2D SDF shapes, polygons, alpha/color glyphs, and bilinear images.
-  - **OpenGL (`OpenGlRenderer`):** OpenGL 3.3+ backend using runtime `GetProcAddress` function loading (no C headers required).
-  - **Vulkan (`VulkanRenderer`):** Vulkan 1.0+ backend using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders.
+  - **OpenGL (`OpenGlRenderer`, `OpenGlContext`):** OpenGL 3.3+ backend and offscreen 3D widget framework using runtime `GetProcAddress` function loading (no C headers required).
+  - **Vulkan (`VulkanRenderer`, `VulkanContext`):** Vulkan 1.1+ backend and offscreen 3D widget framework using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders.
   - **Custom Backends:** Implement `prepare` and `render` and wrap with `facet.Renderer.of(&my_backend)`.
 - **Windowing (`facet.window`):**
   - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell`, `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
@@ -151,3 +151,20 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 ```
+
+## Examples
+
+Run any of the included examples from the repository root:
+
+| Command | Source | Description |
+| --- | --- | --- |
+| `zig build run-hello` | `examples/hello.zig` | Interactive counter application |
+| `zig build run-controls` | `examples/controls.zig` | Interactive form controls and theme switcher |
+| `zig build run-navigation` | `examples/navigation.zig` | Inbox application with navigation rail, tabs, confirmation dialog, and undo snackbar |
+| `zig build run-lists` | `examples/lists_and_drag.zig` | Grid of 500 items that can be dragged and dropped into a pinned list |
+| `zig build run-editor` | `examples/editor.zig` | Multi-line code editor with Zig syntax highlighting |
+| `zig build run-canvas` | `examples/canvas_and_qr.zig` | Animated harmonic wave viewer and live QR code generator |
+| `zig build run-opengl` | `examples/opengl.zig` | Interactive 3D Platonic solid viewer rendered with OpenGL |
+| `zig build run-vulkan` | `examples/vulkan.zig` | Interactive 3D Platonic solid viewer rendered with Vulkan |
+| `zig build run-showcase` | `examples/showcase.zig` | Interactive gallery of Material 3 widgets across four pages |
+

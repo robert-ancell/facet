@@ -1,8 +1,4 @@
-//! Navigation & Overlays example: demonstrates NavigationRail, TabBar,
-//! Card, ListItem, Badge, Tooltip, modal Dialog, and Snackbar.
-//!
-//! Run with:
-//!     zig build run-navigation
+//! Inbox application with navigation rail, tabs, confirmation dialog, and undo snackbar (`zig build run-navigation`).
 
 const std = @import("std");
 const facet = @import("facet");

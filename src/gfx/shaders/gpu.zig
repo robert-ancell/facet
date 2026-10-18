@@ -51,7 +51,7 @@ const Image2D = @SpirvType(.{ .image = .{
 const SampledImage2D = @SpirvType(.{ .sampled_image = Image2D });
 const tex = @extern(*addrspace(.constant) SampledImage2D, .{
     .name = "facet_texture",
-    .decoration = .{ .descriptor = .{ .set = 0, .binding = 1 } },
+    .decoration = .{ .descriptor = .{ .set = 0, .binding = 0 } },
 });
 
 /// Samples the draw's texture at `coord` (0 to 1 across it), as RGBA.

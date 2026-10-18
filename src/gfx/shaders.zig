@@ -1,5 +1,6 @@
-//! Vertex layouts, SPIR-V shader blobs (for Vulkan), and GLSL shader sources
-//! (for OpenGL 3.3 / OpenGL ES 3.0) for Facet's 2D canvas batches:
+//! Vertex layouts, SPIR-V shader blobs (compiled at build time from the Zig
+//! shaders in `src/gfx/shaders/*.zig`), and GLSL 330 fallback shader sources
+//! (`src/gfx/shaders/*.vert` and `*.frag`) for Facet's 2D canvas batches:
 //!
 //! * `shape`: anti-aliased rounded rectangles, filled or stroked. Each
 //!   vertex carries the rectangle: the fragment's position relative to its
@@ -70,110 +71,22 @@ pub const solid_spv align(4) = @embedFile("solid.spv").*;
 pub const text_spv align(4) = @embedFile("text.spv").*;
 pub const image_spv align(4) = @embedFile("image.spv").*;
 
-// --- GLSL shaders (OpenGL 3.3 Core / OpenGL ES 3.0) -------------------------
+pub const shape_gl_spv align(4) = @embedFile("shape_gl.spv").*;
+pub const solid_gl_spv align(4) = @embedFile("solid_gl.spv").*;
+pub const text_gl_spv align(4) = @embedFile("text_gl.spv").*;
+pub const image_gl_spv align(4) = @embedFile("image_gl.spv").*;
 
-pub const glsl_shape_vs: [:0]const u8 =
-    \\#version 330 core
-    \\layout(location = 0) in vec2 in_pos;
-    \\layout(location = 1) in vec4 in_geometry;
-    \\layout(location = 2) in vec2 in_shape;
-    \\layout(location = 3) in vec4 in_color;
-    \\out vec4 v_geometry;
-    \\out vec2 v_shape;
-    \\out vec4 v_color;
-    \\void main() {
-    \\    gl_Position = vec4(in_pos, 0.0, 1.0);
-    \\    v_geometry = in_geometry;
-    \\    v_shape = in_shape;
-    \\    v_color = in_color;
-    \\}
-;
+// --- GLSL 330 fallback shaders (from src/gfx/shaders/*.vert / *.frag) -------
 
-pub const glsl_shape_fs: [:0]const u8 =
-    \\#version 330 core
-    \\in vec4 v_geometry;
-    \\in vec2 v_shape;
-    \\in vec4 v_color;
-    \\out vec4 out_color;
-    \\float coverage(float d, vec2 sides, float inset) {
-    \\    float by_distance = clamp(0.5 - (d + inset), 0.0, 1.0);
-    \\    vec2 c = clamp(vec2(0.5) - (sides + vec2(inset)), vec2(0.0), vec2(1.0));
-    \\    return min(by_distance, c.x * c.y);
-    \\}
-    \\void main() {
-    \\    vec2 p = v_geometry.xy;
-    \\    vec2 half_sz = v_geometry.zw;
-    \\    float radius = v_shape.x;
-    \\    float stroke = v_shape.y;
-    \\    vec2 a = abs(p);
-    \\    vec2 q = a - (half_sz - vec2(radius));
-    \\    vec2 m = max(q, vec2(0.0));
-    \\    float d = length(m) + min(max(q.x, q.y), 0.0) - radius;
-    \\    vec2 sides = a - half_sz;
-    \\    float cov = coverage(d, sides, 0.0) - coverage(d, sides, stroke);
-    \\    out_color = vec4(v_color.rgb, v_color.a * cov);
-    \\}
-;
+pub const glsl_shape_vs: [:0]const u8 = @embedFile("shaders/shape.vert");
+pub const glsl_shape_fs: [:0]const u8 = @embedFile("shaders/shape.frag");
+pub const glsl_solid_vs: [:0]const u8 = @embedFile("shaders/solid.vert");
+pub const glsl_solid_fs: [:0]const u8 = @embedFile("shaders/solid.frag");
+pub const glsl_text_vs: [:0]const u8 = @embedFile("shaders/text.vert");
+pub const glsl_text_fs: [:0]const u8 = @embedFile("shaders/text.frag");
+pub const glsl_image_fs: [:0]const u8 = @embedFile("shaders/image.frag");
 
-pub const glsl_solid_vs: [:0]const u8 =
-    \\#version 330 core
-    \\layout(location = 0) in vec2 in_pos;
-    \\layout(location = 1) in vec4 in_color;
-    \\out vec4 v_color;
-    \\void main() {
-    \\    gl_Position = vec4(in_pos, 0.0, 1.0);
-    \\    v_color = in_color;
-    \\}
-;
-
-pub const glsl_solid_fs: [:0]const u8 =
-    \\#version 330 core
-    \\in vec4 v_color;
-    \\out vec4 out_color;
-    \\void main() {
-    \\    out_color = v_color;
-    \\}
-;
-
-pub const glsl_text_vs: [:0]const u8 =
-    \\#version 330 core
-    \\layout(location = 0) in vec2 in_pos;
-    \\layout(location = 1) in vec2 in_uv;
-    \\layout(location = 2) in vec4 in_color;
-    \\out vec2 v_uv;
-    \\out vec4 v_color;
-    \\void main() {
-    \\    gl_Position = vec4(in_pos, 0.0, 1.0);
-    \\    v_uv = in_uv;
-    \\    v_color = in_color;
-    \\}
-;
-
-pub const glsl_text_fs: [:0]const u8 =
-    \\#version 330 core
-    \\in vec2 v_uv;
-    \\in vec4 v_color;
-    \\uniform sampler2D u_tex;
-    \\out vec4 out_color;
-    \\void main() {
-    \\    float cov = texture(u_tex, v_uv).r;
-    \\    out_color = vec4(v_color.rgb, v_color.a * cov);
-    \\}
-;
-
-pub const glsl_image_fs: [:0]const u8 =
-    \\#version 330 core
-    \\in vec2 v_uv;
-    \\in vec4 v_color;
-    \\uniform sampler2D u_tex;
-    \\out vec4 out_color;
-    \\void main() {
-    \\    vec4 t = texture(u_tex, v_uv);
-    \\    out_color = t * v_color;
-    \\}
-;
-
-test "vertex layouts match float counts" {
+test "vertex layouts match float counts and SPIR-V / GLSL shaders are valid" {
     for ([_]Layout{ shape_layout, solid_layout, text_layout }, [_]u32{ shape_floats, solid_floats, text_floats }) |layout, floats| {
         var total: u32 = 0;
         for (layout.attributes) |a| {
@@ -183,8 +96,10 @@ test "vertex layouts match float counts" {
         try std.testing.expectEqual(floats, total);
         try std.testing.expectEqual(floats * 4, layout.vertex_stride);
     }
-    try std.testing.expect(shape_spv.len > 0 and shape_spv.len % 4 == 0);
-    try std.testing.expect(solid_spv.len > 0 and solid_spv.len % 4 == 0);
-    try std.testing.expect(text_spv.len > 0 and text_spv.len % 4 == 0);
-    try std.testing.expect(image_spv.len > 0 and image_spv.len % 4 == 0);
+    for ([_][]const u8{ &shape_spv, &solid_spv, &text_spv, &image_spv }) |spv| {
+        try std.testing.expect(spv.len > 0 and spv.len % 4 == 0);
+    }
+    for ([_][:0]const u8{ glsl_shape_vs, glsl_shape_fs, glsl_solid_vs, glsl_solid_fs, glsl_text_vs, glsl_text_fs, glsl_image_fs }) |src| {
+        try std.testing.expect(std.mem.startsWith(u8, src, "#version 330 core\n"));
+    }
 }

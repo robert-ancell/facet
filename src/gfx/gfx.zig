@@ -40,7 +40,9 @@ pub const Segment = renderer.Segment;
 pub const Renderer = renderer.Renderer;
 pub const SoftwareRenderer = software.SoftwareRenderer;
 pub const OpenGlRenderer = opengl.OpenGlRenderer;
+pub const OpenGlContext = opengl.OffscreenContext;
 pub const VulkanRenderer = vulkan.VulkanRenderer;
+pub const VulkanContext = vulkan.OffscreenContext;
 
 test {
     _ = geometry;

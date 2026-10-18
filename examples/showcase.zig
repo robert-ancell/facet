@@ -1,9 +1,5 @@
-//! Facet Widget Showcase: an interactive gallery showing every Material 3
-//! widget in the `facet` toolkit across four pages (`Actions`, `Inputs`,
-//! `Containers`, and `Feedback & Media`).
-//!
-//! Run with:
-//!     zig build run-showcase
+//! Interactive gallery of Material 3 widgets across four pages (`Actions`,
+//! `Inputs`, `Containers`, and `Feedback & Media`) (`zig build run-showcase`).
 
 const std = @import("std");
 const facet = @import("facet");

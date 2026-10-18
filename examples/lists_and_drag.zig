@@ -1,8 +1,4 @@
-//! Lists & Drag-and-Drop example: demonstrates virtualized LazyGrid inside
-//! a ScrollView alongside Draggable and DropTarget widgets.
-//!
-//! Run with:
-//!     zig build run-lists
+//! Grid of 500 items that can be dragged and dropped into a pinned list (`zig build run-lists`).
 
 const std = @import("std");
 const facet = @import("facet");

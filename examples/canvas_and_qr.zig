@@ -1,15 +1,9 @@
-//! Custom Canvas & QR Code example: demonstrates writing a custom widget
-//! with `layout` and `paint` (using `Painter.canvas()` for 2D vector drawing)
-//! alongside live `QrCode` generation.
-//!
-//! Run with:
-//!     zig build run-canvas
+//! Animated harmonic wave viewer and live QR code generator (`zig build run-canvas`).
 
 const std = @import("std");
 const facet = @import("facet");
 
-/// Custom widget that draws an animated harmonic wave and orbiting circles
-/// on Facet's 2D vector `Canvas`.
+/// Custom widget that draws an animated harmonic wave and orbiting circles.
 pub const WaveCanvas = struct {
     animate: bool = true,
     frequency: f32 = 2.0,

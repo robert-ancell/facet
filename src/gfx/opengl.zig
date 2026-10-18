@@ -1,4 +1,5 @@
-//! OpenGL 3.3 Core / OpenGL ES 3.0 rendering backend for Facet's 2D `Canvas`.
+//! OpenGL 3.3+ Core / OpenGL 4.6 SPIR-V rendering backend for Facet's 2D `Canvas`
+//! and `OpenGlArea` offscreen 3D widget.
 //!
 //! Uses a runtime `GetProcAddress` loader (compatible with `eglGetProcAddress`,
 //! `glXGetProcAddress`, `wglGetProcAddress`, SDL, or GLFW) so no C headers or
@@ -15,8 +16,12 @@ const canvas_mod = @import("canvas.zig");
 const atlas_mod = @import("atlas.zig");
 const renderer_mod = @import("renderer.zig");
 
+const software = @import("software.zig");
+
 const Canvas = canvas_mod.Canvas;
+const Color = canvas_mod.Color;
 const Viewport = renderer_mod.Viewport;
+const GpuArea = renderer_mod.GpuArea;
 
 pub const GLenum = c_uint;
 pub const GLboolean = u8;
@@ -30,20 +35,32 @@ pub const GLintptr = isize;
 
 pub const GL_FALSE: GLboolean = 0;
 pub const GL_TRUE: GLboolean = 1;
+pub const GL_DEPTH_BUFFER_BIT: GLbitfield = 0x00000100;
+pub const GL_COLOR_BUFFER_BIT: GLbitfield = 0x00004000;
 pub const GL_TRIANGLES: GLenum = 0x0004;
+pub const GL_LESS: GLenum = 0x0201;
 pub const GL_SRC_ALPHA: GLenum = 0x0302;
 pub const GL_ONE_MINUS_SRC_ALPHA: GLenum = 0x0303;
 pub const GL_ONE: GLenum = 1;
+pub const GL_FRONT: GLenum = 0x0404;
+pub const GL_BACK: GLenum = 0x0405;
+pub const GL_CW: GLenum = 0x0900;
+pub const GL_CCW: GLenum = 0x0901;
 pub const GL_BLEND: GLenum = 0x0BE2;
 pub const GL_SCISSOR_TEST: GLenum = 0x0C11;
 pub const GL_DEPTH_TEST: GLenum = 0x0B71;
 pub const GL_CULL_FACE: GLenum = 0x0B44;
 pub const GL_UNPACK_ALIGNMENT: GLenum = 0x0CF5;
+pub const GL_PACK_ALIGNMENT: GLenum = 0x0D05;
 pub const GL_TEXTURE_2D: GLenum = 0x0DE1;
 pub const GL_UNSIGNED_BYTE: GLenum = 0x1401;
+pub const GL_UNSIGNED_SHORT: GLenum = 0x1403;
+pub const GL_UNSIGNED_INT: GLenum = 0x1405;
 pub const GL_FLOAT: GLenum = 0x1406;
 pub const GL_RED: GLenum = 0x1903;
 pub const GL_RGBA: GLenum = 0x1908;
+pub const GL_EXTENSIONS: GLenum = 0x1F03;
+pub const GL_BGRA: GLenum = 0x80E1;
 pub const GL_NEAREST: GLint = 0x2600;
 pub const GL_LINEAR: GLint = 0x2601;
 pub const GL_TEXTURE_MAG_FILTER: GLenum = 0x2800;
@@ -51,18 +68,62 @@ pub const GL_TEXTURE_MIN_FILTER: GLenum = 0x2801;
 pub const GL_TEXTURE_WRAP_S: GLenum = 0x2802;
 pub const GL_TEXTURE_WRAP_T: GLenum = 0x2803;
 pub const GL_CLAMP_TO_EDGE: GLint = 0x812F;
+pub const GL_MAJOR_VERSION: GLenum = 0x821B;
+pub const GL_MINOR_VERSION: GLenum = 0x821C;
+pub const GL_NUM_EXTENSIONS: GLenum = 0x821D;
 pub const GL_R8: GLint = 0x8229;
 pub const GL_RGBA8: GLint = 0x8058;
+pub const GL_DEPTH_COMPONENT24: GLenum = 0x81A6;
 pub const GL_TEXTURE0: GLenum = 0x84C0;
 pub const GL_ARRAY_BUFFER: GLenum = 0x8892;
+pub const GL_ELEMENT_ARRAY_BUFFER: GLenum = 0x8893;
 pub const GL_STREAM_DRAW: GLenum = 0x88E0;
+pub const GL_STATIC_DRAW: GLenum = 0x88E4;
+pub const GL_DYNAMIC_DRAW: GLenum = 0x88E8;
+pub const GL_UNIFORM_BUFFER: GLenum = 0x8A11;
+pub const GL_INVALID_INDEX: GLuint = 0xFFFFFFFF;
 pub const GL_FRAGMENT_SHADER: GLenum = 0x8B30;
 pub const GL_VERTEX_SHADER: GLenum = 0x8B31;
 pub const GL_COMPILE_STATUS: GLenum = 0x8B81;
 pub const GL_LINK_STATUS: GLenum = 0x8B82;
+pub const GL_READ_FRAMEBUFFER: GLenum = 0x8CA8;
+pub const GL_DRAW_FRAMEBUFFER: GLenum = 0x8CA9;
+pub const GL_COLOR_ATTACHMENT0: GLenum = 0x8CE0;
+pub const GL_DEPTH_ATTACHMENT: GLenum = 0x8D00;
 pub const GL_FRAMEBUFFER: GLenum = 0x8D40;
+pub const GL_RENDERBUFFER: GLenum = 0x8D41;
+pub const GL_TEXTURE_SWIZZLE_A: GLenum = 0x8E45;
+pub const GL_SHADER_BINARY_FORMAT_SPIR_V: GLenum = 0x9551;
 
 pub const GetProcAddress = *const fn (name: [*:0]const u8) callconv(.c) ?*const anyopaque;
+pub const ShaderBinaryFn = *const fn (GLsizei, [*]const GLuint, GLenum, *const anyopaque, GLsizei) callconv(.c) void;
+pub const SpecializeShaderFn = *const fn (GLuint, [*:0]const u8, GLuint, ?[*]const GLuint, ?[*]const GLuint) callconv(.c) void;
+pub const GetIntegervFn = *const fn (GLenum, *GLint) callconv(.c) void;
+pub const GetStringiFn = *const fn (GLenum, GLuint) callconv(.c) ?[*:0]const u8;
+
+fn querySpirvSupport(
+    get_int: ?GetIntegervFn,
+    get_str: ?GetStringiFn,
+    shader_bin: ?ShaderBinaryFn,
+    spec_shader: ?SpecializeShaderFn,
+) bool {
+    if (shader_bin == null or spec_shader == null) return false;
+    const gi = get_int orelse return false;
+    var major: GLint = 0;
+    var minor: GLint = 0;
+    gi(GL_MAJOR_VERSION, &major);
+    gi(GL_MINOR_VERSION, &minor);
+    if (major > 4 or (major == 4 and minor >= 6)) return true;
+    const gs = get_str orelse return false;
+    var num_ext: GLint = 0;
+    gi(GL_NUM_EXTENSIONS, &num_ext);
+    if (num_ext <= 0) return false;
+    for (0..@intCast(num_ext)) |i| {
+        const ext_ptr = gs(GL_EXTENSIONS, @intCast(i)) orelse continue;
+        if (std.mem.eql(u8, std.mem.span(ext_ptr), "GL_ARB_gl_spirv")) return true;
+    }
+    return false;
+}
 
 pub const Procs = struct {
     Enable: *const fn (GLenum) callconv(.c) void,
@@ -104,12 +165,31 @@ pub const Procs = struct {
     TexSubImage2D: *const fn (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, ?*const anyopaque) callconv(.c) void,
     DrawArrays: *const fn (GLenum, GLint, GLsizei) callconv(.c) void,
 
+    // Optional OpenGL 4.6 / GL_ARB_gl_spirv entry points
+    GetIntegerv: ?GetIntegervFn = null,
+    GetStringi: ?GetStringiFn = null,
+    ShaderBinary: ?ShaderBinaryFn = null,
+    SpecializeShader: ?SpecializeShaderFn = null,
+
     pub fn load(get_proc: GetProcAddress) !Procs {
         var p: Procs = undefined;
-        inline for (@typeInfo(Procs).@"struct".field_names) |field_name| {
-            const name: [*:0]const u8 = "gl" ++ field_name;
-            const sym = get_proc(name) orelse return error.MissingGlFunction;
-            @field(p, field_name) = @ptrCast(sym);
+        const info = @typeInfo(Procs).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, FieldType| {
+            if (@typeInfo(FieldType) == .optional) {
+                @field(p, field_name) = null;
+            } else {
+                const name: [*:0]const u8 = "gl" ++ field_name;
+                const sym = get_proc(name) orelse return error.MissingGlFunction;
+                @field(p, field_name) = @ptrCast(sym);
+            }
+        }
+        if (get_proc("glGetIntegerv")) |sym| p.GetIntegerv = @ptrCast(sym);
+        if (get_proc("glGetStringi")) |sym| p.GetStringi = @ptrCast(sym);
+        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(sym);
+        if (get_proc("glSpecializeShader")) |sym| {
+            p.SpecializeShader = @ptrCast(sym);
+        } else if (get_proc("glSpecializeShaderARB")) |sym| {
+            p.SpecializeShader = @ptrCast(sym);
         }
         return p;
     }
@@ -126,6 +206,7 @@ pub const Target = struct {
 pub const OpenGlRenderer = struct {
     gpa: std.mem.Allocator,
     gl: Procs,
+    spirv_supported: bool = false,
     shape_prog: GLuint = 0,
     solid_prog: GLuint = 0,
     text_prog: GLuint = 0,
@@ -148,13 +229,21 @@ pub const OpenGlRenderer = struct {
     }
 
     pub fn initWithProcs(gpa: std.mem.Allocator, gl: Procs) !OpenGlRenderer {
-        var r: OpenGlRenderer = .{ .gpa = gpa, .gl = gl };
+        var r: OpenGlRenderer = .{
+            .gpa = gpa,
+            .gl = gl,
+            .spirv_supported = querySpirvSupport(gl.GetIntegerv, gl.GetStringi, gl.ShaderBinary, gl.SpecializeShader),
+        };
         errdefer r.deinit();
 
-        r.shape_prog = try r.compileProgram(shaders.glsl_shape_vs, shaders.glsl_shape_fs);
-        r.solid_prog = try r.compileProgram(shaders.glsl_solid_vs, shaders.glsl_solid_fs);
-        r.text_prog = try r.compileProgram(shaders.glsl_text_vs, shaders.glsl_text_fs);
-        r.image_prog = try r.compileProgram(shaders.glsl_text_vs, shaders.glsl_image_fs);
+        r.shape_prog = r.compileSpirvOrGlsl(&shaders.shape_gl_spv, shaders.glsl_shape_vs, shaders.glsl_shape_fs) catch
+            try r.compileProgram(shaders.glsl_shape_vs, shaders.glsl_shape_fs);
+        r.solid_prog = r.compileSpirvOrGlsl(&shaders.solid_gl_spv, shaders.glsl_solid_vs, shaders.glsl_solid_fs) catch
+            try r.compileProgram(shaders.glsl_solid_vs, shaders.glsl_solid_fs);
+        r.text_prog = r.compileSpirvOrGlsl(&shaders.text_gl_spv, shaders.glsl_text_vs, shaders.glsl_text_fs) catch
+            try r.compileProgram(shaders.glsl_text_vs, shaders.glsl_text_fs);
+        r.image_prog = r.compileSpirvOrGlsl(&shaders.image_gl_spv, shaders.glsl_text_vs, shaders.glsl_image_fs) catch
+            try r.compileProgram(shaders.glsl_text_vs, shaders.glsl_image_fs);
 
         for ([_]GLuint{ r.text_prog, r.image_prog }) |prog| {
             r.gl.UseProgram(prog);
@@ -199,8 +288,55 @@ pub const OpenGlRenderer = struct {
         }
     }
 
+    pub fn supportsSpirv(r: *const OpenGlRenderer) bool {
+        return r.spirv_supported;
+    }
+
     pub fn renderer(r: *OpenGlRenderer) renderer_mod.Renderer {
         return .of(r);
+    }
+
+    fn compileSpirvOrGlsl(r: *OpenGlRenderer, spv: []align(4) const u8, vs_src: [:0]const u8, fs_src: [:0]const u8) !GLuint {
+        if (r.spirv_supported) {
+            if (r.compileSpirvProgram(spv)) |prog| {
+                return prog;
+            } else |_| {
+                r.spirv_supported = false;
+            }
+        }
+        return r.compileProgram(vs_src, fs_src);
+    }
+
+    fn compileSpirvProgram(r: *const OpenGlRenderer, spv: []align(4) const u8) !GLuint {
+        const vs = try r.compileSpirvShader(GL_VERTEX_SHADER, spv, "vertex");
+        defer r.gl.DeleteShader(vs);
+        const fs = try r.compileSpirvShader(GL_FRAGMENT_SHADER, spv, "fragment");
+        defer r.gl.DeleteShader(fs);
+        const prog = r.gl.CreateProgram();
+        if (prog == 0) return error.GlCreateProgramFailed;
+        errdefer r.gl.DeleteProgram(prog);
+        r.gl.AttachShader(prog, vs);
+        r.gl.AttachShader(prog, fs);
+        r.gl.LinkProgram(prog);
+        var ok: GLint = 0;
+        r.gl.GetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (ok == 0) return error.GlShaderLinkFailed;
+        return prog;
+    }
+
+    fn compileSpirvShader(r: *const OpenGlRenderer, kind: GLenum, spv: []align(4) const u8, entry: [*:0]const u8) !GLuint {
+        const shader_bin = r.gl.ShaderBinary orelse return error.SpirvNotSupported;
+        const spec_shader = r.gl.SpecializeShader orelse return error.SpirvNotSupported;
+        const sh = r.gl.CreateShader(kind);
+        if (sh == 0) return error.GlCreateShaderFailed;
+        errdefer r.gl.DeleteShader(sh);
+        const shaders_arr = [1]GLuint{sh};
+        shader_bin(1, &shaders_arr, GL_SHADER_BINARY_FORMAT_SPIR_V, spv.ptr, @intCast(spv.len));
+        spec_shader(sh, entry, 0, null, null);
+        var ok: GLint = 0;
+        r.gl.GetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+        if (ok == 0) return error.GlShaderCompileFailed;
+        return sh;
     }
 
     fn compileProgram(r: *const OpenGlRenderer, vs_src: [:0]const u8, fs_src: [:0]const u8) !GLuint {
@@ -267,6 +403,7 @@ pub const OpenGlRenderer = struct {
             r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            r.gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, @intCast(GL_RED));
             r.gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
             r.gl.TexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, null);
             r.atlas_stale = all;
@@ -442,6 +579,648 @@ pub const OpenGlRenderer = struct {
     fn setGlScissor(r: *const OpenGlRenderer, target_height: u32, vp: Viewport) void {
         const y_bottom = @as(i32, @intCast(target_height)) - (vp.y + @as(i32, @intCast(vp.height)));
         r.gl.Scissor(vp.x, y_bottom, @intCast(vp.width), @intCast(vp.height));
+    }
+};
+
+// --- Offscreen EGL + OpenGL Context for `OpenGlArea` -------------------------
+
+const EGLDisplay = ?*anyopaque;
+const EGLConfig = ?*anyopaque;
+const EGLContext = ?*anyopaque;
+const EGLSurface = ?*anyopaque;
+const EGLNativeDisplayType = ?*anyopaque;
+const EGLint = i32;
+const EGLenum = c_uint;
+const EGLBoolean = c_uint;
+
+const EGL_FALSE: EGLBoolean = 0;
+const EGL_DEFAULT_DISPLAY: EGLNativeDisplayType = null;
+const EGL_NO_CONTEXT: EGLContext = null;
+const EGL_NO_DISPLAY: EGLDisplay = null;
+const EGL_NO_SURFACE: EGLSurface = null;
+
+const EGL_ALPHA_SIZE: EGLint = 0x3021;
+const EGL_BLUE_SIZE: EGLint = 0x3022;
+const EGL_GREEN_SIZE: EGLint = 0x3023;
+const EGL_RED_SIZE: EGLint = 0x3024;
+const EGL_DEPTH_SIZE: EGLint = 0x3025;
+const EGL_NONE: EGLint = 0x3038;
+const EGL_SURFACE_TYPE: EGLint = 0x3033;
+const EGL_PBUFFER_BIT: EGLint = 0x0001;
+const EGL_RENDERABLE_TYPE: EGLint = 0x3040;
+const EGL_OPENGL_BIT: EGLint = 0x0008;
+const EGL_WIDTH: EGLint = 0x3057;
+const EGL_HEIGHT: EGLint = 0x3056;
+const EGL_CONTEXT_MAJOR_VERSION: EGLint = 0x3098;
+const EGL_CONTEXT_MINOR_VERSION: EGLint = 0x30FB;
+const EGL_CONTEXT_OPENGL_PROFILE_MASK: EGLint = 0x30FD;
+const EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT: EGLint = 0x00000001;
+const EGL_OPENGL_API: EGLenum = 0x30A2;
+
+const EglProcs = struct {
+    GetDisplay: *const fn (EGLNativeDisplayType) callconv(.c) EGLDisplay,
+    Initialize: *const fn (EGLDisplay, ?*EGLint, ?*EGLint) callconv(.c) EGLBoolean,
+    Terminate: *const fn (EGLDisplay) callconv(.c) EGLBoolean,
+    BindAPI: *const fn (EGLenum) callconv(.c) EGLBoolean,
+    ChooseConfig: *const fn (EGLDisplay, [*]const EGLint, [*]EGLConfig, EGLint, *EGLint) callconv(.c) EGLBoolean,
+    CreatePbufferSurface: *const fn (EGLDisplay, EGLConfig, [*]const EGLint) callconv(.c) EGLSurface,
+    DestroySurface: *const fn (EGLDisplay, EGLSurface) callconv(.c) EGLBoolean,
+    CreateContext: *const fn (EGLDisplay, EGLConfig, EGLContext, [*]const EGLint) callconv(.c) EGLContext,
+    DestroyContext: *const fn (EGLDisplay, EGLContext) callconv(.c) EGLBoolean,
+    MakeCurrent: *const fn (EGLDisplay, EGLSurface, EGLSurface, EGLContext) callconv(.c) EGLBoolean,
+    GetProcAddress: *const fn ([*:0]const u8) callconv(.c) ?*const anyopaque,
+
+    fn load(lib: *std.DynLib) !EglProcs {
+        var p: EglProcs = undefined;
+        inline for (@typeInfo(EglProcs).@"struct".field_names) |field_name| {
+            const name: [:0]const u8 = "egl" ++ field_name;
+            @field(p, field_name) = lib.lookup(@FieldType(EglProcs, field_name), name) orelse return error.MissingEglFunction;
+        }
+        return p;
+    }
+};
+
+/// Full OpenGL 3.3+ / 4.6 Core function table available on `OpenGlContext.gl`.
+pub const ContextProcs = struct {
+    GetIntegerv: GetIntegervFn,
+    GetStringi: GetStringiFn,
+    Enable: *const fn (GLenum) callconv(.c) void,
+    Disable: *const fn (GLenum) callconv(.c) void,
+    BlendFuncSeparate: *const fn (GLenum, GLenum, GLenum, GLenum) callconv(.c) void,
+    Viewport: *const fn (GLint, GLint, GLsizei, GLsizei) callconv(.c) void,
+    Scissor: *const fn (GLint, GLint, GLsizei, GLsizei) callconv(.c) void,
+    ClearColor: *const fn (GLfloat, GLfloat, GLfloat, GLfloat) callconv(.c) void,
+    Clear: *const fn (GLbitfield) callconv(.c) void,
+    DepthFunc: *const fn (GLenum) callconv(.c) void,
+    CullFace: *const fn (GLenum) callconv(.c) void,
+    FrontFace: *const fn (GLenum) callconv(.c) void,
+    BindFramebuffer: *const fn (GLenum, GLuint) callconv(.c) void,
+    GenFramebuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteFramebuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    GenRenderbuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteRenderbuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    BindRenderbuffer: *const fn (GLenum, GLuint) callconv(.c) void,
+    RenderbufferStorage: *const fn (GLenum, GLenum, GLsizei, GLsizei) callconv(.c) void,
+    RenderbufferStorageMultisample: *const fn (GLenum, GLsizei, GLenum, GLsizei, GLsizei) callconv(.c) void,
+    FramebufferRenderbuffer: *const fn (GLenum, GLenum, GLenum, GLuint) callconv(.c) void,
+    BlitFramebuffer: *const fn (GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) callconv(.c) void,
+    ReadPixels: *const fn (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, *anyopaque) callconv(.c) void,
+    GenBuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteBuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    BindBuffer: *const fn (GLenum, GLuint) callconv(.c) void,
+    BindBufferBase: *const fn (GLenum, GLuint, GLuint) callconv(.c) void,
+    BufferData: *const fn (GLenum, GLsizeiptr, ?*const anyopaque, GLenum) callconv(.c) void,
+    BufferSubData: *const fn (GLenum, GLintptr, GLsizeiptr, ?*const anyopaque) callconv(.c) void,
+    GenVertexArrays: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteVertexArrays: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    BindVertexArray: *const fn (GLuint) callconv(.c) void,
+    EnableVertexAttribArray: *const fn (GLuint) callconv(.c) void,
+    VertexAttribPointer: *const fn (GLuint, GLint, GLenum, GLboolean, GLsizei, ?*const anyopaque) callconv(.c) void,
+    CreateShader: *const fn (GLenum) callconv(.c) GLuint,
+    DeleteShader: *const fn (GLuint) callconv(.c) void,
+    ShaderSource: *const fn (GLuint, GLsizei, [*]const [*:0]const u8, ?[*]const GLint) callconv(.c) void,
+    CompileShader: *const fn (GLuint) callconv(.c) void,
+    GetShaderiv: *const fn (GLuint, GLenum, *GLint) callconv(.c) void,
+    CreateProgram: *const fn () callconv(.c) GLuint,
+    DeleteProgram: *const fn (GLuint) callconv(.c) void,
+    AttachShader: *const fn (GLuint, GLuint) callconv(.c) void,
+    LinkProgram: *const fn (GLuint) callconv(.c) void,
+    GetProgramiv: *const fn (GLuint, GLenum, *GLint) callconv(.c) void,
+    UseProgram: *const fn (GLuint) callconv(.c) void,
+    GetUniformLocation: *const fn (GLuint, [*:0]const u8) callconv(.c) GLint,
+    GetUniformBlockIndex: *const fn (GLuint, [*:0]const u8) callconv(.c) GLuint,
+    UniformBlockBinding: *const fn (GLuint, GLuint, GLuint) callconv(.c) void,
+    Uniform1i: *const fn (GLint, GLint) callconv(.c) void,
+    Uniform1f: *const fn (GLint, GLfloat) callconv(.c) void,
+    Uniform2f: *const fn (GLint, GLfloat, GLfloat) callconv(.c) void,
+    Uniform3f: *const fn (GLint, GLfloat, GLfloat, GLfloat) callconv(.c) void,
+    Uniform4f: *const fn (GLint, GLfloat, GLfloat, GLfloat, GLfloat) callconv(.c) void,
+    Uniform4fv: *const fn (GLint, GLsizei, [*]const GLfloat) callconv(.c) void,
+    UniformMatrix4fv: *const fn (GLint, GLsizei, GLboolean, [*]const GLfloat) callconv(.c) void,
+    GenTextures: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
+    DeleteTextures: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
+    ActiveTexture: *const fn (GLenum) callconv(.c) void,
+    BindTexture: *const fn (GLenum, GLuint) callconv(.c) void,
+    PixelStorei: *const fn (GLenum, GLint) callconv(.c) void,
+    TexParameteri: *const fn (GLenum, GLenum, GLint) callconv(.c) void,
+    TexImage2D: *const fn (GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, ?*const anyopaque) callconv(.c) void,
+    TexSubImage2D: *const fn (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, ?*const anyopaque) callconv(.c) void,
+    DrawArrays: *const fn (GLenum, GLint, GLsizei) callconv(.c) void,
+    DrawElements: *const fn (GLenum, GLsizei, GLenum, ?*const anyopaque) callconv(.c) void,
+
+    // Optional OpenGL 4.6 / GL_ARB_gl_spirv entry points
+    ShaderBinary: ?ShaderBinaryFn = null,
+    SpecializeShader: ?SpecializeShaderFn = null,
+
+    pub fn load(get_proc: GetProcAddress) !ContextProcs {
+        var p: ContextProcs = undefined;
+        const info = @typeInfo(ContextProcs).@"struct";
+        inline for (info.field_names, info.field_types) |field_name, FieldType| {
+            if (@typeInfo(FieldType) == .optional) {
+                @field(p, field_name) = null;
+            } else {
+                const name: [*:0]const u8 = "gl" ++ field_name;
+                const sym = get_proc(name) orelse return error.MissingGlFunction;
+                @field(p, field_name) = @ptrCast(sym);
+            }
+        }
+        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(sym);
+        if (get_proc("glSpecializeShader")) |sym| {
+            p.SpecializeShader = @ptrCast(sym);
+        } else if (get_proc("glSpecializeShaderARB")) |sym| {
+            p.SpecializeShader = @ptrCast(sym);
+        }
+        return p;
+    }
+};
+
+/// Managed offscreen OpenGL Core context with configurable MSAA framebuffer,
+/// native OpenGL 4.6 / `GL_ARB_gl_spirv` support (with GLSL fallback), and
+/// automatic resolve/readback for `OpenGlArea`.
+pub const OffscreenContext = struct {
+    gpa: std.mem.Allocator,
+    egl_lib: std.DynLib,
+    egl: EglProcs,
+    dpy: EGLDisplay = null,
+    surf: EGLSurface = null,
+    ctx: EGLContext = null,
+    gl: ContextProcs = undefined,
+    spirv_supported: bool = false,
+    ubo: GLuint = 0,
+    width: u32 = 0,
+    height: u32 = 0,
+    msaa_fbo: GLuint = 0,
+    msaa_color_rb: GLuint = 0,
+    msaa_depth_rb: GLuint = 0,
+    resolve_fbo: GLuint = 0,
+    resolve_color_rb: GLuint = 0,
+    fbo_w: u32 = 0,
+    fbo_h: u32 = 0,
+    fbo_samples: u8 = 0,
+    active_pipeline: Pipeline = .{},
+    scratch: std.ArrayList(u32) = .empty,
+
+    pub const ubo_capacity: usize = 256;
+
+    pub const Buffer = struct {
+        id: GLuint = 0,
+    };
+
+    pub const PipelineDesc = struct {
+        /// Optional SPIR-V binary (`vertex` + `fragment` entry points). Used when `supportsSpirv()` is true.
+        shader_spv: ?[]align(4) const u8 = null,
+        /// Optional GLSL fallback vertex shader source.
+        vs_source: ?[:0]const u8 = null,
+        /// Optional GLSL fallback fragment shader source.
+        fs_source: ?[:0]const u8 = null,
+        vertex_stride: u32,
+        attributes: []const shaders.Attribute,
+        cull_back: bool = true,
+        front_ccw: bool = true,
+        depth_test: bool = true,
+        blend: bool = false,
+    };
+
+    pub const Pipeline = struct {
+        prog: GLuint = 0,
+        vao: GLuint = 0,
+        vertex_stride: u32 = 0,
+        attrs: [8]shaders.Attribute = undefined,
+        attr_count: usize = 0,
+        cull_back: bool = true,
+        front_ccw: bool = true,
+        depth_test: bool = true,
+        blend: bool = false,
+    };
+
+    pub fn init(gpa: std.mem.Allocator) !OffscreenContext {
+        var egl_lib = std.DynLib.open("libEGL.so.1") catch try std.DynLib.open("libEGL.so");
+        errdefer egl_lib.close();
+        const egl = try EglProcs.load(&egl_lib);
+
+        const dpy = egl.GetDisplay(EGL_DEFAULT_DISPLAY);
+        if (dpy == EGL_NO_DISPLAY) return error.NoEglDisplay;
+        if (egl.Initialize(dpy, null, null) == EGL_FALSE) return error.EglInitFailed;
+        errdefer _ = egl.Terminate(dpy);
+
+        if (egl.BindAPI(EGL_OPENGL_API) == EGL_FALSE) return error.EglBindApiFailed;
+
+        const cfg_attribs = [_]EGLint{
+            EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+            EGL_RED_SIZE,        8,
+            EGL_GREEN_SIZE,      8,
+            EGL_BLUE_SIZE,       8,
+            EGL_ALPHA_SIZE,      8,
+            EGL_DEPTH_SIZE,      24,
+            EGL_NONE,
+        };
+        var config: EGLConfig = null;
+        var num_configs: EGLint = 0;
+        if (egl.ChooseConfig(dpy, &cfg_attribs, @ptrCast(&config), 1, &num_configs) == EGL_FALSE or num_configs == 0) {
+            return error.EglChooseConfigFailed;
+        }
+
+        const pbuf_attribs = [_]EGLint{ EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE };
+        const surf = egl.CreatePbufferSurface(dpy, config, &pbuf_attribs);
+        errdefer if (surf != EGL_NO_SURFACE) {
+            _ = egl.DestroySurface(dpy, surf);
+        };
+
+        // Request OpenGL 4.6 Core first (native SPIR-V support), falling back to 4.5 and 3.3 Core.
+        const versions = [_][2]EGLint{ .{ 4, 6 }, .{ 4, 5 }, .{ 3, 3 } };
+        var ctx: EGLContext = EGL_NO_CONTEXT;
+        for (versions) |ver| {
+            const ctx_attribs = [_]EGLint{
+                EGL_CONTEXT_MAJOR_VERSION,       ver[0],
+                EGL_CONTEXT_MINOR_VERSION,       ver[1],
+                EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+                EGL_NONE,
+            };
+            ctx = egl.CreateContext(dpy, config, EGL_NO_CONTEXT, &ctx_attribs);
+            if (ctx != EGL_NO_CONTEXT) break;
+        }
+        if (ctx == EGL_NO_CONTEXT) return error.EglCreateContextFailed;
+        errdefer _ = egl.DestroyContext(dpy, ctx);
+
+        if (egl.MakeCurrent(dpy, surf, surf, ctx) == EGL_FALSE) return error.EglMakeCurrentFailed;
+
+        const gl = try ContextProcs.load(egl.GetProcAddress);
+        const spirv_supported = querySpirvSupport(gl.GetIntegerv, gl.GetStringi, gl.ShaderBinary, gl.SpecializeShader);
+
+        var ubo: [1]GLuint = undefined;
+        gl.GenBuffers(1, &ubo);
+        gl.BindBuffer(GL_UNIFORM_BUFFER, ubo[0]);
+        gl.BufferData(GL_UNIFORM_BUFFER, ubo_capacity, null, GL_DYNAMIC_DRAW);
+        gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, ubo[0]);
+
+        return .{
+            .gpa = gpa,
+            .egl_lib = egl_lib,
+            .egl = egl,
+            .dpy = dpy,
+            .surf = surf,
+            .ctx = ctx,
+            .gl = gl,
+            .spirv_supported = spirv_supported,
+            .ubo = ubo[0],
+        };
+    }
+
+    pub fn deinit(self: *OffscreenContext) void {
+        self.scratch.deinit(self.gpa);
+        if (self.dpy != EGL_NO_DISPLAY) {
+            _ = self.egl.MakeCurrent(self.dpy, self.surf, self.surf, self.ctx);
+            if (self.ubo != 0) {
+                const bufs = [1]GLuint{self.ubo};
+                self.gl.DeleteBuffers(1, &bufs);
+            }
+            if (self.msaa_fbo != 0) {
+                const fbos = [2]GLuint{ self.msaa_fbo, self.resolve_fbo };
+                self.gl.DeleteFramebuffers(2, &fbos);
+                const rbs = [3]GLuint{ self.msaa_color_rb, self.msaa_depth_rb, self.resolve_color_rb };
+                self.gl.DeleteRenderbuffers(3, &rbs);
+            }
+            _ = self.egl.MakeCurrent(self.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            if (self.ctx != EGL_NO_CONTEXT) _ = self.egl.DestroyContext(self.dpy, self.ctx);
+            if (self.surf != EGL_NO_SURFACE) _ = self.egl.DestroySurface(self.dpy, self.surf);
+            _ = self.egl.Terminate(self.dpy);
+            self.dpy = EGL_NO_DISPLAY;
+        }
+        self.egl_lib.close();
+    }
+
+    pub fn makeCurrent(self: *const OffscreenContext) void {
+        _ = self.egl.MakeCurrent(self.dpy, self.surf, self.surf, self.ctx);
+    }
+
+    /// Returns true when the active OpenGL context supports SPIR-V shaders
+    /// natively (OpenGL 4.6 Core or `GL_ARB_gl_spirv`).
+    pub fn supportsSpirv(self: *const OffscreenContext) bool {
+        return self.spirv_supported;
+    }
+
+    pub fn aspect(self: *const OffscreenContext) f32 {
+        if (self.height == 0) return 1.0;
+        return @as(f32, @floatFromInt(self.width)) / @as(f32, @floatFromInt(self.height));
+    }
+
+    /// Creates a graphics pipeline using native SPIR-V (`glShaderBinary` +
+    /// `glSpecializeShader`) when `supportsSpirv()` is true and `shader_spv` is
+    /// provided, falling back to `vs_source` / `fs_source` GLSL shaders.
+    pub fn createPipeline(self: *OffscreenContext, desc: PipelineDesc) !Pipeline {
+        self.makeCurrent();
+        const prog: GLuint = blk: {
+            if (self.spirv_supported) {
+                if (desc.shader_spv) |spv| {
+                    if (self.compileSpirvProgram(spv)) |p| {
+                        break :blk p;
+                    } else |_| {
+                        self.spirv_supported = false;
+                    }
+                }
+            }
+            if (desc.vs_source != null and desc.fs_source != null) {
+                break :blk try self.compileProgram(desc.vs_source.?, desc.fs_source.?);
+            }
+            return error.GlShaderCompileFailed;
+        };
+        errdefer self.gl.DeleteProgram(prog);
+
+        var vao: [1]GLuint = undefined;
+        self.gl.GenVertexArrays(1, &vao);
+
+        var p: Pipeline = .{
+            .prog = prog,
+            .vao = vao[0],
+            .vertex_stride = desc.vertex_stride,
+            .attr_count = @min(desc.attributes.len, 8),
+            .cull_back = desc.cull_back,
+            .front_ccw = desc.front_ccw,
+            .depth_test = desc.depth_test,
+            .blend = desc.blend,
+        };
+        for (desc.attributes[0..p.attr_count], 0..) |a, i| p.attrs[i] = a;
+        return p;
+    }
+
+    pub fn destroyPipeline(self: *const OffscreenContext, p: Pipeline) void {
+        self.makeCurrent();
+        if (p.vao != 0) {
+            const vaos = [1]GLuint{p.vao};
+            self.gl.DeleteVertexArrays(1, &vaos);
+        }
+        if (p.prog != 0) self.gl.DeleteProgram(p.prog);
+    }
+
+    pub fn createVertexBuffer(self: *const OffscreenContext, comptime T: type, items: []const T) !Buffer {
+        self.makeCurrent();
+        var id: [1]GLuint = undefined;
+        self.gl.GenBuffers(1, &id);
+        self.gl.BindBuffer(GL_ARRAY_BUFFER, id[0]);
+        self.gl.BufferData(GL_ARRAY_BUFFER, @intCast(items.len * @sizeOf(T)), items.ptr, GL_STATIC_DRAW);
+        return .{ .id = id[0] };
+    }
+
+    pub fn createIndexBuffer(self: *const OffscreenContext, indices: []const u16) !Buffer {
+        self.makeCurrent();
+        var id: [1]GLuint = undefined;
+        self.gl.GenBuffers(1, &id);
+        self.gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, id[0]);
+        self.gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, @intCast(indices.len * @sizeOf(u16)), indices.ptr, GL_STATIC_DRAW);
+        return .{ .id = id[0] };
+    }
+
+    pub fn destroyBuffer(self: *const OffscreenContext, buf: Buffer) void {
+        self.makeCurrent();
+        if (buf.id != 0) {
+            const ids = [1]GLuint{buf.id};
+            self.gl.DeleteBuffers(1, &ids);
+        }
+    }
+
+    pub fn bindPipeline(self: *OffscreenContext, p: Pipeline) void {
+        self.active_pipeline = p;
+        self.gl.UseProgram(p.prog);
+        self.gl.BindVertexArray(p.vao);
+        self.gl.BindBufferBase(GL_UNIFORM_BUFFER, 0, self.ubo);
+        if (p.depth_test) self.gl.Enable(GL_DEPTH_TEST) else self.gl.Disable(GL_DEPTH_TEST);
+        if (p.cull_back) {
+            self.gl.Enable(GL_CULL_FACE);
+            self.gl.CullFace(GL_BACK);
+        } else {
+            self.gl.Disable(GL_CULL_FACE);
+        }
+        self.gl.FrontFace(if (p.front_ccw) GL_CCW else GL_CW);
+        if (p.blend) {
+            self.gl.Enable(GL_BLEND);
+            self.gl.BlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            self.gl.Disable(GL_BLEND);
+        }
+    }
+
+    pub fn setUniforms(self: *const OffscreenContext, comptime T: type, value: *const T) void {
+        std.debug.assert(@sizeOf(T) <= ubo_capacity);
+        self.gl.BindBuffer(GL_UNIFORM_BUFFER, self.ubo);
+        self.gl.BufferSubData(GL_UNIFORM_BUFFER, 0, @sizeOf(T), value);
+    }
+
+    pub fn bindVertexBuffer(self: *const OffscreenContext, buf: Buffer) void {
+        const p = &self.active_pipeline;
+        self.gl.BindBuffer(GL_ARRAY_BUFFER, buf.id);
+        for (p.attrs[0..p.attr_count]) |attr| {
+            self.gl.EnableVertexAttribArray(attr.location);
+            self.gl.VertexAttribPointer(
+                attr.location,
+                @intCast(attr.components),
+                GL_FLOAT,
+                GL_FALSE,
+                @intCast(p.vertex_stride),
+                @ptrFromInt(attr.offset),
+            );
+        }
+    }
+
+    pub fn bindIndexBuffer16(self: *const OffscreenContext, buf: Buffer) void {
+        self.gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, buf.id);
+    }
+
+    pub fn drawIndexed(self: *const OffscreenContext, index_count: u32) void {
+        self.gl.DrawElements(GL_TRIANGLES, @intCast(index_count), GL_UNSIGNED_SHORT, null);
+    }
+
+    pub fn compileSpirvProgram(self: *const OffscreenContext, spv: []align(4) const u8) !GLuint {
+        const vs = try self.compileSpirvShader(GL_VERTEX_SHADER, spv, "vertex");
+        defer self.gl.DeleteShader(vs);
+        const fs = try self.compileSpirvShader(GL_FRAGMENT_SHADER, spv, "fragment");
+        defer self.gl.DeleteShader(fs);
+        const prog = self.gl.CreateProgram();
+        if (prog == 0) return error.GlCreateProgramFailed;
+        errdefer self.gl.DeleteProgram(prog);
+        self.gl.AttachShader(prog, vs);
+        self.gl.AttachShader(prog, fs);
+        self.gl.LinkProgram(prog);
+        var ok: GLint = 0;
+        self.gl.GetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (ok == 0) return error.GlShaderLinkFailed;
+        return prog;
+    }
+
+    pub fn compileSpirvShader(self: *const OffscreenContext, kind: GLenum, spv: []align(4) const u8, entry: [*:0]const u8) !GLuint {
+        const shader_bin = self.gl.ShaderBinary orelse return error.SpirvNotSupported;
+        const spec_shader = self.gl.SpecializeShader orelse return error.SpirvNotSupported;
+        const sh = self.gl.CreateShader(kind);
+        if (sh == 0) return error.GlCreateShaderFailed;
+        errdefer self.gl.DeleteShader(sh);
+        const shaders_arr = [1]GLuint{sh};
+        shader_bin(1, &shaders_arr, GL_SHADER_BINARY_FORMAT_SPIR_V, spv.ptr, @intCast(spv.len));
+        spec_shader(sh, entry, 0, null, null);
+        var ok: GLint = 0;
+        self.gl.GetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+        if (ok == 0) return error.GlShaderCompileFailed;
+        return sh;
+    }
+
+    pub fn compileProgram(self: *const OffscreenContext, vs_src: [:0]const u8, fs_src: [:0]const u8) !GLuint {
+        const vs = try self.compileShader(GL_VERTEX_SHADER, vs_src);
+        defer self.gl.DeleteShader(vs);
+        const fs = try self.compileShader(GL_FRAGMENT_SHADER, fs_src);
+        defer self.gl.DeleteShader(fs);
+        const prog = self.gl.CreateProgram();
+        if (prog == 0) return error.GlCreateProgramFailed;
+        errdefer self.gl.DeleteProgram(prog);
+        self.gl.AttachShader(prog, vs);
+        self.gl.AttachShader(prog, fs);
+        self.gl.LinkProgram(prog);
+        var ok: GLint = 0;
+        self.gl.GetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (ok == 0) return error.GlShaderLinkFailed;
+        const blk_idx = self.gl.GetUniformBlockIndex(prog, "Uniforms");
+        if (blk_idx != GL_INVALID_INDEX) {
+            self.gl.UniformBlockBinding(prog, blk_idx, 0);
+        }
+        return prog;
+    }
+
+    pub fn compileShader(self: *const OffscreenContext, kind: GLenum, src: [:0]const u8) !GLuint {
+        const sh = self.gl.CreateShader(kind);
+        if (sh == 0) return error.GlCreateShaderFailed;
+        errdefer self.gl.DeleteShader(sh);
+        const ptrs = [1][*:0]const u8{src.ptr};
+        self.gl.ShaderSource(sh, 1, &ptrs, null);
+        self.gl.CompileShader(sh);
+        var ok: GLint = 0;
+        self.gl.GetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+        if (ok == 0) return error.GlShaderCompileFailed;
+        return sh;
+    }
+
+    fn ensureFbo(self: *OffscreenContext, w: u32, h: u32, samples: u8) void {
+        const clamped_samples: u8 = switch (samples) {
+            0, 1 => 1,
+            2, 3 => 2,
+            4...7 => 4,
+            else => 8,
+        };
+        if (self.fbo_w == w and self.fbo_h == h and self.fbo_samples == clamped_samples and self.msaa_fbo != 0) return;
+        if (self.msaa_fbo == 0) {
+            var fbos: [2]GLuint = undefined;
+            self.gl.GenFramebuffers(2, &fbos);
+            self.msaa_fbo = fbos[0];
+            self.resolve_fbo = fbos[1];
+            var rbs: [3]GLuint = undefined;
+            self.gl.GenRenderbuffers(3, &rbs);
+            self.msaa_color_rb = rbs[0];
+            self.msaa_depth_rb = rbs[1];
+            self.resolve_color_rb = rbs[2];
+        }
+        const sw: GLsizei = @intCast(w);
+        const sh: GLsizei = @intCast(h);
+
+        self.gl.BindFramebuffer(GL_FRAMEBUFFER, self.msaa_fbo);
+        self.gl.BindRenderbuffer(GL_RENDERBUFFER, self.msaa_color_rb);
+        if (clamped_samples <= 1) {
+            self.gl.RenderbufferStorage(GL_RENDERBUFFER, @intCast(GL_RGBA8), sw, sh);
+        } else {
+            self.gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, @intCast(clamped_samples), @intCast(GL_RGBA8), sw, sh);
+        }
+        self.gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, self.msaa_color_rb);
+
+        self.gl.BindRenderbuffer(GL_RENDERBUFFER, self.msaa_depth_rb);
+        if (clamped_samples <= 1) {
+            self.gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sw, sh);
+        } else {
+            self.gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, @intCast(clamped_samples), GL_DEPTH_COMPONENT24, sw, sh);
+        }
+        self.gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, self.msaa_depth_rb);
+
+        self.gl.BindFramebuffer(GL_FRAMEBUFFER, self.resolve_fbo);
+        self.gl.BindRenderbuffer(GL_RENDERBUFFER, self.resolve_color_rb);
+        self.gl.RenderbufferStorage(GL_RENDERBUFFER, @intCast(GL_RGBA8), sw, sh);
+        self.gl.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, self.resolve_color_rb);
+
+        self.fbo_w = w;
+        self.fbo_h = h;
+        self.fbo_samples = clamped_samples;
+    }
+
+    pub fn renderToImage(
+        self: *OffscreenContext,
+        target: *software.Image,
+        area: GpuArea,
+        clear_color: ?Color,
+        samples: u8,
+        user_ctx: anytype,
+        comptime render_fn: anytype,
+    ) !void {
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return;
+        const sc = if (area.scissor) |s| vp.intersect(s) orelse return else vp;
+
+        self.makeCurrent();
+        self.ensureFbo(vp.width, vp.height, samples);
+        self.width = vp.width;
+        self.height = vp.height;
+
+        self.gl.BindFramebuffer(GL_FRAMEBUFFER, self.msaa_fbo);
+        self.gl.Viewport(0, 0, @intCast(vp.width), @intCast(vp.height));
+        self.gl.Disable(GL_SCISSOR_TEST);
+        self.gl.Enable(GL_DEPTH_TEST);
+        self.gl.DepthFunc(GL_LESS);
+        self.gl.Enable(GL_CULL_FACE);
+        self.gl.CullFace(GL_BACK);
+        self.gl.FrontFace(GL_CCW);
+
+        if (clear_color) |bg| {
+            self.gl.ClearColor(bg.r, bg.g, bg.b, bg.a);
+            self.gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
+
+        try render_fn(user_ctx, self);
+
+        self.gl.BindFramebuffer(GL_READ_FRAMEBUFFER, self.msaa_fbo);
+        self.gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, self.resolve_fbo);
+        self.gl.BlitFramebuffer(
+            0,
+            0,
+            @intCast(vp.width),
+            @intCast(vp.height),
+            0,
+            0,
+            @intCast(vp.width),
+            @intCast(vp.height),
+            GL_COLOR_BUFFER_BIT,
+            @intCast(GL_NEAREST),
+        );
+
+        self.gl.BindFramebuffer(GL_FRAMEBUFFER, self.resolve_fbo);
+        const local_x: GLint = sc.x - vp.x;
+        // OpenGL FBO row 0 is at the bottom; flip Y when reading and copying into top-down `Image`.
+        const local_y: GLint = @as(i32, @intCast(vp.height)) - (sc.y - vp.y + @as(i32, @intCast(sc.height)));
+        const count = @as(usize, sc.width) * sc.height;
+        try self.scratch.resize(self.gpa, count);
+        self.gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+        self.gl.ReadPixels(
+            local_x,
+            local_y,
+            @intCast(sc.width),
+            @intCast(sc.height),
+            GL_BGRA,
+            GL_UNSIGNED_BYTE,
+            self.scratch.items.ptr,
+        );
+
+        const dst_stride = target.rowStride();
+        for (0..sc.height) |row| {
+            const dst_y: usize = @intCast(sc.y + @as(i32, @intCast(row)));
+            if (dst_y >= target.height) break;
+            const dst_x: usize = @intCast(@max(sc.x, 0));
+            const copy_w = @min(@as(usize, sc.width), target.width -| dst_x);
+            const gl_row = sc.height - 1 - row;
+            const src_row = self.scratch.items[gl_row * sc.width ..][0..copy_w];
+            @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..copy_w], src_row);
+        }
     }
 };
 

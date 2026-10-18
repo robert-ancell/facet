@@ -35,8 +35,8 @@ fn addIconFont(b: *std.Build) IconFont {
     return .{ .ttf = ttf, .codepoints = codepoints };
 }
 
-fn addSpirv(b: *std.Build, name: []const u8, source: []const u8) std.Build.LazyPath {
-    const spirv_target = b.resolveTargetQuery(.{ .cpu_arch = .spirv64, .os_tag = .vulkan, .ofmt = .spirv });
+fn addSpirv(b: *std.Build, name: []const u8, source: []const u8, os_tag: std.Target.Os.Tag) std.Build.LazyPath {
+    const spirv_target = b.resolveTargetQuery(.{ .cpu_arch = .spirv64, .os_tag = os_tag, .ofmt = .spirv });
     const gpu = b.createModule(.{
         .root_source_file = b.path("src/gfx/shaders/gpu.zig"),
         .target = spirv_target,
@@ -105,6 +105,7 @@ pub fn createModules(
         .root_source_file = b.path("src/gfx/gfx.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
         .imports = &.{
             .{ .name = "font", .module = font },
         },
@@ -112,8 +113,10 @@ pub fn createModules(
     gfx.addAnonymousImport("FiraSans-Regular.ttf", .{ .root_source_file = b.path("fonts/FiraSans-Regular.ttf") });
     gfx.addAnonymousImport("TwemojiMozilla.ttf", .{ .root_source_file = b.path("fonts/TwemojiMozilla.ttf") });
     for ([_][]const u8{ "shape", "solid", "text", "image" }) |shader_name| {
-        const spv = addSpirv(b, shader_name, b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}));
+        const spv = addSpirv(b, shader_name, b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .vulkan);
         gfx.addAnonymousImport(b.fmt("{s}.spv", .{shader_name}), .{ .root_source_file = spv });
+        const gl_spv = addSpirv(b, b.fmt("{s}_gl", .{shader_name}), b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .opengl);
+        gfx.addAnonymousImport(b.fmt("{s}_gl.spv", .{shader_name}), .{ .root_source_file = gl_spv });
     }
 
     const window = b.createModule(.{
@@ -171,18 +174,23 @@ pub fn build(b: *std.Build) void {
 
     const icon_font = addIconFont(b);
     const mods = createModules(b, "facet", target, optimize, icon_font);
+    const polyhedron_gl_spv = addSpirv(b, "polyhedron_gl", "examples/shaders/polyhedron.zig", .opengl);
+    const polyhedron_vk_spv = addSpirv(b, "polyhedron_vk", "examples/shaders/polyhedron.zig", .vulkan);
 
     const examples = [_]struct {
         name: []const u8,
         source: []const u8,
         desc: []const u8,
+        polyhedron_spv: ?std.Build.LazyPath = null,
     }{
-        .{ .name = "hello", .source = "examples/hello.zig", .desc = "Run the Hello World counter example" },
-        .{ .name = "controls", .source = "examples/controls.zig", .desc = "Run the Material 3 controls example" },
-        .{ .name = "navigation", .source = "examples/navigation.zig", .desc = "Run the navigation, dialog, and snackbar example" },
-        .{ .name = "lists", .source = "examples/lists_and_drag.zig", .desc = "Run the LazyGrid and drag-and-drop example" },
-        .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted TextArea editor example" },
-        .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the custom 2D canvas and QR code example" },
+        .{ .name = "hello", .source = "examples/hello.zig", .desc = "Run the interactive counter example" },
+        .{ .name = "controls", .source = "examples/controls.zig", .desc = "Run the form controls and theme switcher example" },
+        .{ .name = "navigation", .source = "examples/navigation.zig", .desc = "Run the inbox navigation, dialog, and snackbar example" },
+        .{ .name = "lists", .source = "examples/lists_and_drag.zig", .desc = "Run the 500-item grid and drag-and-drop example" },
+        .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted code editor example" },
+        .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the animated wave viewer and QR code generator example" },
+        .{ .name = "opengl", .source = "examples/opengl.zig", .desc = "Run the OpenGL 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_gl_spv },
+        .{ .name = "vulkan", .source = "examples/vulkan.zig", .desc = "Run the Vulkan 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_vk_spv },
         .{ .name = "showcase", .source = "examples/showcase.zig", .desc = "Run the interactive Material 3 widget showcase" },
     };
 
@@ -196,6 +204,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{.{ .name = "facet", .module = mods.facet }},
         });
+        if (ex.polyhedron_spv) |spv| {
+            mod.addAnonymousImport("polyhedron.spv", .{ .root_source_file = spv });
+        }
         const exe = b.addExecutable(.{
             .name = ex.name,
             .root_module = mod,

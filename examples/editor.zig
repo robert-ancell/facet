@@ -1,8 +1,4 @@
-//! Text Editor example: demonstrates multiline TextArea editing backed by
-//! a TextDocument with custom syntax highlighting.
-//!
-//! Run with:
-//!     zig build run-editor
+//! Multi-line code editor with Zig syntax highlighting (`zig build run-editor`).
 
 const std = @import("std");
 const facet = @import("facet");

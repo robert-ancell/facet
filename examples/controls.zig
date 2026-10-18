@@ -1,9 +1,4 @@
-//! Controls example: demonstrates Material 3 form controls, text fields,
-//! sliders, switches, checkboxes, radio buttons, dropdown selects, pill
-//! bars, chips, and light/dark theme switching.
-//!
-//! Run with:
-//!     zig build run-controls
+//! Interactive form controls and theme switcher (`zig build run-controls`).
 
 const std = @import("std");
 const facet = @import("facet");

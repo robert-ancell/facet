@@ -81,6 +81,8 @@ pub const lazy_grid = @import("lazy_grid.zig");
 pub const icon = @import("icon.zig");
 pub const image = @import("image.zig");
 pub const qr_code = @import("qr_code.zig");
+pub const opengl_area = @import("opengl_area.zig");
+pub const vulkan_area = @import("vulkan_area.zig");
 /// The icons there are (`icons.Icon`), and their font.
 pub const icons = @import("icons");
 pub const keymap = @import("keymap.zig");
@@ -174,6 +176,8 @@ pub const LazyGrid = lazy_grid.LazyGrid;
 pub const Icon = icon.Icon;
 pub const Image = image.Image;
 pub const QrCode = qr_code.QrCode;
+pub const OpenGlArea = opengl_area.OpenGlArea;
+pub const VulkanArea = vulkan_area.VulkanArea;
 
 pub const Painter = painter.Painter;
 pub const GpuArea = painter.GpuArea;
@@ -230,6 +234,8 @@ test {
     _ = icon;
     _ = image;
     _ = qr_code;
+    _ = opengl_area;
+    _ = vulkan_area;
     _ = keymap;
     _ = painter;
     _ = damage;

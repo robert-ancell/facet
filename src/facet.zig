@@ -40,6 +40,10 @@ pub const Rect = ui.Rect;
 pub const Constraints = ui.Constraints;
 pub const Insets = ui.Insets;
 pub const Alignment = ui.Alignment;
+pub const Color = gfx.Color;
+pub const Radii = gfx.Radii;
+pub const btn_left = ui.btn_left;
+pub const btn_right = ui.btn_right;
 
 pub const Empty = ui.Empty;
 pub const SizedBox = ui.SizedBox;
@@ -105,11 +109,15 @@ pub const LazyGrid = ui.LazyGrid;
 pub const Icon = ui.Icon;
 pub const Image = ui.Image;
 pub const QrCode = ui.QrCode;
+pub const OpenGlArea = ui.OpenGlArea;
+pub const VulkanArea = ui.VulkanArea;
 
 pub const Renderer = gfx.Renderer;
 pub const SoftwareRenderer = gfx.SoftwareRenderer;
 pub const OpenGlRenderer = gfx.OpenGlRenderer;
+pub const OpenGlContext = gfx.OpenGlContext;
 pub const VulkanRenderer = gfx.VulkanRenderer;
+pub const VulkanContext = gfx.VulkanContext;
 pub const Window = window.Window;
 pub const WaylandWindow = window.WaylandWindow;
 pub const Controls = window.Controls;
