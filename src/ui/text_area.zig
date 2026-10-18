@@ -239,9 +239,6 @@ pub const TextArea = struct {
         preedit_buf: [128]u8 = undefined,
         preedit_len: usize = 0,
         last_change_other: bool = false,
-        last_click_ns: u64 = 0,
-        last_click_pos: Point = .{ 0, 0 },
-        click_count: u8 = 0,
 
         pub fn deinit(s: *State) void {
             if (s.gpa) |g| {
@@ -472,21 +469,9 @@ pub const TextArea = struct {
             .press => |pr| {
                 if (pr.button != widget.btn_left) return false;
                 n.ui.focus(n);
-                const now = n.ui.now_ns;
-                const multi_click_ns = 400 * std.time.ns_per_ms;
-                const multi_click_slop = 6;
-                if (st.click_count > 0 and
-                    now -| st.last_click_ns <= multi_click_ns and
-                    @abs(pr.pos[0] - st.last_click_pos[0]) <= multi_click_slop and
-                    @abs(pr.pos[1] - st.last_click_pos[1]) <= multi_click_slop)
-                {
-                    st.click_count = if (st.click_count >= 3) 1 else st.click_count + 1;
-                } else {
-                    st.click_count = 1;
-                }
-                st.last_click_ns = now;
-                st.last_click_pos = pr.pos;
-                switch (st.click_count) {
+                // A click places the cursor, a double click selects a word,
+                // and a triple click everything; a fourth starts over.
+                switch ((@max(pr.clicks, 1) - 1) % 3 + 1) {
                     1 => {
                         d.moveTo(self.offsetAt(n, pr.pos), false);
                         d.anchor = d.cursor;

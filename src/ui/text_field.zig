@@ -83,9 +83,6 @@ pub const TextField = struct {
         on_changed: ?widget.ValueCallback([]const u8) = null,
         /// Horizontal scroll offset in pixels.
         scroll: f32 = 0,
-        last_click_ns: u64 = 0,
-        last_click_pos: geometry.Point = .{ 0, 0 },
-        click_count: u8 = 0,
         preedit_buf: [capacity]u8 = undefined,
         preedit_len: usize = 0,
         preedit_cursor_begin: i32 = 0,
@@ -324,8 +321,6 @@ pub const TextField = struct {
     const toggle_radius = 16;
     const toggle_icon_size = 20;
     const dot = "•";
-    pub const multi_click_ns = 400 * std.time.ns_per_ms;
-    pub const multi_click_slop = 6;
 
     fn fontStyle(self: *const TextField, n: *const Node) ?font.Style {
         const f = n.ui.font orelse return null;
@@ -540,19 +535,9 @@ pub const TextField = struct {
                     return true;
                 }
                 n.ui.focus(n);
-                const now = n.ui.now_ns;
-                if (st.click_count > 0 and
-                    now -| st.last_click_ns <= multi_click_ns and
-                    @abs(pr.pos[0] - st.last_click_pos[0]) <= multi_click_slop and
-                    @abs(pr.pos[1] - st.last_click_pos[1]) <= multi_click_slop)
-                {
-                    st.click_count = if (st.click_count >= 3) 1 else st.click_count + 1;
-                } else {
-                    st.click_count = 1;
-                }
-                st.last_click_ns = now;
-                st.last_click_pos = pr.pos;
-                switch (st.click_count) {
+                // A click places the cursor, a double click selects a word,
+                // and a triple click everything; a fourth starts over.
+                switch ((@max(pr.clicks, 1) - 1) % 3 + 1) {
                     1 => {
                         // Dragging selects from where it went down.
                         st.moveTo(self.cursorAt(n, pr.pos[0]), false);
@@ -1194,22 +1179,40 @@ test "double click selects current word, triple click selects all, and selection
     const click_at: geometry.Point = .{ pos[0] + TextField.pad + 10, pos[1] + field_node.size.h / 2 };
 
     // Single click places cursor without selecting.
-    u.now_ns = 200 * std.time.ns_per_ms;
+    const ms = std.time.ns_per_ms;
     u.pointerMotion(click_at);
-    u.pointerButton(click_at, btn_left, true);
-    u.pointerButton(click_at, btn_left, false);
+    u.pointerButtonAt(click_at, btn_left, true, 200 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 210 * ms);
     try testing.expect(st.selection() == null);
 
-    // Second click within multi_click_ns selects the word ("https").
-    u.now_ns = 300 * std.time.ns_per_ms;
-    u.pointerButton(click_at, btn_left, true);
-    u.pointerButton(click_at, btn_left, false);
+    // Second click within Ui.multi_click_ns selects the word ("https").
+    u.pointerButtonAt(click_at, btn_left, true, 300 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 310 * ms);
     try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
 
-    // Third click within multi_click_ns selects all text.
-    u.now_ns = 400 * std.time.ns_per_ms;
-    u.pointerButton(click_at, btn_left, true);
-    u.pointerButton(click_at, btn_left, false);
+    // Third click within Ui.multi_click_ns selects all text.
+    u.pointerButtonAt(click_at, btn_left, true, 400 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 410 * ms);
+    try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
+
+    // A fourth starts over, placing the cursor.
+    u.pointerButtonAt(click_at, btn_left, true, 500 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 510 * ms);
+    try testing.expect(st.selection() == null);
+
+    // A click long after the last is a single click, however stale the
+    // frame's time is. (Back at the start: selecting everything scrolled
+    // the field to its end.)
+    st.moveTo(0, false);
+    u.frame(300, 140, 600 * ms, App{});
+    u.pointerButtonAt(click_at, btn_left, true, 2000 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 2010 * ms);
+    try testing.expect(st.selection() == null);
+    u.pointerButtonAt(click_at, btn_left, true, 2100 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 2110 * ms);
+    try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
+    u.pointerButtonAt(click_at, btn_left, true, 2200 * ms);
+    u.pointerButtonAt(click_at, btn_left, false, 2210 * ms);
     try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
 
     // Render frame with full selection on overflowing text and verify no pixels
@@ -1229,4 +1232,3 @@ test "double click selects current word, triple click selects all, and selection
         try testing.expectEqual(@as(u32, 0xff000000), img.at(@intCast(x), mid_y));
     }
 }
-
