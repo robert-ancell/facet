@@ -793,7 +793,7 @@ test "a document: init normalizes UTF-8 and moveTo snaps to character boundaries
 }
 
 test "lines wrap between words, or within one too long" {
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const s: font.Style = .{ .font = &f, .size = 16 };
     var lines: std.ArrayList(Line) = .empty;
     defer lines.deinit(testing.allocator);
@@ -823,7 +823,7 @@ test "lines wrap between words, or within one too long" {
 
 test "typing into a text area, moving up and down, and copying" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     var d = try Document.init(testing.allocator, "first line\nsecond line");

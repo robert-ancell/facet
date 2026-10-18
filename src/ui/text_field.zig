@@ -691,7 +691,7 @@ const testing = std.testing;
 
 test "typing into a text field" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     const Sink = struct {
@@ -753,7 +753,7 @@ test "typing into a text field" {
 
 test "selecting, copying, cutting and pasting, with keys and the menu" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     // The system's clipboard, as the app gives it.
@@ -994,7 +994,7 @@ test "a paste for a widget that has gone goes nowhere" {
 
 test "a field asked for takes the keyboard by itself, once" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     var text: [64]u8 = undefined;
@@ -1028,7 +1028,7 @@ test "a field asked for takes the keyboard by itself, once" {
 
 test "a UK keyboard types £ and €, and characters are edited whole" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     u.keyboard = .gb;
@@ -1087,7 +1087,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
 
 test "a password field has a visibility toggle button on the right hand side" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     const App = struct {
@@ -1161,7 +1161,7 @@ test "initial text and max_len never split a multi-byte UTF-8 character" {
 
 test "double click selects current word, triple click selects all, and selection is clipped to field bounds" {
     const Ui = @import("runtime.zig").Ui;
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
 

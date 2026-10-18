@@ -12,7 +12,7 @@ const Widget = ui.Widget;
 const Context = ui.Context;
 const Node = ui.Node;
 
-const fira_data = @embedFile("FiraSans-Regular.ttf");
+const fira_data = font.default_font_data;
 
 /// The first node (depth first) whose widget is a `T`.
 fn find(n: *Node, comptime T: type) ?*Node {

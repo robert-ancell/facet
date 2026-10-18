@@ -99,7 +99,7 @@ const testing = std.testing;
 test "the title bar's buttons, and dragging it" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     const App = struct {
@@ -153,7 +153,7 @@ test "the title bar's buttons, and dragging it" {
 test "a fullscreen window has no title bar" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     var closed = false;
@@ -188,7 +188,7 @@ test "a fullscreen window has no title bar" {
 test "the title bar defaults to the UI's window controls" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
     var controls: Controls = .{ .win = undefined };
@@ -212,7 +212,7 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     const Ui = @import("runtime.zig").Ui;
     const window_mod = @import("window");
     const font = @import("font");
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const u = try Ui.create(testing.allocator, &f);
     defer u.destroy();
 

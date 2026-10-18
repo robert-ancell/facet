@@ -110,8 +110,6 @@ pub fn createModules(
             .{ .name = "font", .module = font },
         },
     });
-    gfx.addAnonymousImport("FiraSans-Regular.ttf", .{ .root_source_file = b.path("fonts/FiraSans-Regular.ttf") });
-    gfx.addAnonymousImport("TwemojiMozilla.ttf", .{ .root_source_file = b.path("fonts/TwemojiMozilla.ttf") });
     for ([_][]const u8{ "shape", "solid", "text", "image" }) |shader_name| {
         const spv = addSpirv(b, shader_name, b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .vulkan);
         gfx.addAnonymousImport(b.fmt("{s}.spv", .{shader_name}), .{ .root_source_file = spv });
@@ -141,8 +139,6 @@ pub fn createModules(
             .{ .name = "window", .module = window },
         },
     });
-    ui.addAnonymousImport("FiraSans-Regular.ttf", .{ .root_source_file = b.path("fonts/FiraSans-Regular.ttf") });
-    ui.addAnonymousImport("TwemojiMozilla.ttf", .{ .root_source_file = b.path("fonts/TwemojiMozilla.ttf") });
 
     const facet = b.addModule(name, .{
         .root_source_file = b.path("src/facet.zig"),

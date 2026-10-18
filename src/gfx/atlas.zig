@@ -132,7 +132,7 @@ pub const Atlas = struct {
 const testing = std.testing;
 
 test "glyphs are packed once, and a full atlas starts again" {
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     var a = try Atlas.init(testing.allocator);
     defer a.deinit();
     const e = a.glyph(&f, f.glyphIndex('A'), 32, 0).?;

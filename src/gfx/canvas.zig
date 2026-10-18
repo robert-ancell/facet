@@ -842,8 +842,8 @@ test "records tell what was drawn, and where" {
 
 test "colour emoji renders multi-coloured layers through the text shader" {
     const software = @import("software.zig");
-    var fira = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
-    const emoji = try font.Font.init(@embedFile("TwemojiMozilla.ttf"));
+    var fira = try font.Font.init(font.default_font_data);
+    const emoji = try font.Font.init(font.emoji_font_data);
     fira.fallback = &emoji;
 
     var atlas = try Atlas.init(std.testing.allocator);

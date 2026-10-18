@@ -159,7 +159,7 @@ pub fn wrap(gpa: std.mem.Allocator, runs: *font.RunCache, style: font.Style, tex
 }
 
 test "ellipsis" {
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const style: font.Style = .{ .font = &f, .size = 16 };
     const gpa = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(gpa);
@@ -179,7 +179,7 @@ test "ellipsis" {
 }
 
 test "wrapping" {
-    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const f = try font.Font.init(font.default_font_data);
     const style: font.Style = .{ .font = &f, .size = 16 };
     const gpa = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(gpa);
