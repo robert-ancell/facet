@@ -27,10 +27,20 @@ pub fn main(init: std.process.Init) !void {
     const data = try cwd.readFileAlloc(init.io, args[1], arena, .limited(16 << 20));
     const names = try cwd.readFileAlloc(init.io, args[2], arena, .limited(1 << 20));
 
+    var map: std.StringHashMapUnmanaged(u21) = .empty;
+    var lines = std.mem.tokenizeScalar(u8, names, '\n');
+    while (lines.next()) |line| {
+        var f = std.mem.tokenizeScalar(u8, line, ' ');
+        const name = f.next() orelse continue;
+        const cp_str = f.next() orelse continue;
+        const cp = std.fmt.parseInt(u21, cp_str, 16) catch continue;
+        if (!map.contains(name)) try map.put(arena, name, cp);
+    }
+
     const field_names = @typeInfo(Icon).@"enum".field_names;
     var codepoints: [field_names.len]u21 = undefined;
-    inline for (field_names, &codepoints) |field_name, *cp| {
-        cp.* = lookup(names, field_name) orelse {
+    for (field_names, &codepoints) |field_name, *cp| {
+        cp.* = map.get(field_name) orelse {
             std.debug.print("subset_icons: no icon called \"{s}\" in {s}\n", .{ field_name, args[2] });
             std.process.exit(1);
         };
@@ -50,16 +60,6 @@ pub fn main(init: std.process.Init) !void {
     try z.writeStreamingAll(init.io, zig.items);
 }
 
-/// The codepoint the codepoints file gives `name`.
-fn lookup(names: []const u8, name: []const u8) ?u21 {
-    var lines = std.mem.tokenizeScalar(u8, names, '\n');
-    while (lines.next()) |line| {
-        var f = std.mem.tokenizeScalar(u8, line, ' ');
-        if (!std.mem.eql(u8, f.next() orelse continue, name)) continue;
-        return std.fmt.parseInt(u21, f.next() orelse return null, 16) catch null;
-    }
-    return null;
-}
 
 fn be16(b: []const u8, at: usize) u16 {
     return std.mem.readInt(u16, b[at..][0..2], .big);
@@ -198,6 +198,14 @@ pub fn subset(gpa: std.mem.Allocator, data: []const u8, codepoints: []const u21)
             return a.cp < b.cp;
         }
     }.lt);
+    var unique_len: usize = 0;
+    for (pairs) |p| {
+        if (unique_len == 0 or pairs[unique_len - 1].cp != p.cp) {
+            pairs[unique_len] = p;
+            unique_len += 1;
+        }
+    }
+    const unique_pairs = pairs[0..unique_len];
     var cmap: std.ArrayList(u8) = .empty;
     try appendBe16(&cmap, gpa, 0); // version
     try appendBe16(&cmap, gpa, 1); // one subtable
@@ -206,10 +214,10 @@ pub fn subset(gpa: std.mem.Allocator, data: []const u8, codepoints: []const u21)
     try appendBe32(&cmap, gpa, 12);
     try appendBe16(&cmap, gpa, 12); // format
     try appendBe16(&cmap, gpa, 0);
-    try appendBe32(&cmap, gpa, @intCast(16 + 12 * pairs.len));
+    try appendBe32(&cmap, gpa, @intCast(16 + 12 * unique_pairs.len));
     try appendBe32(&cmap, gpa, 0); // language
-    try appendBe32(&cmap, gpa, @intCast(pairs.len));
-    for (pairs) |p| {
+    try appendBe32(&cmap, gpa, @intCast(unique_pairs.len));
+    for (unique_pairs) |p| {
         try appendBe32(&cmap, gpa, p.cp);
         try appendBe32(&cmap, gpa, p.cp);
         try appendBe32(&cmap, gpa, p.glyph);
