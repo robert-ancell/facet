@@ -1823,3 +1823,42 @@ test "frames are drawn straight into dmabufs when the renderer can, and the CPU 
     try testing.expectEqual(@as(u32, 1), r.direct);
     try testing.expectEqual(@as(u32, 2), win.cpu_frames);
 }
+
+test "a GPU draw can also say how to draw straight into a GPU frame, which the CPU way ignores" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    u.attachRenderer(u.software_renderer.renderer(), false);
+    const Area = struct {
+        var cpu: u32 = 0;
+        var direct: u32 = 0;
+        pub fn layout(_: *const @This(), _: *Node, c: ui.Constraints) ui.Size {
+            return c.constrain(.{ .w = 40, .h = 30 });
+        }
+        pub fn paint(self: *const @This(), _: *Node, p: *ui.Painter) void {
+            p.gpuWithDirect(.{ .fills = true }, self, draw, drawDirect);
+        }
+        fn draw(_: *const @This(), _: *gfx.software.Image, _: gfx.GpuArea) anyerror!void {
+            cpu += 1;
+        }
+        fn drawDirect(_: *const @This(), backend: gfx.RenderBackend, _: *const anyopaque, _: gfx.GpuArea) anyerror!bool {
+            direct += 1;
+            return backend == .vulkan;
+        }
+    };
+    u.frame(100, 100, 0, Area{});
+    const seg = for (u.segments.items) |s| {
+        if (s == .gpu) break s.gpu;
+    } else return error.TestUnexpectedResult;
+    try testing.expect(seg.direct != null);
+    try testing.expect(seg.area.fills);
+    // The software renderer draws it the CPU way.
+    var pixels: [100 * 100]u32 = @splat(0);
+    var img: gfx.software.Image = .{ .pixels = &pixels, .width = 100, .height = 100 };
+    try u.render(&img, null);
+    try testing.expectEqual(@as(u32, 1), Area.cpu);
+    try testing.expectEqual(@as(u32, 0), Area.direct);
+    // A GPU frame gets the direct draw, which may decline.
+    var frame: u8 = 0;
+    try testing.expect(try seg.direct.?(seg.ctx, .vulkan, &frame, seg.area));
+    try testing.expect(!try seg.direct.?(seg.ctx, .opengl, &frame, seg.area));
+}

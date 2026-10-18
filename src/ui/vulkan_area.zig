@@ -129,7 +129,11 @@ pub fn VulkanArea(comptime Scene: type) type {
 
             if (!st.init_failed and st.vk_ctx == null) {
                 st.gpa = n.ui.gpa;
-                if (gfx.VulkanContext.init(n.ui.gpa)) |ctx| {
+                // On the UI's Vulkan renderer's device if it has one, so that
+                // the scene is drawn straight into its frames; or else on a
+                // device of its own, and copied in.
+                const shared: ?gfx.VulkanContext = if (sharedDevice(n)) |dev| gfx.VulkanContext.initShared(n.ui.gpa, dev) catch null else null;
+                if (if (shared) |ctx| ctx else gfx.VulkanContext.init(n.ui.gpa)) |ctx| {
                     st.vk_ctx = ctx;
                     if (HasState) {
                         const params = @typeInfo(@TypeOf(Scene.State.init)).@"fn".param_types;
@@ -178,12 +182,26 @@ pub fn VulkanArea(comptime Scene: type) type {
 
             // The scene is drawn over a clear and copied in, replacing every
             // pixel of the box.
-            p.gpuWith(.{ .key = draw_key, .fills = true }, payload, drawGpu);
+            p.gpuWithDirect(.{ .key = draw_key, .fills = true }, payload, drawGpu, drawDirect);
 
             if (self.border) |b| {
                 const c = p.canvas();
                 c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = n.size.w - 1, .h = n.size.h - 1 }, self.radius, b.width, b.color);
             }
+        }
+
+        /// The device of the UI's renderer, if it is the Vulkan one.
+        fn sharedDevice(n: *Node) ?gfx.vulkan.SharedDevice {
+            const vr = &(n.ui.vulkan_renderer orelse return null);
+            const r = n.ui.renderer orelse return null;
+            if (r.ptr != @as(*anyopaque, @ptrCast(vr))) return null;
+            return vr.sharedDevice();
+        }
+
+        fn drawDirect(payload: *const DrawPayload, backend: gfx.RenderBackend, frame: *const anyopaque, area: gfx.GpuArea) anyerror!bool {
+            if (backend != .vulkan) return false;
+            const f: *const gfx.vulkan.DirectFrame = @ptrCast(@alignCast(frame));
+            return payload.vk_ctx.renderToFrame(f, area, payload.clear_color, payload.samples, payload, renderScene);
         }
 
         fn drawGpu(payload: *const DrawPayload, target: *gfx.software.Image, area: gfx.GpuArea) anyerror!void {

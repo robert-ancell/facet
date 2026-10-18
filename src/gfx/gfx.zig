@@ -37,6 +37,7 @@ pub const GpuArea = renderer.GpuArea;
 pub const GpuDraw = renderer.GpuDraw;
 pub const Segment = renderer.Segment;
 pub const DmabufTarget = renderer.DmabufTarget;
+pub const DmabufImage = renderer.DmabufImage;
 pub const RenderBackend = renderer.RenderBackend;
 pub const Renderer = renderer.Renderer;
 pub const SoftwareRenderer = software.SoftwareRenderer;

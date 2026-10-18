@@ -145,6 +145,20 @@ pub const Painter = struct {
         });
     }
 
+    /// As `gpuWith`, and drawn with `direct` instead of `f` when the frame
+    /// is drawn straight into the window on the GPU (see `gfx.GpuDraw.direct`).
+    pub fn gpuWithDirect(p: *Painter, options: GpuOptions, ctx: anytype, comptime f: anytype, comptime direct: anytype) void {
+        const Ctx = @TypeOf(ctx);
+        const before = p.ui.segments.items.len;
+        p.gpuWith(options, ctx, f);
+        if (p.ui.segments.items.len == before) return;
+        p.ui.segments.items[before].gpu.direct = struct {
+            fn call(c: *const anyopaque, backend: gfx.RenderBackend, frame: *const anyopaque, area: GpuArea) anyerror!bool {
+                return direct(@as(Ctx, @ptrCast(@alignCast(@constCast(c)))), backend, frame, area);
+            }
+        }.call;
+    }
+
     fn boxRect(p: *const Painter) Rect {
         return .{ .x = p.origin[0], .y = p.origin[1], .w = p.node.size.w, .h = p.node.size.h };
     }

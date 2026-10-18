@@ -182,12 +182,22 @@ pub fn OpenGlArea(comptime Scene: type) type {
 
             // The scene is drawn over a clear and copied in, replacing every
             // pixel of the box.
-            p.gpuWith(.{ .key = draw_key, .fills = true }, payload, drawGpu);
+            p.gpuWithDirect(.{ .key = draw_key, .fills = true }, payload, drawGpu, drawDirect);
 
             if (self.border) |b| {
                 const c = p.canvas();
                 c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = n.size.w - 1, .h = n.size.h - 1 }, self.radius, b.width, b.color);
             }
+        }
+
+        /// Drawn on the GPU into a frame the Vulkan renderer draws straight
+        /// into the window: the scene is exported as a dmabuf and copied in
+        /// on the GPU, with no copy through the CPU.
+        fn drawDirect(payload: *const DrawPayload, backend: gfx.RenderBackend, frame: *const anyopaque, area: gfx.GpuArea) anyerror!bool {
+            if (backend != .vulkan) return false;
+            const f: *const gfx.vulkan.DirectFrame = @ptrCast(@alignCast(frame));
+            const picture = (try payload.gl_ctx.renderToDmabuf(area, payload.clear_color, payload.samples, payload, renderScene)) orelse return false;
+            return f.copy_dmabuf(f.copy_ctx, f, &picture, area);
         }
 
         fn drawGpu(payload: *const DrawPayload, target: *gfx.software.Image, area: gfx.GpuArea) anyerror!void {

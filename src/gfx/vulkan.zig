@@ -22,6 +22,7 @@ const Color = canvas_mod.Color;
 const Viewport = renderer_mod.Viewport;
 const Segment = renderer_mod.Segment;
 const DmabufTarget = renderer_mod.DmabufTarget;
+const DmabufImage = renderer_mod.DmabufImage;
 const GpuArea = renderer_mod.GpuArea;
 
 pub const VkFlags = u32;
@@ -467,6 +468,23 @@ pub const VulkanRenderer = struct {
         }
     }
 
+    /// The renderer's own device, for 3D widgets to draw on so that they go
+    /// straight into its frames (`VulkanContext.initShared`); null if it has
+    /// none of its own (`initWithProcs`).
+    pub fn sharedDevice(r: *const VulkanRenderer) ?SharedDevice {
+        const ctx = r.owned orelse return null;
+        return .{
+            .instance = ctx.instance,
+            .inst_procs = ctx.inst_procs,
+            .phys_dev = ctx.phys_dev,
+            .mem_props = ctx.mem_props,
+            .device = ctx.device,
+            .vk = ctx.vk,
+            .queue = ctx.queue,
+            .queue_family = ctx.queue_family,
+        };
+    }
+
     /// Renders a frame straight into a window's dmabuf (see
     /// `Renderer.renderDmabuf`): only for the renderer's own device
     /// (`initDefault`), and if it can import dmabufs.
@@ -593,6 +611,7 @@ pub const VulkanRenderer = struct {
 // --- Offscreen Vulkan 1.1+ Context for `VulkanRenderer` and `VulkanArea` -----
 
 pub const VK_FORMAT_R8_UNORM: u32 = 9;
+pub const VK_FORMAT_R8G8B8A8_UNORM: u32 = 37;
 pub const VK_FORMAT_B8G8R8A8_UNORM: u32 = 44;
 pub const VK_FORMAT_R32_SFLOAT: u32 = 100;
 pub const VK_FORMAT_R32G32_SFLOAT: u32 = 103;
@@ -1005,6 +1024,14 @@ const VkImageSubresourceLayers = extern struct {
     layerCount: u32 = 1,
 };
 
+const VkImageCopy = extern struct {
+    srcSubresource: VkImageSubresourceLayers = .{},
+    srcOffset: VkOffset3D = .{},
+    dstSubresource: VkImageSubresourceLayers = .{},
+    dstOffset: VkOffset3D = .{},
+    extent: VkExtent3D,
+};
+
 const VkBufferImageCopy = extern struct {
     bufferOffset: VkDeviceSize = 0,
     bufferRowLength: u32 = 0,
@@ -1364,6 +1391,8 @@ pub const ContextProcs = struct {
     CmdDrawIndexed: *const fn (VkCommandBuffer, u32, u32, u32, i32, u32) callconv(.c) void,
     CmdCopyBufferToImage: *const fn (VkCommandBuffer, VkBuffer, VkImage, u32, u32, [*]const VkBufferImageCopy) callconv(.c) void,
     CmdCopyImageToBuffer: *const fn (VkCommandBuffer, VkImage, u32, VkBuffer, u32, [*]const VkBufferImageCopy) callconv(.c) void,
+    CmdCopyImage: *const fn (VkCommandBuffer, VkImage, u32, VkImage, u32, u32, [*]const VkImageCopy) callconv(.c) void,
+    CmdBlitImage: *const fn (VkCommandBuffer, VkImage, u32, VkImage, u32, u32, [*]const VkImageBlit, u32) callconv(.c) void,
     CmdPipelineBarrier: *const fn (VkCommandBuffer, VkFlags, VkFlags, VkFlags, u32, ?*const anyopaque, u32, ?*const anyopaque, u32, ?[*]const VkImageMemoryBarrier) callconv(.c) void,
 
     pub fn load(device: VkDevice, get_proc: GetDeviceProcAddr) !ContextProcs {
@@ -1436,8 +1465,19 @@ const Owned2DContext = struct {
     fence: VkFence = VK_NULL_HANDLE,
     imports: [max_imports]?DmabufImport = @splat(null),
     import_clock: u64 = 0,
+    /// Pictures drawn on other APIs (OpenGL), imported to copy in.
+    sources: [max_imports]?SourceImport = @splat(null),
 
     const max_imports = 8;
+
+    const SourceImport = struct {
+        id: u64,
+        width: u32,
+        height: u32,
+        img: VkImage,
+        mem: VkDeviceMemory,
+        used: u64 = 0,
+    };
 
     /// A window buffer imported as an image to draw into.
     const DmabufImport = struct {
@@ -1726,6 +1766,11 @@ const Owned2DContext = struct {
         self.destroyTarget();
         for (&self.imports) |*slot| if (slot.*) |*im| {
             self.destroyImport(im);
+            slot.* = null;
+        };
+        for (&self.sources) |*slot| if (slot.*) |*src| {
+            self.vk.DestroyImage(self.device, src.img, null);
+            self.vk.FreeMemory(self.device, src.mem, null);
             slot.* = null;
         };
         if (self.dmabuf) |d| if (self.fence != VK_NULL_HANDLE) d.DestroyFence(self.device, self.fence, null);
@@ -2268,6 +2313,11 @@ const Owned2DContext = struct {
     /// Starts drawing into `im`: takes it from the compositor (the
     /// external queue family) and begins the render pass over the frame.
     fn beginDirect(self: *Owned2DContext, im: *DmabufImport, t: *const DmabufTarget) !void {
+        try self.beginDirectCmd(im);
+        self.beginDirectPass(im, t);
+    }
+
+    fn beginDirectCmd(self: *Owned2DContext, im: *DmabufImport) !void {
         _ = self.vk.ResetCommandBuffer(self.cmd, 0);
         if (self.vk.BeginCommandBuffer(self.cmd, &.{}) != .success) return error.VkBeginCommandBufferFailed;
         const acquire = [1]VkImageMemoryBarrier{.{
@@ -2282,6 +2332,9 @@ const Owned2DContext = struct {
         }};
         self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, null, 0, null, 1, &acquire);
         im.initialized = true;
+    }
+
+    fn beginDirectPass(self: *Owned2DContext, im: *DmabufImport, t: *const DmabufTarget) void {
         const no_clear = [1]VkClearValue{.{ .color = .{ 0, 0, 0, 0 } }};
         const rp_begin: VkRenderPassBeginInfo = .{
             .renderPass = self.direct_pass,
@@ -2362,6 +2415,15 @@ const Owned2DContext = struct {
             .gpu => |g| {
                 const area = g.area.scissor orelse g.area.viewport;
                 if (!renderer_mod.covers(damage, area)) continue;
+                if (g.direct) |direct| {
+                    // Recorded into this frame (outside the render pass), on
+                    // this device: no copy through the CPU.
+                    self.vk.CmdEndRenderPass(self.cmd);
+                    const frame: DirectFrame = .{ .device = self.device, .cmd = self.cmd, .image = im.img, .origin = origin, .copy_ctx = self, .copy_dmabuf = copyDmabuf };
+                    const drawn = try direct(g.ctx, .vulkan, &frame, g.area);
+                    self.beginDirectPass(im, t);
+                    if (drawn) continue;
+                }
                 // Drawn on the CPU (on its own device): what is under it is
                 // finished first, and what is over it drawn after.
                 try self.endDirect(im);
@@ -2373,6 +2435,113 @@ const Owned2DContext = struct {
             },
         };
         try self.endDirect(im);
+    }
+
+    /// Imports a one-plane dmabuf as an image of `format`, for `usage`.
+    fn importImage(self: *Owned2DContext, desc: DmabufImage, format: u32, usage: VkFlags) !struct { img: VkImage, mem: VkDeviceMemory } {
+        const d = self.dmabuf orelse return error.Unsupported;
+        const plane = [1]VkSubresourceLayout{.{ .offset = desc.offset, .size = 0, .rowPitch = desc.stride, .arrayPitch = 0, .depthPitch = 0 }};
+        const mod_info: VkImageDrmFormatModifierExplicitCreateInfoEXT = .{ .drmFormatModifier = desc.modifier, .pPlaneLayouts = &plane };
+        const ext_info: VkExternalMemoryImageCreateInfo = .{ .pNext = &mod_info, .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT };
+        const img_info: VkImageCreateInfo = .{
+            .pNext = &ext_info,
+            .format = format,
+            .extent = .{ .width = desc.width, .height = desc.height },
+            .samples = 1,
+            .tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+            .usage = usage,
+        };
+        var img: VkImage = VK_NULL_HANDLE;
+        if (self.vk.CreateImage(self.device, &img_info, null, &img) != .success) return error.Unsupported;
+        errdefer self.vk.DestroyImage(self.device, img, null);
+        // Vulkan takes the fd it imports: give it a copy.
+        const fd_rc = std.os.linux.dup(desc.fd);
+        if (std.os.linux.errno(fd_rc) != .SUCCESS) return error.Unsupported;
+        const fd: c_int = @intCast(fd_rc);
+        var imported = false;
+        defer if (!imported) {
+            _ = std.os.linux.close(fd);
+        };
+        var fd_props: VkMemoryFdPropertiesKHR = .{};
+        if (d.GetMemoryFdPropertiesKHR(self.device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fd_props) != .success) return error.Unsupported;
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetImageMemoryRequirements(self.device, img, &req);
+        const bits = req.memoryTypeBits & fd_props.memoryTypeBits;
+        if (bits == 0) return error.Unsupported;
+        const dedicated: VkMemoryDedicatedAllocateInfo = .{ .image = img };
+        const import_info: VkImportMemoryFdInfoKHR = .{ .pNext = &dedicated, .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, .fd = fd };
+        const alloc_info: VkMemoryAllocateInfo = .{ .pNext = &import_info, .allocationSize = req.size, .memoryTypeIndex = @ctz(bits) };
+        var mem: VkDeviceMemory = VK_NULL_HANDLE;
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &mem) != .success) return error.Unsupported;
+        imported = true;
+        errdefer self.vk.FreeMemory(self.device, mem, null);
+        if (self.vk.BindImageMemory(self.device, img, mem, 0) != .success) return error.Unsupported;
+        return .{ .img = img, .mem = mem };
+    }
+
+    /// A picture drawn on another API as an image to copy from: imported
+    /// the first time (freeing the longest unused if there is no room).
+    fn importSource(self: *Owned2DContext, src: *const DmabufImage) !*SourceImport {
+        self.import_clock += 1;
+        var free: ?*?SourceImport = null;
+        var oldest: ?*?SourceImport = null;
+        for (&self.sources) |*slot| {
+            if (slot.*) |*s| {
+                if (s.id == src.id and s.width == src.width and s.height == src.height) {
+                    s.used = self.import_clock;
+                    return s;
+                }
+                if (oldest == null or s.used < oldest.?.*.?.used) oldest = slot;
+            } else free = slot;
+        }
+        const slot = free orelse blk: {
+            const o = oldest.?;
+            self.vk.DestroyImage(self.device, o.*.?.img, null);
+            self.vk.FreeMemory(self.device, o.*.?.mem, null);
+            o.* = null;
+            break :blk o;
+        };
+        const format = fourccFormat(src.fourcc) orelse return error.Unsupported;
+        const im = try self.importImage(src.*, format, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+        slot.* = .{ .id = src.id, .width = src.width, .height = src.height, .img = im.img, .mem = im.mem, .used = self.import_clock };
+        return &slot.*.?;
+    }
+
+    /// `DirectFrame.copy_dmabuf`: blits the picture in (converting its
+    /// format, and turning it the right way up).
+    fn copyDmabuf(ctx: *anyopaque, frame: *const DirectFrame, src: *const DmabufImage, area: GpuArea) anyerror!bool {
+        const self: *Owned2DContext = @ptrCast(@alignCast(ctx));
+        const s = self.importSource(src) catch return false;
+        const vp = area.viewport;
+        const sc = if (area.scissor) |c| vp.intersect(c) orelse return true else vp;
+        const color = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        const range: VkImageSubresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR };
+        const before = [2]VkImageMemoryBarrier{
+            // The picture, from the API that drew it.
+            .{ .srcAccessMask = 0, .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL, .dstQueueFamilyIndex = self.queue_family, .image = s.img, .subresourceRange = range },
+            .{ .srcAccessMask = color, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL, .image = frame.image, .subresourceRange = range },
+        };
+        self.vk.CmdPipelineBarrier(frame.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 2, &before);
+        const lx = sc.x - vp.x;
+        const ly = sc.y - vp.y;
+        const w: i32 = @intCast(sc.width);
+        const h: i32 = @intCast(sc.height);
+        const sh: i32 = @intCast(src.height);
+        const src_y0 = if (src.bottom_up) sh - ly else ly;
+        const src_y1 = if (src.bottom_up) sh - (ly + h) else ly + h;
+        const dx = sc.x + frame.origin[0];
+        const dy = sc.y + frame.origin[1];
+        const region = [1]VkImageBlit{.{
+            .srcOffsets = .{ .{ .x = lx, .y = src_y0, .z = 0 }, .{ .x = lx + w, .y = src_y1, .z = 1 } },
+            .dstOffsets = .{ .{ .x = dx, .y = dy, .z = 0 }, .{ .x = dx + w, .y = dy + h, .z = 1 } },
+        }};
+        self.vk.CmdBlitImage(frame.cmd, s.img, VK_IMAGE_LAYOUT_GENERAL, frame.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region, 0);
+        const after = [2]VkImageMemoryBarrier{
+            .{ .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .dstAccessMask = 0, .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL, .srcQueueFamilyIndex = self.queue_family, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL, .image = s.img, .subresourceRange = range },
+            .{ .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = color, .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL, .image = frame.image, .subresourceRange = range },
+        };
+        self.vk.CmdPipelineBarrier(frame.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, null, 0, null, 2, &after);
+        return true;
     }
 
     fn renderCanvasToImage(self: *Owned2DContext, r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {
@@ -2491,6 +2660,53 @@ fn readbackMemoryType(ctx: anytype, type_bits: u32) !u32 {
 /// Managed offscreen Vulkan 1.1+ context with configurable MSAA (`1`, `2`, `4`, `8` samples)
 /// render passes, dynamic uniform buffer (`gpu.uniforms`), pipeline builder, and
 /// automatic readback for `VulkanArea`.
+/// The 2D renderer's device, for a `VulkanContext` on it (`initShared`).
+pub const SharedDevice = struct {
+    instance: VkInstance,
+    inst_procs: InstanceProcs,
+    phys_dev: VkPhysicalDevice,
+    mem_props: VkPhysicalDeviceMemoryProperties,
+    device: VkDevice,
+    vk: ContextProcs,
+    queue: VkQueue,
+    queue_family: u32,
+};
+
+/// A frame being drawn straight into a window buffer on the 2D renderer's
+/// device: what a widget's GPU draw (`GpuDraw.direct`) records into. The
+/// window image is in `GENERAL` layout, and outside a render pass.
+pub const DirectFrame = struct {
+    device: VkDevice,
+    cmd: VkCommandBuffer,
+    image: VkImage,
+    /// Where the frame's top left is in the image (inside the shadow).
+    origin: [2]i32,
+    /// For draws on another API: copies the part of `src` (a picture of
+    /// `area`'s viewport) within `area` into the frame, or returns false if
+    /// it cannot be imported.
+    copy_ctx: *anyopaque,
+    copy_dmabuf: *const fn (ctx: *anyopaque, frame: *const DirectFrame, src: *const DmabufImage, area: GpuArea) anyerror!bool,
+};
+
+/// The Vulkan format of a DRM fourcc a picture can come in.
+fn fourccFormat(fourcc: u32) ?u32 {
+    const code = struct {
+        fn f(s: *const [4]u8) u32 {
+            return std.mem.readInt(u32, s, .little);
+        }
+    }.f;
+    if (fourcc == code("AR24") or fourcc == code("XR24")) return VK_FORMAT_B8G8R8A8_UNORM;
+    if (fourcc == code("AB24") or fourcc == code("XB24")) return VK_FORMAT_R8G8B8A8_UNORM;
+    return null;
+}
+
+const VkImageBlit = extern struct {
+    srcSubresource: VkImageSubresourceLayers = .{},
+    srcOffsets: [2]VkOffset3D,
+    dstSubresource: VkImageSubresourceLayers = .{},
+    dstOffsets: [2]VkOffset3D,
+};
+
 pub const OffscreenContext = struct {
     pub const sample_counts = [4]u32{ 1, 2, 4, 8 };
 
@@ -2568,6 +2784,8 @@ pub const OffscreenContext = struct {
     readback_buf: VkBuffer = VK_NULL_HANDLE,
     readback_mem: VkDeviceMemory = VK_NULL_HANDLE,
     readback_map: []u32 = &.{},
+    /// It is on another's device (`initShared`), which it does not destroy.
+    shared: bool = false,
 
     pub fn init(gpa: std.mem.Allocator) !OffscreenContext {
         var vk_lib = std.DynLib.open("libvulkan.so.1") catch try std.DynLib.open("libvulkan.so");
@@ -2639,13 +2857,39 @@ pub const OffscreenContext = struct {
             .queue = queue,
         };
         errdefer self.deinit();
+        try self.initObjects(chosen_qfam);
+        return self;
+    }
 
-        const pool_info: VkCommandPoolCreateInfo = .{ .queueFamilyIndex = chosen_qfam };
-        if (self.vk.CreateCommandPool(device, &pool_info, null, &self.cmd_pool) != .success) return error.VkCreateCommandPoolFailed;
+    /// A context on the 2D renderer's device (`VulkanRenderer.sharedDevice`),
+    /// so that what it draws can go straight into the renderer's frames
+    /// (`renderToFrame`). It does not own the device, which must outlive it.
+    pub fn initShared(gpa: std.mem.Allocator, dev: SharedDevice) !OffscreenContext {
+        var self: OffscreenContext = .{
+            .gpa = gpa,
+            .vk_lib = undefined,
+            .instance = dev.instance,
+            .inst_procs = dev.inst_procs,
+            .phys_dev = dev.phys_dev,
+            .mem_props = dev.mem_props,
+            .device = dev.device,
+            .vk = dev.vk,
+            .queue = dev.queue,
+            .shared = true,
+        };
+        errdefer self.deinit();
+        try self.initObjects(dev.queue_family);
+        return self;
+    }
+
+    /// Makes the command buffer, render passes, uniforms and samplers.
+    fn initObjects(self: *OffscreenContext, queue_family: u32) !void {
+        const pool_info: VkCommandPoolCreateInfo = .{ .queueFamilyIndex = queue_family };
+        if (self.vk.CreateCommandPool(self.device, &pool_info, null, &self.cmd_pool) != .success) return error.VkCreateCommandPoolFailed;
 
         const cb_info: VkCommandBufferAllocateInfo = .{ .commandPool = self.cmd_pool };
         var cmds: [1]VkCommandBuffer = undefined;
-        if (self.vk.AllocateCommandBuffers(device, &cb_info, &cmds) != .success) return error.VkAllocateCommandBufferFailed;
+        if (self.vk.AllocateCommandBuffers(self.device, &cb_info, &cmds) != .success) return error.VkAllocateCommandBufferFailed;
         self.cmd = cmds[0];
 
         // Create render passes for 1× (direct) and 2×/4×/8× MSAA (resolving to 1× B8G8R8A8_UNORM in TRANSFER_SRC_OPTIMAL)
@@ -2679,7 +2923,7 @@ pub const OffscreenContext = struct {
                     .pAttachments = &attachments,
                     .pSubpasses = &subpass,
                 };
-                if (self.vk.CreateRenderPass(device, &rp_info, null, &self.render_passes[idx]) != .success) return error.VkCreateRenderPassFailed;
+                if (self.vk.CreateRenderPass(self.device, &rp_info, null, &self.render_passes[idx]) != .success) return error.VkCreateRenderPassFailed;
             } else {
                 const attachments = [3]VkAttachmentDescription{
                     .{
@@ -2717,7 +2961,7 @@ pub const OffscreenContext = struct {
                     .pAttachments = &attachments,
                     .pSubpasses = &subpass,
                 };
-                if (self.vk.CreateRenderPass(device, &rp_info, null, &self.render_passes[idx]) != .success) return error.VkCreateRenderPassFailed;
+                if (self.vk.CreateRenderPass(self.device, &rp_info, null, &self.render_passes[idx]) != .success) return error.VkCreateRenderPassFailed;
             }
         }
 
@@ -2731,7 +2975,7 @@ pub const OffscreenContext = struct {
             .bindingCount = 1,
             .pBindings = &bindings,
         };
-        if (self.vk.CreateDescriptorSetLayout(device, &dsl_info, null, &self.set_layout) != .success) return error.VkCreateDescriptorSetLayoutFailed;
+        if (self.vk.CreateDescriptorSetLayout(self.device, &dsl_info, null, &self.set_layout) != .success) return error.VkCreateDescriptorSetLayoutFailed;
 
         const pool_sizes = [1]VkDescriptorPoolSize{.{
             .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
@@ -2742,7 +2986,7 @@ pub const OffscreenContext = struct {
             .poolSizeCount = 1,
             .pPoolSizes = &pool_sizes,
         };
-        if (self.vk.CreateDescriptorPool(device, &dp_info, null, &self.desc_pool) != .success) return error.VkCreateDescriptorPoolFailed;
+        if (self.vk.CreateDescriptorPool(self.device, &dp_info, null, &self.desc_pool) != .success) return error.VkCreateDescriptorPoolFailed;
 
         const layouts = [1]VkDescriptorSetLayout{self.set_layout};
         const dsa_info: VkDescriptorSetAllocateInfo = .{
@@ -2750,25 +2994,25 @@ pub const OffscreenContext = struct {
             .pSetLayouts = &layouts,
         };
         var sets: [1]VkDescriptorSet = undefined;
-        if (self.vk.AllocateDescriptorSets(device, &dsa_info, &sets) != .success) return error.VkAllocateDescriptorSetsFailed;
+        if (self.vk.AllocateDescriptorSets(self.device, &dsa_info, &sets) != .success) return error.VkAllocateDescriptorSetsFailed;
         self.desc_set = sets[0];
 
         const ubo_info: VkBufferCreateInfo = .{
             .size = ubo_total_size,
             .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         };
-        if (self.vk.CreateBuffer(device, &ubo_info, null, &self.ubo_buf) != .success) return error.VkCreateBufferFailed;
+        if (self.vk.CreateBuffer(self.device, &ubo_info, null, &self.ubo_buf) != .success) return error.VkCreateBufferFailed;
         var req: VkMemoryRequirements = undefined;
-        self.vk.GetBufferMemoryRequirements(device, self.ubo_buf, &req);
+        self.vk.GetBufferMemoryRequirements(self.device, self.ubo_buf, &req);
         const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         const alloc_info: VkMemoryAllocateInfo = .{
             .allocationSize = @max(req.size, ubo_total_size),
             .memoryTypeIndex = mem_type,
         };
-        if (self.vk.AllocateMemory(device, &alloc_info, null, &self.ubo_mem) != .success) return error.VkAllocateMemoryFailed;
-        if (self.vk.BindBufferMemory(device, self.ubo_buf, self.ubo_mem, 0) != .success) return error.VkBindBufferMemoryFailed;
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &self.ubo_mem) != .success) return error.VkAllocateMemoryFailed;
+        if (self.vk.BindBufferMemory(self.device, self.ubo_buf, self.ubo_mem, 0) != .success) return error.VkBindBufferMemoryFailed;
         var ubo_ptr: ?*anyopaque = null;
-        if (self.vk.MapMemory(device, self.ubo_mem, 0, ubo_total_size, 0, &ubo_ptr) != .success or ubo_ptr == null) return error.VkMapMemoryFailed;
+        if (self.vk.MapMemory(self.device, self.ubo_mem, 0, ubo_total_size, 0, &ubo_ptr) != .success or ubo_ptr == null) return error.VkMapMemoryFailed;
         self.ubo_map = @as([*]u8, @ptrCast(ubo_ptr.?))[0..ubo_total_size];
 
         const buf_desc: VkDescriptorBufferInfo = .{
@@ -2782,9 +3026,7 @@ pub const OffscreenContext = struct {
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
             .pBufferInfo = &buf_desc,
         }};
-        self.vk.UpdateDescriptorSets(device, 1, &write, 0, null);
-
-        return self;
+        self.vk.UpdateDescriptorSets(self.device, 1, &write, 0, null);
     }
 
     pub fn deinit(self: *OffscreenContext) void {
@@ -2799,6 +3041,7 @@ pub const OffscreenContext = struct {
             if (rp != VK_NULL_HANDLE) self.vk.DestroyRenderPass(self.device, rp, null);
         }
         if (self.cmd_pool != VK_NULL_HANDLE) self.vk.DestroyCommandPool(self.device, self.cmd_pool, null);
+        if (self.shared) return;
         self.vk.DestroyDevice(self.device, null);
         self.inst_procs.DestroyInstance(self.instance, null);
         self.vk_lib.close();
@@ -3234,6 +3477,86 @@ pub const OffscreenContext = struct {
             const src_row = self.readback_map[(local_y + row) * vp.width + local_x ..][0..copy_w];
             @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..copy_w], src_row);
         }
+    }
+
+    /// As `renderToImage`, but recorded into a frame the 2D renderer is
+    /// drawing straight into a window buffer, and copied into it on the GPU.
+    /// False if the frame is not on this context's device (draw it with
+    /// `renderToImage`).
+    pub fn renderToFrame(
+        self: *OffscreenContext,
+        frame: *const DirectFrame,
+        area: GpuArea,
+        clear_color: ?Color,
+        samples: u8,
+        user_ctx: anytype,
+        comptime render_fn: anytype,
+    ) !bool {
+        if (frame.device != self.device) return false;
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return true;
+        const sc = if (area.scissor) |s| vp.intersect(s) orelse return true else vp;
+
+        try self.ensureTargets(vp.width, vp.height, samples);
+        self.width = vp.width;
+        self.height = vp.height;
+        self.ubo_cursor = 0;
+        // The scene's draws go into the frame's command buffer.
+        const own_cmd = self.cmd;
+        self.cmd = frame.cmd;
+        defer self.cmd = own_cmd;
+
+        const bg = clear_color orelse Color.argb(0xff000000);
+        const clears = [2]VkClearValue{
+            .{ .color = .{ bg.r, bg.g, bg.b, bg.a } },
+            .{ .depth_stencil = .{ .depth = 1.0, .stencil = 0 } },
+        };
+        const rp_begin: VkRenderPassBeginInfo = .{
+            .renderPass = self.render_passes[self.fb_sample_idx],
+            .framebuffer = self.framebuffer,
+            .renderArea = .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = vp.width, .height = vp.height } },
+            .clearValueCount = clears.len,
+            .pClearValues = &clears,
+        };
+        self.vk.CmdBeginRenderPass(self.cmd, &rp_begin, 0);
+        const wf: f32 = @floatFromInt(vp.width);
+        const hf: f32 = @floatFromInt(vp.height);
+        const vk_vp = [1]VkViewport{.{ .x = 0, .y = hf, .width = wf, .height = -hf, .minDepth = 0.0, .maxDepth = 1.0 }};
+        const vk_sc = [1]VkRect2D{.{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = vp.width, .height = vp.height } }};
+        self.vk.CmdSetViewport(self.cmd, 0, 1, &vk_vp);
+        self.vk.CmdSetScissor(self.cmd, 0, 1, &vk_sc);
+        try render_fn(user_ctx, self);
+        self.vk.CmdEndRenderPass(self.cmd);
+
+        // The resolved scene (in TRANSFER_SRC_OPTIMAL, from the render pass)
+        // into the window image, after what the 2D renderer drew there and
+        // before what it draws over it.
+        const color = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        const to_copy = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = color,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .image = frame.image,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &to_copy);
+        const region = [1]VkImageCopy{.{
+            .srcOffset = .{ .x = sc.x - vp.x, .y = sc.y - vp.y, .z = 0 },
+            .dstOffset = .{ .x = sc.x + frame.origin[0], .y = sc.y + frame.origin[1], .z = 0 },
+            .extent = .{ .width = sc.width, .height = sc.height, .depth = 1 },
+        }};
+        self.vk.CmdCopyImage(self.cmd, self.resolve_img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frame.image, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+        const after_copy = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = color,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .image = frame.image,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, null, 0, null, 1, &after_copy);
+        return true;
     }
 };
 

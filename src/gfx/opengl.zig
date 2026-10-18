@@ -21,6 +21,7 @@ const software = @import("software.zig");
 const Canvas = canvas_mod.Canvas;
 const Color = canvas_mod.Color;
 const Viewport = renderer_mod.Viewport;
+const DmabufImage = renderer_mod.DmabufImage;
 const GpuArea = renderer_mod.GpuArea;
 
 pub const GLenum = c_uint;
@@ -855,6 +856,27 @@ const EglProcs = struct {
     }
 };
 
+const EGLImageKHR = ?*anyopaque;
+const EGL_GL_RENDERBUFFER_KHR: EGLenum = 0x30B9;
+
+/// Exporting a renderbuffer as a dmabuf (`EGL_KHR_gl_renderbuffer_image`,
+/// `EGL_MESA_image_dma_buf_export`), if EGL has them.
+const ExportProcs = struct {
+    CreateImageKHR: *const fn (EGLDisplay, EGLContext, EGLenum, ?*anyopaque, [*]const EGLint) callconv(.c) EGLImageKHR,
+    DestroyImageKHR: *const fn (EGLDisplay, EGLImageKHR) callconv(.c) EGLBoolean,
+    ExportDMABUFImageQueryMESA: *const fn (EGLDisplay, EGLImageKHR, *c_int, *c_int, *u64) callconv(.c) EGLBoolean,
+    ExportDMABUFImageMESA: *const fn (EGLDisplay, EGLImageKHR, *c_int, *EGLint, *EGLint) callconv(.c) EGLBoolean,
+
+    fn load(egl: *const EglProcs) ?ExportProcs {
+        var x: ExportProcs = undefined;
+        inline for (@typeInfo(ExportProcs).@"struct".field_names) |field_name| {
+            const sym = egl.GetProcAddress("egl" ++ field_name) orelse return null;
+            @field(x, field_name) = @ptrCast(sym);
+        }
+        return x;
+    }
+};
+
 /// Full OpenGL 3.3+ / 4.6 Core function table available on `OpenGlContext.gl`.
 pub const ContextProcs = struct {
     GetIntegerv: GetIntegervFn,
@@ -879,6 +901,7 @@ pub const ContextProcs = struct {
     RenderbufferStorageMultisample: *const fn (GLenum, GLsizei, GLenum, GLsizei, GLsizei) callconv(.c) void,
     FramebufferRenderbuffer: *const fn (GLenum, GLenum, GLenum, GLuint) callconv(.c) void,
     BlitFramebuffer: *const fn (GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) callconv(.c) void,
+    Finish: *const fn () callconv(.c) void,
     ReadPixels: *const fn (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, *anyopaque) callconv(.c) void,
     GenBuffers: *const fn (GLsizei, [*]GLuint) callconv(.c) void,
     DeleteBuffers: *const fn (GLsizei, [*]const GLuint) callconv(.c) void,
@@ -974,6 +997,13 @@ pub const OffscreenContext = struct {
     fbo_samples: u8 = 0,
     active_pipeline: Pipeline = .{},
     scratch: std.ArrayList(u32) = .empty,
+    /// The resolved scene exported as a dmabuf (`renderToDmabuf`), and
+    /// what that needs; `export_failed` once it cannot be.
+    export_procs: ?ExportProcs = null,
+    export_image: EGLImageKHR = null,
+    exported: ?DmabufImage = null,
+    export_id: u64 = 0,
+    export_failed: bool = false,
 
     pub const ubo_capacity: usize = 256;
 
@@ -1084,6 +1114,7 @@ pub const OffscreenContext = struct {
 
     pub fn deinit(self: *OffscreenContext) void {
         self.scratch.deinit(self.gpa);
+        self.dropExport();
         if (self.dpy != EGL_NO_DISPLAY) {
             _ = self.egl.MakeCurrent(self.dpy, self.surf, self.surf, self.ctx);
             if (self.ubo != 0) {
@@ -1360,19 +1391,9 @@ pub const OffscreenContext = struct {
         self.fbo_samples = clamped_samples;
     }
 
-    pub fn renderToImage(
-        self: *OffscreenContext,
-        target: *software.Image,
-        area: GpuArea,
-        clear_color: ?Color,
-        samples: u8,
-        user_ctx: anytype,
-        comptime render_fn: anytype,
-    ) !void {
-        const vp = area.viewport;
-        if (vp.width == 0 or vp.height == 0) return;
-        const sc = if (area.scissor) |s| vp.intersect(s) orelse return else vp;
-
+    /// Draws the scene over a clear in the multisampled framebuffer, and
+    /// resolves it into `resolve_color_rb`.
+    fn drawResolved(self: *OffscreenContext, vp: Viewport, clear_color: ?Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !void {
         self.makeCurrent();
         self.ensureFbo(vp.width, vp.height, samples);
         self.width = vp.width;
@@ -1408,6 +1429,88 @@ pub const OffscreenContext = struct {
             GL_COLOR_BUFFER_BIT,
             @intCast(GL_NEAREST),
         );
+    }
+
+    /// As `renderToImage`, but with the resolved scene left on the GPU and
+    /// exported as a dmabuf (bottom row first) for the 2D renderer to copy
+    /// into its frame; null if it cannot be exported (draw it with
+    /// `renderToImage`).
+    pub fn renderToDmabuf(self: *OffscreenContext, area: GpuArea, clear_color: ?Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !?DmabufImage {
+        if (self.export_failed) return null;
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return null;
+        try self.drawResolved(vp, clear_color, samples, user_ctx, render_fn);
+        const image = self.exportResolved() orelse {
+            self.export_failed = true;
+            return null;
+        };
+        // The 2D renderer reads it once the GPU has drawn it.
+        self.gl.Finish();
+        return image;
+    }
+
+    /// `resolve_color_rb` as a dmabuf (made again when its size changes).
+    fn exportResolved(self: *OffscreenContext) ?DmabufImage {
+        if (self.exported) |e| if (e.width == self.fbo_w and e.height == self.fbo_h) return e;
+        self.dropExport();
+        const x = self.export_procs orelse ExportProcs.load(&self.egl) orelse return null;
+        self.export_procs = x;
+        const no_attribs = [1]EGLint{EGL_NONE};
+        const img = x.CreateImageKHR(self.dpy, self.ctx, EGL_GL_RENDERBUFFER_KHR, @ptrFromInt(self.resolve_color_rb), &no_attribs);
+        if (img == null) return null;
+        var fourcc: c_int = 0;
+        var planes: c_int = 0;
+        var modifier: u64 = 0;
+        if (x.ExportDMABUFImageQueryMESA(self.dpy, img, &fourcc, &planes, &modifier) == EGL_FALSE or planes != 1) {
+            _ = x.DestroyImageKHR(self.dpy, img);
+            return null;
+        }
+        var fd: c_int = -1;
+        var stride: EGLint = 0;
+        var offset: EGLint = 0;
+        if (x.ExportDMABUFImageMESA(self.dpy, img, &fd, &stride, &offset) == EGL_FALSE or fd < 0) {
+            _ = x.DestroyImageKHR(self.dpy, img);
+            return null;
+        }
+        self.export_image = img;
+        self.export_id += 1;
+        self.exported = .{
+            .id = (@as(u64, @intFromPtr(self)) << 16) ^ self.export_id,
+            .fd = fd,
+            .fourcc = @bitCast(fourcc),
+            .modifier = modifier,
+            .offset = @intCast(offset),
+            .stride = @intCast(stride),
+            .width = self.fbo_w,
+            .height = self.fbo_h,
+            .bottom_up = true,
+        };
+        return self.exported;
+    }
+
+    fn dropExport(self: *OffscreenContext) void {
+        if (self.exported) |e| _ = std.os.linux.close(e.fd);
+        self.exported = null;
+        if (self.export_image) |img| if (self.export_procs) |x| {
+            _ = x.DestroyImageKHR(self.dpy, img);
+        };
+        self.export_image = null;
+    }
+
+    pub fn renderToImage(
+        self: *OffscreenContext,
+        target: *software.Image,
+        area: GpuArea,
+        clear_color: ?Color,
+        samples: u8,
+        user_ctx: anytype,
+        comptime render_fn: anytype,
+    ) !void {
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return;
+        const sc = if (area.scissor) |s| vp.intersect(s) orelse return else vp;
+
+        try self.drawResolved(vp, clear_color, samples, user_ctx, render_fn);
 
         self.gl.BindFramebuffer(GL_FRAMEBUFFER, self.resolve_fbo);
         const local_x: GLint = sc.x - vp.x;

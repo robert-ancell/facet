@@ -69,6 +69,11 @@ pub const GpuDraw = struct {
     ctx: *const anyopaque,
     f: *const fn (ctx: *const anyopaque, target: *anyopaque, area: GpuArea) anyerror!void,
     area: GpuArea,
+    /// Used instead of `f` when the frame is drawn straight into the window
+    /// on the GPU (`Renderer.renderDmabuf`): given the backend and its frame
+    /// (`vulkan.DirectFrame` for `.vulkan`), it records its draw into it and
+    /// returns true, or returns false to be drawn with `f` instead.
+    direct: ?*const fn (ctx: *const anyopaque, backend: RenderBackend, frame: *const anyopaque, area: GpuArea) anyerror!bool = null,
 };
 
 /// A frame's buffer that the GPU can draw into directly (a window's linear
@@ -100,6 +105,22 @@ pub const DmabufTarget = struct {
         begin: *const fn (ctx: *anyopaque) anyerror!@import("software.zig").Image,
         end: *const fn (ctx: *anyopaque) void,
     };
+};
+
+/// An image in a dmabuf (one plane), as a GPU draw on another API exports
+/// its picture for the renderer to copy in (`vulkan.DirectFrame.copy_dmabuf`).
+pub const DmabufImage = struct {
+    /// Identifies it while it lives (a renderer keeps its import).
+    id: u64,
+    fd: i32,
+    fourcc: u32,
+    modifier: u64,
+    offset: u32,
+    stride: u32,
+    width: u32,
+    height: u32,
+    /// Its first row is the bottom of the picture (as OpenGL's are).
+    bottom_up: bool = false,
 };
 
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.
