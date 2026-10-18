@@ -1061,6 +1061,8 @@ pub const App = struct {
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
     dirty: bool = true,
+    /// The last `draw` showed nothing, so `step` waits rather than going
+    /// straight on to draw again.
     idle: bool = false,
     suspended: bool = false,
 
@@ -1133,11 +1135,18 @@ pub const App = struct {
     /// Waits for (or, after a frame was shown, just takes) what the window
     /// has to tell, and brings the UI up to date with it. False when the
     /// app should end.
+    /// Waits until there is something to do: a frame to draw that the
+    /// window is ready for, or something from the window (or, with nothing
+    /// to draw, `idle_timeout_ns`); then brings the UI up to date with the
+    /// window. False when the app should end.
+    ///
+    /// A frame is drawn only once the window has shown the last one, so
+    /// that it is drawn for the time it will be shown, not a frame early.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
-        if (a.idle) {
+        if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
-            try a.win.wait(if (a.ui.needs_frame and !a.suspended) frame_ns else idle_timeout_ns);
+            try a.win.wait(if (a.wantsFrame()) frame_ns else idle_timeout_ns);
         } else {
             try a.win.poll();
         }
@@ -1161,9 +1170,17 @@ pub const App = struct {
         a.ui.takeInput(a.win);
     }
 
+    /// Whether there is a frame to draw: the window shows, and something
+    /// changed or a widget asked for one.
+    fn wantsFrame(a: *const App) bool {
+        return !a.suspended and (a.dirty or a.ui.needs_frame);
+    }
+
+    /// Draws and shows a frame of `root`, if there is one to draw and the
+    /// window is ready for it.
     pub fn draw(a: *App, now_ns: u64, root: anytype) !void {
         a.idle = true;
-        if (a.suspended or !(a.dirty or a.ui.needs_frame)) return;
+        if (!a.wantsFrame() or a.win.isFramePending()) return;
         a.dirty = false;
         const size = a.win.size();
         a.ui.frame(size[0], size[1], a.win.nextPresentationNs(now_ns), root);

@@ -193,6 +193,7 @@ pub const Window = struct {
         isMaximized: *const fn (ptr: *anyopaque) bool,
         isFullscreen: *const fn (ptr: *anyopaque) bool,
         isTiled: *const fn (ptr: *anyopaque) bool,
+        isFramePending: *const fn (ptr: *anyopaque) bool,
         setCursor: *const fn (ptr: *anyopaque, cursor: Cursor) void,
         setMinSize: *const fn (ptr: *anyopaque, width: u32, height: u32) void,
         setMaximized: *const fn (ptr: *anyopaque, on: bool) void,
@@ -305,6 +306,11 @@ pub const Window = struct {
                 if (@hasField(T, "tiled")) return s.tiled;
                 return false;
             }
+            fn isFramePendingFn(p: *anyopaque) bool {
+                const s = self(p);
+                if (@hasField(T, "frame_pending")) return s.frame_pending;
+                return false;
+            }
             fn setCursorFn(p: *anyopaque, cursor: Cursor) void {
                 if (@hasDecl(T, "setCursor")) self(p).setCursor(cursor);
             }
@@ -393,6 +399,7 @@ pub const Window = struct {
                 .isMaximized = isMaximizedFn,
                 .isFullscreen = isFullscreenFn,
                 .isTiled = isTiledFn,
+                .isFramePending = isFramePendingFn,
                 .setCursor = setCursorFn,
                 .setMinSize = setMinSizeFn,
                 .setMaximized = setMaximizedFn,
@@ -459,6 +466,11 @@ pub const Window = struct {
     }
     pub fn isTiled(w: Window) bool {
         return w.vtable.isTiled(w.ptr);
+    }
+    /// Whether the last frame shown is still waiting for the windowing
+    /// system to be ready for the next (drawing one now would only wait).
+    pub fn isFramePending(w: Window) bool {
+        return w.vtable.isFramePending(w.ptr);
     }
     pub fn setCursor(w: Window, cursor: Cursor) void {
         w.vtable.setCursor(w.ptr, cursor);
