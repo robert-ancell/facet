@@ -64,14 +64,176 @@ inline fn shadowAlphaAt(px: f32, py: f32, cx0: f32, cy0: f32, hx: f32, hy: f32, 
     return std.math.clamp(0.28 * t_key + 0.14 * t_amb + outline_a, 0.0, 1.0);
 }
 
+pub const GbmDevice = opaque {};
+pub const GbmBo = opaque {};
+
+pub const DmaBufDevice = struct {
+    drm_lib: std.DynLib,
+    gbm_lib: std.DynLib,
+    drm_fd: linux.fd_t,
+    gbm_dev: *GbmDevice,
+    gbm: GbmProcs,
+
+    const drm_node_primary = 0;
+    const drm_node_render = 2;
+
+    const DrmDevice = extern struct {
+        nodes: [*][*:0]u8,
+        available_nodes: c_int,
+        bustype: c_int,
+        businfo: ?*anyopaque,
+        deviceinfo: ?*anyopaque,
+    };
+
+    const DrmProcs = struct {
+        GetDevices2: *const fn (u32, ?[*]*DrmDevice, c_int) callconv(.c) c_int,
+        FreeDevices: *const fn ([*]*DrmDevice, c_int) callconv(.c) void,
+
+        fn load(lib: *std.DynLib) !DrmProcs {
+            return .{
+                .GetDevices2 = lib.lookup(*const fn (u32, ?[*]*DrmDevice, c_int) callconv(.c) c_int, "drmGetDevices2") orelse return error.MissingDrmFunction,
+                .FreeDevices = lib.lookup(*const fn ([*]*DrmDevice, c_int) callconv(.c) void, "drmFreeDevices") orelse return error.MissingDrmFunction,
+            };
+        }
+    };
+
+    pub const GbmProcs = struct {
+        create_device: *const fn (c_int) callconv(.c) ?*GbmDevice,
+        device_destroy: *const fn (*GbmDevice) callconv(.c) void,
+        bo_create: *const fn (*GbmDevice, u32, u32, u32, u32) callconv(.c) ?*GbmBo,
+        bo_destroy: *const fn (*GbmBo) callconv(.c) void,
+        bo_map: *const fn (*GbmBo, u32, u32, u32, u32, u32, *u32, *?*anyopaque) callconv(.c) ?[*]u8,
+        bo_unmap: *const fn (*GbmBo, ?*anyopaque) callconv(.c) void,
+        bo_get_fd: *const fn (*GbmBo) callconv(.c) c_int,
+        bo_get_stride: *const fn (*GbmBo) callconv(.c) u32,
+        bo_get_offset: *const fn (*GbmBo, c_int) callconv(.c) u32,
+        bo_get_modifier: *const fn (*GbmBo) callconv(.c) u64,
+
+        fn load(lib: *std.DynLib) !GbmProcs {
+            var procs: GbmProcs = undefined;
+            inline for (@typeInfo(GbmProcs).@"struct".field_names) |field_name| {
+                const sym_name: [:0]const u8 = "gbm_" ++ field_name;
+                @field(procs, field_name) = lib.lookup(@FieldType(GbmProcs, field_name), sym_name) orelse return error.MissingGbmFunction;
+            }
+            return procs;
+        }
+    };
+
+    pub const gbm_bo_use_rendering: u32 = 1 << 2;
+    pub const gbm_bo_use_write: u32 = 1 << 3;
+    pub const gbm_bo_use_linear: u32 = 1 << 4;
+
+    pub const gbm_bo_transfer_read: u32 = 1 << 0;
+    pub const gbm_bo_transfer_write: u32 = 1 << 1;
+    pub const gbm_bo_transfer_read_write: u32 = gbm_bo_transfer_read | gbm_bo_transfer_write;
+
+    pub const Allocation = struct {
+        bo: *GbmBo,
+        dmabuf_fd: linux.fd_t,
+        stride: u32,
+        offset: u32,
+        modifier: u64,
+    };
+
+    pub fn open() ?DmaBufDevice {
+        var drm_lib = std.DynLib.open("libdrm.so.2") catch std.DynLib.open("libdrm.so") catch return null;
+        const drm = DrmProcs.load(&drm_lib) catch {
+            drm_lib.close();
+            return null;
+        };
+
+        var gbm_lib = std.DynLib.open("libgbm.so.1") catch std.DynLib.open("libgbm.so") catch {
+            drm_lib.close();
+            return null;
+        };
+        const gbm = GbmProcs.load(&gbm_lib) catch {
+            gbm_lib.close();
+            drm_lib.close();
+            return null;
+        };
+
+        var devices: [16]*DrmDevice = undefined;
+        const count = drm.GetDevices2(0, &devices, devices.len);
+        if (count > 0) {
+            const n: usize = @intCast(count);
+            defer drm.FreeDevices(&devices, count);
+            for ([_]u5{ drm_node_render, drm_node_primary }) |node_type| {
+                for (devices[0..n]) |dev| {
+                    if ((dev.available_nodes & (@as(c_int, 1) << node_type)) == 0) continue;
+                    if (tryOpenNode(dev.nodes[node_type], drm_lib, gbm_lib, gbm)) |d| return d;
+                }
+            }
+        }
+
+        gbm_lib.close();
+        drm_lib.close();
+        return null;
+    }
+
+    fn tryOpenNode(path: [*:0]const u8, drm_lib: std.DynLib, gbm_lib: std.DynLib, gbm: GbmProcs) ?DmaBufDevice {
+        const rc = linux.open(path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
+        if (linux.errno(rc) != .SUCCESS) return null;
+        const fd: linux.fd_t = @intCast(rc);
+        const gbm_dev = gbm.create_device(fd) orelse {
+            _ = linux.close(fd);
+            return null;
+        };
+        const dev: DmaBufDevice = .{
+            .drm_lib = drm_lib,
+            .gbm_lib = gbm_lib,
+            .drm_fd = fd,
+            .gbm_dev = gbm_dev,
+            .gbm = gbm,
+        };
+        if (dev.alloc(4, 4, p.fourcc.argb8888)) |probe| {
+            _ = linux.close(probe.dmabuf_fd);
+            dev.gbm.bo_destroy(probe.bo);
+            return dev;
+        } else |_| {
+            dev.gbm.device_destroy(gbm_dev);
+            _ = linux.close(fd);
+            return null;
+        }
+    }
+
+    pub fn close(dev: *DmaBufDevice) void {
+        dev.gbm.device_destroy(dev.gbm_dev);
+        if (dev.drm_fd >= 0) _ = linux.close(dev.drm_fd);
+        dev.gbm_lib.close();
+        dev.drm_lib.close();
+    }
+
+    pub fn alloc(dev: *const DmaBufDevice, width: u32, height: u32, format: u32) !Allocation {
+        const flags = gbm_bo_use_rendering | gbm_bo_use_linear;
+        const bo = dev.gbm.bo_create(dev.gbm_dev, width, height, format, flags) orelse
+            dev.gbm.bo_create(dev.gbm_dev, width, height, format, gbm_bo_use_linear) orelse
+            dev.gbm.bo_create(dev.gbm_dev, width, height, format, gbm_bo_use_write) orelse
+            return error.OutOfMemory;
+        errdefer dev.gbm.bo_destroy(bo);
+
+        const fd = dev.gbm.bo_get_fd(bo);
+        if (fd < 0) return error.OutOfMemory;
+        return .{
+            .bo = bo,
+            .dmabuf_fd = fd,
+            .stride = dev.gbm.bo_get_stride(bo),
+            .offset = dev.gbm.bo_get_offset(bo, 0),
+            .modifier = dev.gbm.bo_get_modifier(bo),
+        };
+    }
+};
+
 pub const Buffer = struct {
     drawn: u64 = 0,
-    fd: linux.fd_t = -1,
-    pixels: []align(std.heap.page_size_min) u8,
-    pool: client.Proxy = undefined,
-    proxy: client.Proxy = undefined,
+    bo: ?*GbmBo = null,
+    gbm: ?DmaBufDevice.GbmProcs = null,
+    map_data: ?*anyopaque = null,
+    pixels: []u8 = &.{},
+    pool: client.Proxy = .{},
+    proxy: client.Proxy = .{},
     width: u32,
     height: u32,
+    stride_words: u32 = 0,
     content_w: u32 = 0,
     content_h: u32 = 0,
     margin: u32 = 0,
@@ -79,17 +241,53 @@ pub const Buffer = struct {
     busy: bool = false,
     shadow_drawn: bool = false,
 
+    pub inline fn rowWords(b: *const Buffer) u32 {
+        return if (b.stride_words > 0) b.stride_words else b.width;
+    }
+
+    pub fn beginCpuAccess(b: *Buffer) !void {
+        const bo = b.bo orelse return;
+        if (b.map_data != null) return;
+        const gbm = b.gbm orelse return error.OutOfMemory;
+        var map_stride: u32 = 0;
+        var map_data: ?*anyopaque = null;
+        const ptr = gbm.bo_map(
+            bo,
+            0,
+            0,
+            b.width,
+            b.height,
+            DmaBufDevice.gbm_bo_transfer_read_write,
+            &map_stride,
+            &map_data,
+        ) orelse return error.OutOfMemory;
+        b.map_data = map_data;
+        b.stride_words = map_stride / 4;
+        b.pixels = ptr[0 .. @as(usize, map_stride) * @as(usize, b.height)];
+    }
+
+    pub fn endCpuAccess(b: *Buffer) void {
+        const bo = b.bo orelse return;
+        if (b.map_data == null) return;
+        if (b.gbm) |gbm| {
+            gbm.bo_unmap(bo, b.map_data);
+        }
+        b.map_data = null;
+        b.pixels = &.{};
+    }
+
     /// Returns the window content sub-image (inside the shadow margin) with
-    /// `stride` set to the full buffer width.
+    /// `stride` set to the full buffer row stride in `u32` words.
     pub fn image(b: *Buffer) gfx.software.Image {
         const cw = if (b.content_w > 0) b.content_w else b.width;
         const ch = if (b.content_h > 0) b.content_h else b.height;
+        const sw = b.rowWords();
         const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
-        const total = @as(usize, b.width) * @as(usize, b.height);
-        const start = @as(usize, b.margin) * @as(usize, b.width) + @as(usize, b.margin);
+        const total = @as(usize, sw) * @as(usize, b.height);
+        const start = @as(usize, b.margin) * @as(usize, sw) + @as(usize, b.margin);
         return .{
             .pixels = words[start..total],
-            .stride = b.width,
+            .stride = sw,
             .width = cw,
             .height = ch,
         };
@@ -97,13 +295,14 @@ pub const Buffer = struct {
 
     /// Renders the drop shadow into the outer margin around the window content.
     pub fn renderShadowMargin(b: *Buffer) void {
-        if (b.margin == 0 or b.content_w == 0 or b.content_h == 0) return;
+        if (b.shadow_drawn or b.margin == 0 or b.content_w == 0 or b.content_h == 0) return;
         const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
         const m = b.margin;
         const cw = b.content_w;
         const ch = b.content_h;
         const bw = b.width;
         const bh = b.height;
+        const sw = b.rowWords();
         const sf: f32 = @floatFromInt(@max(b.scale, 1));
         const r = corner_radius * sf;
         const f_m: f32 = @floatFromInt(m);
@@ -116,7 +315,7 @@ pub const Buffer = struct {
 
         for (0..bh) |by| {
             const py = @as(f32, @floatFromInt(by)) + 0.5;
-            const row = words[by * bw ..][0..bw];
+            const row = words[by * sw ..][0..bw];
             const in_y = by >= m and by < m + ch;
             if (!in_y) {
                 for (0..bw) |bx| {
@@ -154,7 +353,7 @@ pub const Buffer = struct {
         const m = b.margin;
         const cw = b.content_w;
         const ch = b.content_h;
-        const bw = b.width;
+        const sw = b.rowWords();
         const sf: f32 = @floatFromInt(@max(b.scale, 1));
         const r = corner_radius * sf;
         const corner_px: u32 = @min(@as(u32, @intFromFloat(@ceil(r))) + 1, @min(cw / 2, ch / 2));
@@ -204,7 +403,7 @@ pub const Buffer = struct {
 
                     const cov = std.math.clamp(0.5 - d_win, 0.0, 1.0);
                     const sa = shadowAlphaAt(px, py, cx0, cy0, hx, hy, r, sf, d_win);
-                    const idx = @as(usize, by) * bw + bx;
+                    const idx = @as(usize, by) * sw + bx;
                     const src = words[idx];
                     const sr: f32 = @floatFromInt((src >> 16) & 0xff);
                     const sg: f32 = @floatFromInt((src >> 8) & 0xff);
@@ -224,8 +423,12 @@ pub const Buffer = struct {
 pub const WaylandWindow = struct {
     pub const platform: window_mod.Platform = .wayland;
 
-    pub fn bufferTransport(_: *const WaylandWindow) window_mod.BufferTransport {
-        return .wl_shm;
+    pub fn usingDmabuf(w: *const WaylandWindow) bool {
+        return w.dmabuf != null and w.dmabuf_dev != null and (w.dmabuf_argb8888 or w.dmabuf_xrgb8888);
+    }
+
+    pub fn bufferTransport(w: *const WaylandWindow) window_mod.BufferTransport {
+        return if (w.usingDmabuf()) .linux_dmabuf else .wl_shm;
     }
 
     pub fn decorations(w: *const WaylandWindow) window_mod.Decorations {
@@ -242,6 +445,10 @@ pub const WaylandWindow = struct {
     compositor: client.Proxy = .{},
     wm_base: client.Proxy = .{},
     shm: client.Proxy = .{},
+    dmabuf: ?client.Proxy = null,
+    dmabuf_dev: ?DmaBufDevice = null,
+    dmabuf_argb8888: bool = false,
+    dmabuf_xrgb8888: bool = false,
     surface: client.Proxy = .{},
     xdg_surface: client.Proxy = .{},
     toplevel: client.Proxy = .{},
@@ -387,7 +594,26 @@ pub const WaylandWindow = struct {
         const registry = try w.globals.fetch(conn);
         w.compositor = (try w.globals.bind(registry, p.wl_compositor.name, 6, null)) orelse return error.NoCompositor;
         w.wm_base = (try w.globals.bind(registry, p.xdg_wm_base.name, 6, .{ .ptr = w, .handler = wmBaseEvent })) orelse return error.NoXdgShell;
-        w.shm = (try w.globals.bind(registry, p.wl_shm.name, 1, null)) orelse return error.NoShm;
+        if (w.globals.find(p.zwp_linux_dmabuf_v1.name)) |gl| {
+            if (gl.version >= 2) {
+                if (DmaBufDevice.open()) |dev_val| {
+                    var dev = dev_val;
+                    errdefer dev.close();
+                    if (try w.globals.bind(registry, p.zwp_linux_dmabuf_v1.name, 3, .{ .ptr = w, .handler = dmabufEvent })) |dmabuf_proxy| {
+                        w.dmabuf = dmabuf_proxy;
+                        w.dmabuf_dev = dev;
+                    } else {
+                        dev.close();
+                    }
+                }
+            }
+        }
+        errdefer if (w.dmabuf_dev) |*dev| dev.close();
+        if (try w.globals.bind(registry, p.wl_shm.name, 1, null)) |shm_proxy| {
+            w.shm = shm_proxy;
+        } else if (w.dmabuf == null or w.dmabuf_dev == null) {
+            return error.NoShm;
+        }
 
         w.decoration_manager = try w.globals.bind(registry, p.zxdg_decoration_manager_v1.name, 1, null);
         w.cursor_shape_manager = try w.globals.bind(registry, p.wp_cursor_shape_manager_v1.name, 1, null);
@@ -445,6 +671,7 @@ pub const WaylandWindow = struct {
     pub fn close(w: *WaylandWindow) void {
         w.clipboard.deinit();
         for (&w.buffers) |*slot| if (slot.*) |*b| w.freeBuffer(b, slot);
+        if (w.dmabuf_dev) |*dev| dev.close();
         w.conn.flush() catch {};
         w.conn.disconnect();
         w.gpa.destroy(w);
@@ -759,12 +986,14 @@ pub const WaylandWindow = struct {
         return size;
     }
 
-    /// Acquires a free `wl_shm` buffer of the window's current size and returns
-    /// its inner content CPU pixel slice as a `gfx.software.Image`.
+    /// Acquires a free `linux_dmabuf` (or `wl_shm` fallback) buffer of the
+    /// window's current size and returns its inner content CPU pixel slice as
+    /// a `gfx.software.Image`.
     pub fn beginFrame(w: *WaylandWindow) !gfx.software.Image {
         const i = w.back orelse try w.pickBack();
         w.back = i;
         w.frame_corners_applied = false;
+        try w.buffers[i].?.beginCpuAccess();
         return w.buffers[i].?.image();
     }
 
@@ -812,6 +1041,7 @@ pub const WaylandWindow = struct {
             }
             w.frame_corners_applied = true;
         }
+        b.endCpuAccess();
         const s = @max(b.scale, 1);
         const m_logical = b.margin / s;
         const cw_logical = (if (b.content_w > 0) b.content_w else b.width) / s;
@@ -955,6 +1185,64 @@ pub const WaylandWindow = struct {
         const m_px = m_logical * s;
         const bw = cw + 2 * m_px;
         const bh = ch + 2 * m_px;
+        if (w.usingDmabuf()) {
+            if (w.allocDmabufBuffer(slot, bw, bh, cw, ch, m_px, s)) |buf| {
+                return buf;
+            } else |err| {
+                if (w.shm.id == 0) return err;
+                if (w.dmabuf_dev) |*dev| dev.close();
+                w.dmabuf_dev = null;
+            }
+        }
+        return w.allocShmBuffer(slot, bw, bh, cw, ch, m_px, s);
+    }
+
+    fn allocDmabufBuffer(w: *WaylandWindow, slot: usize, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32) !Buffer {
+        const dmabuf = w.dmabuf orelse return error.NoDmabuf;
+        const dev = &(w.dmabuf_dev orelse return error.NoDmabuf);
+        const fmt: u32 = if ((m_px > 0 and w.dmabuf_argb8888) or !w.dmabuf_xrgb8888)
+            p.fourcc.argb8888
+        else
+            p.fourcc.xrgb8888;
+        const alloc = try dev.alloc(bw, bh, fmt);
+        errdefer dev.gbm.bo_destroy(alloc.bo);
+        var fd_sent = false;
+        errdefer if (!fd_sent) {
+            _ = linux.close(alloc.dmabuf_fd);
+        };
+
+        const params = try w.conn.newObject(null);
+        var m = try dmabuf.request(p.zwp_linux_dmabuf_v1.request.create_params);
+        m.uint(params.id).end();
+
+        const mod = if (alloc.modifier != 0x00ffffffffffffff) alloc.modifier else p.modifier.linear;
+        m = try params.request(p.zwp_linux_buffer_params_v1.request.add);
+        m.fd(alloc.dmabuf_fd).uint(0).uint(alloc.offset).uint(alloc.stride).uint(@intCast(mod >> 32)).uint(@truncate(mod)).end();
+        fd_sent = true;
+
+        const proxy = try w.conn.newObject(.{ .ptr = &w.buffers[slot], .handler = bufferEvent });
+        m = try params.request(p.zwp_linux_buffer_params_v1.request.create_immed);
+        m.uint(proxy.id).int(@intCast(bw)).int(@intCast(bh)).uint(fmt).uint(0).end();
+
+        m = try params.request(p.zwp_linux_buffer_params_v1.request.destroy);
+        m.end();
+        w.conn.forget(params.id);
+
+        return .{
+            .bo = alloc.bo,
+            .gbm = dev.gbm,
+            .proxy = proxy,
+            .width = bw,
+            .height = bh,
+            .stride_words = alloc.stride / 4,
+            .content_w = cw,
+            .content_h = ch,
+            .margin = m_px,
+            .scale = s,
+        };
+    }
+
+    fn allocShmBuffer(w: *WaylandWindow, slot: usize, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32) !Buffer {
         const stride = bw * 4;
         const size: usize = @as(usize, stride) * @as(usize, bh);
         const rc = linux.memfd_create("facet-shm", linux.MFD.CLOEXEC);
@@ -977,12 +1265,12 @@ pub const WaylandWindow = struct {
         m.uint(proxy.id).int(0).int(@intCast(bw)).int(@intCast(bh)).int(@intCast(stride)).uint(fmt).end();
 
         return .{
-            .fd = fd,
             .pixels = pixels,
             .pool = pool,
             .proxy = proxy,
             .width = bw,
             .height = bh,
+            .stride_words = bw,
             .content_w = cw,
             .content_h = ch,
             .margin = m_px,
@@ -991,18 +1279,24 @@ pub const WaylandWindow = struct {
     }
 
     fn freeBuffer(w: *WaylandWindow, b: *Buffer, slot: *?Buffer) void {
+        b.endCpuAccess();
         if (b.proxy.request(p.wl_buffer.request.destroy)) |m0| {
             var m = m0;
             m.end();
         } else |_| {}
         w.conn.forget(b.proxy.id);
-        if (b.pool.request(p.wl_shm_pool.request.destroy)) |m0| {
-            var m = m0;
-            m.end();
-        } else |_| {}
-        w.conn.forget(b.pool.id);
-        _ = linux.munmap(b.pixels.ptr, b.pixels.len);
-        _ = linux.close(b.fd);
+        if (b.pool.id != 0) {
+            if (b.pool.request(p.wl_shm_pool.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(b.pool.id);
+        }
+        if (b.bo) |bo| {
+            if (b.gbm) |gbm| gbm.bo_destroy(bo);
+        } else if (b.pixels.len > 0) {
+            _ = linux.munmap(@alignCast(b.pixels.ptr), b.pixels.len);
+        }
         slot.* = null;
     }
 
@@ -1452,6 +1746,28 @@ pub const WaylandWindow = struct {
             }
         }
     }
+
+    pub fn dmabufEvent(ptr: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        switch (opcode) {
+            p.zwp_linux_dmabuf_v1.event.format => {
+                const fmt = r.uint() catch return;
+                if (fmt == p.fourcc.argb8888) w.dmabuf_argb8888 = true;
+                if (fmt == p.fourcc.xrgb8888) w.dmabuf_xrgb8888 = true;
+            },
+            p.zwp_linux_dmabuf_v1.event.modifier => {
+                const fmt = r.uint() catch return;
+                const mod_hi = r.uint() catch return;
+                const mod_lo = r.uint() catch return;
+                const mod = (@as(u64, mod_hi) << 32) | mod_lo;
+                if (mod == p.modifier.linear or mod == 0x00ffffffffffffff) {
+                    if (fmt == p.fourcc.argb8888) w.dmabuf_argb8888 = true;
+                    if (fmt == p.fourcc.xrgb8888) w.dmabuf_xrgb8888 = true;
+                }
+            },
+            else => {},
+        }
+    }
 };
 
 fn keyboardFromKeymap(fd: linux.fd_t, size: u32) ?Keyboard {
@@ -1609,7 +1925,6 @@ test "Buffer renders drop shadow margin and rounds window corners while exposing
     @memset(bytes, 0);
 
     var buf: Buffer = .{
-        .fd = -1,
         .pixels = bytes,
         .width = bw,
         .height = bh,
@@ -1642,5 +1957,53 @@ test "Buffer renders drop shadow margin and rounds window corners while exposing
     const shadow_below = words[@as(usize, m + ch + 3) * bw + (m + cw / 2)];
     try std.testing.expect((shadow_below >> 24) > 0);
     try std.testing.expect((shadow_below & 0x00ffffff) == 0);
+}
+
+test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 and DmaBufDevice are available" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    try std.testing.expectEqual(window_mod.BufferTransport.wl_shm, win.bufferTransport());
+
+    var disp: client.Display = undefined;
+    const mod_msg = [_]u32{ p.fourcc.argb8888, 0, 0 };
+    var r_mod = wire.Reader{ .data = std.mem.sliceAsBytes(&mod_msg), .c = undefined };
+    WaylandWindow.dmabufEvent(&win, &disp, 1, p.zwp_linux_dmabuf_v1.event.modifier, &r_mod);
+    try std.testing.expect(win.dmabuf_argb8888);
+
+    const fmt_msg = [_]u32{p.fourcc.xrgb8888};
+    var r_fmt = wire.Reader{ .data = std.mem.sliceAsBytes(&fmt_msg), .c = undefined };
+    WaylandWindow.dmabufEvent(&win, &disp, 1, p.zwp_linux_dmabuf_v1.event.format, &r_fmt);
+    try std.testing.expect(win.dmabuf_xrgb8888);
+
+    if (DmaBufDevice.open()) |dev_val| {
+        var dev = dev_val;
+        defer dev.close();
+        win.dmabuf = .{ .id = 10 };
+        win.dmabuf_dev = dev;
+        try std.testing.expectEqual(window_mod.BufferTransport.linux_dmabuf, win.bufferTransport());
+
+        const alloc = try dev.alloc(64, 48, p.fourcc.argb8888);
+        defer {
+            _ = linux.close(alloc.dmabuf_fd);
+            dev.gbm.bo_destroy(alloc.bo);
+        }
+        try std.testing.expect(alloc.dmabuf_fd >= 0);
+        try std.testing.expect(alloc.stride >= 64 * 4);
+        var buf: Buffer = .{
+            .bo = alloc.bo,
+            .gbm = dev.gbm,
+            .width = 64,
+            .height = 48,
+            .stride_words = alloc.stride / 4,
+        };
+        try buf.beginCpuAccess();
+        var img = buf.image();
+        img.clear(0xff112233);
+        try std.testing.expectEqual(@as(u32, 0xff112233), img.at(0, 0));
+        buf.endCpuAccess();
+    }
 }
 

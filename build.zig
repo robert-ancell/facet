@@ -123,6 +123,7 @@ pub fn createModules(
         .root_source_file = b.path("src/window/window.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
         .imports = &.{
             .{ .name = "wayland", .module = wayland },
             .{ .name = "gfx", .module = gfx },
