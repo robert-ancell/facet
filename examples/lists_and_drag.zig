@@ -82,81 +82,73 @@ pub const ListsAndDragDemo = struct {
             });
         }
 
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "LazyGrid & Drag-and-Drop" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Padding{
-                        .padding = .all(20),
-                        .child = cx.make(facet.Row{
+        return cx.make(facet.Padding{
+            .padding = .all(20),
+            .child = cx.make(facet.Row{
+                .cross_axis_alignment = .stretch,
+                .spacing = 20,
+                .children = &.{
+                    cx.make(facet.Expanded{
+                        .flex = 2,
+                        .child = cx.make(facet.Column{
                             .cross_axis_alignment = .stretch,
-                            .spacing = 20,
+                            .spacing = 8,
                             .children = &.{
-                                cx.make(facet.Expanded{
-                                    .flex = 2,
-                                    .child = cx.make(facet.Column{
-                                        .cross_axis_alignment = .stretch,
-                                        .spacing = 8,
-                                        .children = &.{
-                                            cx.make(facet.Text{
-                                                .text = "Virtualized LazyGrid (500 items — drag any card to the right):",
-                                                .style = .{ .size = t.body_size, .color = t.on_surface_variant },
-                                            }),
-                                            cx.make(facet.Expanded{
-                                                .child = cx.make(facet.ScrollView{
-                                                    .child = cx.make(facet.LazyGrid{
-                                                        .count = item_count,
-                                                        .cell = .{ .w = 150, .h = 52 },
-                                                        .spacing = 10,
-                                                        .item = .of(state, buildGridItem),
-                                                    }),
-                                                }),
-                                            }),
-                                        },
-                                    }),
+                                cx.make(facet.Text{
+                                    .text = "Virtualized LazyGrid (500 items — drag any card to the right):",
+                                    .style = .{ .size = t.body_size, .color = t.on_surface_variant },
                                 }),
-                                cx.make(facet.SizedBox{
-                                    .width = 240,
-                                    .child = cx.make(facet.DropTarget{
-                                        .on_drop = .of(state, State.addPinned),
-                                        .child = cx.make(facet.Card{
-                                            .variant = .elevated,
-                                            .padding = .all(16),
-                                            .child = cx.make(facet.Column{
-                                                .cross_axis_alignment = .start,
-                                                .spacing = 12,
-                                                .children = &.{
-                                                    cx.make(facet.Text{
-                                                        .text = "Drop Zone (Pinned)",
-                                                        .style = .{ .size = 18, .color = t.on_surface },
-                                                    }),
-                                                    cx.make(facet.Text{
-                                                        .text = if (state.selected_item) |sel|
-                                                            cx.fmt("Last clicked: Item #{d}", .{sel + 1})
-                                                        else
-                                                            "Drag items here to pin them.",
-                                                        .style = .{ .size = t.body_size, .color = t.on_surface_variant },
-                                                    }),
-                                                    cx.make(facet.Column{
-                                                        .cross_axis_alignment = .start,
-                                                        .spacing = 8,
-                                                        .children = pinned_widgets[0..state.pinned_len],
-                                                    }),
-                                                    cx.make(facet.TextButton{
-                                                        .label = "Clear pinned",
-                                                        .on_press = if (state.pinned_len > 0) .of(state, State.clearPinned) else null,
-                                                    }),
-                                                },
-                                            }),
+                                cx.make(facet.Expanded{
+                                    .child = cx.make(facet.ScrollView{
+                                        .child = cx.make(facet.LazyGrid{
+                                            .count = item_count,
+                                            .cell = .{ .w = 150, .h = 52 },
+                                            .spacing = 10,
+                                            .item = .of(state, buildGridItem),
                                         }),
                                     }),
                                 }),
                             },
                         }),
                     }),
-                }),
-            },
+                    cx.make(facet.SizedBox{
+                        .width = 240,
+                        .child = cx.make(facet.DropTarget{
+                            .on_drop = .of(state, State.addPinned),
+                            .child = cx.make(facet.Card{
+                                .variant = .elevated,
+                                .padding = .all(16),
+                                .child = cx.make(facet.Column{
+                                    .cross_axis_alignment = .start,
+                                    .spacing = 12,
+                                    .children = &.{
+                                        cx.make(facet.Text{
+                                            .text = "Drop Zone (Pinned)",
+                                            .style = .{ .size = 18, .color = t.on_surface },
+                                        }),
+                                        cx.make(facet.Text{
+                                            .text = if (state.selected_item) |sel|
+                                                cx.fmt("Last clicked: Item #{d}", .{sel + 1})
+                                            else
+                                                "Drag items here to pin them.",
+                                            .style = .{ .size = t.body_size, .color = t.on_surface_variant },
+                                        }),
+                                        cx.make(facet.Column{
+                                            .cross_axis_alignment = .start,
+                                            .spacing = 8,
+                                            .children = pinned_widgets[0..state.pinned_len],
+                                        }),
+                                        cx.make(facet.TextButton{
+                                            .label = "Clear pinned",
+                                            .on_press = if (state.pinned_len > 0) .of(state, State.clearPinned) else null,
+                                        }),
+                                    },
+                                }),
+                            }),
+                        }),
+                    }),
+                },
+            }),
         });
     }
 };

@@ -200,139 +200,131 @@ pub const VulkanDemo = struct {
             }),
         });
 
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Vulkan 3D Widget" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Padding{
-                        .padding = .all(20),
-                        .child = cx.make(facet.Row{
-                            .cross_axis_alignment = .stretch,
-                            .spacing = 20,
-                            .children = &.{
-                                cx.make(facet.Expanded{
-                                    .child = cx.make(facet.VulkanArea(SolidVkScene){
-                                        .scene = .{
-                                            .shape = state.shape,
-                                            .yaw = state.yaw,
-                                            .pitch = state.pitch,
-                                            .roll = state.roll,
-                                            .look = state.look,
-                                        },
-                                        .samples = state.samples,
-                                        .border = .{ .width = 1, .color = t.outline_variant },
-                                        .on_drag = .of(state, State.orbit),
-                                        .child = badge,
-                                    }),
-                                }),
-                                cx.make(facet.Card{
-                                    .variant = .outlined,
-                                    .padding = .all(14),
-                                    .child = cx.make(facet.SizedBox{
-                                        .width = 264,
-                                        .child = cx.make(facet.Column{
-                                            .main_axis_size = .min,
-                                            .cross_axis_alignment = .start,
-                                            .spacing = 4,
-                                            .children = &.{
-                                                cx.make(facet.Text{
-                                                    .text = "Platonic Solid",
-                                                    .style = .{ .size = 16 },
-                                                }),
-                                                radios[0],
-                                                radios[1],
-                                                radios[2],
-                                                radios[3],
-                                                radios[4],
-                                                cx.make(facet.Divider{}),
-                                                cx.make(facet.Text{
-                                                    .text = "Shader Options",
-                                                    .style = .{ .size = 16 },
-                                                }),
-                                                cx.make(facet.Switch{
-                                                    .value = state.look.lighting,
-                                                    .on_changed = .of(state, State.setLighting),
-                                                    .label = "Directional Lighting",
-                                                }),
-                                                cx.make(facet.Switch{
-                                                    .value = state.look.texturing,
-                                                    .on_changed = .of(state, State.setTexturing),
-                                                    .label = "Checkerboard Texture",
-                                                }),
-                                                cx.make(facet.Divider{}),
-                                                cx.make(facet.Text{
-                                                    .text = "Anti-Aliasing (MSAA)",
-                                                    .style = .{ .size = 14, .color = t.on_surface_variant },
-                                                }),
-                                                cx.make(facet.PillBar{
-                                                    .children = &.{
-                                                        cx.make(facet.PillButton{
-                                                            .label = "Off",
-                                                            .selected = state.samples == 1,
-                                                            .first = true,
-                                                            .on_press = .of(state, State.setSamples1),
-                                                        }),
-                                                        cx.make(facet.PillButton{
-                                                            .label = "2×",
-                                                            .selected = state.samples == 2,
-                                                            .on_press = .of(state, State.setSamples2),
-                                                        }),
-                                                        cx.make(facet.PillButton{
-                                                            .label = "4×",
-                                                            .selected = state.samples == 4,
-                                                            .on_press = .of(state, State.setSamples4),
-                                                        }),
-                                                        cx.make(facet.PillButton{
-                                                            .label = "8×",
-                                                            .selected = state.samples == 8,
-                                                            .last = true,
-                                                            .on_press = .of(state, State.setSamples8),
-                                                        }),
-                                                    },
-                                                }),
-                                                cx.make(facet.Divider{}),
-                                                cx.make(facet.Text{
-                                                    .text = cx.fmt("Rotation Speed ({d:.1}×)", .{state.speed}),
-                                                    .style = .{ .size = 14, .color = t.on_surface_variant },
-                                                }),
-                                                cx.make(facet.SizedBox{
-                                                    .width = 264,
-                                                    .child = cx.make(facet.Slider{
-                                                        .value = state.speed,
-                                                        .min = 0.2,
-                                                        .max = 4.0,
-                                                        .on_changed = .of(state, State.setSpeed),
-                                                    }),
-                                                }),
-                                                cx.make(facet.Row{
-                                                    .main_axis_size = .min,
-                                                    .spacing = 8,
-                                                    .children = &.{
-                                                        cx.make(facet.ConstrainedBox{
-                                                            .constraints = .{ .min_w = 136 },
-                                                            .child = cx.make(facet.TonalButton{
-                                                                .label = if (state.paused) "Resume" else "Pause",
-                                                                .icon = if (state.paused) .play_arrow else .pause,
-                                                                .on_press = .of(state, State.togglePause),
-                                                            }),
-                                                        }),
-                                                        cx.make(facet.OutlinedButton{
-                                                            .label = "Reset",
-                                                            .icon = .refresh,
-                                                            .on_press = .of(state, State.resetView),
-                                                        }),
-                                                    },
-                                                }),
-                                            },
-                                        }),
-                                    }),
-                                }),
+        return cx.make(facet.Padding{
+            .padding = .all(20),
+            .child = cx.make(facet.Row{
+                .cross_axis_alignment = .stretch,
+                .spacing = 20,
+                .children = &.{
+                    cx.make(facet.Expanded{
+                        .child = cx.make(facet.VulkanArea(SolidVkScene){
+                            .scene = .{
+                                .shape = state.shape,
+                                .yaw = state.yaw,
+                                .pitch = state.pitch,
+                                .roll = state.roll,
+                                .look = state.look,
                             },
+                            .samples = state.samples,
+                            .border = .{ .width = 1, .color = t.outline_variant },
+                            .on_drag = .of(state, State.orbit),
+                            .child = badge,
                         }),
                     }),
-                }),
-            },
+                    cx.make(facet.Card{
+                        .variant = .outlined,
+                        .padding = .all(14),
+                        .child = cx.make(facet.SizedBox{
+                            .width = 264,
+                            .child = cx.make(facet.Column{
+                                .main_axis_size = .min,
+                                .cross_axis_alignment = .start,
+                                .spacing = 4,
+                                .children = &.{
+                                    cx.make(facet.Text{
+                                        .text = "Platonic Solid",
+                                        .style = .{ .size = 16 },
+                                    }),
+                                    radios[0],
+                                    radios[1],
+                                    radios[2],
+                                    radios[3],
+                                    radios[4],
+                                    cx.make(facet.Divider{}),
+                                    cx.make(facet.Text{
+                                        .text = "Shader Options",
+                                        .style = .{ .size = 16 },
+                                    }),
+                                    cx.make(facet.Switch{
+                                        .value = state.look.lighting,
+                                        .on_changed = .of(state, State.setLighting),
+                                        .label = "Directional Lighting",
+                                    }),
+                                    cx.make(facet.Switch{
+                                        .value = state.look.texturing,
+                                        .on_changed = .of(state, State.setTexturing),
+                                        .label = "Checkerboard Texture",
+                                    }),
+                                    cx.make(facet.Divider{}),
+                                    cx.make(facet.Text{
+                                        .text = "Anti-Aliasing (MSAA)",
+                                        .style = .{ .size = 14, .color = t.on_surface_variant },
+                                    }),
+                                    cx.make(facet.PillBar{
+                                        .children = &.{
+                                            cx.make(facet.PillButton{
+                                                .label = "Off",
+                                                .selected = state.samples == 1,
+                                                .first = true,
+                                                .on_press = .of(state, State.setSamples1),
+                                            }),
+                                            cx.make(facet.PillButton{
+                                                .label = "2×",
+                                                .selected = state.samples == 2,
+                                                .on_press = .of(state, State.setSamples2),
+                                            }),
+                                            cx.make(facet.PillButton{
+                                                .label = "4×",
+                                                .selected = state.samples == 4,
+                                                .on_press = .of(state, State.setSamples4),
+                                            }),
+                                            cx.make(facet.PillButton{
+                                                .label = "8×",
+                                                .selected = state.samples == 8,
+                                                .last = true,
+                                                .on_press = .of(state, State.setSamples8),
+                                            }),
+                                        },
+                                    }),
+                                    cx.make(facet.Divider{}),
+                                    cx.make(facet.Text{
+                                        .text = cx.fmt("Rotation Speed ({d:.1}×)", .{state.speed}),
+                                        .style = .{ .size = 14, .color = t.on_surface_variant },
+                                    }),
+                                    cx.make(facet.SizedBox{
+                                        .width = 264,
+                                        .child = cx.make(facet.Slider{
+                                            .value = state.speed,
+                                            .min = 0.2,
+                                            .max = 4.0,
+                                            .on_changed = .of(state, State.setSpeed),
+                                        }),
+                                    }),
+                                    cx.make(facet.Row{
+                                        .main_axis_size = .min,
+                                        .spacing = 8,
+                                        .children = &.{
+                                            cx.make(facet.ConstrainedBox{
+                                                .constraints = .{ .min_w = 136 },
+                                                .child = cx.make(facet.TonalButton{
+                                                    .label = if (state.paused) "Resume" else "Pause",
+                                                    .icon = if (state.paused) .play_arrow else .pause,
+                                                    .on_press = .of(state, State.togglePause),
+                                                }),
+                                            }),
+                                            cx.make(facet.OutlinedButton{
+                                                .label = "Reset",
+                                                .icon = .refresh,
+                                                .on_press = .of(state, State.resetView),
+                                            }),
+                                        },
+                                    }),
+                                },
+                            }),
+                        }),
+                    }),
+                },
+            }),
         });
     }
 };

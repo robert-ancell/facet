@@ -337,6 +337,39 @@ pub const xdg_toplevel = struct {
     };
 };
 
+/// Server-side vs client-side window decoration negotiation
+/// (`xdg-decoration-unstable-v1.xml`).
+pub const zxdg_decoration_manager_v1 = struct {
+    pub const name = "zxdg_decoration_manager_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const get_toplevel_decoration = 1;
+    };
+};
+
+pub const zxdg_toplevel_decoration_v1 = struct {
+    pub const name = "zxdg_toplevel_decoration_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const set_mode = 1;
+        pub const unset_mode = 2;
+    };
+    pub const event = struct {
+        pub const configure = 0;
+    };
+    pub const mode = struct {
+        pub const client_side = 1;
+        pub const server_side = 2;
+    };
+    pub const err = struct {
+        pub const unconfigured_buffer = 0;
+        pub const already_constructed = 1;
+        pub const orphaned = 2;
+    };
+};
+
 pub const zwp_linux_dmabuf_v1 = struct {
     pub const name = "zwp_linux_dmabuf_v1";
     pub const version = 3;

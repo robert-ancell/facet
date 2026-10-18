@@ -88,46 +88,38 @@ pub const EditorView = struct {
         const bytes = self.doc.text();
         const lines = 1 + std.mem.count(u8, bytes, "\n");
 
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Syntax-Highlighted TextArea" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Padding{
-                        .padding = .all(16),
-                        .child = cx.make(facet.Column{
-                            .cross_axis_alignment = .stretch,
-                            .spacing = 10,
-                            .children = &.{
-                                cx.make(facet.Expanded{
-                                    .child = cx.make(facet.TextArea{
-                                        .doc = self.doc,
-                                        .autofocus = true,
-                                        .highlighter = highlightZig,
-                                    }),
-                                }),
-                                cx.make(facet.Row{
-                                    .main_axis_alignment = .space_between,
-                                    .children = &.{
-                                        cx.make(facet.Text{
-                                            .text = cx.fmt("{d} lines · {d} bytes · cursor at {d}", .{
-                                                lines,
-                                                bytes.len,
-                                                self.doc.cursor,
-                                            }),
-                                            .style = .{ .size = 13, .color = t.on_surface_variant },
-                                        }),
-                                        cx.make(facet.Text{
-                                            .text = "Ctrl+A / Ctrl+C / Ctrl+V or Right-Click for menu",
-                                            .style = .{ .size = 13, .color = t.on_surface_variant },
-                                        }),
-                                    },
-                                }),
-                            },
+        return cx.make(facet.Padding{
+            .padding = .all(16),
+            .child = cx.make(facet.Column{
+                .cross_axis_alignment = .stretch,
+                .spacing = 10,
+                .children = &.{
+                    cx.make(facet.Expanded{
+                        .child = cx.make(facet.TextArea{
+                            .doc = self.doc,
+                            .autofocus = true,
+                            .highlighter = highlightZig,
                         }),
                     }),
-                }),
-            },
+                    cx.make(facet.Row{
+                        .main_axis_alignment = .space_between,
+                        .children = &.{
+                            cx.make(facet.Text{
+                                .text = cx.fmt("{d} lines · {d} bytes · cursor at {d}", .{
+                                    lines,
+                                    bytes.len,
+                                    self.doc.cursor,
+                                }),
+                                .style = .{ .size = 13, .color = t.on_surface_variant },
+                            }),
+                            cx.make(facet.Text{
+                                .text = "Ctrl+A / Ctrl+C / Ctrl+V or Right-Click for menu",
+                                .style = .{ .size = 13, .color = t.on_surface_variant },
+                            }),
+                        },
+                    }),
+                },
+            }),
         });
     }
 };

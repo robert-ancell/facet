@@ -228,21 +228,34 @@ pub const WaylandWindow = struct {
         return .wl_shm;
     }
 
+    pub fn decorations(w: *const WaylandWindow) window_mod.Decorations {
+        return if (w.server_decorations) .server else .client;
+    }
+
+    pub fn getTitle(w: *const WaylandWindow) []const u8 {
+        return w.title_buf[0..w.title_len];
+    }
+
     gpa: std.mem.Allocator,
     conn: *client.Display,
     globals: client.Globals = .{},
-    compositor: client.Proxy = undefined,
-    wm_base: client.Proxy = undefined,
-    shm: client.Proxy = undefined,
-    surface: client.Proxy = undefined,
-    xdg_surface: client.Proxy = undefined,
-    toplevel: client.Proxy = undefined,
+    compositor: client.Proxy = .{},
+    wm_base: client.Proxy = .{},
+    shm: client.Proxy = .{},
+    surface: client.Proxy = .{},
+    xdg_surface: client.Proxy = .{},
+    toplevel: client.Proxy = .{},
+    decoration_manager: ?client.Proxy = null,
+    toplevel_decoration: ?client.Proxy = null,
 
+    title_buf: [128]u8 = undefined,
+    title_len: usize = 0,
     width: u32 = default_size[0],
     height: u32 = default_size[1],
     min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
     scale_changed: bool = false,
+    server_decorations: bool = false,
     decoration_changed: bool = false,
     last_geometry: ?[3]u32 = null,
     next_size: [2]i32 = .{ 0, 0 },
@@ -360,6 +373,9 @@ pub const WaylandWindow = struct {
             .min_size = min_size,
             .maximized = options.maximized,
         };
+        const tlen = @min(options.title.len, w.title_buf.len);
+        @memcpy(w.title_buf[0..tlen], options.title[0..tlen]);
+        w.title_len = tlen;
         w.clipboard.drag_callbacks = .{
             .ctx = w,
             .enter = onDragEnter,
@@ -373,6 +389,7 @@ pub const WaylandWindow = struct {
         w.wm_base = (try w.globals.bind(registry, p.xdg_wm_base.name, 6, .{ .ptr = w, .handler = wmBaseEvent })) orelse return error.NoXdgShell;
         w.shm = (try w.globals.bind(registry, p.wl_shm.name, 1, null)) orelse return error.NoShm;
 
+        w.decoration_manager = try w.globals.bind(registry, p.zxdg_decoration_manager_v1.name, 1, null);
         w.cursor_shape_manager = try w.globals.bind(registry, p.wp_cursor_shape_manager_v1.name, 1, null);
         w.presentation = try w.globals.bind(registry, p.wp_presentation.name, 1, .{ .ptr = w, .handler = presentationEvent });
         w.pointer_constraints = try w.globals.bind(registry, p.zwp_pointer_constraints_v1.name, 1, null);
@@ -398,6 +415,12 @@ pub const WaylandWindow = struct {
         w.toplevel = try conn.newObject(.{ .ptr = w, .handler = toplevelEvent });
         m = try w.xdg_surface.request(p.xdg_surface.request.get_toplevel);
         m.uint(w.toplevel.id).end();
+        if (w.decoration_manager) |mgr| {
+            const dec = try conn.newObject(.{ .ptr = w, .handler = decorationEvent });
+            m = try mgr.request(p.zxdg_decoration_manager_v1.request.get_toplevel_decoration);
+            m.uint(dec.id).uint(w.toplevel.id).end();
+            w.toplevel_decoration = dec;
+        }
         m = try w.toplevel.request(p.xdg_toplevel.request.set_title);
         m.string(options.title).end();
         if (options.app_id) |app_id| {
@@ -502,7 +525,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn setMinSize(w: *WaylandWindow, width: u32, height: u32) void {
-        if (w.hasClientDecorations()) {
+        if (w.isFloating()) {
             if (w.width < width) w.width = width;
             if (w.height < height) w.height = height;
         }
@@ -513,11 +536,17 @@ pub const WaylandWindow = struct {
         w.conn.flush() catch {};
     }
 
-    /// True when the window is floating and draws client-side drop shadows,
-    /// rounded corners, and an outer resize border. False when maximized,
-    /// fullscreen, or tiled.
-    pub fn hasClientDecorations(w: *const WaylandWindow) bool {
+    /// True when the window is neither maximized, fullscreen, nor tiled.
+    pub fn isFloating(w: *const WaylandWindow) bool {
         return !w.maximized and !w.fullscreen and !w.tiled;
+    }
+
+    /// True when the window is floating and draws client-side drop shadows,
+    /// rounded corners, and an outer resize border. False when using
+    /// server-side decorations (`zxdg_toplevel_decoration_v1`), or when
+    /// maximized, fullscreen, or tiled.
+    pub fn hasClientDecorations(w: *const WaylandWindow) bool {
+        return !w.server_decorations and w.isFloating();
     }
 
     pub fn frameMargin(w: *const WaylandWindow) u32 {
@@ -718,7 +747,7 @@ pub const WaylandWindow = struct {
             if (w.next_size[0] > 0) @intCast(w.next_size[0]) else w.width,
             if (w.next_size[1] > 0) @intCast(w.next_size[1]) else w.height,
         };
-        if (w.hasClientDecorations()) {
+        if (w.isFloating()) {
             size[0] = @max(size[0], w.min_size[0]);
             size[1] = @max(size[1], w.min_size[1]);
         }
@@ -1411,6 +1440,18 @@ pub const WaylandWindow = struct {
             else => {},
         }
     }
+
+    pub fn decorationEvent(ptr: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        if (opcode == p.zxdg_toplevel_decoration_v1.event.configure) {
+            const mode = r.uint() catch return;
+            const ssd = mode == p.zxdg_toplevel_decoration_v1.mode.server_side;
+            if (w.server_decorations != ssd) {
+                w.server_decorations = ssd;
+                w.decoration_changed = true;
+            }
+        }
+    }
 };
 
 fn keyboardFromKeymap(fd: linux.fd_t, size: u32) ?Keyboard {
@@ -1540,6 +1581,18 @@ test "edgesAt detects resize edges only outside the window content and respects 
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
     win.maximized = false;
     win.tiled = true;
+    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
+    // Server-side decorations disable client shadow margin and outer resize edges even when floating.
+    win.tiled = false;
+    var disp: client.Display = undefined;
+    const ssd_msg = [_]u32{p.zxdg_toplevel_decoration_v1.mode.server_side};
+    var r_ssd = wire.Reader{ .data = std.mem.sliceAsBytes(&ssd_msg), .c = undefined };
+    WaylandWindow.decorationEvent(&win, &disp, 1, p.zxdg_toplevel_decoration_v1.event.configure, &r_ssd);
+    try std.testing.expect(win.server_decorations);
+    try std.testing.expect(win.decoration_changed);
+    try std.testing.expectEqual(window_mod.Decorations.server, win.decorations());
     try std.testing.expect(!win.hasClientDecorations());
     try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));

@@ -386,6 +386,8 @@ pub const BackendInfo = struct {
     buffer_transport: window_mod.BufferTransport = .memory,
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `custom`).
     renderer: gfx.RenderBackend = .software,
+    /// Window decoration mode (`none`, `client`, `server`).
+    decorations: window_mod.Decorations = .none,
     /// Logical window size in pixels.
     logical_size: [2]u32 = .{ 0, 0 },
     /// Physical target buffer size in pixels (`logical_size * scale`).

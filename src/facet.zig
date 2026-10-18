@@ -122,6 +122,7 @@ pub const VulkanRenderer = gfx.VulkanRenderer;
 pub const VulkanContext = gfx.VulkanContext;
 pub const Platform = window.Platform;
 pub const BufferTransport = window.BufferTransport;
+pub const Decorations = window.Decorations;
 pub const Window = window.Window;
 pub const WaylandWindow = window.WaylandWindow;
 pub const Controls = window.Controls;

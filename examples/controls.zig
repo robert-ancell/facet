@@ -84,155 +84,147 @@ pub const ControlsDemo = struct {
             .{ .value = .high, .label = "High Performance" },
         };
 
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Material 3 Controls" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.ScrollView{
-                        .child = cx.make(facet.Padding{
-                            .padding = .all(24),
+        return cx.make(facet.ScrollView{
+            .child = cx.make(facet.Padding{
+                .padding = .all(24),
+                .child = cx.make(facet.Column{
+                    .cross_axis_alignment = .start,
+                    .spacing = 16,
+                    .children = &.{
+                        cx.make(facet.Row{
+                            .spacing = 16,
+                            .cross_axis_alignment = .center,
+                            .children = &.{
+                                cx.make(facet.Text{
+                                    .text = cx.fmt("Hello, {s}!", .{name}),
+                                    .style = .{ .size = t.title_size, .color = t.on_surface },
+                                }),
+                                cx.make(facet.Switch{
+                                    .value = state.light_mode,
+                                    .on_changed = .of(state, State.toggleTheme),
+                                    .label = "Light theme",
+                                }),
+                            },
+                        }),
+                        cx.make(facet.Divider{}),
+                        cx.make(facet.Row{
+                            .spacing = 16,
+                            .children = &.{
+                                cx.make(facet.TextField{
+                                    .placeholder = "Your name",
+                                    .initial = "World",
+                                    .on_changed = .of(state, State.setName),
+                                }),
+                                cx.make(facet.TextField{
+                                    .placeholder = "Password",
+                                    .initial = "hunter2",
+                                    .obscure = true,
+                                }),
+                            },
+                        }),
+                        cx.make(facet.Row{
+                            .spacing = 24,
+                            .children = &.{
+                                cx.make(facet.Switch{
+                                    .value = state.notifications,
+                                    .on_changed = .of(state, State.setNotifications),
+                                    .label = "Enable notifications",
+                                }),
+                                cx.make(facet.Checkbox{
+                                    .value = state.remember_me,
+                                    .on_changed = .of(state, State.setRememberMe),
+                                    .label = "Remember session",
+                                }),
+                            },
+                        }),
+                        cx.make(facet.Row{
+                            .spacing = 16,
+                            .children = &.{
+                                cx.make(facet.Radio(Quality){
+                                    .value = .low,
+                                    .group_value = state.quality,
+                                    .on_changed = .of(state, State.setQuality),
+                                    .label = "Low",
+                                }),
+                                cx.make(facet.Radio(Quality){
+                                    .value = .balanced,
+                                    .group_value = state.quality,
+                                    .on_changed = .of(state, State.setQuality),
+                                    .label = "Balanced",
+                                }),
+                                cx.make(facet.Radio(Quality){
+                                    .value = .high,
+                                    .group_value = state.quality,
+                                    .on_changed = .of(state, State.setQuality),
+                                    .label = "High",
+                                }),
+                                cx.make(facet.Select(Quality){
+                                    .options = &quality_options,
+                                    .value = state.quality,
+                                    .on_changed = .of(state, State.setQuality),
+                                }),
+                            },
+                        }),
+                        cx.make(facet.SizedBox{
+                            .width = 360,
                             .child = cx.make(facet.Column{
-                                .cross_axis_alignment = .start,
-                                .spacing = 16,
+                                .cross_axis_alignment = .stretch,
+                                .spacing = 8,
                                 .children = &.{
-                                    cx.make(facet.Row{
-                                        .spacing = 16,
-                                        .cross_axis_alignment = .center,
-                                        .children = &.{
-                                            cx.make(facet.Text{
-                                                .text = cx.fmt("Hello, {s}!", .{name}),
-                                                .style = .{ .size = t.title_size, .color = t.on_surface },
-                                            }),
-                                            cx.make(facet.Switch{
-                                                .value = state.light_mode,
-                                                .on_changed = .of(state, State.toggleTheme),
-                                                .label = "Light theme",
-                                            }),
-                                        },
+                                    cx.make(facet.Text{
+                                        .text = cx.fmt("Volume: {d:.0}%", .{state.volume * 100}),
                                     }),
-                                    cx.make(facet.Divider{}),
-                                    cx.make(facet.Row{
-                                        .spacing = 16,
-                                        .children = &.{
-                                            cx.make(facet.TextField{
-                                                .placeholder = "Your name",
-                                                .initial = "World",
-                                                .on_changed = .of(state, State.setName),
-                                            }),
-                                            cx.make(facet.TextField{
-                                                .placeholder = "Password",
-                                                .initial = "hunter2",
-                                                .obscure = true,
-                                            }),
-                                        },
+                                    cx.make(facet.Slider{
+                                        .value = state.volume,
+                                        .on_changed = .of(state, State.setVolume),
                                     }),
-                                    cx.make(facet.Row{
-                                        .spacing = 24,
-                                        .children = &.{
-                                            cx.make(facet.Switch{
-                                                .value = state.notifications,
-                                                .on_changed = .of(state, State.setNotifications),
-                                                .label = "Enable notifications",
-                                            }),
-                                            cx.make(facet.Checkbox{
-                                                .value = state.remember_me,
-                                                .on_changed = .of(state, State.setRememberMe),
-                                                .label = "Remember session",
-                                            }),
-                                        },
+                                    cx.make(facet.ProgressBar{ .value = state.volume }),
+                                    cx.make(facet.Text{
+                                        .text = cx.fmt("Discrete step: {d:.0}", .{state.steps}),
                                     }),
-                                    cx.make(facet.Row{
-                                        .spacing = 16,
-                                        .children = &.{
-                                            cx.make(facet.Radio(Quality){
-                                                .value = .low,
-                                                .group_value = state.quality,
-                                                .on_changed = .of(state, State.setQuality),
-                                                .label = "Low",
-                                            }),
-                                            cx.make(facet.Radio(Quality){
-                                                .value = .balanced,
-                                                .group_value = state.quality,
-                                                .on_changed = .of(state, State.setQuality),
-                                                .label = "Balanced",
-                                            }),
-                                            cx.make(facet.Radio(Quality){
-                                                .value = .high,
-                                                .group_value = state.quality,
-                                                .on_changed = .of(state, State.setQuality),
-                                                .label = "High",
-                                            }),
-                                            cx.make(facet.Select(Quality){
-                                                .options = &quality_options,
-                                                .value = state.quality,
-                                                .on_changed = .of(state, State.setQuality),
-                                            }),
-                                        },
-                                    }),
-                                    cx.make(facet.SizedBox{
-                                        .width = 360,
-                                        .child = cx.make(facet.Column{
-                                            .cross_axis_alignment = .stretch,
-                                            .spacing = 8,
-                                            .children = &.{
-                                                cx.make(facet.Text{
-                                                    .text = cx.fmt("Volume: {d:.0}%", .{state.volume * 100}),
-                                                }),
-                                                cx.make(facet.Slider{
-                                                    .value = state.volume,
-                                                    .on_changed = .of(state, State.setVolume),
-                                                }),
-                                                cx.make(facet.ProgressBar{ .value = state.volume }),
-                                                cx.make(facet.Text{
-                                                    .text = cx.fmt("Discrete step: {d:.0}", .{state.steps}),
-                                                }),
-                                                cx.make(facet.Slider{
-                                                    .value = state.steps,
-                                                    .min = 0,
-                                                    .max = 100,
-                                                    .divisions = 4,
-                                                    .on_changed = .of(state, State.setSteps),
-                                                }),
-                                            },
-                                        }),
-                                    }),
-                                    cx.make(facet.Row{
-                                        .spacing = 16,
-                                        .cross_axis_alignment = .center,
-                                        .children = &.{
-                                            cx.make(facet.PillBar{
-                                                .children = &.{
-                                                    cx.make(facet.PillButton{
-                                                        .label = "List",
-                                                        .icon = .view_list,
-                                                        .selected = state.view_mode == .list,
-                                                        .first = true,
-                                                        .on_press = .of(state, State.setListView),
-                                                    }),
-                                                    cx.make(facet.PillButton{
-                                                        .label = "Grid",
-                                                        .icon = .grid_view,
-                                                        .selected = state.view_mode == .grid,
-                                                        .last = true,
-                                                        .on_press = .of(state, State.setGridView),
-                                                    }),
-                                                },
-                                            }),
-                                            cx.make(facet.Chip{
-                                                .label = "Filter active",
-                                                .icon = .widgets,
-                                                .selected = state.filter_active,
-                                                .on_press = .of(state, State.toggleFilter),
-                                            }),
-                                        },
+                                    cx.make(facet.Slider{
+                                        .value = state.steps,
+                                        .min = 0,
+                                        .max = 100,
+                                        .divisions = 4,
+                                        .on_changed = .of(state, State.setSteps),
                                     }),
                                 },
                             }),
                         }),
-                    }),
+                        cx.make(facet.Row{
+                            .spacing = 16,
+                            .cross_axis_alignment = .center,
+                            .children = &.{
+                                cx.make(facet.PillBar{
+                                    .children = &.{
+                                        cx.make(facet.PillButton{
+                                            .label = "List",
+                                            .icon = .view_list,
+                                            .selected = state.view_mode == .list,
+                                            .first = true,
+                                            .on_press = .of(state, State.setListView),
+                                        }),
+                                        cx.make(facet.PillButton{
+                                            .label = "Grid",
+                                            .icon = .grid_view,
+                                            .selected = state.view_mode == .grid,
+                                            .last = true,
+                                            .on_press = .of(state, State.setGridView),
+                                        }),
+                                    },
+                                }),
+                                cx.make(facet.Chip{
+                                    .label = "Filter active",
+                                    .icon = .widgets,
+                                    .selected = state.filter_active,
+                                    .on_press = .of(state, State.toggleFilter),
+                                }),
+                            },
+                        }),
+                    },
                 }),
-            },
+            }),
         });
     }
 };

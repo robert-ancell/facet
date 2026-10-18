@@ -17,7 +17,7 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
   - **Vulkan (`VulkanRenderer`, `VulkanContext`):** Vulkan 1.1+ backend and offscreen 3D widget framework using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders.
   - **Custom Backends:** Implement `prepare` and `render` and wrap with `facet.Renderer.of(&my_backend)`.
 - **Windowing (`facet.window`):**
-  - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell`, `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
+  - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell`, `zxdg_decoration_manager_v1` (automatic client-side title bar & shadows or server-side decorations), `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
   - Generic **`Window` interface (`facet.Window.of(&my_window)`)** for custom windowing backends (and future macOS/Windows support).
 - **Bundled Fonts & Icons (`facet.font`, `facet.icons`):**
   - Pure-Zig OpenType/TrueType parser, shaper, and rasterizer (`kern`/`GPOS`, `liga`/`GSUB`, `COLR`/`CPAL` color emoji).
@@ -91,49 +91,41 @@ pub const Counter = struct {
 
     pub fn build(self: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
         const t = cx.theme();
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Hello Facet" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Center{
-                        .child = cx.make(facet.Card{
-                            .variant = .elevated,
-                            .padding = .all(24),
-                            .child = cx.make(facet.Column{
-                                .main_axis_size = .min,
-                                .cross_axis_alignment = .center,
-                                .spacing = 16,
-                                .children = &.{
-                                    cx.make(facet.Text{
-                                        .text = self.greeting,
-                                        .style = .{ .size = t.title_size, .color = t.on_surface },
-                                    }),
-                                    cx.make(facet.Text{
-                                        .text = cx.fmt("Count: {d}", .{state.count}),
-                                        .style = .{ .size = 32, .color = t.primary },
-                                    }),
-                                    cx.make(facet.Row{
-                                        .main_axis_size = .min,
-                                        .spacing = 12,
-                                        .children = &.{
-                                            cx.make(facet.OutlinedButton{
-                                                .label = "−1",
-                                                .on_press = .of(state, State.decrement),
-                                            }),
-                                            cx.make(facet.FilledButton{
-                                                .label = "+1",
-                                                .icon = .add,
-                                                .on_press = .of(state, State.increment),
-                                            }),
-                                        },
-                                    }),
-                                },
-                            }),
+        return cx.make(facet.Center{
+            .child = cx.make(facet.Card{
+                .variant = .elevated,
+                .padding = .all(24),
+                .child = cx.make(facet.Column{
+                    .main_axis_size = .min,
+                    .cross_axis_alignment = .center,
+                    .spacing = 16,
+                    .children = &.{
+                        cx.make(facet.Text{
+                            .text = self.greeting,
+                            .style = .{ .size = t.title_size, .color = t.on_surface },
                         }),
-                    }),
+                        cx.make(facet.Text{
+                            .text = cx.fmt("Count: {d}", .{state.count}),
+                            .style = .{ .size = 32, .color = t.primary },
+                        }),
+                        cx.make(facet.Row{
+                            .main_axis_size = .min,
+                            .spacing = 12,
+                            .children = &.{
+                                cx.make(facet.OutlinedButton{
+                                    .label = "−1",
+                                    .on_press = .of(state, State.decrement),
+                                }),
+                                cx.make(facet.FilledButton{
+                                    .label = "+1",
+                                    .icon = .add,
+                                    .on_press = .of(state, State.increment),
+                                }),
+                            },
+                        }),
+                    },
                 }),
-            },
+            }),
         });
     }
 };

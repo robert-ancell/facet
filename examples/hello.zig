@@ -24,54 +24,46 @@ pub const Counter = struct {
 
     pub fn build(self: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
         const t = cx.theme();
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Hello Facet" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Center{
-                        .child = cx.make(facet.Card{
-                            .variant = .elevated,
-                            .padding = .all(24),
-                            .child = cx.make(facet.Column{
-                                .main_axis_size = .min,
-                                .cross_axis_alignment = .center,
-                                .spacing = 16,
-                                .children = &.{
-                                    cx.make(facet.Text{
-                                        .text = self.greeting,
-                                        .style = .{ .size = t.title_size, .color = t.on_surface },
-                                    }),
-                                    cx.make(facet.Text{
-                                        .text = cx.fmt("Count: {d}", .{state.count}),
-                                        .style = .{ .size = 32, .color = t.primary },
-                                    }),
-                                    cx.make(facet.Row{
-                                        .main_axis_size = .min,
-                                        .spacing = 12,
-                                        .children = &.{
-                                            cx.make(facet.OutlinedButton{
-                                                .label = "−1",
-                                                .on_press = .of(state, State.decrement),
-                                            }),
-                                            cx.make(facet.FilledButton{
-                                                .label = "+1",
-                                                .icon = .add,
-                                                .on_press = .of(state, State.increment),
-                                            }),
-                                            cx.make(facet.TextButton{
-                                                .label = "Reset",
-                                                .icon = .restart_alt,
-                                                .on_press = if (state.count != 0) .of(state, State.reset) else null,
-                                            }),
-                                        },
-                                    }),
-                                },
-                            }),
+        return cx.make(facet.Center{
+            .child = cx.make(facet.Card{
+                .variant = .elevated,
+                .padding = .all(24),
+                .child = cx.make(facet.Column{
+                    .main_axis_size = .min,
+                    .cross_axis_alignment = .center,
+                    .spacing = 16,
+                    .children = &.{
+                        cx.make(facet.Text{
+                            .text = self.greeting,
+                            .style = .{ .size = t.title_size, .color = t.on_surface },
                         }),
-                    }),
+                        cx.make(facet.Text{
+                            .text = cx.fmt("Count: {d}", .{state.count}),
+                            .style = .{ .size = 32, .color = t.primary },
+                        }),
+                        cx.make(facet.Row{
+                            .main_axis_size = .min,
+                            .spacing = 12,
+                            .children = &.{
+                                cx.make(facet.OutlinedButton{
+                                    .label = "−1",
+                                    .on_press = .of(state, State.decrement),
+                                }),
+                                cx.make(facet.FilledButton{
+                                    .label = "+1",
+                                    .icon = .add,
+                                    .on_press = .of(state, State.increment),
+                                }),
+                                cx.make(facet.TextButton{
+                                    .label = "Reset",
+                                    .icon = .restart_alt,
+                                    .on_press = if (state.count != 0) .of(state, State.reset) else null,
+                                }),
+                            },
+                        }),
+                    },
                 }),
-            },
+            }),
         });
     }
 };

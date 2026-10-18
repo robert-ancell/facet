@@ -1,12 +1,11 @@
 //! TitleBar: the bar across the top of an app's window, with its title in
 //! the middle and, at the right end, buttons that maximize (or restore) and
-//! close it; dragging the bar moves the window. Apps draw their own (the
-//! shell draws none), so it goes at the top of the app's widgets:
+//! close it; dragging the bar moves the window.
 //!
-//!     cx.make(ui.Column{ .cross_axis_alignment = .stretch, .children = &.{
-//!         cx.make(ui.TitleBar{ .title = "Settings" }),
-//!         cx.make(ui.Expanded{ .child = content }),
-//!     } })
+//! On Wayland with client-side decorations (`decorations == .client`), `Ui`
+//! automatically adds `TitleBar` above the app's root widget; when the
+//! compositor provides server-side decorations (`decorations == .server`) or
+//! the window is fullscreen, no client-side `TitleBar` is added.
 
 const std = @import("std");
 const Controls = @import("window").Controls;
@@ -208,3 +207,55 @@ test "the title bar defaults to the UI's window controls" {
     u.pointerButton(at, btn_left, false);
     try testing.expect(controls.quit);
 }
+
+test "Ui automatically adds TitleBar on Wayland with client-side decorations and omits it with server-side decorations" {
+    const Ui = @import("runtime.zig").Ui;
+    const window_mod = @import("window");
+    const font = @import("font");
+    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const u = try Ui.create(testing.allocator, &f);
+    defer u.destroy();
+
+    const MockWaylandWin = struct {
+        pub const platform: window_mod.Platform = .wayland;
+        pub const buffer_transport: window_mod.BufferTransport = .wl_shm;
+        title: []const u8 = "Facet Test",
+        decorations: window_mod.Decorations = .client,
+        width: u32 = 800,
+        height: u32 = 600,
+    };
+    var mock_win: MockWaylandWin = .{};
+    var controls: Controls = .init(&mock_win);
+    u.attachWindow(&mock_win, &controls);
+
+    const Root = struct {
+        pub fn build(_: *const @This(), cx: *Context) Widget {
+            return cx.make(SizedBox{ .width = 200, .height = 100 });
+        }
+    };
+
+    // With client-side decorations on Wayland, TitleBar is added automatically above root.
+    u.frame(800, 600, 0, Root{});
+    try testing.expect(u.title_bar_root != null);
+    try testing.expectEqual(@as(f32, TitleBar.height), u.root.?.offset[1]);
+    try testing.expectEqual(@as(f32, 600 - TitleBar.height), u.root.?.size.h);
+    try testing.expectEqual(window_mod.Decorations.client, u.backend().decorations);
+
+    // Clicking the automatic title bar's close button triggers controls.quit.
+    const at: geometry.Point = .{ 800 - 8 - 17, 22 };
+    u.pointerMotion(at);
+    u.pointerButton(at, btn_left, true);
+    u.pointerButton(at, btn_left, false);
+    try testing.expect(controls.quit);
+
+    // When the compositor negotiates server-side decorations, TitleBar is not added.
+    controls.quit = false;
+    mock_win.decorations = .server;
+    u.syncWindow(&mock_win);
+    u.frame(800, 600, 1, Root{});
+    try testing.expect(u.title_bar_root == null);
+    try testing.expectEqual(@as(f32, 0), u.root.?.offset[1]);
+    try testing.expectEqual(@as(f32, 600), u.root.?.size.h);
+    try testing.expectEqual(window_mod.Decorations.server, u.backend().decorations);
+}
+

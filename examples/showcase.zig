@@ -347,13 +347,7 @@ pub const Showcase = struct {
 
         return cx.make(facet.Decorated{
             .color = t.surface,
-            .child = cx.make(facet.Column{
-                .cross_axis_alignment = .stretch,
-                .children = &.{
-                    cx.make(facet.TitleBar{ .title = "Widget Showcase" }),
-                    cx.make(facet.Expanded{ .child = with_dialog }),
-                },
-            }),
+            .child = with_dialog,
         });
     }
 };
@@ -972,14 +966,22 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
         .custom => "Custom 2D rendering backend",
     };
 
+    const decorations_desc = switch (info.decorations) {
+        .client => "Toolkit TitleBar, drop shadows & rounded corners (CSD)",
+        .server => "Compositor / window manager frame (zxdg_decoration_v1 SSD)",
+        .none => "No window decorations (headless / offscreen)",
+    };
+
     const window_state = if (info.fullscreen)
         "Fullscreen"
     else if (info.maximized)
         "Maximized"
     else if (info.tiled)
         "Tiled"
+    else if (info.decorations == .client)
+        "Floating (with CSD shadow & rounded corners)"
     else
-        "Floating (with CSD shadow & rounded corners)";
+        "Floating";
 
     return cx.make(facet.Column{
         .main_axis_size = .min,
@@ -989,7 +991,7 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
             sectionHeading(
                 cx,
                 "Active Runtime Backend",
-                "Live windowing platform, surface buffer transport, and 2D renderer reported by cx.backend()",
+                "Live windowing platform, surface buffer transport, window decorations, and 2D renderer reported by cx.backend()",
             ),
             cx.make(facet.Row{
                 .spacing = 16,
@@ -1064,7 +1066,7 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 },
             }),
             cx.make(facet.Divider{}),
-            sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, and rendering pipeline"),
+            sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, decoration mode, and rendering pipeline"),
             cx.make(facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
@@ -1095,6 +1097,17 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .children = &.{
+                    cx.make(facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
+                    cx.make(facet.Chip{ .label = "Client-side (CSD)", .selected = info.decorations == .client }),
+                    cx.make(facet.Chip{ .label = "Server-side (SSD)", .selected = info.decorations == .server }),
+                    cx.make(facet.Chip{ .label = "None", .selected = info.decorations == .none }),
+                },
+            }),
+            cx.make(facet.Row{
+                .spacing = 8,
+                .main_axis_size = .min,
+                .cross_axis_alignment = .center,
+                .children = &.{
                     cx.make(facet.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
                     cx.make(facet.Chip{ .label = "Software", .selected = info.renderer == .software }),
                     cx.make(facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl }),
@@ -1102,7 +1115,7 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 },
             }),
             cx.make(facet.Divider{}),
-            sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, window state, and input configuration"),
+            sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, window decorations, window state, and input configuration"),
             cx.make(facet.Card{
                 .variant = .outlined,
                 .padding = .all(4),
@@ -1118,6 +1131,13 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                                 .label = cx.fmt("{s} ({s})", .{ info.platform.name(), info.buffer_transport.name() }),
                                 .color = t.primary,
                             }),
+                        }),
+                        cx.make(facet.Divider{ .inset = 16 }),
+                        cx.make(facet.ListItem{
+                            .headline = "Window Decorations",
+                            .supporting_text = decorations_desc,
+                            .leading_icon = .widgets,
+                            .trailing = cx.make(facet.Badge{ .label = info.decorations.name(), .color = t.primary }),
                         }),
                         cx.make(facet.Divider{ .inset = 16 }),
                         cx.make(facet.ListItem{

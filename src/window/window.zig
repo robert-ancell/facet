@@ -131,6 +131,23 @@ pub const BufferTransport = enum {
     }
 };
 
+/// Whether window decorations (title bar, drop shadows, resize borders) are
+/// drawn by the toolkit (`client`), the compositor/window manager (`server`),
+/// or not at all (`none`).
+pub const Decorations = enum {
+    none,
+    client,
+    server,
+
+    pub fn name(d: Decorations) []const u8 {
+        return switch (d) {
+            .none => "None",
+            .client => "Client-side (CSD)",
+            .server => "Server-side (SSD)",
+        };
+    }
+};
+
 /// Generic window interface (`Window.of(&impl)`).
 pub const Window = struct {
     ptr: *anyopaque,
@@ -139,6 +156,8 @@ pub const Window = struct {
     pub const VTable = struct {
         platform: *const fn (ptr: *anyopaque) Platform,
         bufferTransport: *const fn (ptr: *anyopaque) BufferTransport,
+        decorations: *const fn (ptr: *anyopaque) Decorations,
+        title: *const fn (ptr: *anyopaque) []const u8,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
         wait: *const fn (ptr: *anyopaque, timeout_ns: u64) anyerror!void,
         takeInput: *const fn (ptr: *anyopaque) []const InputEvent,
@@ -183,6 +202,23 @@ pub const Window = struct {
                 if (@hasDecl(T, "buffer_transport")) return T.buffer_transport;
                 if (@hasField(T, "buffer_transport")) return self(p).buffer_transport;
                 return .custom;
+            }
+            fn decorationsFn(p: *anyopaque) Decorations {
+                if (@hasDecl(T, "decorations")) {
+                    if (@TypeOf(T.decorations) == Decorations) return T.decorations;
+                    return self(p).decorations();
+                }
+                if (@hasField(T, "decorations")) return self(p).decorations;
+                return switch (platformFn(p)) {
+                    .wayland => .client,
+                    .headless => .none,
+                    else => .server,
+                };
+            }
+            fn titleFn(p: *anyopaque) []const u8 {
+                if (@hasDecl(T, "getTitle")) return self(p).getTitle();
+                if (@hasField(T, "title")) return self(p).title;
+                return "";
             }
             fn pollFn(p: *anyopaque) anyerror!void {
                 if (@hasDecl(T, "poll")) return self(p).poll();
@@ -276,6 +312,8 @@ pub const Window = struct {
             const vt = VTable{
                 .platform = platformFn,
                 .bufferTransport = bufferTransportFn,
+                .decorations = decorationsFn,
+                .title = titleFn,
                 .poll = pollFn,
                 .wait = waitFn,
                 .takeInput = takeInputFn,
@@ -308,6 +346,12 @@ pub const Window = struct {
     }
     pub fn bufferTransport(w: Window) BufferTransport {
         return w.vtable.bufferTransport(w.ptr);
+    }
+    pub fn decorations(w: Window) Decorations {
+        return w.vtable.decorations(w.ptr);
+    }
+    pub fn title(w: Window) []const u8 {
+        return w.vtable.title(w.ptr);
     }
     pub fn poll(w: Window) !void {
         return w.vtable.poll(w.ptr);

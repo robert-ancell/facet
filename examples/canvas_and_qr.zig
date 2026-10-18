@@ -82,78 +82,70 @@ pub const CanvasAndQrDemo = struct {
         const default_url = "https://github.com/robert-ancell/facet";
         const payload = if (state.payload_len > 0) state.payload_buf[0..state.payload_len] else default_url;
 
-        return cx.make(facet.Column{
-            .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.TitleBar{ .title = "Custom Canvas & QR Code" }),
-                cx.make(facet.Expanded{
-                    .child = cx.make(facet.Padding{
-                        .padding = .all(24),
-                        .child = cx.make(facet.Row{
+        return cx.make(facet.Padding{
+            .padding = .all(24),
+            .child = cx.make(facet.Row{
+                .cross_axis_alignment = .start,
+                .spacing = 24,
+                .children = &.{
+                    cx.make(facet.Card{
+                        .variant = .outlined,
+                        .child = cx.make(facet.Column{
+                            .main_axis_size = .min,
                             .cross_axis_alignment = .start,
-                            .spacing = 24,
+                            .spacing = 12,
                             .children = &.{
-                                cx.make(facet.Card{
-                                    .variant = .outlined,
-                                    .child = cx.make(facet.Column{
-                                        .main_axis_size = .min,
-                                        .cross_axis_alignment = .start,
-                                        .spacing = 12,
-                                        .children = &.{
-                                            cx.make(facet.Text{
-                                                .text = "Custom 2D Vector Widget",
-                                                .style = .{ .size = 18 },
-                                            }),
-                                            cx.make(WaveCanvas{
-                                                .animate = state.animate,
-                                                .frequency = state.frequency,
-                                            }),
-                                            cx.make(facet.SizedBox{
-                                                .width = 340,
-                                                .child = cx.make(facet.Slider{
-                                                    .value = state.frequency,
-                                                    .min = 0.5,
-                                                    .max = 5.0,
-                                                    .on_changed = .of(state, State.setFrequency),
-                                                }),
-                                            }),
-                                            cx.make(facet.Switch{
-                                                .value = state.animate,
-                                                .on_changed = .of(state, State.setAnimate),
-                                                .label = "Animate wave",
-                                            }),
-                                        },
+                                cx.make(facet.Text{
+                                    .text = "Custom 2D Vector Widget",
+                                    .style = .{ .size = 18 },
+                                }),
+                                cx.make(WaveCanvas{
+                                    .animate = state.animate,
+                                    .frequency = state.frequency,
+                                }),
+                                cx.make(facet.SizedBox{
+                                    .width = 340,
+                                    .child = cx.make(facet.Slider{
+                                        .value = state.frequency,
+                                        .min = 0.5,
+                                        .max = 5.0,
+                                        .on_changed = .of(state, State.setFrequency),
                                     }),
                                 }),
-                                cx.make(facet.Card{
-                                    .variant = .outlined,
-                                    .child = cx.make(facet.Column{
-                                        .main_axis_size = .min,
-                                        .cross_axis_alignment = .center,
-                                        .spacing = 12,
-                                        .children = &.{
-                                            cx.make(facet.Text{
-                                                .text = "Live QR Code Generator",
-                                                .style = .{ .size = 18 },
-                                            }),
-                                            cx.make(facet.QrCode{
-                                                .text = payload,
-                                                .size = 180,
-                                            }),
-                                            cx.make(facet.TextField{
-                                                .width = 240,
-                                                .initial = default_url,
-                                                .placeholder = "Text or URL to encode",
-                                                .on_changed = .of(state, State.setPayload),
-                                            }),
-                                        },
-                                    }),
+                                cx.make(facet.Switch{
+                                    .value = state.animate,
+                                    .on_changed = .of(state, State.setAnimate),
+                                    .label = "Animate wave",
                                 }),
                             },
                         }),
                     }),
-                }),
-            },
+                    cx.make(facet.Card{
+                        .variant = .outlined,
+                        .child = cx.make(facet.Column{
+                            .main_axis_size = .min,
+                            .cross_axis_alignment = .center,
+                            .spacing = 12,
+                            .children = &.{
+                                cx.make(facet.Text{
+                                    .text = "Live QR Code Generator",
+                                    .style = .{ .size = 18 },
+                                }),
+                                cx.make(facet.QrCode{
+                                    .text = payload,
+                                    .size = 180,
+                                }),
+                                cx.make(facet.TextField{
+                                    .width = 240,
+                                    .initial = default_url,
+                                    .placeholder = "Text or URL to encode",
+                                    .on_changed = .of(state, State.setPayload),
+                                }),
+                            },
+                        }),
+                    }),
+                },
+            }),
         });
     }
 };

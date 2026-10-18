@@ -36,6 +36,7 @@ const keymap = @import("keymap.zig");
 const menu_mod = @import("menu.zig");
 const drag_mod = @import("drag.zig");
 const tooltip_mod = @import("tooltip.zig");
+const title_bar_mod = @import("title_bar.zig");
 
 const Point = geometry.Point;
 const Size = geometry.Size;
@@ -126,10 +127,14 @@ pub const Ui = struct {
     maximized: bool = true,
     /// Whether the window is tiled by the compositor.
     tiled: bool = false,
+    /// Active window decoration mode (`none`, `client`, `server`).
+    decorations: window_mod.Decorations = .none,
     /// The window attached to the UI, if any.
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).
     controls: ?*window_mod.Controls = null,
+    /// Automatic client-side title bar node (used on Wayland when `decorations == .client`).
+    title_bar_root: ?*Node = null,
     /// The system's clipboard (the app gives it); without one, text is
     /// copied within the app (`local_clipboard`).
     clipboard: ?Clipboard = null,
@@ -252,6 +257,7 @@ pub const Ui = struct {
     pub fn destroy(ui: *Ui) void {
         ui.closeMenu();
         ui.endDrag(false);
+        if (ui.title_bar_root) |tb| tb.destroy();
         if (ui.menu_root) |m| m.destroy();
         if (ui.drag_root) |d| d.destroy();
         if (ui.tooltip_root) |t| t.destroy();
@@ -309,7 +315,19 @@ pub const Ui = struct {
         ui.fullscreen = w.isFullscreen();
         ui.maximized = w.isMaximized();
         ui.tiled = w.isTiled();
+        ui.decorations = w.decorations();
         ui.scale = @max(w.scale(), 1);
+    }
+
+    /// True when the toolkit should automatically add a client-side `TitleBar`
+    /// above the application's root widget (on Wayland with client-side
+    /// decorations when not fullscreen).
+    pub fn hasClientTitleBar(ui: *const Ui) bool {
+        if (ui.fullscreen) return false;
+        if (ui.win) |w| {
+            return w.platform() == .wayland and w.decorations() == .client;
+        }
+        return false;
     }
 
     /// Returns information about the active windowing platform, surface buffer
@@ -321,6 +339,7 @@ pub const Ui = struct {
             .platform = if (ui.win) |w| w.platform() else .headless,
             .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
             .renderer = if (ui.renderer) |r| r.backend() else .software,
+            .decorations = if (ui.win) |w| w.decorations() else ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },
             .scale = s,
@@ -449,10 +468,12 @@ pub const Ui = struct {
         if (ui.root == null) ui.root = Node.create(ui, w);
         const r = ui.root orelse return;
         r.build(w);
+        const tb = ui.buildTitleBar();
+        const tb_min_h: f32 = if (tb != null) title_bar_mod.TitleBar.height else 0;
         const min = r.minSize(.unbounded);
         ui.min_size = .{
             @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(min.w, 1))))),
-            @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(min.h, 1))))),
+            @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(min.h + tb_min_h, 1))))),
         };
         var w_px = width;
         var h_px = height;
@@ -469,12 +490,19 @@ pub const Ui = struct {
             ui.damage.invalidate();
         }
         const window: Size = .{ .w = @floatFromInt(w_px), .h = @floatFromInt(h_px) };
-        _ = r.layout(.tight(window));
-        r.offset = .{ 0, 0 };
+        var tb_h: f32 = 0;
+        if (tb) |t| {
+            const ts = t.layout(.{ .min_w = window.w, .max_w = window.w, .max_h = window.h });
+            t.offset = .{ 0, 0 };
+            tb_h = ts.h;
+        }
+        _ = r.layout(.tight(.{ .w = window.w, .h = @max(0, window.h - tb_h) }));
+        r.offset = .{ 0, tb_h };
         const m = ui.buildMenu(window);
         const d = ui.buildDrag(window);
         const tt = ui.buildTooltip(window);
-        ui.paint(r, d, m, tt, w_px, h_px);
+        ui.paint(tb, r, d, m, tt, w_px, h_px);
+        if (tb) |n| ui.damage.sweep(n);
         ui.damage.sweep(r);
         if (d) |n| ui.damage.sweep(n);
         if (m) |n| ui.damage.sweep(n);
@@ -485,6 +513,25 @@ pub const Ui = struct {
             ui.syncTextInput(win);
         }
         if (ui.hold != null) ui.needs_frame = true;
+    }
+
+    fn buildTitleBar(ui: *Ui) ?*Node {
+        if (!ui.hasClientTitleBar()) {
+            if (ui.title_bar_root) |n| n.destroy();
+            ui.title_bar_root = null;
+            return null;
+        }
+        const title = if (ui.win) |w| w.title() else "";
+        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+        const w = cx.make(title_bar_mod.TitleBar{ .title = title });
+        if (ui.title_bar_root) |tb| if (tb.widget.vtable != w.vtable) {
+            tb.destroy();
+            ui.title_bar_root = null;
+        };
+        if (ui.title_bar_root == null) ui.title_bar_root = Node.create(ui, w);
+        const n = ui.title_bar_root orelse return null;
+        n.build(w);
+        return n;
     }
 
     fn buildMenu(ui: *Ui, window: Size) ?*Node {
@@ -551,7 +598,7 @@ pub const Ui = struct {
         return null;
     }
 
-    fn paint(ui: *Ui, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
+    fn paint(ui: *Ui, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
         ui.atlas.beginFrame();
         ui.canvases_used = 0;
         ui.segments.clearRetainingCapacity();
@@ -560,6 +607,7 @@ pub const Ui = struct {
         ui.frame_size = .{ width * s, height * s };
         ui.paint_order = 0;
         var p: Painter = .{ .ui = ui, .node = r };
+        if (tb) |t| p.paintNode(t);
         p.paintNode(r);
         if (drag) |d| p.paintNode(d);
         if (menu) |m| p.paintNode(m);
@@ -606,7 +654,7 @@ pub const Ui = struct {
         const d = &(ui.drag orelse return);
         d.pos = pos;
         ui.drag_scratch.clearRetainingCapacity();
-        if (ui.root) |r| _ = r.hitTest(pos, &ui.drag_scratch);
+        if (ui.root) |r| _ = r.hitTest(.{ pos[0] - r.offset[0], pos[1] - r.offset[1] }, &ui.drag_scratch);
         d.target = drag_mod.targetIn(ui.drag_scratch.items, d.data);
         ui.needs_frame = true;
     }
@@ -983,7 +1031,15 @@ pub const Ui = struct {
         path.clearRetainingCapacity();
         if (ui.menu != null) {
             if (ui.menu_root) |m| _ = m.hitTest(.{ pos[0] - m.offset[0], pos[1] - m.offset[1] }, &path);
-        } else if (ui.root) |r| _ = r.hitTest(pos, &path);
+        } else {
+            var hit = false;
+            if (ui.title_bar_root) |tb| {
+                hit = tb.hitTest(.{ pos[0] - tb.offset[0], pos[1] - tb.offset[1] }, &path);
+            }
+            if (!hit) {
+                if (ui.root) |r| _ = r.hitTest(.{ pos[0] - r.offset[0], pos[1] - r.offset[1] }, &path);
+            }
+        }
         for (ui.hovered.items) |n| if (std.mem.indexOfScalar(*Node, path.items, n) == null) {
             _ = send(n, .leave);
             ui.needs_frame = true;
@@ -1166,13 +1222,14 @@ pub const App = struct {
             a.dirty = true;
         }
         if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
-        if (a.resized or a.ui.fullscreen != a.win.fullscreen or a.ui.maximized != a.win.maximized or a.ui.tiled != a.win.tiled) {
+        if (a.resized or a.ui.fullscreen != a.win.fullscreen or a.ui.maximized != a.win.maximized or a.ui.tiled != a.win.tiled or a.ui.decorations != a.win.decorations()) {
             a.ui.damage.invalidate();
             a.dirty = true;
         }
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
         a.ui.tiled = a.win.tiled;
+        a.ui.decorations = a.win.decorations();
         a.ui.scale = @max(a.win.scale, 1);
         return true;
     }
@@ -1182,6 +1239,7 @@ pub const App = struct {
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
         a.ui.tiled = a.win.tiled;
+        a.ui.decorations = a.win.decorations();
         a.ui.scale = @max(a.win.scale, 1);
         for (a.win.takeInput()) |e| a.ui.handleInput(e);
         a.ui.syncCursor(a.win);

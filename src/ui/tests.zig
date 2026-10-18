@@ -1478,6 +1478,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     var info: ui.BackendInfo = .{};
     u.frame(320, 240, 0, Probe{ .out = &info });
     try testing.expectEqual(window.Platform.headless, info.platform);
+    try testing.expectEqual(window.Decorations.none, info.decorations);
     try testing.expectEqual(window.BufferTransport.memory, info.buffer_transport);
     try testing.expectEqual(gfx.RenderBackend.software, info.renderer);
 
@@ -1493,11 +1494,17 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     u.attachWindow(&wl_win, null);
     u.frame(800, 600, 1, Probe{ .out = &info });
     try testing.expectEqual(window.Platform.wayland, info.platform);
+    try testing.expectEqual(window.Decorations.client, info.decorations);
     try testing.expectEqual(window.BufferTransport.wl_shm, info.buffer_transport);
     try testing.expectEqual(gfx.RenderBackend.software, info.renderer);
     try testing.expectEqual([2]u32{ 800, 600 }, info.logical_size);
     try testing.expectEqual([2]u32{ 1600, 1200 }, info.physical_size);
     try testing.expectEqual(@as(u32, 2), info.scale);
+
+    wl_win.server_decorations = true;
+    u.attachWindow(&wl_win, null);
+    u.frame(800, 600, 2, Probe{ .out = &info });
+    try testing.expectEqual(window.Decorations.server, info.decorations);
 }
 
 

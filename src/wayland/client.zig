@@ -21,11 +21,12 @@ pub const Listener = struct {
 
 /// An object on the connection.
 pub const Proxy = struct {
-    display: *Display,
-    id: u32,
+    display: *Display = undefined,
+    id: u32 = 0,
 
     /// Starts a request on this object.
     pub fn request(p: Proxy, opcode: u16) Error!wire.Builder {
+        if (p.id == 0) return error.Closed;
         return p.display.conn.begin(p.id, opcode);
     }
 };
