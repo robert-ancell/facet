@@ -1,6 +1,5 @@
 //! Shared Platonic solid geometry (meshes with non-adjacent face coloring) and
-//! 4×4 column-major matrix math for `examples/opengl.zig` and
-//! `examples/vulkan.zig`.
+//! 4×4 column-major matrix math for the solid viewer (`viewer.zig`).
 
 const std = @import("std");
 
