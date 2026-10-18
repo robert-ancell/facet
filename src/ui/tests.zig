@@ -1948,3 +1948,40 @@ test "an animated widget makes its child from how far through it is, and stops a
     try testing.expectApproxEqAbs(@as(f32, 0.25), a.t, 1e-6);
     try testing.expect(u.needs_frame);
 }
+
+test "what a popup paints is told apart by its shapes, clips and images, and not at all with a GPU area" {
+    const hash = ui.Ui.paintedHash;
+    const rect: gfx.Rect = .{ .x = 0, .y = 0, .w = 10, .h = 10 };
+    var a = gfx.Canvas.init(testing.allocator);
+    defer a.deinit();
+    a.begin(100, 50);
+    a.fillRect(rect, red);
+    var b = gfx.Canvas.init(testing.allocator);
+    defer b.deinit();
+    b.begin(100, 50);
+    b.fillRect(rect, red);
+    // The same shapes, the same.
+    try testing.expectEqual(hash(&.{.{ .canvas = &a }}).?, hash(&.{.{ .canvas = &b }}).?);
+    // A different colour, or a clip (here cutting nothing off), differs.
+    b.begin(100, 50);
+    b.fillRect(rect, blue);
+    try testing.expect(hash(&.{.{ .canvas = &a }}).? != hash(&.{.{ .canvas = &b }}).?);
+    b.begin(100, 50);
+    b.setClip(.{ .x = 0, .y = 0, .w = 100, .h = 50 });
+    b.fillRect(rect, red);
+    try testing.expect(hash(&.{.{ .canvas = &a }}).? != hash(&.{.{ .canvas = &b }}).?);
+    // A different image in the same place differs.
+    const pixels: [4]u32 = @splat(0xffffffff);
+    const one = gfx.Image.init(&pixels, 2, 2);
+    const other = gfx.Image.init(&pixels, 2, 2);
+    a.begin(100, 50);
+    a.drawImage(&one, rect, 1);
+    b.begin(100, 50);
+    b.drawImage(&other, rect, 1);
+    try testing.expect(hash(&.{.{ .canvas = &a }}).? != hash(&.{.{ .canvas = &b }}).?);
+    // What a GPU area draws is not known.
+    const noop = struct {
+        fn f(_: *const anyopaque, _: *anyopaque, _: gfx.GpuArea) anyerror!void {}
+    }.f;
+    try testing.expectEqual(@as(?u64, null), hash(&.{ .{ .canvas = &a }, .{ .gpu = .{ .ctx = undefined, .f = noop, .area = undefined } } }));
+}

@@ -207,7 +207,9 @@ pub const Ui = struct {
         placement: window_mod.PopupPlacement,
         first: usize = 0,
         end: usize = 0,
-        hash: u64 = 0,
+        /// What it paints (`paintedHash`), and what it painted when last
+        /// drawn: it is drawn again when they differ.
+        hash: ?u64 = null,
         drawn_hash: ?u64 = null,
     };
 
@@ -681,15 +683,29 @@ pub const Ui = struct {
         var p: Painter = .{ .ui = ui, .node = n, .origin = .{ -n.offset[0], -n.offset[1] }, .track_damage = false };
         p.paintNode(n);
         layer.end = ui.segments.items.len;
+        // What a 3D area draws is only known once it has: redraw it always.
+        layer.hash = paintedHash(ui.segments.items[layer.first..layer.end]);
+        if (layer.hash == null) layer.drawn_hash = null;
+    }
+
+    /// What `segments` paint, to tell whether a popup needs drawing again:
+    /// null if it cannot be told (they hold GPU areas).
+    pub fn paintedHash(segments: []const Segment) ?u64 {
         var h = std.hash.Wyhash.init(0);
-        for (ui.segments.items[layer.first..layer.end]) |s| switch (s) {
+        for (segments) |seg| switch (seg) {
             .canvas => |c| for (c.batches.items) |*b| {
                 h.update(std.mem.asBytes(&b.kind));
                 h.update(std.mem.sliceAsBytes(b.floats.items));
+                if (b.clip) |r| h.update(std.mem.asBytes(&r)) else h.update("no clip");
+                if (b.image) |img| {
+                    // Known by its id: new pixels are a new image.
+                    h.update(std.mem.asBytes(&img.id));
+                    h.update(std.mem.asBytes(&[_]u32{ img.width, img.height }));
+                }
             },
-            .gpu => {},
+            .gpu => return null,
         };
-        layer.hash = h.final();
+        return h.final();
     }
 
     // --- Menus ------------------------------------------------------------------
@@ -928,7 +944,7 @@ pub const Ui = struct {
         var shown = false;
         for ([_]*?PopupLayer{ &ui.menu_popup, &ui.tooltip_popup }) |slot| {
             const layer = &(slot.* orelse continue);
-            if (layer.end <= layer.first or layer.drawn_hash == layer.hash) continue;
+            if (layer.end <= layer.first or (layer.hash != null and layer.drawn_hash == layer.hash)) continue;
             var img = (try w.beginPopupFrame(layer.id)) orelse {
                 ui.needs_frame = true;
                 continue;

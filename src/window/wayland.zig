@@ -540,6 +540,8 @@ const PopupSurface = struct {
     position: ?[2]i32 = null,
     /// It has been configured, so it can be drawn.
     configured: bool = false,
+    /// A buffer has been committed to it.
+    shown: bool = false,
     buffers: [2]?Buffer = @splat(null),
     back: ?usize = null,
 };
@@ -1204,6 +1206,7 @@ pub const WaylandWindow = struct {
         m.end();
         try w.conn.flush();
         b.busy = true;
+        pop.shown = true;
     }
 
     fn popupXdgSurfaceEvent(ptr: ?*anyopaque, _: *client.Display, id: u32, opcode: u16, r: *wire.Reader) void {
@@ -1214,6 +1217,14 @@ pub const WaylandWindow = struct {
             var m = pop.xdg_surface.request(p.xdg_surface.request.ack_configure) catch return;
             m.uint(serial).end();
             pop.configured = true;
+            // A configure takes effect when committed. Once it shows, a
+            // popup is only drawn again when what it shows changes, so
+            // commit what it has.
+            if (pop.shown) {
+                m = pop.surface.request(p.wl_surface.request.commit) catch return;
+                m.end();
+                w.conn.flush() catch {};
+            }
         };
     }
 
@@ -2876,4 +2887,59 @@ test "a popup's configure places it, input on it is in window coordinates, and p
     const events = win.takeInput();
     try std.testing.expectEqual(@as(usize, 1), events.len);
     try std.testing.expectEqual(@as(u32, 7), events[0].popup_done);
+}
+
+test "a popup acks each configure, and commits again for one after it shows" {
+    var fds: [2]i32 = undefined;
+    try std.testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC | linux.SOCK.NONBLOCK, 0, &fds)));
+    defer _ = linux.close(fds[1]);
+    const disp = try client.Display.fromFd(std.testing.allocator, fds[0]);
+    defer disp.disconnect();
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = disp,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    win.popups[0] = .{
+        .id = 7,
+        .placement = .{ .kind = .menu, .anchor = .{ 10, 10, 1, 1 }, .size = .{ 100, 50 }, .side = .below_right },
+        .surface = .{ .display = disp, .id = 20 },
+        .xdg_surface = .{ .display = disp, .id = 21 },
+        .popup = .{ .display = disp, .id = 22 },
+        .scale = 1,
+    };
+    // The requests sent: each an object and opcode (none sent is an error,
+    // not a wait).
+    const Sent = struct {
+        fn read(fd: i32) ![]const [2]u32 {
+            const S = struct {
+                var buf: [64]u32 = undefined;
+                var out: [16][2]u32 = undefined;
+            };
+            const n = linux.read(fd, @ptrCast(&S.buf), @sizeOf(@TypeOf(S.buf)));
+            if (linux.errno(n) != .SUCCESS) return error.ReadFailed;
+            const words = S.buf[0 .. n / 4];
+            var i: usize = 0;
+            var count: usize = 0;
+            while (i + 2 <= words.len) : (count += 1) {
+                S.out[count] = .{ words[i], words[i + 1] & 0xffff };
+                i += (words[i + 1] >> 16) / 4;
+            }
+            return S.out[0..count];
+        }
+    };
+    const serial = [_]u32{5};
+    var r = wire.Reader{ .data = std.mem.sliceAsBytes(&serial), .c = undefined };
+    WaylandWindow.popupXdgSurfaceEvent(&win, disp, 21, p.xdg_surface.event.configure, &r);
+    try std.testing.expect(win.popups[0].?.configured);
+    try disp.flush();
+    // Before it shows, a configure is acked, and committed with its first
+    // buffer when drawn.
+    try std.testing.expectEqualSlices([2]u32, &.{.{ 21, p.xdg_surface.request.ack_configure }}, try Sent.read(fds[1]));
+    // Once it shows, it commits again for a later configure, even if
+    // nothing it shows changes.
+    win.popups[0].?.shown = true;
+    r = .{ .data = std.mem.sliceAsBytes(&serial), .c = undefined };
+    WaylandWindow.popupXdgSurfaceEvent(&win, disp, 21, p.xdg_surface.event.configure, &r);
+    try std.testing.expectEqualSlices([2]u32, &.{ .{ 21, p.xdg_surface.request.ack_configure }, .{ 20, p.wl_surface.request.commit } }, try Sent.read(fds[1]));
 }
