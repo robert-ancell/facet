@@ -1641,6 +1641,7 @@ const PopupWin = struct {
     log: std.ArrayList(i64) = .empty,
     next: u32 = 1,
     popup_size: [2]u32 = .{ 0, 0 },
+    configured: bool = true,
     shown: u32 = 0,
     /// Where popups go: past the window's right edge, as a popup can.
     const at: [2]i32 = .{ 350, 40 };
@@ -1667,6 +1668,7 @@ const PopupWin = struct {
         return at;
     }
     pub fn beginPopupFrame(w: *PopupWin, _: u32) !?gfx.software.Image {
+        if (!w.configured) return null;
         return .{ .pixels = w.popup_pixels[0 .. w.popup_size[0] * w.popup_size[1]], .width = w.popup_size[0], .height = w.popup_size[1] };
     }
     pub fn showPopup(w: *PopupWin, _: u32) !void {
@@ -1699,7 +1701,12 @@ test "menus and tooltips go in popups of their own when the window has them" {
     }.f;
 
     // Hovering the widget opens its tooltip in a popup above it.
+    // On Wayland, a newly opened xdg_popup is not yet configured on the
+    // frame it opens (`beginPopupFrame` returns `null`); `present` must
+    // request another frame so the popup is drawn once configured.
     u.frame(win.width, win.height, 0, HelpRoot{});
+    _ = try u.present(&win, 0xff000000);
+    win.configured = false;
     u.pointerMotion(.{ 50, 20 });
     u.frame(win.width, win.height, 1, HelpRoot{});
     try testing.expectEqual(@as(usize, 1), win.opened.items.len);
@@ -1707,8 +1714,24 @@ test "menus and tooltips go in popups of their own when the window has them" {
     try testing.expectEqual(window.PopupKind.tooltip, tip.kind);
     try testing.expectEqual(window.PopupPlacement.Side.above, tip.side);
     try testing.expectEqual([4]i32{ 0, 0, 100, 40 }, tip.anchor);
+    try testing.expect(!u.needs_frame);
+    try testing.expect(!try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 0), win.shown);
+    try testing.expect(u.needs_frame);
+
+    // Once the compositor configures the popup, the requested frame draws
+    // it; a subsequent unchanged frame does not redraw it.
+    win.configured = true;
+    u.frame(win.width, win.height, 1, HelpRoot{});
+    try testing.expect(try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 1), win.shown);
+    try testing.expect(!u.needs_frame);
+    u.frame(win.width, win.height, 1, HelpRoot{});
+    try testing.expect(!try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 1), win.shown);
 
     // A menu: the tooltip's popup closes before the menu's opens.
+    win.shown = 0;
     u.openMenu(u.root.?, .{ 30, 25 }, &.{.{ .label = "Copy", .on_press = .of(&pressed, press) }});
     u.frame(win.width, win.height, 2, HelpRoot{});
     try testing.expectEqualSlices(i64, &.{ 1, -1, 2 }, win.log.items);

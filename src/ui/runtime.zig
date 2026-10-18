@@ -207,6 +207,8 @@ pub const Ui = struct {
         placement: window_mod.PopupPlacement,
         first: usize = 0,
         end: usize = 0,
+        hash: u64 = 0,
+        drawn_hash: ?u64 = null,
     };
 
     /// A builder that creates a popup widget each frame while open.
@@ -679,6 +681,15 @@ pub const Ui = struct {
         var p: Painter = .{ .ui = ui, .node = n, .origin = .{ -n.offset[0], -n.offset[1] }, .track_damage = false };
         p.paintNode(n);
         layer.end = ui.segments.items.len;
+        var h = std.hash.Wyhash.init(0);
+        for (ui.segments.items[layer.first..layer.end]) |s| switch (s) {
+            .canvas => |c| for (c.batches.items) |*b| {
+                h.update(std.mem.asBytes(&b.kind));
+                h.update(std.mem.sliceAsBytes(b.floats.items));
+            },
+            .gpu => {},
+        };
+        layer.hash = h.final();
     }
 
     // --- Menus ------------------------------------------------------------------
@@ -915,10 +926,13 @@ pub const Ui = struct {
     fn presentPopups(ui: *Ui, w: window_mod.Window) !bool {
         const r = ui.renderer orelse return error.NoRenderer;
         var shown = false;
-        for ([_]?PopupLayer{ ui.menu_popup, ui.tooltip_popup }) |maybe| {
-            const layer = maybe orelse continue;
-            if (layer.end <= layer.first) continue;
-            var img = (try w.beginPopupFrame(layer.id)) orelse continue;
+        for ([_]*?PopupLayer{ &ui.menu_popup, &ui.tooltip_popup }) |slot| {
+            const layer = &(slot.* orelse continue);
+            if (layer.end <= layer.first or layer.drawn_hash == layer.hash) continue;
+            var img = (try w.beginPopupFrame(layer.id)) orelse {
+                ui.needs_frame = true;
+                continue;
+            };
             img.clear(0);
             const segments = ui.segments.items[layer.first..layer.end];
             var canvases: [16]*const gfx.Canvas = undefined;
@@ -933,6 +947,7 @@ pub const Ui = struct {
             try r.prepare(canvases[0..n]);
             try r.render(segments, &img, null);
             try w.showPopup(layer.id);
+            layer.drawn_hash = layer.hash;
             shown = true;
         }
         return shown;
@@ -1374,7 +1389,11 @@ pub const App = struct {
     /// window is ready for it.
     pub fn draw(a: *App, now_ns: u64, root: anytype) !void {
         a.idle = true;
-        if (!a.wantsFrame() or a.win.isFramePending()) return;
+        if (!a.wantsFrame()) return;
+        if (a.win.isFramePending()) {
+            if (try a.ui.presentPopups(a.win)) a.idle = false;
+            return;
+        }
         a.dirty = false;
         const size = a.win.size();
         const target_ns = a.win.nextPresentationNs(now_ns);
