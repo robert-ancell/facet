@@ -104,6 +104,9 @@ pub const Painter = struct {
         /// same picture (so nothing needs redrawing). Without one, it
         /// changes every frame.
         key: ?u64 = null,
+        /// It sets every pixel of its box (within the clip), so what is
+        /// under it need not be drawn.
+        fills: bool = false,
     };
 
     pub fn gpuWith(p: *Painter, options: GpuOptions, ctx: anytype, comptime f: anytype) void {
@@ -135,7 +138,7 @@ pub const Painter = struct {
                     return f(@as(Ctx, @ptrCast(@alignCast(@constCast(c)))), typed_target, area);
                 }
             }.call,
-            .area = .{ .viewport = vp, .scissor = scissor },
+            .area = .{ .viewport = vp, .scissor = scissor, .fills = options.fills },
         });
     }
 

@@ -180,7 +180,9 @@ pub fn OpenGlArea(comptime Scene: type) type {
                 break :blk hasher.final();
             };
 
-            p.gpuWith(.{ .key = draw_key }, payload, drawGpu);
+            // The scene is drawn over a clear and copied in, replacing every
+            // pixel of the box.
+            p.gpuWith(.{ .key = draw_key, .fills = true }, payload, drawGpu);
 
             if (self.border) |b| {
                 const c = p.canvas();

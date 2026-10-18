@@ -765,7 +765,8 @@ pub const Ui = struct {
         const repaint_region = ui.repaint(w.bufferAge());
         var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         const vps = regionViewports(&repaint_region, &repaint_vps);
-        img.clearViewports(clear, vps);
+        var uncovered_buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
+        img.clearViewports(clear, gfx.renderer.uncovered(&uncovered_buf, vps, ui.segments.items));
         try ui.render(&img, vps);
         w.finishFrame(vps);
         var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;

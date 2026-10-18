@@ -52,6 +52,15 @@ pub const GpuArea = struct {
     viewport: Viewport,
     /// The part of it that may be drawn on (null if all of it).
     scissor: ?Viewport = null,
+    /// It sets every pixel it may draw on, so what is under it need not
+    /// be drawn.
+    fills: bool = false,
+
+    /// The pixels it sets whatever was there before, if it fills.
+    pub fn filled(a: GpuArea) ?Viewport {
+        if (!a.fills) return null;
+        return if (a.scissor) |s| a.viewport.intersect(s) else a.viewport;
+    }
 };
 
 /// A custom draw callback recorded in tree order between 2D canvas segments.
@@ -80,6 +89,57 @@ pub fn scissor(clip: Rect) Viewport {
         .width = @intFromFloat(@min(x1 - x0, 1e6)),
         .height = @intFromFloat(@min(y1 - y0, 1e6)),
     };
+}
+
+/// The most viewports `uncovered` gives.
+pub const max_uncovered = 64;
+
+/// What of `damage` is not filled by the GPU draws in `above` (the
+/// segments drawn after something), so that only it need be drawn: in
+/// `buf`, or `damage` itself if nothing is cut from it. If the pieces do
+/// not fit, it gives more than is uncovered, never less.
+pub fn uncovered(buf: *[2][max_uncovered]Viewport, damage: []const Viewport, above: []const Segment) []const Viewport {
+    var cur = damage;
+    var next: usize = 0;
+    for (above) |s| switch (s) {
+        .canvas => {},
+        .gpu => |g| {
+            const hole = g.area.filled() orelse continue;
+            cur = cut(&buf[next], cur, hole) orelse return cur;
+            next = 1 - next;
+        },
+    };
+    return cur;
+}
+
+/// `list` with `hole` cut out of each viewport, in `out` (null if the
+/// pieces do not fit).
+fn cut(out: []Viewport, list: []const Viewport, hole: Viewport) ?[]const Viewport {
+    var n: usize = 0;
+    for (list) |v| {
+        const h = v.intersect(hole) orelse {
+            if (n == out.len) return null;
+            out[n] = v;
+            n += 1;
+            continue;
+        };
+        const v_x1 = v.x + @as(i32, @intCast(v.width));
+        const v_y1 = v.y + @as(i32, @intCast(v.height));
+        const h_x1 = h.x + @as(i32, @intCast(h.width));
+        const h_y1 = h.y + @as(i32, @intCast(h.height));
+        const pieces = [4]Viewport{
+            .{ .x = v.x, .y = v.y, .width = v.width, .height = @intCast(h.y - v.y) },
+            .{ .x = v.x, .y = h_y1, .width = v.width, .height = @intCast(v_y1 - h_y1) },
+            .{ .x = v.x, .y = h.y, .width = @intCast(h.x - v.x), .height = h.height },
+            .{ .x = h_x1, .y = h.y, .width = @intCast(v_x1 - h_x1), .height = h.height },
+        };
+        for (pieces) |piece| if (piece.width > 0 and piece.height > 0) {
+            if (n == out.len) return null;
+            out[n] = piece;
+            n += 1;
+        };
+    }
+    return out[0..n];
 }
 
 /// Checks whether `vp` overlaps any viewport in `damage` (or returns `true`
@@ -203,11 +263,16 @@ pub const Renderer = struct {
     }
 
     /// Renders all segments (`Canvas` and custom `GpuDraw`) into `target`,
-    /// whose canvases have been prepared.
+    /// whose canvases have been prepared. What is under a GPU draw that
+    /// fills its area is not drawn.
     pub fn render(r: Renderer, segments: []const Segment, target: anytype, damage: ?[]const Viewport) !void {
         const target_ptr = try r.targetPtr(target);
-        for (segments) |s| switch (s) {
-            .canvas => |c| try r.vtable.record(r.ptr, c, target_ptr, damage),
+        for (segments, 0..) |s, i| switch (s) {
+            .canvas => |c| {
+                var buf: [2][max_uncovered]Viewport = undefined;
+                const d = if (damage) |list| uncovered(&buf, list, segments[i + 1 ..]) else null;
+                try r.vtable.record(r.ptr, c, target_ptr, d);
+            },
             .gpu => |g| {
                 const active_vp = g.area.scissor orelse g.area.viewport;
                 if (covers(damage, active_vp)) {
@@ -252,4 +317,31 @@ test "drawing into the wrong kind of target is an error" {
     try r.draw(&c, &right);
     try std.testing.expectError(error.WrongTarget, r.draw(&c, &wrong));
     try std.testing.expectEqual(@as(u32, 1), backend.drawn);
+}
+
+test "what a filling GPU draw covers is cut from the damage of what is under it" {
+    const noop = struct {
+        fn f(_: *const anyopaque, _: *anyopaque, _: GpuArea) anyerror!void {}
+    }.f;
+    const draw = struct {
+        fn of(area: GpuArea) Segment {
+            return .{ .gpu = .{ .ctx = undefined, .f = noop, .area = area } };
+        }
+    }.of;
+    var buf: [2][max_uncovered]Viewport = undefined;
+    const damage = [_]Viewport{.{ .x = 0, .y = 0, .width = 100, .height = 100 }};
+    // A draw that does not fill cuts nothing.
+    try std.testing.expectEqualSlices(Viewport, &damage, uncovered(&buf, &damage, &.{draw(.{ .viewport = .{ .x = 10, .y = 10, .width = 20, .height = 20 } })}));
+    // One that fills leaves a frame around it.
+    const left = uncovered(&buf, &damage, &.{draw(.{ .viewport = .{ .x = 10, .y = 20, .width = 30, .height = 40 }, .fills = true })});
+    try std.testing.expectEqualSlices(Viewport, &.{
+        .{ .x = 0, .y = 0, .width = 100, .height = 20 },
+        .{ .x = 0, .y = 60, .width = 100, .height = 40 },
+        .{ .x = 0, .y = 20, .width = 10, .height = 40 },
+        .{ .x = 40, .y = 20, .width = 60, .height = 40 },
+    }, left);
+    // Only within its scissor; and one covering everything leaves nothing.
+    const clipped = uncovered(&buf, &damage, &.{draw(.{ .viewport = .{ .x = -50, .y = -50, .width = 300, .height = 300 }, .scissor = .{ .x = 0, .y = 0, .width = 100, .height = 50 }, .fills = true })});
+    try std.testing.expectEqualSlices(Viewport, &.{.{ .x = 0, .y = 50, .width = 100, .height = 50 }}, clipped);
+    try std.testing.expectEqual(@as(usize, 0), uncovered(&buf, &damage, &.{draw(.{ .viewport = .{ .x = 0, .y = 0, .width = 100, .height = 100 }, .fills = true })}).len);
 }
