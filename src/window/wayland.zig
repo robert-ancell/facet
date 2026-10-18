@@ -606,6 +606,10 @@ pub const WaylandWindow = struct {
     fullscreen: bool = false,
     tiled: bool = false,
     vsync: bool = true,
+    /// What the compositor can do to the window (`xdg_toplevel.wm_capabilities`;
+    /// everything, if it does not say).
+    can_maximize: bool = true,
+    can_minimize: bool = true,
     press_serial: u32 = 0,
     buttons_down: u32 = 0,
     enter_serial: u32 = 0,
@@ -975,6 +979,20 @@ pub const WaylandWindow = struct {
         const dx: f32 = @floatCast(r.fixed() catch return);
         const dy: f32 = @floatCast(r.fixed() catch return);
         w.pushInput(.{ .relative_motion = .{ dx, dy } });
+    }
+
+    pub fn setMinimized(w: *WaylandWindow) void {
+        var m = w.toplevel.request(p.xdg_toplevel.request.set_minimized) catch return;
+        m.end();
+        w.conn.flush() catch {};
+    }
+
+    pub fn canMaximize(w: *const WaylandWindow) bool {
+        return w.can_maximize;
+    }
+
+    pub fn canMinimize(w: *const WaylandWindow) bool {
+        return w.can_minimize;
     }
 
     pub fn setMaximized(w: *WaylandWindow, on: bool) void {
@@ -2108,6 +2126,17 @@ pub const WaylandWindow = struct {
                 w.tiled = tiled;
             },
             p.xdg_toplevel.event.close => w.closed = true,
+            p.xdg_toplevel.event.wm_capabilities => {
+                const caps = r.array() catch return;
+                w.can_maximize = false;
+                w.can_minimize = false;
+                var i: usize = 0;
+                while (i + 4 <= caps.len) : (i += 4) switch (std.mem.readInt(u32, caps[i..][0..4], .little)) {
+                    p.xdg_toplevel.wm_capabilities.maximize => w.can_maximize = true,
+                    p.xdg_toplevel.wm_capabilities.minimize => w.can_minimize = true,
+                    else => {},
+                };
+            },
             else => {},
         }
     }
@@ -2450,4 +2479,24 @@ test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only whi
     try std.testing.expect(!win.frameSync().frame_callback);
     win.syncobj_surface = .{ .id = 11 };
     try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
+}
+
+test "xdg_toplevel.wm_capabilities says whether the window can be minimized and maximized" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    // Until the compositor says otherwise, it can do everything.
+    try std.testing.expect(win.canMinimize() and win.canMaximize());
+    var disp: client.Display = .{ .gpa = std.testing.allocator, .conn = undefined };
+    // An array of one capability (fullscreen): 4 bytes long.
+    const msg = [_]u32{ 4, p.xdg_toplevel.wm_capabilities.fullscreen };
+    var r = wire.Reader{ .data = std.mem.sliceAsBytes(&msg), .c = undefined };
+    WaylandWindow.toplevelEvent(&win, &disp, 0, p.xdg_toplevel.event.wm_capabilities, &r);
+    try std.testing.expect(!win.canMinimize() and !win.canMaximize());
+    const both = [_]u32{ 8, p.xdg_toplevel.wm_capabilities.maximize, p.xdg_toplevel.wm_capabilities.minimize };
+    r = .{ .data = std.mem.sliceAsBytes(&both), .c = undefined };
+    WaylandWindow.toplevelEvent(&win, &disp, 0, p.xdg_toplevel.event.wm_capabilities, &r);
+    try std.testing.expect(win.canMinimize() and win.canMaximize());
 }

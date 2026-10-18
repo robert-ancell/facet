@@ -1,6 +1,8 @@
 //! TitleBar: the bar across the top of an app's window, with its title in
-//! the middle and, at the right end, buttons that maximize (or restore) and
-//! close it; dragging the bar moves the window.
+//! the middle and, at the right end, buttons that minimize, maximize (or
+//! restore) and close it; dragging the bar moves the window. A title too
+//! long for the bar ends in "…", and the bar is never narrower than its
+//! buttons either side of a "…".
 //!
 //! On Wayland with client-side decorations (`decorations == .client`), `Ui`
 //! automatically adds `TitleBar` above the app's root widget; when the
@@ -11,29 +13,31 @@ const std = @import("std");
 const Controls = @import("window").Controls;
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Align = @import("align.zig").Align;
-const Center = @import("center.zig").Center;
 const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
-const Overlay = @import("overlay.zig").Overlay;
-const Padding = @import("padding.zig").Padding;
 const Row = @import("flex.zig").Row;
 const SizedBox = @import("sized_box.zig").SizedBox;
 const BarButton = @import("bar_button.zig").BarButton;
+const Text = @import("text.zig").Text;
 const btn_left = @import("widget.zig").btn_left;
 
 const Node = widget.Node;
 const Context = widget.Context;
 const Widget = widget.Widget;
+const Size = geometry.Size;
+const Constraints = geometry.Constraints;
 
 pub const TitleBar = struct {
     title: []const u8,
     /// Pressing the close button (defaults to `cx.ui.controls` when set);
     /// without it there is none.
     on_close: ?widget.Callback = null,
+    /// Pressing the minimize button (defaults to `cx.ui.controls` when set,
+    /// if the window can be minimized); without it there is none.
+    on_minimize: ?widget.Callback = null,
     /// Pressing the maximize button, which shows whether the window fills
-    /// the screen (defaults to `cx.ui.controls` when set); without it
-    /// there is none.
+    /// the screen (defaults to `cx.ui.controls` when set, if the window can
+    /// be maximized); without it there is none.
     on_maximize: ?widget.Callback = null,
     maximized: bool = true,
     /// A press on the bar itself, to start moving the window (defaults to
@@ -41,40 +45,81 @@ pub const TitleBar = struct {
     on_drag: ?widget.Callback = null,
 
     pub const height = 44;
+    /// The buttons' size, the space between them, and that at the bar's
+    /// ends and around the title.
+    const button_size = 34;
+    const spacing = 4;
+    const margin = 8;
+    /// How much of the title still shows in the narrowest window.
+    const min_title_width = 120;
 
     pub fn build(self: *const TitleBar, cx: *Context) Widget {
         // A fullscreen window has none.
         if (cx.ui.fullscreen) return cx.make(@import("empty.zig").Empty{});
         const controls = cx.ui.controls;
-        const on_maximize = self.on_maximize orelse if (controls) |c| widget.Callback.of(c, Controls.toggleMaximized) else null;
+        const win = cx.ui.win;
+        const can_minimize = if (win) |w| w.canMinimize() else false;
+        const can_maximize = if (win) |w| w.canMaximize() else true;
+        const on_minimize = self.on_minimize orelse if (controls) |c| (if (can_minimize) widget.Callback.of(c, Controls.minimize) else null) else null;
+        const on_maximize = self.on_maximize orelse if (controls) |c| (if (can_maximize) widget.Callback.of(c, Controls.toggleMaximized) else null) else null;
         const on_close = self.on_close orelse if (controls) |c| widget.Callback.of(c, Controls.close) else null;
         const on_drag = self.on_drag orelse if (controls) |c| widget.Callback.of(c, Controls.drag) else null;
         const maximized = if (self.on_maximize != null) self.maximized else cx.ui.maximized;
         const t = cx.theme();
-        const size = 34;
-        var buttons: [2]Widget = undefined;
+        var buttons: [3]Widget = undefined;
         var n: usize = 0;
+        if (on_minimize) |f| {
+            buttons[n] = cx.make(BarButton{ .on_press = f, .size = button_size, .icon = .minimize });
+            n += 1;
+        }
         if (on_maximize) |f| {
             // A square fills the screen; two, one behind the other, go back
             // to the window's own size.
-            buttons[n] = cx.make(BarButton{ .on_press = f, .size = size, .icon = if (maximized) .filter_none else .crop_square });
+            buttons[n] = cx.make(BarButton{ .on_press = f, .size = button_size, .icon = if (maximized) .filter_none else .crop_square });
             n += 1;
         }
         if (on_close) |f| {
-            buttons[n] = cx.make(BarButton{ .on_press = f, .size = size, .icon = .close });
+            buttons[n] = cx.make(BarButton{ .on_press = f, .size = button_size, .icon = .close });
             n += 1;
         }
-        const row = cx.make(Align{ .alignment = .center_right, .child = cx.make(Padding{
-            .padding = .{ .right = 8 },
-            .child = cx.make(Row{ .spacing = 4, .main_axis_size = .min, .children = cx.ui.arena().dupe(Widget, buttons[0..n]) catch &.{} }),
-        }) });
-        return cx.make(DragArea{ .on_drag = on_drag, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(SizedBox{
-            .height = height,
-            .child = cx.make(Overlay{ .children = &.{
-                cx.make(Center{ .child = cx.make(@import("text.zig").Text{ .text = self.title, .style = .{ .size = 22, .color = t.on_surface }, .wrap = false }) }),
-                row,
-            } }),
+        return cx.make(DragArea{ .on_drag = on_drag, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(Bar{
+            .title = self.title,
+            .children = &.{
+                cx.make(Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true }),
+                cx.make(Row{ .spacing = spacing, .main_axis_size = .min, .children = buttons[0..n] }),
+            },
         }) }) });
+    }
+};
+
+/// The title and the buttons: the buttons at the right end, and the title
+/// in the middle of the bar, or as near it as it can be left of the buttons.
+/// What does not fit ends in "…".
+const Bar = struct {
+    title: []const u8,
+    /// The title's text, and the row of buttons.
+    children: []const Widget,
+
+    pub fn layout(_: *const Bar, n: *Node, c: Constraints) Size {
+        const w = c.constrain(.{ .w = c.max_w, .h = TitleBar.height }).w;
+        const h: f32 = TitleBar.height;
+        const buttons = n.child(1);
+        const bs = buttons.layout(.{ .max_w = w, .max_h = h });
+        const buttons_x = w - TitleBar.margin - bs.w;
+        buttons.place(buttons_x, (h - bs.h) / 2);
+        const title = n.child(0);
+        const end = (if (bs.w > 0) buttons_x else w) - TitleBar.margin;
+        const ts = title.layout(.{ .max_w = @max(end - TitleBar.margin, 0), .max_h = h });
+        const centred = (w - ts.w) / 2;
+        title.place(@max(TitleBar.margin, @min(centred, end - ts.w)), @round((h - ts.h) / 2));
+        return c.constrain(.{ .w = w, .h = h });
+    }
+
+    pub fn minSize(self: *const Bar, n: *Node, c: Constraints) Size {
+        const buttons = n.child(1).minSize(.{});
+        const title: f32 = if (n.ui.font) |f| n.ui.atlas.runs.measure(.{ .font = f, .size = n.ui.theme.body_size }, self.title) else 0;
+        const gap: f32 = if (buttons.w > 0) TitleBar.margin else 0;
+        return c.constrain(.{ .w = TitleBar.margin + @ceil(@min(title, TitleBar.min_title_width)) + gap + buttons.w + TitleBar.margin, .h = TitleBar.height });
     }
 };
 
@@ -259,3 +304,100 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     try testing.expectEqual(window_mod.Decorations.server, u.backend().decorations);
 }
 
+fn findText(n: *Node) ?*Node {
+    if (n.widget.is(Text)) return n;
+    for (n.children.items) |ch| if (findText(ch)) |t| return t;
+    return null;
+}
+
+test "a long title ends in an ellipsis before the buttons, and the bar sets the window's minimum width" {
+    const Ui = @import("runtime.zig").Ui;
+    const window_mod = @import("window");
+    const u = try Ui.createDefault(testing.allocator);
+    defer u.destroy();
+
+    const MockWin = struct {
+        pub const platform: window_mod.Platform = .wayland;
+        title: []const u8 = "A very long window title that cannot possibly fit in a narrow window",
+        decorations: window_mod.Decorations = .client,
+        width: u32 = 300,
+        height: u32 = 200,
+        min_size: [2]u32 = .{ 0, 0 },
+        minimized: u32 = 0,
+        pub fn setMaximized(_: *@This(), _: bool) void {}
+        pub fn setMinimized(self: *@This()) void {
+            self.minimized += 1;
+        }
+        pub fn setMinSize(self: *@This(), w: u32, h: u32) void {
+            self.min_size = .{ w, h };
+        }
+    };
+    var win: MockWin = .{};
+    var controls: Controls = .init(&win);
+    u.attachWindow(&win, &controls);
+    u.maximized = false;
+    const Root = struct {
+        pub fn build(_: *const @This(), cx: *Context) Widget {
+            return cx.make(SizedBox{ .width = 10, .height = 10 });
+        }
+    };
+    u.frame(win.width, win.height, 0, Root{});
+    const bar = u.title_bar_root.?;
+    const text = findText(bar).?;
+    // In the app's text size, not a heading's.
+    try testing.expect(text.size.h < 22);
+    // Ellipsized, ending before the first (minimize) button, which is
+    // three buttons from the right end.
+    const text_right = text.position()[0] + text.size.w;
+    const first_button = @as(f32, @floatFromInt(win.width)) - TitleBar.margin - 3 * TitleBar.button_size - 2 * TitleBar.spacing;
+    try testing.expect(text_right <= first_button - TitleBar.margin);
+    try testing.expect(!text.overflow.any());
+    // The window is never too narrow for the buttons and the start of the
+    // title.
+    const buttons = 3 * TitleBar.button_size + 2 * TitleBar.spacing;
+    try testing.expectEqual(@as(u32, 3 * TitleBar.margin + TitleBar.min_title_width + buttons), win.min_size[0]);
+
+    // The first button minimizes.
+    const at: geometry.Point = .{ first_button + TitleBar.button_size / 2, TitleBar.height / 2 };
+    u.pointerMotion(at);
+    u.pointerButton(at, btn_left, true);
+    u.pointerButton(at, btn_left, false);
+    try testing.expectEqual(@as(u32, 1), win.minimized);
+
+    // So the title is never squeezed to less than that.
+    u.frame(win.min_size[0], win.height, 1, Root{});
+    try testing.expect(findText(u.title_bar_root.?).?.size.w > TitleBar.min_title_width - 20);
+}
+
+test "a window that cannot be minimized has no minimize button" {
+    const Ui = @import("runtime.zig").Ui;
+    const window_mod = @import("window");
+    const u = try Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    const MockWin = struct {
+        pub const platform: window_mod.Platform = .wayland;
+        title: []const u8 = "Title",
+        decorations: window_mod.Decorations = .client,
+        width: u32 = 400,
+        height: u32 = 200,
+        pub fn setMaximized(_: *@This(), _: bool) void {}
+        pub fn setMinimized(_: *@This()) void {}
+        pub fn canMinimize(_: *const @This()) bool {
+            return false;
+        }
+    };
+    var win: MockWin = .{};
+    var controls: Controls = .init(&win);
+    u.attachWindow(&win, &controls);
+    u.frame(win.width, win.height, 0, SizedBox{ .width = 10, .height = 10 });
+    var buttons: usize = 0;
+    const count = struct {
+        fn f(n: *Node, out: *usize) void {
+            if (n.widget.is(BarButton)) out.* += 1;
+            for (n.children.items) |ch| f(ch, out);
+        }
+    }.f;
+    count(u.title_bar_root.?, &buttons);
+    // Maximize and close.
+    try testing.expectEqual(@as(usize, 2), buttons);
+}

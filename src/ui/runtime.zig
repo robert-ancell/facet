@@ -431,10 +431,11 @@ pub const Ui = struct {
         const r = ui.root orelse return;
         r.build(w);
         const tb = ui.buildTitleBar();
+        const tb_min: Size = if (tb) |t| t.minSize(.unbounded) else .{};
         const tb_min_h: f32 = if (tb != null) title_bar_mod.TitleBar.height else 0;
         const min = r.minSize(.unbounded);
         ui.min_size = .{
-            @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(min.w, 1))))),
+            @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(min.w, tb_min.w, 1))))),
             @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(min.h + tb_min_h, 1))))),
         };
         var w_px = width;

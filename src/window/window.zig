@@ -232,6 +232,9 @@ pub const Window = struct {
         setCursor: *const fn (ptr: *anyopaque, cursor: Cursor) void,
         setMinSize: *const fn (ptr: *anyopaque, width: u32, height: u32) void,
         setMaximized: *const fn (ptr: *anyopaque, on: bool) void,
+        setMinimized: *const fn (ptr: *anyopaque) void,
+        canMaximize: *const fn (ptr: *anyopaque) bool,
+        canMinimize: *const fn (ptr: *anyopaque) bool,
         setFullscreen: *const fn (ptr: *anyopaque, on: bool) void,
         startMove: *const fn (ptr: *anyopaque) void,
         setTextInput: *const fn (ptr: *anyopaque, state: ?TextInputState) void,
@@ -375,6 +378,17 @@ pub const Window = struct {
             fn setMinSizeFn(p: *anyopaque, w: u32, h: u32) void {
                 if (@hasDecl(T, "setMinSize")) self(p).setMinSize(w, h);
             }
+            fn setMinimizedFn(p: *anyopaque) void {
+                if (@hasDecl(T, "setMinimized")) self(p).setMinimized();
+            }
+            fn canMaximizeFn(p: *anyopaque) bool {
+                if (@hasDecl(T, "canMaximize")) return self(p).canMaximize();
+                return @hasDecl(T, "setMaximized");
+            }
+            fn canMinimizeFn(p: *anyopaque) bool {
+                if (@hasDecl(T, "canMinimize")) return self(p).canMinimize();
+                return @hasDecl(T, "setMinimized");
+            }
             fn setMaximizedFn(p: *anyopaque, on: bool) void {
                 if (@hasDecl(T, "setMaximized")) self(p).setMaximized(on);
             }
@@ -468,6 +482,9 @@ pub const Window = struct {
                 .setCursor = setCursorFn,
                 .setMinSize = setMinSizeFn,
                 .setMaximized = setMaximizedFn,
+                .setMinimized = setMinimizedFn,
+                .canMaximize = canMaximizeFn,
+                .canMinimize = canMinimizeFn,
                 .setFullscreen = setFullscreenFn,
                 .startMove = startMoveFn,
                 .setTextInput = setTextInputFn,
@@ -557,6 +574,18 @@ pub const Window = struct {
     }
     pub fn setMinSize(w: Window, width: u32, height: u32) void {
         w.vtable.setMinSize(w.ptr, width, height);
+    }
+    /// Hides the window (to the dock or task bar); the window system
+    /// shows it again.
+    pub fn setMinimized(w: Window) void {
+        w.vtable.setMinimized(w.ptr);
+    }
+    /// Whether the window system can maximize (or minimize) the window.
+    pub fn canMaximize(w: Window) bool {
+        return w.vtable.canMaximize(w.ptr);
+    }
+    pub fn canMinimize(w: Window) bool {
+        return w.vtable.canMinimize(w.ptr);
     }
     pub fn setMaximized(w: Window, on: bool) void {
         w.vtable.setMaximized(w.ptr, on);
@@ -649,6 +678,11 @@ pub const Controls = struct {
 
     pub fn close(c: *Controls) void {
         c.quit = true;
+    }
+
+    /// The minimize button: hide the window.
+    pub fn minimize(c: *Controls) void {
+        if (c.win) |w| w.setMinimized();
     }
 
     /// The maximize button: fill the screen, or go back to the window's
