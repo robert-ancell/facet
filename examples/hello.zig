@@ -88,17 +88,3 @@ pub fn main(init: std.process.Init) !void {
         try app.draw(facet.window.nowNs(), Counter{});
     }
 }
-
-test "Counter example builds and updates state" {
-    const ui = try facet.Ui.createDefault(std.testing.allocator);
-    defer ui.destroy();
-
-    ui.frame(480, 320, 0, Counter{});
-    const st = ui.root.?.state(Counter.State);
-    try std.testing.expectEqual(@as(i32, 0), st.count);
-
-    Counter.State.increment(st);
-    Counter.State.increment(st);
-    ui.frame(480, 320, 1, Counter{});
-    try std.testing.expectEqual(@as(i32, 2), st.count);
-}

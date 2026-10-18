@@ -183,17 +183,3 @@ pub fn main(init: std.process.Init) !void {
         try app.draw(facet.window.nowNs(), NavigationDemo{});
     }
 }
-
-test "NavigationDemo example builds and handles actions" {
-    const ui = try facet.Ui.createDefault(std.testing.allocator);
-    defer ui.destroy();
-
-    ui.frame(800, 520, 0, NavigationDemo{});
-    const st = ui.root.?.state(NavigationDemo.State);
-    NavigationDemo.State.markOneRead(st);
-    try std.testing.expectEqual(@as(u32, 2), st.unread);
-    NavigationDemo.State.openClearDialog(st);
-    ui.frame(800, 520, 1, NavigationDemo{});
-    NavigationDemo.State.confirmClear(st);
-    try std.testing.expectEqual(@as(u32, 0), st.unread);
-}

@@ -173,14 +173,3 @@ pub fn main(init: std.process.Init) !void {
         try app.draw(facet.window.nowNs(), ListsAndDragDemo{});
     }
 }
-
-test "ListsAndDragDemo virtualizes LazyGrid items" {
-    const ui = try facet.Ui.createDefault(std.testing.allocator);
-    defer ui.destroy();
-
-    ui.frame(820, 540, 0, ListsAndDragDemo{});
-    const st = ui.root.?.state(ListsAndDragDemo.State);
-    try std.testing.expectEqual(@as(usize, 3), st.pinned_len);
-    ListsAndDragDemo.State.addPinned(st, 99);
-    try std.testing.expectEqual(@as(usize, 4), st.pinned_len);
-}

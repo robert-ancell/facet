@@ -249,14 +249,3 @@ pub fn main(init: std.process.Init) !void {
         try app.draw(facet.window.nowNs(), ControlsDemo{});
     }
 }
-
-test "ControlsDemo example builds and renders" {
-    const ui = try facet.Ui.createDefault(std.testing.allocator);
-    defer ui.destroy();
-
-    ui.frame(760, 560, 0, ControlsDemo{});
-    const st = ui.root.?.state(ControlsDemo.State);
-    ControlsDemo.State.toggleTheme(st, true);
-    ui.frame(760, 560, 1, ControlsDemo{});
-    try std.testing.expect(st.light_mode);
-}

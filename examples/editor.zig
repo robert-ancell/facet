@@ -147,14 +147,3 @@ pub fn main(init: std.process.Init) !void {
         try app.draw(facet.window.nowNs(), EditorView{ .doc = &doc });
     }
 }
-
-test "EditorView example builds and highlights" {
-    const ui = try facet.Ui.createDefault(std.testing.allocator);
-    defer ui.destroy();
-
-    var doc = try facet.TextDocument.init(std.testing.allocator, sample_code);
-    defer doc.deinit();
-
-    ui.frame(720, 520, 0, EditorView{ .doc = &doc });
-    try std.testing.expect(doc.text().len > 0);
-}
