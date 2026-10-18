@@ -141,14 +141,17 @@ Run any of the included examples from the repository root:
 | Command | Source | Description |
 | --- | --- | --- |
 | `zig build run-hello` | `examples/hello.zig` | Interactive counter application |
-| `zig build run-controls` | `examples/controls.zig` | Interactive form controls and theme switcher |
 | `zig build run-navigation` | `examples/navigation.zig` | Inbox application with navigation rail, tabs, confirmation dialog, and undo snackbar |
 | `zig build run-lists` | `examples/lists_and_drag.zig` | Grid of 500 items that can be dragged and dropped into a pinned list |
 | `zig build run-editor` | `examples/editor.zig` | Multi-line code editor with Zig syntax highlighting |
 | `zig build run-canvas` | `examples/canvas_and_qr.zig` | Animated harmonic wave viewer and live QR code generator |
 | `zig build run-opengl` | `examples/opengl.zig` | Interactive 3D Platonic solid viewer rendered with OpenGL |
 | `zig build run-vulkan` | `examples/vulkan.zig` | Interactive 3D Platonic solid viewer rendered with Vulkan |
-| `zig build run-showcase` | `examples/showcase.zig` | Interactive gallery of Material 3 widgets across four pages |
 
-To see which windowing, buffer, synchronization and rendering backends facet picks on your system, run `zig build run-info` (`tools/info.zig`).
+## Tools
+
+| Command | Source | Description |
+| --- | --- | --- |
+| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, and special widgets (QR codes, images, icons, custom painting, 3D and the title bar) |
+| `zig build run-info` | `tools/info.zig` | The windowing, buffer, synchronization and rendering backends facet picks on your system |
 

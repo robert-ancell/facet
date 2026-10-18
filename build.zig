@@ -181,14 +181,12 @@ pub fn build(b: *std.Build) void {
         polyhedron_spv: ?std.Build.LazyPath = null,
     }{
         .{ .name = "hello", .source = "examples/hello.zig", .desc = "Run the interactive counter example" },
-        .{ .name = "controls", .source = "examples/controls.zig", .desc = "Run the form controls and theme switcher example" },
         .{ .name = "navigation", .source = "examples/navigation.zig", .desc = "Run the inbox navigation, dialog, and snackbar example" },
         .{ .name = "lists", .source = "examples/lists_and_drag.zig", .desc = "Run the 500-item grid and drag-and-drop example" },
         .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted code editor example" },
         .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the animated wave viewer and QR code generator example" },
         .{ .name = "opengl", .source = "examples/opengl.zig", .desc = "Run the OpenGL 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_gl_spv },
         .{ .name = "vulkan", .source = "examples/vulkan.zig", .desc = "Run the Vulkan 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_vk_spv },
-        .{ .name = "showcase", .source = "examples/showcase.zig", .desc = "Run the interactive Material 3 widget showcase" },
     };
 
     const examples_step = b.step("examples", "Build all example applications");
@@ -219,21 +217,40 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(ex_test).step);
     }
 
-    // A tool reporting the backends facet picks on this system.
-    const info_mod = b.createModule(.{
-        .root_source_file = b.path("tools/info.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "facet", .module = mods.facet }},
-    });
-    const info_exe = b.addExecutable(.{
-        .name = "facet-info",
-        .root_module = info_mod,
-    });
-    b.installArtifact(info_exe);
-    const run_info = b.step("run-info", "Show the windowing, buffer, sync and rendering backends in use");
-    run_info.dependOn(&b.addRunArtifact(info_exe).step);
-    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = info_mod })).step);
+    // Tools: one reporting the backends facet picks on this system, and a
+    // tour of every widget.
+    const tools = [_]struct {
+        name: []const u8,
+        step: []const u8,
+        source: []const u8,
+        desc: []const u8,
+        cube: bool = false,
+    }{
+        .{ .name = "facet-info", .step = "info", .source = "tools/info.zig", .desc = "Show the windowing, buffer, sync and rendering backends in use" },
+        .{ .name = "facet-showcase", .step = "showcase", .source = "tools/showcase.zig", .desc = "Run the tour of every widget", .cube = true },
+    };
+    const cube_vulkan_spv = addSpirv(b, "cube_vulkan", "tools/showcase/shaders/cube.zig", .vulkan);
+    const cube_opengl_spv = addSpirv(b, "cube_opengl", "tools/showcase/shaders/cube.zig", .opengl);
+    for (tools) |tool| {
+        const mod = b.createModule(.{
+            .root_source_file = b.path(tool.source),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+        });
+        if (tool.cube) {
+            mod.addAnonymousImport("cube_vulkan.spv", .{ .root_source_file = cube_vulkan_spv });
+            mod.addAnonymousImport("cube_opengl.spv", .{ .root_source_file = cube_opengl_spv });
+        }
+        const exe = b.addExecutable(.{
+            .name = tool.name,
+            .root_module = mod,
+        });
+        b.installArtifact(exe);
+        const run_step = b.step(b.fmt("run-{s}", .{tool.step}), tool.desc);
+        run_step.dependOn(&b.addRunArtifact(exe).step);
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
+    }
 
     for ([_]*std.Build.Module{
         mods.font,
