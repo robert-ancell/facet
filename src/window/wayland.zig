@@ -19,6 +19,7 @@ pub const Clipboard = clipboard_mod.Clipboard;
 pub const DroppedData = clipboard_mod.DroppedData;
 pub const InputEvent = window_mod.InputEvent;
 pub const TextInputState = window_mod.TextInputState;
+pub const Cursor = window_mod.Cursor;
 pub const Keyboard = window_mod.Keyboard;
 pub const nowNs = clipboard_mod.nowNs;
 
@@ -461,7 +462,6 @@ pub const WaylandWindow = struct {
     height: u32 = default_size[1],
     min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
-    scale_changed: bool = false,
     server_decorations: bool = false,
     decoration_changed: bool = false,
     last_geometry: ?[3]u32 = null,
@@ -479,7 +479,7 @@ pub const WaylandWindow = struct {
     cursor_shape_manager: ?client.Proxy = null,
     cursor_device: ?client.Proxy = null,
     cursor_shape: ?u32 = null,
-    app_cursor: u32 = p.wp_cursor_shape_device_v1.shape.default,
+    app_cursor: Cursor = .default,
 
     buffers: [max_buffers]?Buffer = @splat(null),
     back: ?usize = null,
@@ -809,10 +809,18 @@ pub const WaylandWindow = struct {
         return edges;
     }
 
-    pub fn setCursor(w: *WaylandWindow, shape: u32) void {
-        if (w.app_cursor == shape) return;
-        w.app_cursor = shape;
+    pub fn setCursor(w: *WaylandWindow, cursor: Cursor) void {
+        if (w.app_cursor == cursor) return;
+        w.app_cursor = cursor;
         w.updateCursor();
+    }
+
+    /// `cursor`'s `wp_cursor_shape_device_v1.shape` code.
+    fn cursorShape(cursor: Cursor) u32 {
+        const sh = p.wp_cursor_shape_device_v1.shape;
+        return switch (cursor) {
+            inline else => |c| @field(sh, @tagName(c)),
+        };
     }
 
     fn updateCursor(w: *WaylandWindow) void {
@@ -822,7 +830,7 @@ pub const WaylandWindow = struct {
         const horizontal = edges & (edge_left | edge_right);
         const shape: u32 = if (vertical != 0 and horizontal != 0)
             (if ((vertical == edge_top) == (horizontal == edge_left)) sh.nwse_resize else sh.nesw_resize)
-        else if (horizontal != 0) sh.ew_resize else if (vertical != 0) sh.ns_resize else w.app_cursor;
+        else if (horizontal != 0) sh.ew_resize else if (vertical != 0) sh.ns_resize else cursorShape(w.app_cursor);
         if (w.cursor_shape == shape) return;
         const device = w.cursor_device orelse return;
         var m = device.request(p.wp_cursor_shape_device_v1.request.set_shape) catch return;
@@ -886,6 +894,18 @@ pub const WaylandWindow = struct {
 
     fn sendTextInputState(w: *WaylandWindow, ti: client.Proxy, send_enable: bool) void {
         const s = w.text_input_state;
+        const ti_proto = p.zwp_text_input_v3;
+        const hint: u32 = if (s.password)
+            ti_proto.content_hint.hidden_text | ti_proto.content_hint.sensitive_data
+        else if (s.multiline)
+            ti_proto.content_hint.multiline
+        else
+            ti_proto.content_hint.none;
+        const purpose: u32 = if (s.password) ti_proto.content_purpose.password else ti_proto.content_purpose.normal;
+        const cause: u32 = switch (s.change_cause) {
+            .input_method => ti_proto.change_cause.input_method,
+            .other => ti_proto.change_cause.other,
+        };
         if (send_enable) {
             var m = ti.request(p.zwp_text_input_v3.request.enable) catch return;
             m.end();
@@ -893,9 +913,9 @@ pub const WaylandWindow = struct {
         var m = ti.request(p.zwp_text_input_v3.request.set_surrounding_text) catch return;
         m.string(s.surrounding_text).uint(s.cursor).uint(s.anchor).end();
         m = ti.request(p.zwp_text_input_v3.request.set_text_change_cause) catch return;
-        m.uint(s.change_cause).end();
+        m.uint(cause).end();
         m = ti.request(p.zwp_text_input_v3.request.set_content_type) catch return;
-        m.uint(s.content_hint).uint(s.content_purpose).end();
+        m.uint(hint).uint(purpose).end();
         m = ti.request(p.zwp_text_input_v3.request.set_cursor_rectangle) catch return;
         const m_off: i32 = @intCast(w.frameMargin());
         m.int(s.cursor_rect[0] + m_off).int(s.cursor_rect[1] + m_off).int(s.cursor_rect[2]).int(s.cursor_rect[3]).end();
@@ -1319,10 +1339,7 @@ pub const WaylandWindow = struct {
             const factor = r.int() catch return;
             if (factor > 0) {
                 const new_scale: u32 = @intCast(factor);
-                if (new_scale != w.scale) {
-                    w.scale = new_scale;
-                    w.scale_changed = true;
-                }
+                w.scale = new_scale;
             }
         }
     }

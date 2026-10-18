@@ -55,7 +55,7 @@ pub const GpuArea = struct {
 };
 
 /// A custom draw callback recorded in tree order between 2D canvas segments.
-/// `target` is the opaque frame/command-buffer pointer passed to `Renderer.renderSegments`.
+/// `target` is the frame/command-buffer pointer passed to `Renderer.render`.
 pub const GpuDraw = struct {
     ctx: *const anyopaque,
     f: *const fn (ctx: *const anyopaque, target: *anyopaque, area: GpuArea) anyerror!void,
@@ -109,6 +109,16 @@ pub const RenderBackend = enum {
     }
 };
 
+/// Identifies a type at run time (one address per type).
+pub const TypeId = *const anyopaque;
+
+pub fn typeId(comptime T: type) TypeId {
+    return &struct {
+        const Type = T;
+        var byte: u8 = 0;
+    }.byte;
+}
+
 /// Type-erased rendering backend interface.
 pub const Renderer = struct {
     ptr: *anyopaque,
@@ -116,6 +126,8 @@ pub const Renderer = struct {
 
     pub const VTable = struct {
         backend: RenderBackend = .custom,
+        /// The type `record`'s target points to (see `typeId`).
+        target: TypeId,
         /// Uploads vertex batches, dirty glyph atlas rows, and image textures
         /// for all canvases in the frame.
         prepare: *const fn (ptr: *anyopaque, canvases: []const *const Canvas) anyerror!void,
@@ -129,15 +141,20 @@ pub const Renderer = struct {
     /// Wraps any backend pointer `*T` that implements:
     /// * `pub fn prepare(self: *T, canvases: []const *const Canvas) !void`
     /// * `pub fn record(self: *T, canvas: *const Canvas, target: *Target, damage: ?[]const Viewport) !void`
+    ///   (or `*const Target`)
     /// * (optional) `pub fn deinit(self: *T) void`
+    ///
+    /// Drawing into a pointer to anything but a `Target` is `error.WrongTarget`.
     pub fn of(impl: anytype) Renderer {
         const Ptr = @TypeOf(impl);
         const T = @typeInfo(Ptr).pointer.child;
+        const Target = @typeInfo(@typeInfo(@TypeOf(T.record)).@"fn".param_types[2].?).pointer.child;
         return .{
             .ptr = impl,
             .vtable = &struct {
                 const vtable: VTable = .{
                     .backend = if (@hasDecl(T, "backend")) T.backend else .custom,
+                    .target = typeId(Target),
                     .prepare = prepareFn,
                     .record = recordFn,
                     .deinit = if (@hasDecl(T, "deinit")) deinitFn else null,
@@ -166,8 +183,17 @@ pub const Renderer = struct {
         return r.vtable.prepare(r.ptr, canvases);
     }
 
+    /// `target` as the backend gets it, if it points to the backend's
+    /// target type.
+    fn targetPtr(r: Renderer, target: anytype) !*anyopaque {
+        const info = @typeInfo(@TypeOf(target));
+        if (info != .pointer or info.pointer.size != .one) @compileError("the render target must be a pointer, not " ++ @typeName(@TypeOf(target)));
+        if (typeId(info.pointer.child) != r.vtable.target) return error.WrongTarget;
+        return @ptrCast(@constCast(target));
+    }
+
     pub fn record(r: Renderer, c: *const Canvas, target: anytype, damage: ?[]const Viewport) !void {
-        return r.vtable.record(r.ptr, c, @ptrCast(@constCast(target)), damage);
+        return r.vtable.record(r.ptr, c, try r.targetPtr(target), damage);
     }
 
     /// Draws a single canvas in one step.
@@ -176,21 +202,16 @@ pub const Renderer = struct {
         try r.record(c, target, null);
     }
 
-    /// Renders all segments (`Canvas` and custom `GpuDraw`) into `target`.
-    pub fn render(
-        r: Renderer,
-        segments: []const Segment,
-        target: *anyopaque,
-        _: u32,
-        _: u32,
-        damage: ?[]const Viewport,
-    ) !void {
+    /// Renders all segments (`Canvas` and custom `GpuDraw`) into `target`,
+    /// whose canvases have been prepared.
+    pub fn render(r: Renderer, segments: []const Segment, target: anytype, damage: ?[]const Viewport) !void {
+        const target_ptr = try r.targetPtr(target);
         for (segments) |s| switch (s) {
-            .canvas => |c| try r.vtable.record(r.ptr, c, target, damage),
+            .canvas => |c| try r.vtable.record(r.ptr, c, target_ptr, damage),
             .gpu => |g| {
                 const active_vp = g.area.scissor orelse g.area.viewport;
                 if (covers(damage, active_vp)) {
-                    try g.f(g.ctx, target, g.area);
+                    try g.f(g.ctx, target_ptr, g.area);
                 }
             },
         };
@@ -206,11 +227,29 @@ pub const Renderer = struct {
         damage: ?[]const Viewport,
     ) !void {
         try r.prepare(canvases);
-        const target_ptr: *anyopaque = @ptrCast(@constCast(target));
-        try r.render(segments, target_ptr, 0, 0, damage);
+        try r.render(segments, target, damage);
     }
 
     pub fn deinit(r: Renderer) void {
         if (r.vtable.deinit) |f| f(r.ptr);
     }
 };
+
+test "drawing into the wrong kind of target is an error" {
+    const Backend = struct {
+        drawn: u32 = 0,
+        pub fn prepare(_: *@This(), _: []const *const Canvas) !void {}
+        pub fn record(b: *@This(), _: *const Canvas, _: *u32, _: ?[]const Viewport) !void {
+            b.drawn += 1;
+        }
+    };
+    var backend: Backend = .{};
+    const r = Renderer.of(&backend);
+    var c = Canvas.init(std.testing.allocator);
+    defer c.deinit();
+    var right: u32 = 0;
+    var wrong: i64 = 0;
+    try r.draw(&c, &right);
+    try std.testing.expectError(error.WrongTarget, r.draw(&c, &wrong));
+    try std.testing.expectEqual(@as(u32, 1), backend.drawn);
+}

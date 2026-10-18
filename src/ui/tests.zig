@@ -1572,5 +1572,46 @@ test "VulkanRenderer, OpenGlRenderer, and SoftwareRenderer render UI widgets and
     }
 }
 
+test "any window can show frames and give the clipboard, not only Wayland's" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
 
+    const PlainWin = struct {
+        width: u32 = 120,
+        height: u32 = 60,
+        pixels: [120 * 60]u32 = @splat(0),
+        shown: u32 = 0,
+        copied: [16]u8 = undefined,
+        copied_len: usize = 0,
+        pub fn beginFrame(w: *@This()) !gfx.software.Image {
+            return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+        }
+        pub fn showDamaged(w: *@This(), _: ?[]const gfx.Viewport) !void {
+            w.shown += 1;
+        }
+        pub fn copy(w: *@This(), text: []const u8) void {
+            @memcpy(w.copied[0..text.len], text);
+            w.copied_len = text.len;
+        }
+        pub fn paste(w: *@This(), sink: window.clipboard.Sink) void {
+            sink.f(sink.ctx, w.copied[0..w.copied_len]);
+        }
+    };
+    var win: PlainWin = .{};
+    u.attachWindow(&win, null);
+    u.frame(win.width, win.height, 0, ui.SizedBox{ .width = 10, .height = 10 });
+    try testing.expect(try u.present(&win, 0xff112233));
+    try testing.expectEqual(@as(u32, 1), win.shown);
+    try testing.expectEqual(@as(u32, 0xff112233), win.pixels[0]);
+    // Nothing changed: nothing to show.
+    u.frame(win.width, win.height, 1, ui.SizedBox{ .width = 10, .height = 10 });
+    try testing.expect(!try u.present(&win, 0xff112233));
 
+    u.copyText("hello");
+    try testing.expectEqualStrings("hello", win.copied[0..win.copied_len]);
+
+    // A renderer drawing into something else cannot draw into the window's
+    // buffer.
+    var wrong: u32 = 0;
+    try testing.expectError(error.WrongTarget, u.render(&wrong, null));
+}

@@ -22,7 +22,6 @@
 //!     try ui.preview(image);
 
 const std = @import("std");
-const linux = std.os.linux;
 const window_mod = @import("window");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -83,9 +82,7 @@ pub const Ui = struct {
     /// Text is drawn in it; without one, text takes no space.
     font: ?*const font.Font,
     owned_font: ?font.Font = null,
-    font_data: ?[]const u8 = null,
     emoji_font: ?font.Font = null,
-    emoji_font_data: ?[]const u8 = null,
     /// Icons are drawn with it (see `Icon`).
     icon_font: font.Font,
     theme: Theme = .dark,
@@ -234,40 +231,20 @@ pub const Ui = struct {
     /// Creates a `Ui` using the bundled default Fira Sans and Twemoji Mozilla
     /// fallback fonts.
     pub fn createDefault(gpa: std.mem.Allocator) !*Ui {
-        const ui = try create(gpa, null);
-        errdefer ui.destroy();
-        ui.owned_font = try font.Font.init(font.default_font_data);
-        ui.emoji_font = font.Font.init(font.emoji_font_data) catch null;
-        if (ui.owned_font) |*f| {
-            if (ui.emoji_font) |*ef| f.fallback = ef;
-            ui.font = f;
-        }
-        return ui;
+        return createWithFontData(gpa, font.default_font_data);
     }
 
-    /// Creates a `Ui` with the font at `path` (or the bundled default font
-    /// when `path == null`).
-    pub fn createWithFont(gpa: std.mem.Allocator, _: []const u8, path: ?[*:0]const u8) !*Ui {
-        const p = path orelse return createDefault(gpa);
-        const span = std.mem.span(p);
+    /// Creates a `Ui` drawing text in the OpenType or TrueType font in
+    /// `data` (which must outlive it), falling back to the bundled Twemoji
+    /// Mozilla font for emoji.
+    pub fn createWithFontData(gpa: std.mem.Allocator, data: []const u8) !*Ui {
         const ui = try create(gpa, null);
         errdefer ui.destroy();
-        if (readFileAlloc(gpa, span, 32 * 1024 * 1024)) |data| {
-            if (font.Font.init(data)) |f| {
-                ui.font_data = data;
-                ui.owned_font = f;
-            } else |_| {
-                gpa.free(data);
-            }
-        } else |_| {}
-        if (ui.owned_font == null) {
-            ui.owned_font = font.Font.init(font.default_font_data) catch null;
-        }
+        ui.owned_font = try font.Font.init(data);
         ui.emoji_font = font.Font.init(font.emoji_font_data) catch null;
-        if (ui.owned_font) |*f| {
-            if (ui.emoji_font) |*ef| f.fallback = ef;
-            ui.font = f;
-        }
+        const f = &ui.owned_font.?;
+        if (ui.emoji_font) |*ef| f.fallback = ef;
+        ui.font = f;
         return ui;
     }
 
@@ -292,8 +269,6 @@ pub const Ui = struct {
         if (ui.owns_renderer) if (ui.renderer) |r| r.deinit();
         ui.atlas.deinit();
         for (&ui.arenas) |*a| a.deinit();
-        if (ui.font_data) |d| ui.gpa.free(d);
-        if (ui.emoji_font_data) |d| ui.gpa.free(d);
         ui.gpa.destroy(ui);
     }
 
@@ -309,44 +284,42 @@ pub const Ui = struct {
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
     /// `win` (either a `window.Window` or a pointer such as `*window.WaylandWindow`).
-    pub fn attachWindow(ui: *Ui, win_any: anytype, controls: ?*window_mod.Controls) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
+    pub fn attachWindow(ui: *Ui, win: anytype, controls: ?*window_mod.Controls) void {
+        const w = window_mod.Window.from(win);
         ui.win = w;
-        if (@TypeOf(win_any) != window_mod.Window) {
-            const Child = @typeInfo(@TypeOf(win_any)).pointer.child;
-            if (@hasField(Child, "clipboard")) {
-                ui.clipboard = .of(&win_any.clipboard);
-            } else if (@hasDecl(Child, "copy") and @hasDecl(Child, "paste")) {
-                ui.clipboard = .of(win_any);
-            }
-            if (@hasField(Child, "min_size") and ui.min_size_floor[0] == 0 and ui.min_size_floor[1] == 0) {
-                ui.min_size_floor = win_any.min_size;
-            }
-        }
         ui.controls = controls;
         ui.syncWindow(w);
     }
 
-    /// Updates the UI's keyboard layout and window state from `win`.
-    pub fn syncWindow(ui: *Ui, win_any: anytype) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
+    /// Updates the UI's keyboard layout and window state from `win` (the
+    /// one place they are copied from the window). A change to how the
+    /// window is shown redraws all of it.
+    pub fn syncWindow(ui: *Ui, win: anytype) void {
+        const w = window_mod.Window.from(win);
         ui.keyboard = w.layout();
-        ui.fullscreen = w.isFullscreen();
-        ui.maximized = w.isMaximized();
-        ui.tiled = w.isTiled();
-        ui.decorations = w.decorations();
-        ui.scale = @max(w.scale(), 1);
+        const fullscreen = w.isFullscreen();
+        const maximized = w.isMaximized();
+        const tiled = w.isTiled();
+        const decorations = w.decorations();
+        const scale = @max(w.scale(), 1);
+        if (fullscreen != ui.fullscreen or maximized != ui.maximized or tiled != ui.tiled or
+            decorations != ui.decorations or scale != ui.scale)
+        {
+            ui.damage.invalidate();
+            ui.needs_frame = true;
+        }
+        ui.fullscreen = fullscreen;
+        ui.maximized = maximized;
+        ui.tiled = tiled;
+        ui.decorations = decorations;
+        ui.scale = scale;
     }
 
     /// True when the toolkit should automatically add a client-side `TitleBar`
-    /// above the application's root widget (on Wayland with client-side
-    /// decorations when not fullscreen).
+    /// above the application's root widget (in a window with client-side
+    /// decorations, when not fullscreen).
     pub fn hasClientTitleBar(ui: *const Ui) bool {
-        if (ui.fullscreen) return false;
-        if (ui.win) |w| {
-            return w.platform() == .wayland and w.decorations() == .client;
-        }
-        return false;
+        return ui.win != null and ui.decorations == .client and !ui.fullscreen;
     }
 
     /// Returns information about the active windowing platform, surface buffer
@@ -358,7 +331,7 @@ pub const Ui = struct {
             .platform = if (ui.win) |w| w.platform() else .headless,
             .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
             .renderer = if (ui.renderer) |r| r.backend() else .software,
-            .decorations = if (ui.win) |w| w.decorations() else ui.decorations,
+            .decorations = ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },
             .scale = s,
@@ -389,42 +362,18 @@ pub const Ui = struct {
         return .default;
     }
 
-    /// Maps a `widget.Cursor` to its `wp_cursor_shape_device_v1.shape` code.
-    pub fn cursorShape(c: widget.Cursor) u32 {
-        const sh = window_mod.CursorShape;
-        return switch (c) {
-            .default => sh.default,
-            .pointer => sh.pointer,
-            .text => sh.text,
-            .grab => sh.grab,
-            .grabbing => sh.grabbing,
-            .crosshair => sh.crosshair,
-            .move => sh.move,
-            .not_allowed => sh.not_allowed,
-            .wait => sh.wait,
-            .progress => sh.progress,
-            .help => sh.help,
-            .ew_resize => sh.ew_resize,
-            .ns_resize => sh.ns_resize,
-            .nwse_resize => sh.nwse_resize,
-            .nesw_resize => sh.nesw_resize,
-        };
-    }
-
     /// Updates `win`'s cursor shape to match `ui.cursor()`.
-    pub fn syncCursor(ui: *const Ui, win_any: anytype) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
-        w.setCursor(cursorShape(ui.cursor()));
+    pub fn syncCursor(ui: *const Ui, win: anytype) void {
+        window_mod.Window.from(win).setCursor(ui.cursor());
     }
 
     /// Updates `win`'s minimum size to match `ui.min_size`.
-    pub fn syncMinSize(ui: *const Ui, win_any: anytype) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
-        w.setMinSize(ui.min_size[0], ui.min_size[1]);
+    pub fn syncMinSize(ui: *const Ui, win: anytype) void {
+        window_mod.Window.from(win).setMinSize(ui.min_size[0], ui.min_size[1]);
     }
 
-    /// The `zwp_text_input_v3` state for the currently focused widget, or
-    /// null when no text input widget is focused.
+    /// The input method state for the currently focused widget, or null
+    /// when no text input widget is focused.
     pub fn textInputState(ui: *const Ui) ?window_mod.TextInputState {
         const n = ui.focused orelse return null;
         const f = n.widget.vtable.text_input orelse return null;
@@ -432,22 +381,13 @@ pub const Ui = struct {
         const origin = n.position();
         const ox: i32 = @intFromFloat(@round(origin[0]));
         const oy: i32 = @intFromFloat(@round(origin[1]));
-        const ti = window_mod.TextInputProtocol;
-        const hint: u32 = if (info.password)
-            (ti.content_hint.hidden_text | ti.content_hint.sensitive_data)
-        else if (info.multiline)
-            ti.content_hint.multiline
-        else
-            ti.content_hint.none;
-        const purpose: u32 = if (info.password) ti.content_purpose.password else ti.content_purpose.normal;
-        const cause: u32 = if (info.change_cause_other) ti.change_cause.other else ti.change_cause.input_method;
         return .{
             .surrounding_text = info.surrounding_text,
             .cursor = info.cursor,
             .anchor = info.anchor,
-            .change_cause = cause,
-            .content_hint = hint,
-            .content_purpose = purpose,
+            .change_cause = if (info.change_cause_other) .other else .input_method,
+            .password = info.password,
+            .multiline = info.multiline,
             .cursor_rect = .{
                 ox + info.cursor_rect[0],
                 oy + info.cursor_rect[1],
@@ -457,10 +397,9 @@ pub const Ui = struct {
         };
     }
 
-    /// Synchronizes `win`'s `zwp_text_input_v3` state with the focused widget.
-    pub fn syncTextInput(ui: *const Ui, win_any: anytype) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
-        w.setTextInput(ui.textInputState());
+    /// Synchronizes `win`'s input method state with the focused widget.
+    pub fn syncTextInput(ui: *const Ui, win: anytype) void {
+        window_mod.Window.from(win).setTextInput(ui.textInputState());
     }
 
     /// The arena this frame's widgets are made in.
@@ -693,6 +632,7 @@ pub const Ui = struct {
 
     pub fn copyText(ui: *Ui, text: []const u8) void {
         if (ui.clipboard) |c| return c.vtable.copy(c.ptr, text);
+        if (ui.win) |w| if (w.hasClipboard()) return w.copy(text);
         ui.local_clipboard.clearRetainingCapacity();
         ui.local_clipboard.appendSlice(ui.gpa, text) catch {};
     }
@@ -700,6 +640,7 @@ pub const Ui = struct {
     pub fn pasteText(ui: *Ui, owner: *Node, on_text: widget.ValueCallback([]const u8)) void {
         ui.paste = .{ .owner = owner, .on_text = on_text };
         if (ui.clipboard) |c| return c.vtable.paste(c.ptr, .{ .ctx = ui, .f = pasted });
+        if (ui.win) |w| if (w.hasClipboard()) return w.paste(.{ .ctx = ui, .f = pasted });
         pasted(ui, if (ui.local_clipboard.items.len > 0) ui.local_clipboard.items else null);
     }
 
@@ -799,14 +740,11 @@ pub const Ui = struct {
     }
 
     /// Renders the last painted frame through `ui.renderer` into `target`.
+    /// `target` is a pointer to the renderer's target type (`*gfx.software.Image`
+    /// for the software renderer); another type is `error.WrongTarget`.
     pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
         const r = ui.renderer orelse return error.NoRenderer;
-        try r.prepare(ui.canvases.items[0..ui.canvases_used]);
-        const target_ptr: *anyopaque = if (@typeInfo(@TypeOf(target)) == .pointer)
-            @ptrCast(@constCast(target))
-        else
-            @panic("Ui.render expects a pointer to the render target");
-        try r.render(ui.segments.items, target_ptr, ui.frame_size[0], ui.frame_size[1], damage);
+        try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items, target, damage);
     }
 
     /// Draws the last painted frame into `img` on the CPU using `gfx.software`.
@@ -819,18 +757,19 @@ pub const Ui = struct {
     }
 
     /// If the last `frame` changed anything, renders only the damaged parts
-    /// into `win` and presents it.
-    pub fn present(ui: *Ui, win: *window_mod.WaylandWindow, clear: u32) !bool {
+    /// into `win` (a `window.Window`, or a pointer to a window) and presents it.
+    pub fn present(ui: *Ui, win: anytype, clear: u32) !bool {
         if (!ui.changed()) return false;
-        var img = try win.beginFrame();
-        const repaint_region = ui.repaint(win.bufferAge());
+        const w = window_mod.Window.from(win);
+        var img = try w.beginFrame();
+        const repaint_region = ui.repaint(w.bufferAge());
         var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         const vps = regionViewports(&repaint_region, &repaint_vps);
         img.clearViewports(clear, vps);
         try ui.render(&img, vps);
-        win.finishFrame(vps);
+        w.finishFrame(vps);
         var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
-        try win.showDamaged(ui.damagedViewports(&damage));
+        try w.showDamaged(ui.damagedViewports(&damage));
         return true;
     }
 
@@ -868,8 +807,8 @@ pub const Ui = struct {
         }
     }
 
-    pub fn takeInput(ui: *Ui, win_any: anytype) void {
-        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
+    pub fn takeInput(ui: *Ui, win: anytype) void {
+        const w = window_mod.Window.from(win);
         ui.syncWindow(w);
         for (w.takeInput()) |e| ui.handleInput(e);
         ui.syncCursor(w);
@@ -1108,44 +1047,21 @@ pub const Ui = struct {
     }
 };
 
-fn readFileAlloc(gpa: std.mem.Allocator, path: [:0]const u8, max_bytes: usize) ![]u8 {
-    const rc = linux.open(path.ptr, .{ .ACCMODE = .RDONLY, .CLOEXEC = true }, 0);
-    if (linux.errno(rc) != .SUCCESS) return error.FileNotFound;
-    const fd: linux.fd_t = @intCast(rc);
-    defer _ = linux.close(fd);
-    var stx: linux.Statx = undefined;
-    if (linux.errno(linux.statx(fd, "", linux.AT.EMPTY_PATH, .{ .SIZE = true }, &stx)) != .SUCCESS) return error.SystemError;
-    if (stx.size == 0 or stx.size > max_bytes) return error.FileTooBig;
-    const size: usize = @intCast(stx.size);
-    const buf = try gpa.alloc(u8, size);
-    errdefer gpa.free(buf);
-    var read_total: usize = 0;
-    while (read_total < size) {
-        const n = linux.read(fd, buf[read_total..].ptr, size - read_total);
-        if (linux.errno(n) != .SUCCESS or n == 0) return error.SystemError;
-        read_total += n;
-    }
-    return buf;
-}
-
-/// A native toolkit app: owns a `WaylandWindow`, `Controls`, and `Ui`.
+/// A native toolkit app: a window (a `WaylandWindow` unless given one),
+/// its `Controls`, and a `Ui`.
 pub const App = struct {
     gpa: std.mem.Allocator,
-    name: []const u8,
-    win: *window_mod.WaylandWindow,
+    win: window_mod.Window,
+    /// Whether `close` closes `win` (it was opened by `open`).
+    owns_window: bool = false,
     controls: window_mod.Controls,
     ui: *Ui,
     clear_color: ?u32 = null,
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
-    width: u32,
-    height: u32,
     dirty: bool = true,
     idle: bool = false,
     suspended: bool = false,
-    sync_keyboard: bool = true,
-    resized: bool = false,
-    suspended_changed: bool = false,
 
     pub const Options = struct {
         title: []const u8,
@@ -1153,51 +1069,56 @@ pub const App = struct {
         size: [2]u32 = .{ 1280, 720 },
         min_size: ?[2]u32 = null,
         maximized: bool = false,
-        font_path: ?[*:0]const u8 = null,
+        /// The OpenType or TrueType font text is drawn in (the file's
+        /// bytes, which must outlive the app); the bundled Fira Sans if
+        /// null.
+        font_data: ?[]const u8 = null,
         clear_color: ?u32 = null,
     };
 
     /// Connects to the Wayland compositor in `environ`, opens the window,
-    /// loads the font (defaulting to the bundled Fira Sans + Twemoji fonts),
-    /// and attaches the toolkit to the window.
+    /// and makes an app in it (see `openIn`).
     pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*App {
-        const name = options.app_id orelse options.title;
-        const a = try gpa.create(App);
-        errdefer gpa.destroy(a);
-        a.gpa = gpa;
-        a.name = name;
-        a.win = try window_mod.WaylandWindow.open(gpa, environ, .{
+        const win = try window_mod.WaylandWindow.open(gpa, environ, .{
             .title = options.title,
             .app_id = options.app_id,
             .size = options.size,
             .min_size = options.min_size,
             .maximized = options.maximized,
         });
-        errdefer a.win.close();
-        a.controls = .init(a.win);
-        a.ui = try Ui.createWithFont(gpa, name, options.font_path);
-        errdefer a.ui.destroy();
-        a.ui.min_size_floor = options.min_size orelse .{ 0, 0 };
-        a.ui.attachWindow(a.win, &a.controls);
-        a.clear_color = options.clear_color;
-        a.appearance = theme_mod.loadSettings();
-        a.theme_watch = .{};
+        errdefer win.close();
+        const a = try openIn(gpa, win, options);
+        a.owns_window = true;
+        return a;
+    }
+
+    /// Makes an app in `win` (a `window.Window`, or a pointer to a window
+    /// `Window.of` takes), which stays the caller's to close after the
+    /// app. Of `options`, only `min_size`, `font_data` and `clear_color`
+    /// apply: the window is already open.
+    pub fn openIn(gpa: std.mem.Allocator, win: anytype, options: Options) !*App {
+        const w = window_mod.Window.from(win);
+        const ui = if (options.font_data) |data| try Ui.createWithFontData(gpa, data) else try Ui.createDefault(gpa);
+        errdefer ui.destroy();
+        const a = try gpa.create(App);
+        a.* = .{
+            .gpa = gpa,
+            .win = w,
+            .controls = .init(w),
+            .ui = ui,
+            .clear_color = options.clear_color,
+            .appearance = theme_mod.loadSettings(),
+        };
         _ = a.theme_watch.changed();
-        a.ui.theme = a.appearance.theme.scheme();
-        a.width = a.win.width;
-        a.height = a.win.height;
-        a.dirty = true;
-        a.idle = false;
-        a.suspended = false;
-        a.sync_keyboard = true;
-        a.resized = false;
-        a.suspended_changed = false;
+        ui.theme = a.appearance.theme.scheme();
+        ui.min_size_floor = options.min_size orelse .{ 0, 0 };
+        ui.attachWindow(w, &a.controls);
         return a;
     }
 
     pub fn close(a: *App) void {
         a.ui.destroy();
-        a.win.close();
+        if (a.owns_window) a.win.close();
         a.gpa.destroy(a);
     }
 
@@ -1208,74 +1129,44 @@ pub const App = struct {
         a.dirty = true;
     }
 
+    /// Waits for (or, after a frame was shown, just takes) what the window
+    /// has to tell, and brings the UI up to date with it. False when the
+    /// app should end.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
         if (a.idle) {
-            const refresh = if (a.win.refresh_ns > 0) a.win.refresh_ns else 16 * std.time.ns_per_ms;
-            const timeout: u64 = if (a.ui.needs_frame and !a.suspended) refresh else idle_timeout_ns;
-            try a.win.wait(timeout);
+            const refresh = a.win.refreshNs();
+            const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
+            try a.win.wait(if (a.ui.needs_frame and !a.suspended) frame_ns else idle_timeout_ns);
         } else {
             try a.win.poll();
         }
-        if (a.win.closed or a.controls.quit) return false;
-        a.resized = false;
-        if (try a.win.applyConfigure()) |size| {
-            a.width = size[0];
-            a.height = size[1];
-            a.dirty = true;
-            a.resized = true;
-        }
-        if (a.win.scale_changed) {
-            a.win.scale_changed = false;
-            a.dirty = true;
-        }
-        a.suspended_changed = a.win.suspended != a.suspended;
-        if (a.suspended_changed) {
-            a.suspended = a.win.suspended;
-            if (a.suspended) {
-                a.win.releaseSpareBuffers();
-            } else {
-                a.dirty = true;
-            }
+        if (a.win.isClosed() or a.controls.quit) return false;
+        if (try a.win.applyConfigure() != null) a.dirty = true;
+        const suspended = a.win.isSuspended();
+        if (suspended != a.suspended) {
+            a.suspended = suspended;
+            if (suspended) a.win.releaseSpareBuffers() else a.dirty = true;
         }
         if (a.theme_watch.changed()) {
             a.appearance = theme_mod.loadSettings();
             a.ui.theme = a.appearance.theme.scheme();
             a.dirty = true;
         }
-        if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
-        if (a.resized or a.ui.fullscreen != a.win.fullscreen or a.ui.maximized != a.win.maximized or a.ui.tiled != a.win.tiled or a.ui.decorations != a.win.decorations()) {
-            a.ui.damage.invalidate();
-            a.dirty = true;
-        }
-        a.ui.fullscreen = a.win.fullscreen;
-        a.ui.maximized = a.win.maximized;
-        a.ui.tiled = a.win.tiled;
-        a.ui.decorations = a.win.decorations();
-        a.ui.scale = @max(a.win.scale, 1);
+        a.ui.syncWindow(a.win);
         return true;
     }
 
     pub fn takeInput(a: *App) void {
-        if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
-        a.ui.fullscreen = a.win.fullscreen;
-        a.ui.maximized = a.win.maximized;
-        a.ui.tiled = a.win.tiled;
-        a.ui.decorations = a.win.decorations();
-        a.ui.scale = @max(a.win.scale, 1);
-        for (a.win.takeInput()) |e| a.ui.handleInput(e);
-        a.ui.syncCursor(a.win);
+        a.ui.takeInput(a.win);
     }
 
     pub fn draw(a: *App, now_ns: u64, root: anytype) !void {
         a.idle = true;
-        if (!a.suspended and (a.dirty or a.ui.needs_frame)) {
-            a.dirty = false;
-            const target_ns = a.win.nextPresentationNs(now_ns);
-            a.ui.frame(a.width, a.height, target_ns, root);
-            a.width = a.win.width;
-            a.height = a.win.height;
-            const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
-            if (try a.ui.present(a.win, clear)) a.idle = false;
-        }
+        if (a.suspended or !(a.dirty or a.ui.needs_frame)) return;
+        a.dirty = false;
+        const size = a.win.size();
+        a.ui.frame(size[0], size[1], a.win.nextPresentationNs(now_ns), root);
+        const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
+        if (try a.ui.present(a.win, clear)) a.idle = false;
     }
 };

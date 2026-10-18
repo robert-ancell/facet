@@ -70,25 +70,9 @@ pub const Widget = struct {
 
 /// The pointer shape a widget asks for while the pointer is over it (or
 /// while it has captured the pointer).
-pub const Cursor = enum {
-    default,
-    pointer,
-    text,
-    grab,
-    grabbing,
-    crosshair,
-    move,
-    not_allowed,
-    wait,
-    progress,
-    help,
-    ew_resize,
-    ns_resize,
-    nwse_resize,
-    nesw_resize,
-};
+pub const Cursor = window_mod.Cursor;
 
-/// A focused text widget's state for `zwp_text_input_v3`.
+/// A focused text widget's state, for the platform's input method.
 pub const TextInputInfo = struct {
     surrounding_text: []const u8 = "",
     cursor: u32 = 0,
