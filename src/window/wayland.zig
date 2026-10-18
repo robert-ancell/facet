@@ -268,6 +268,13 @@ pub const Buffer = struct {
     release_point: u64 = 0,
     map_data: ?*anyopaque = null,
     pixels: []u8 = &.{},
+    /// A dmabuf's identity (for a renderer's import of it), format, layout,
+    /// and its fd for the renderer (made when first asked for).
+    id: u64 = 0,
+    fourcc: u32 = 0,
+    modifier: u64 = 0,
+    offset: u32 = 0,
+    export_fd: linux.fd_t = -1,
     pool: client.Proxy = .{},
     proxy: client.Proxy = .{},
     width: u32,
@@ -424,6 +431,25 @@ pub const Buffer = struct {
 
     /// Rounds the 4 corners of the window content over the drop shadow for any
     /// corner pixels covered by `repainted` (or all 4 corners if `repainted == null`).
+    /// Whether the shadow or the rounded corners must be drawn (on the CPU)
+    /// for a frame that repainted `repainted` (everything if null).
+    pub fn needsCpuFinish(b: *const Buffer, repainted: ?[]const gfx.Viewport) bool {
+        if (b.margin == 0) return false;
+        if (!b.shadow_drawn) return true;
+        const list = repainted orelse return true;
+        const cw: i32 = @intCast(b.content_w);
+        const ch: i32 = @intCast(b.content_h);
+        const r: i32 = @intFromFloat(@ceil(corner_radius * @as(f32, @floatFromInt(@max(b.scale, 1)))));
+        const corners = [_]gfx.Viewport{
+            .{ .x = 0, .y = 0, .width = @intCast(r), .height = @intCast(r) },
+            .{ .x = cw - r, .y = 0, .width = @intCast(r), .height = @intCast(r) },
+            .{ .x = 0, .y = ch - r, .width = @intCast(r), .height = @intCast(r) },
+            .{ .x = cw - r, .y = ch - r, .width = @intCast(r), .height = @intCast(r) },
+        };
+        for (list) |v| for (corners) |c| if (v.intersects(c)) return true;
+        return false;
+    }
+
     pub fn applyRoundedCorners(b: *Buffer, repainted: ?[]const gfx.Viewport) void {
         if (b.margin == 0 or b.content_w == 0 or b.content_h == 0) return;
         const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
@@ -659,6 +685,9 @@ pub const WaylandWindow = struct {
     fifo_barrier_pending: bool = false,
     /// When the next frame shown is drawn for (`setPresentationTime`).
     target_ns: ?u64 = null,
+
+    /// Identifies dmabuf buffers (`gfx.DmabufTarget.id`).
+    next_buffer_id: u64 = 1,
 
     /// Menus and tooltips (`openPopup`).
     popups: [max_popups]?PopupSurface = @splat(null),
@@ -1493,12 +1522,54 @@ pub const WaylandWindow = struct {
         return w.buffers[i].?.image();
     }
 
+    /// The next frame's buffer as a dmabuf, unmapped, for the GPU to draw
+    /// into (see `gfx.Renderer.renderDmabuf`); null for a `wl_shm` buffer.
+    pub fn beginDmabufFrame(w: *WaylandWindow) ?gfx.DmabufTarget {
+        if (!w.usingDmabuf()) return null;
+        const i = w.back orelse (w.pickBack() catch return null);
+        w.back = i;
+        w.frame_corners_applied = false;
+        const b = &w.buffers[i].?;
+        const bo = b.bo orelse return null;
+        if (b.export_fd < 0) {
+            const fd = b.gbm.?.bo_get_fd(bo);
+            if (fd < 0) return null;
+            b.export_fd = fd;
+        }
+        return .{
+            .id = b.id,
+            .fd = b.export_fd,
+            .fourcc = b.fourcc,
+            .modifier = b.modifier,
+            .offset = b.offset,
+            .stride = b.rowWords() * 4,
+            .width = b.width,
+            .height = b.height,
+            .origin = .{ b.margin, b.margin },
+            .content = .{ if (b.content_w > 0) b.content_w else b.width, if (b.content_h > 0) b.content_h else b.height },
+            .cpu = .{ .ctx = b, .begin = cpuBegin, .end = cpuEnd },
+        };
+    }
+
+    fn cpuBegin(ctx: *anyopaque) anyerror!gfx.software.Image {
+        const b: *Buffer = @ptrCast(@alignCast(ctx));
+        try b.beginCpuAccess();
+        return b.image();
+    }
+
+    fn cpuEnd(ctx: *anyopaque) void {
+        const b: *Buffer = @ptrCast(@alignCast(ctx));
+        b.endCpuAccess();
+    }
+
     /// Applies rounded window corners and drop-shadow margin to the current
     /// back buffer for the `repainted` viewports (or the entire window if `null`).
     pub fn finishFrame(w: *WaylandWindow, repainted: ?[]const gfx.Viewport) void {
         const i = w.back orelse return;
         const b = &w.buffers[i].?;
-        if (b.margin > 0) {
+        if (b.margin > 0 and b.needsCpuFinish(if (b.drawn == 0) null else repainted)) {
+            // Drawn on the GPU, it is mapped only for this.
+            b.beginCpuAccess() catch return;
             b.renderShadowMargin();
             b.applyRoundedCorners(if (b.drawn == 0) null else repainted);
         }
@@ -1531,9 +1602,11 @@ pub const WaylandWindow = struct {
         }
         const b = &w.buffers[i].?;
         if (!w.frame_corners_applied) {
-            if (b.margin > 0) {
-                b.renderShadowMargin();
-                b.applyRoundedCorners(if (b.drawn == 0) null else damage);
+            if (b.margin > 0 and b.needsCpuFinish(if (b.drawn == 0) null else damage)) {
+                if (b.beginCpuAccess()) {
+                    b.renderShadowMargin();
+                    b.applyRoundedCorners(if (b.drawn == 0) null else damage);
+                } else |_| {}
             }
             w.frame_corners_applied = true;
         }
@@ -1846,6 +1919,13 @@ pub const WaylandWindow = struct {
             .content_h = ch,
             .margin = m_px,
             .scale = s,
+            .id = id: {
+                w.next_buffer_id += 1;
+                break :id w.next_buffer_id - 1;
+            },
+            .fourcc = fmt,
+            .modifier = mod,
+            .offset = alloc.offset,
         };
     }
 
@@ -1889,6 +1969,7 @@ pub const WaylandWindow = struct {
     /// its own reference to the memory, and the timeline's points stay set.
     fn freeBuffer(w: *WaylandWindow, b: *Buffer, slot: *?Buffer) void {
         b.endCpuAccess();
+        if (b.export_fd >= 0) _ = linux.close(b.export_fd);
         if (b.syncobj_timeline.id != 0) {
             if (b.syncobj_timeline.request(p.wp_linux_drm_syncobj_timeline_v1.request.destroy)) |m0| {
                 var m = m0;

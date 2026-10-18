@@ -71,6 +71,37 @@ pub const GpuDraw = struct {
     area: GpuArea,
 };
 
+/// A frame's buffer that the GPU can draw into directly (a window's linear
+/// dmabuf): see `Renderer.renderDmabuf`. Its pixels can also be had on the
+/// CPU (`cpu`), for what is drawn there.
+pub const DmabufTarget = struct {
+    /// Identifies the buffer while it lives (a renderer keeps its import).
+    id: u64,
+    /// The dmabuf: the renderer duplicates it to import it.
+    fd: i32,
+    /// DRM fourcc format and format modifier, and the plane's layout.
+    fourcc: u32,
+    modifier: u64,
+    offset: u32,
+    stride: u32,
+    /// The whole buffer, in pixels.
+    width: u32,
+    height: u32,
+    /// Where the frame starts in it (inside the window's shadow), and how
+    /// big it is: draws and damage are relative to it.
+    origin: [2]u32,
+    content: [2]u32,
+    cpu: CpuAccess,
+
+    /// Maps the frame for the CPU (`begin`: the frame's pixels, as for the
+    /// CPU path) until `end`.
+    pub const CpuAccess = struct {
+        ctx: *anyopaque,
+        begin: *const fn (ctx: *anyopaque) anyerror!@import("software.zig").Image,
+        end: *const fn (ctx: *anyopaque) void,
+    };
+};
+
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.
 pub const Segment = union(enum) {
     canvas: *Canvas,
@@ -196,6 +227,9 @@ pub const Renderer = struct {
         record: *const fn (ptr: *anyopaque, canvas: *const Canvas, target: *anyopaque, damage: ?[]const Viewport) anyerror!void,
         /// Releases backend resources, if any.
         deinit: ?*const fn (ptr: *anyopaque) void = null,
+        /// Renders a frame straight into a dmabuf, if the backend can (see
+        /// `renderDmabuf`).
+        render_dmabuf: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
     };
 
     /// Wraps any backend pointer `*T` that implements:
@@ -218,7 +252,12 @@ pub const Renderer = struct {
                     .prepare = prepareFn,
                     .record = recordFn,
                     .deinit = if (@hasDecl(T, "deinit")) deinitFn else null,
+                    .render_dmabuf = if (@hasDecl(T, "renderDmabuf")) renderDmabufFn else null,
                 };
+                fn renderDmabufFn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
+                    const self: *T = @ptrCast(@alignCast(ptr));
+                    return self.renderDmabuf(canvases, segments, target, clear, clear_rects, damage);
+                }
                 fn prepareFn(ptr: *anyopaque, canvases: []const *const Canvas) anyerror!void {
                     const self: *T = @ptrCast(@alignCast(ptr));
                     return self.prepare(canvases);
@@ -293,6 +332,22 @@ pub const Renderer = struct {
     ) !void {
         try r.prepare(canvases);
         try r.render(segments, target, damage);
+    }
+
+    /// Whether the backend may render straight into dmabufs.
+    pub fn hasDmabuf(r: Renderer) bool {
+        return r.vtable.render_dmabuf != null;
+    }
+
+    /// Renders a frame into `target` on the GPU, with no copy through the
+    /// CPU: `clear_rects` cleared to `clear` (ARGB), then the segments,
+    /// within `damage` (both relative to `target.content`). GPU draws of
+    /// widgets (`GpuDraw`) are given the frame on the CPU. An error leaves
+    /// the frame to be drawn the CPU way (`error.Unsupported` if the backend
+    /// or this buffer cannot be drawn into).
+    pub fn renderDmabuf(r: Renderer, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
+        const f = r.vtable.render_dmabuf orelse return error.Unsupported;
+        return f(r.ptr, canvases, segments, target, clear, clear_rects, damage);
     }
 
     pub fn deinit(r: Renderer) void {

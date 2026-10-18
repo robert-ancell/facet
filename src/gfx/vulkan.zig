@@ -20,6 +20,8 @@ const software = @import("software.zig");
 const Canvas = canvas_mod.Canvas;
 const Color = canvas_mod.Color;
 const Viewport = renderer_mod.Viewport;
+const Segment = renderer_mod.Segment;
+const DmabufTarget = renderer_mod.DmabufTarget;
 const GpuArea = renderer_mod.GpuArea;
 
 pub const VkFlags = u32;
@@ -91,6 +93,12 @@ pub const VkStructureType = enum(u32) {
     command_buffer_begin_info = 42,
     render_pass_begin_info = 43,
     image_memory_barrier = 45,
+    fence_create_info = 8,
+    external_memory_image_create_info = 1000072001,
+    import_memory_fd_info_khr = 1000074000,
+    memory_fd_properties_khr = 1000074001,
+    memory_dedicated_allocate_info = 1000127001,
+    image_drm_format_modifier_explicit_create_info_ext = 1000158004,
     _,
 };
 
@@ -228,6 +236,9 @@ pub const Target = struct {
     /// When true (default, Vulkan 1.1+ / `VK_KHR_maintenance1`), uses a negative
     /// viewport height so clip-space Y matches OpenGL/Canvas (+1 at top).
     flip_viewport_y: bool = true,
+    /// Where the canvas's top left goes in the attachment (for a window
+    /// buffer, inside its shadow); damage and clips are relative to it.
+    origin: [2]i32 = .{ 0, 0 },
 };
 
 pub const ShaderModules = struct {
@@ -456,6 +467,16 @@ pub const VulkanRenderer = struct {
         }
     }
 
+    /// Renders a frame straight into a window's dmabuf (see
+    /// `Renderer.renderDmabuf`): only for the renderer's own device
+    /// (`initDefault`), and if it can import dmabufs.
+    pub fn renderDmabuf(r: *VulkanRenderer, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
+        const ctx = r.owned orelse return error.Unsupported;
+        if (ctx.dmabuf == null) return error.Unsupported;
+        try r.prepare(canvases);
+        try ctx.renderDirect(r, segments, target, clear, clear_rects, damage);
+    }
+
     /// Renders a prepared 2D `Canvas` into `target: *software.Image`, preserving
     /// existing background pixels and clipping to `damage` viewports when provided.
     pub fn record(r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {
@@ -488,14 +509,16 @@ pub const VulkanRenderer = struct {
         if (target.width == 0 or target.height == 0) return;
         const w_f: f32 = @floatFromInt(target.width);
         const h_f: f32 = @floatFromInt(target.height);
+        const ox: f32 = @floatFromInt(target.origin[0]);
+        const oy: f32 = @floatFromInt(target.origin[1]);
         const vp = [1]VkViewport{if (target.flip_viewport_y) .{
-            .x = 0,
-            .y = h_f,
+            .x = ox,
+            .y = oy + h_f,
             .width = w_f,
             .height = -h_f,
         } else .{
-            .x = 0,
-            .y = 0,
+            .x = ox,
+            .y = oy,
             .width = w_f,
             .height = h_f,
         }};
@@ -549,7 +572,7 @@ pub const VulkanRenderer = struct {
                 for (dmg_list) |dmg| {
                     const sc = clip_vp.intersect(dmg) orelse continue;
                     const rect = [1]VkRect2D{.{
-                        .offset = .{ .x = sc.x, .y = sc.y },
+                        .offset = .{ .x = sc.x + target.origin[0], .y = sc.y + target.origin[1] },
                         .extent = .{ .width = sc.width, .height = sc.height },
                     }};
                     r.vk.CmdSetScissor(target.cmd, 0, 1, &rect);
@@ -557,7 +580,7 @@ pub const VulkanRenderer = struct {
                 }
             } else {
                 const rect = [1]VkRect2D{.{
-                    .offset = .{ .x = clip_vp.x, .y = clip_vp.y },
+                    .offset = .{ .x = clip_vp.x + target.origin[0], .y = clip_vp.y + target.origin[1] },
                     .extent = .{ .width = clip_vp.width, .height = clip_vp.height },
                 }};
                 r.vk.CmdSetScissor(target.cmd, 0, 1, &rect);
@@ -580,6 +603,7 @@ pub const VK_FORMAT_D32_SFLOAT: u32 = 126;
 pub const VK_COMPONENT_SWIZZLE_R: u32 = 3;
 
 pub const VK_IMAGE_LAYOUT_UNDEFINED: u32 = 0;
+pub const VK_IMAGE_LAYOUT_GENERAL: u32 = 1;
 pub const VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: u32 = 2;
 pub const VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: u32 = 3;
 pub const VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: u32 = 5;
@@ -611,6 +635,7 @@ pub const VK_SHADER_STAGE_FRAGMENT_BIT: VkFlags = 0x00000010;
 pub const VK_SHADER_STAGE_ALL_GRAPHICS: VkFlags = 0x0000001F;
 
 pub const VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT: VkFlags = 0x00000001;
+pub const VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT: VkFlags = 0x00002000;
 pub const VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT: VkFlags = 0x00000080;
 pub const VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT: VkFlags = 0x00000400;
 pub const VK_PIPELINE_STAGE_TRANSFER_BIT: VkFlags = 0x00001000;
@@ -643,6 +668,107 @@ pub const VkExtent3D = extern struct {
     width: u32,
     height: u32,
     depth: u32 = 1,
+};
+
+// --- Importing dmabufs (`VK_EXT_external_memory_dma_buf`, `VK_EXT_image_drm_format_modifier`) --
+
+pub const VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT: u32 = 0x00000200;
+pub const VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT: u32 = 1000158000;
+pub const VK_QUEUE_FAMILY_EXTERNAL: u32 = 0xFFFFFFFE;
+const VK_IMAGE_ASPECT_COLOR: VkFlags = 0x00000001;
+
+/// The device extensions a dmabuf import needs (on Vulkan 1.1).
+const dmabuf_extensions = [_][*:0]const u8{
+    "VK_KHR_external_memory_fd",
+    "VK_EXT_external_memory_dma_buf",
+    "VK_KHR_image_format_list",
+    "VK_EXT_image_drm_format_modifier",
+};
+
+const VkExtensionProperties = extern struct {
+    extensionName: [256]u8,
+    specVersion: u32,
+};
+
+const VkSubresourceLayout = extern struct {
+    offset: VkDeviceSize,
+    size: VkDeviceSize,
+    rowPitch: VkDeviceSize,
+    arrayPitch: VkDeviceSize,
+    depthPitch: VkDeviceSize,
+};
+
+const VkImageDrmFormatModifierExplicitCreateInfoEXT = extern struct {
+    sType: VkStructureType = .image_drm_format_modifier_explicit_create_info_ext,
+    pNext: ?*const anyopaque = null,
+    drmFormatModifier: u64,
+    drmFormatModifierPlaneCount: u32 = 1,
+    pPlaneLayouts: [*]const VkSubresourceLayout,
+};
+
+const VkExternalMemoryImageCreateInfo = extern struct {
+    sType: VkStructureType = .external_memory_image_create_info,
+    pNext: ?*const anyopaque = null,
+    handleTypes: VkFlags,
+};
+
+const VkImportMemoryFdInfoKHR = extern struct {
+    sType: VkStructureType = .import_memory_fd_info_khr,
+    pNext: ?*const anyopaque = null,
+    handleType: u32,
+    fd: c_int,
+};
+
+const VkMemoryFdPropertiesKHR = extern struct {
+    sType: VkStructureType = .memory_fd_properties_khr,
+    pNext: ?*anyopaque = null,
+    memoryTypeBits: u32 = 0,
+};
+
+const VkMemoryDedicatedAllocateInfo = extern struct {
+    sType: VkStructureType = .memory_dedicated_allocate_info,
+    pNext: ?*const anyopaque = null,
+    image: VkImage = VK_NULL_HANDLE,
+    buffer: VkBuffer = VK_NULL_HANDLE,
+};
+
+const VkFenceCreateInfo = extern struct {
+    sType: VkStructureType = .fence_create_info,
+    pNext: ?*const anyopaque = null,
+    flags: VkFlags = 0,
+};
+
+const VkClearAttachment = extern struct {
+    aspectMask: VkFlags,
+    colorAttachment: u32,
+    clearValue: VkClearValue,
+};
+
+const VkClearRect = extern struct {
+    rect: VkRect2D,
+    baseArrayLayer: u32 = 0,
+    layerCount: u32 = 1,
+};
+
+/// What drawing straight into dmabufs needs beyond `ContextProcs` (loaded
+/// only when the extensions are there).
+const DmabufProcs = struct {
+    GetMemoryFdPropertiesKHR: *const fn (VkDevice, u32, c_int, *VkMemoryFdPropertiesKHR) callconv(.c) VkResult,
+    CmdClearAttachments: *const fn (VkCommandBuffer, u32, [*]const VkClearAttachment, u32, [*]const VkClearRect) callconv(.c) void,
+    CreateFence: *const fn (VkDevice, *const VkFenceCreateInfo, ?*const anyopaque, *VkFence) callconv(.c) VkResult,
+    DestroyFence: *const fn (VkDevice, VkFence, ?*const anyopaque) callconv(.c) void,
+    WaitForFences: *const fn (VkDevice, u32, [*]const VkFence, u32, u64) callconv(.c) VkResult,
+    ResetFences: *const fn (VkDevice, u32, [*]const VkFence) callconv(.c) VkResult,
+
+    fn load(device: VkDevice, get_proc: GetDeviceProcAddr) ?DmabufProcs {
+        var p: DmabufProcs = undefined;
+        inline for (@typeInfo(DmabufProcs).@"struct".field_names) |field_name| {
+            const name: [*:0]const u8 = "vk" ++ field_name;
+            const sym = get_proc(device, name) orelse return null;
+            @field(p, field_name) = @ptrCast(sym);
+        }
+        return p;
+    }
 };
 
 const VkApplicationInfo = extern struct {
@@ -1165,6 +1291,7 @@ const InstanceProcs = struct {
     GetPhysicalDeviceQueueFamilyProperties: *const fn (VkPhysicalDevice, *u32, ?[*]VkQueueFamilyProperties) callconv(.c) void,
     GetPhysicalDeviceMemoryProperties: *const fn (VkPhysicalDevice, *VkPhysicalDeviceMemoryProperties) callconv(.c) void,
     CreateDevice: *const fn (VkPhysicalDevice, *const VkDeviceCreateInfo, ?*const anyopaque, *VkDevice) callconv(.c) VkResult,
+    EnumerateDeviceExtensionProperties: *const fn (VkPhysicalDevice, ?[*:0]const u8, *u32, ?[*]VkExtensionProperties) callconv(.c) VkResult,
     GetDeviceProcAddr: GetDeviceProcAddr,
 
     fn load(instance: VkInstance, get_proc: GetInstanceProcAddr) !InstanceProcs {
@@ -1300,6 +1427,50 @@ const Owned2DContext = struct {
     staging_mem: VkDeviceMemory = VK_NULL_HANDLE,
     staging_map: []u32 = &.{},
 
+    queue_family: u32 = 0,
+    /// Drawing straight into window buffers (`renderDirect`), when the
+    /// device can import dmabufs: a render pass that keeps what is there,
+    /// a fence to wait for a frame, and the buffers imported.
+    dmabuf: ?DmabufProcs = null,
+    direct_pass: VkRenderPass = VK_NULL_HANDLE,
+    fence: VkFence = VK_NULL_HANDLE,
+    imports: [max_imports]?DmabufImport = @splat(null),
+    import_clock: u64 = 0,
+
+    const max_imports = 8;
+
+    /// A window buffer imported as an image to draw into.
+    const DmabufImport = struct {
+        id: u64,
+        width: u32,
+        height: u32,
+        img: VkImage,
+        mem: VkDeviceMemory,
+        view: VkImageView,
+        framebuffer: VkFramebuffer,
+        /// When it was last drawn into (`import_clock`), to free the
+        /// longest unused when another is needed.
+        used: u64 = 0,
+        /// It has been drawn into, so its layout is `GENERAL`.
+        initialized: bool = false,
+    };
+
+    fn hasExtensions(procs: InstanceProcs, phys: VkPhysicalDevice, names: []const [*:0]const u8) bool {
+        var count: u32 = 0;
+        if (procs.EnumerateDeviceExtensionProperties(phys, null, &count, null) != .success) return false;
+        var props: [512]VkExtensionProperties = undefined;
+        count = @min(count, props.len);
+        if (procs.EnumerateDeviceExtensionProperties(phys, null, &count, &props) != .success) return false;
+        for (names) |name| {
+            const want = std.mem.span(name);
+            const found = for (props[0..count]) |e| {
+                if (std.mem.eql(u8, std.mem.sliceTo(&e.extensionName, 0), want)) break true;
+            } else false;
+            if (!found) return false;
+        }
+        return true;
+    }
+
     fn create(gpa: std.mem.Allocator) !*Owned2DContext {
         var vk_lib = std.DynLib.open("libvulkan.so.1") catch try std.DynLib.open("libvulkan.so");
         errdefer vk_lib.close();
@@ -1360,9 +1531,17 @@ const Owned2DContext = struct {
             .queueFamilyIndex = chosen_qfam,
             .pQueuePriorities = &prio,
         }};
-        const dev_info: VkDeviceCreateInfo = .{ .pQueueCreateInfos = &q_info };
+        // With dmabuf import if it can, to draw straight into window buffers.
+        var with_dmabuf = hasExtensions(inst_procs, phys_dev, &dmabuf_extensions);
         var device: VkDevice = undefined;
-        if (inst_procs.CreateDevice(phys_dev, &dev_info, null, &device) != .success) return error.VkCreateDeviceFailed;
+        if (with_dmabuf) {
+            const dev_info: VkDeviceCreateInfo = .{ .pQueueCreateInfos = &q_info, .enabledExtensionCount = dmabuf_extensions.len, .ppEnabledExtensionNames = &dmabuf_extensions };
+            if (inst_procs.CreateDevice(phys_dev, &dev_info, null, &device) != .success) with_dmabuf = false;
+        }
+        if (!with_dmabuf) {
+            const dev_info: VkDeviceCreateInfo = .{ .pQueueCreateInfos = &q_info };
+            if (inst_procs.CreateDevice(phys_dev, &dev_info, null, &device) != .success) return error.VkCreateDeviceFailed;
+        }
 
         const vk = try ContextProcs.load(device, inst_procs.GetDeviceProcAddr);
         var queue: VkQueue = undefined;
@@ -1380,8 +1559,10 @@ const Owned2DContext = struct {
             .device = device,
             .vk = vk,
             .queue = queue,
+            .queue_family = chosen_qfam,
         };
         errdefer self.destroy();
+        if (with_dmabuf) self.initDirect(inst_procs.GetDeviceProcAddr);
 
         const pool_info: VkCommandPoolCreateInfo = .{ .queueFamilyIndex = chosen_qfam };
         if (self.vk.CreateCommandPool(device, &pool_info, null, &self.cmd_pool) != .success) return error.VkCreateCommandPoolFailed;
@@ -1543,6 +1724,12 @@ const Owned2DContext = struct {
     fn destroy(self: *Owned2DContext) void {
         _ = self.vk.DeviceWaitIdle(self.device);
         self.destroyTarget();
+        for (&self.imports) |*slot| if (slot.*) |*im| {
+            self.destroyImport(im);
+            slot.* = null;
+        };
+        if (self.dmabuf) |d| if (self.fence != VK_NULL_HANDLE) d.DestroyFence(self.device, self.fence, null);
+        if (self.direct_pass != VK_NULL_HANDLE) self.vk.DestroyRenderPass(self.device, self.direct_pass, null);
         if (self.upload_map.len > 0) self.vk.UnmapMemory(self.device, self.upload_mem);
         if (self.upload_buf != VK_NULL_HANDLE) self.vk.DestroyBuffer(self.device, self.upload_buf, null);
         if (self.upload_mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, self.upload_mem, null);
@@ -1965,6 +2152,227 @@ const Owned2DContext = struct {
 
         self.fb_w = w;
         self.fb_h = h;
+    }
+
+    /// Gets ready to draw straight into window buffers: the procs, a render
+    /// pass that keeps the buffer's pixels (in `GENERAL` layout, as it is
+    /// shared with the compositor), and a fence. Without them, `dmabuf`
+    /// stays null and frames are drawn the CPU way.
+    fn initDirect(self: *Owned2DContext, get_proc: GetDeviceProcAddr) void {
+        const d = DmabufProcs.load(self.device, get_proc) orelse return;
+        const attachments = [1]VkAttachmentDescription{.{
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .samples = 1,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .initialLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .finalLayout = VK_IMAGE_LAYOUT_GENERAL,
+        }};
+        const color_ref = [1]VkAttachmentReference{.{ .attachment = 0, .layout = VK_IMAGE_LAYOUT_GENERAL }};
+        const subpass = [1]VkSubpassDescription{.{ .pColorAttachments = &color_ref }};
+        const rp_info: VkRenderPassCreateInfo = .{ .attachmentCount = 1, .pAttachments = &attachments, .pSubpasses = &subpass };
+        if (self.vk.CreateRenderPass(self.device, &rp_info, null, &self.direct_pass) != .success) return;
+        if (d.CreateFence(self.device, &.{}, null, &self.fence) != .success) {
+            self.vk.DestroyRenderPass(self.device, self.direct_pass, null);
+            self.direct_pass = VK_NULL_HANDLE;
+            return;
+        }
+        self.dmabuf = d;
+    }
+
+    fn destroyImport(self: *Owned2DContext, im: *DmabufImport) void {
+        self.vk.DestroyFramebuffer(self.device, im.framebuffer, null);
+        self.vk.DestroyImageView(self.device, im.view, null);
+        self.vk.DestroyImage(self.device, im.img, null);
+        self.vk.FreeMemory(self.device, im.mem, null);
+    }
+
+    /// The window buffer `t` as an image to draw into: imported the first
+    /// time (freeing the longest unused import if there is no room).
+    fn importTarget(self: *Owned2DContext, t: *const DmabufTarget) !*DmabufImport {
+        const d = self.dmabuf orelse return error.Unsupported;
+        self.import_clock += 1;
+        var free: ?*?DmabufImport = null;
+        var oldest: ?*?DmabufImport = null;
+        for (&self.imports) |*slot| {
+            if (slot.*) |*im| {
+                if (im.id == t.id and im.width == t.width and im.height == t.height) {
+                    im.used = self.import_clock;
+                    return im;
+                }
+                if (oldest == null or im.used < oldest.?.*.?.used) oldest = slot;
+            } else free = slot;
+        }
+        const slot = free orelse blk: {
+            const o = oldest.?;
+            self.destroyImport(&o.*.?);
+            o.* = null;
+            break :blk o;
+        };
+
+        const plane = [1]VkSubresourceLayout{.{ .offset = t.offset, .size = 0, .rowPitch = t.stride, .arrayPitch = 0, .depthPitch = 0 }};
+        const mod_info: VkImageDrmFormatModifierExplicitCreateInfoEXT = .{ .drmFormatModifier = t.modifier, .pPlaneLayouts = &plane };
+        const ext_info: VkExternalMemoryImageCreateInfo = .{ .pNext = &mod_info, .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT };
+        const img_info: VkImageCreateInfo = .{
+            .pNext = &ext_info,
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .extent = .{ .width = t.width, .height = t.height },
+            .samples = 1,
+            .tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        };
+        var img: VkImage = VK_NULL_HANDLE;
+        if (self.vk.CreateImage(self.device, &img_info, null, &img) != .success) return error.Unsupported;
+        errdefer self.vk.DestroyImage(self.device, img, null);
+
+        // Vulkan takes the fd it imports: give it a copy.
+        const fd_rc = std.os.linux.dup(t.fd);
+        if (std.os.linux.errno(fd_rc) != .SUCCESS) return error.Unsupported;
+        const fd: c_int = @intCast(fd_rc);
+        var imported = false;
+        defer if (!imported) {
+            _ = std.os.linux.close(fd);
+        };
+        var fd_props: VkMemoryFdPropertiesKHR = .{};
+        if (d.GetMemoryFdPropertiesKHR(self.device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fd_props) != .success) return error.Unsupported;
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetImageMemoryRequirements(self.device, img, &req);
+        const bits = req.memoryTypeBits & fd_props.memoryTypeBits;
+        if (bits == 0) return error.Unsupported;
+        const dedicated: VkMemoryDedicatedAllocateInfo = .{ .image = img };
+        const import_info: VkImportMemoryFdInfoKHR = .{ .pNext = &dedicated, .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, .fd = fd };
+        const alloc_info: VkMemoryAllocateInfo = .{ .pNext = &import_info, .allocationSize = req.size, .memoryTypeIndex = @ctz(bits) };
+        var mem: VkDeviceMemory = VK_NULL_HANDLE;
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &mem) != .success) return error.Unsupported;
+        imported = true;
+        errdefer self.vk.FreeMemory(self.device, mem, null);
+        if (self.vk.BindImageMemory(self.device, img, mem, 0) != .success) return error.Unsupported;
+
+        const view_info: VkImageViewCreateInfo = .{
+            .image = img,
+            .format = VK_FORMAT_B8G8R8A8_UNORM,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        };
+        var view: VkImageView = VK_NULL_HANDLE;
+        if (self.vk.CreateImageView(self.device, &view_info, null, &view) != .success) return error.Unsupported;
+        errdefer self.vk.DestroyImageView(self.device, view, null);
+        const views = [1]VkImageView{view};
+        const fb_info: VkFramebufferCreateInfo = .{ .renderPass = self.direct_pass, .attachmentCount = 1, .pAttachments = &views, .width = t.width, .height = t.height };
+        var fb: VkFramebuffer = VK_NULL_HANDLE;
+        if (self.vk.CreateFramebuffer(self.device, &fb_info, null, &fb) != .success) return error.Unsupported;
+
+        slot.* = .{ .id = t.id, .width = t.width, .height = t.height, .img = img, .mem = mem, .view = view, .framebuffer = fb, .used = self.import_clock };
+        return &slot.*.?;
+    }
+
+    /// Starts drawing into `im`: takes it from the compositor (the
+    /// external queue family) and begins the render pass over the frame.
+    fn beginDirect(self: *Owned2DContext, im: *DmabufImport, t: *const DmabufTarget) !void {
+        _ = self.vk.ResetCommandBuffer(self.cmd, 0);
+        if (self.vk.BeginCommandBuffer(self.cmd, &.{}) != .success) return error.VkBeginCommandBufferFailed;
+        const acquire = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = if (im.initialized) VK_IMAGE_LAYOUT_GENERAL else VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL,
+            .dstQueueFamilyIndex = self.queue_family,
+            .image = im.img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, null, 0, null, 1, &acquire);
+        im.initialized = true;
+        const no_clear = [1]VkClearValue{.{ .color = .{ 0, 0, 0, 0 } }};
+        const rp_begin: VkRenderPassBeginInfo = .{
+            .renderPass = self.direct_pass,
+            .framebuffer = im.framebuffer,
+            .renderArea = .{
+                .offset = .{ .x = @intCast(t.origin[0]), .y = @intCast(t.origin[1]) },
+                .extent = .{ .width = t.content[0], .height = t.content[1] },
+            },
+            .clearValueCount = 0,
+            .pClearValues = &no_clear,
+        };
+        self.vk.CmdBeginRenderPass(self.cmd, &rp_begin, 0);
+    }
+
+    /// Finishes drawing into `im`: gives it back to the compositor and
+    /// waits for the GPU (so the frame is complete when it is shown, and
+    /// the CPU may draw in it).
+    fn endDirect(self: *Owned2DContext, im: *DmabufImport) !void {
+        const d = self.dmabuf.?;
+        self.vk.CmdEndRenderPass(self.cmd);
+        const release = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = self.queue_family,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL,
+            .image = im.img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, null, 0, null, 1, &release);
+        if (self.vk.EndCommandBuffer(self.cmd) != .success) return error.VkEndCommandBufferFailed;
+        const cmds = [1]VkCommandBuffer{self.cmd};
+        const submits = [1]VkSubmitInfo{.{ .pCommandBuffers = &cmds }};
+        if (self.vk.QueueSubmit(self.queue, 1, &submits, self.fence) != .success) return error.VkQueueSubmitFailed;
+        const fences = [1]VkFence{self.fence};
+        const waited = d.WaitForFences(self.device, 1, &fences, 1, std.time.ns_per_s);
+        _ = d.ResetFences(self.device, 1, &fences);
+        if (waited != .success) return error.VkWaitForFencesFailed;
+    }
+
+    /// Draws a frame straight into the window buffer `t`, with no copy
+    /// through the CPU (see `Renderer.renderDmabuf`).
+    fn renderDirect(self: *Owned2DContext, r: *VulkanRenderer, segments: []const Segment, t: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
+        const d = self.dmabuf orelse return error.Unsupported;
+        if (t.content[0] == 0 or t.content[1] == 0) return;
+        const im = try self.importTarget(t);
+        const origin: [2]i32 = .{ @intCast(t.origin[0]), @intCast(t.origin[1]) };
+        try self.beginDirect(im, t);
+        if (clear_rects.len > 0) {
+            const color: [4]f32 = .{
+                @as(f32, @floatFromInt((clear >> 16) & 0xff)) / 255,
+                @as(f32, @floatFromInt((clear >> 8) & 0xff)) / 255,
+                @as(f32, @floatFromInt(clear & 0xff)) / 255,
+                @as(f32, @floatFromInt(clear >> 24)) / 255,
+            };
+            const att = [1]VkClearAttachment{.{ .aspectMask = VK_IMAGE_ASPECT_COLOR, .colorAttachment = 0, .clearValue = .{ .color = color } }};
+            var rects: [renderer_mod.max_uncovered]VkClearRect = undefined;
+            var n: u32 = 0;
+            const full: Viewport = .{ .x = 0, .y = 0, .width = t.content[0], .height = t.content[1] };
+            for (clear_rects) |cr| {
+                const c = full.intersect(cr) orelse continue;
+                if (n == rects.len) break;
+                rects[n] = .{ .rect = .{ .offset = .{ .x = c.x + origin[0], .y = c.y + origin[1] }, .extent = .{ .width = c.width, .height = c.height } } };
+                n += 1;
+            }
+            if (n > 0) d.CmdClearAttachments(self.cmd, 1, &att, n, &rects);
+        }
+        var buf: [2][renderer_mod.max_uncovered]Viewport = undefined;
+        for (segments, 0..) |seg, i| switch (seg) {
+            .canvas => |c| {
+                // Not under a GPU draw that covers it (as `Renderer.render`).
+                const dmg = renderer_mod.uncovered(&buf, damage, segments[i + 1 ..]);
+                if (dmg.len == 0) continue;
+                const target: Target = .{ .cmd = self.cmd, .width = t.content[0], .height = t.content[1], .origin = origin };
+                try r.recordTarget(c, &target, dmg);
+            },
+            .gpu => |g| {
+                const area = g.area.scissor orelse g.area.viewport;
+                if (!renderer_mod.covers(damage, area)) continue;
+                // Drawn on the CPU (on its own device): what is under it is
+                // finished first, and what is over it drawn after.
+                try self.endDirect(im);
+                var img = try t.cpu.begin(t.cpu.ctx);
+                const drawn = g.f(g.ctx, @ptrCast(&img), g.area);
+                t.cpu.end(t.cpu.ctx);
+                try drawn;
+                try self.beginDirect(im, t);
+            },
+        };
+        try self.endDirect(im);
     }
 
     fn renderCanvasToImage(self: *Owned2DContext, r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {

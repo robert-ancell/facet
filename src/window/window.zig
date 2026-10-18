@@ -280,6 +280,7 @@ pub const Window = struct {
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
         beginFrame: *const fn (ptr: *anyopaque) anyerror!gfx.software.Image,
+        beginDmabufFrame: *const fn (ptr: *anyopaque) ?gfx.DmabufTarget,
         bufferAge: *const fn (ptr: *anyopaque) u32,
         finishFrame: *const fn (ptr: *anyopaque, repainted: ?[]const gfx.Viewport) void,
         showDamaged: *const fn (ptr: *anyopaque, damage: ?[]const gfx.Viewport) anyerror!void,
@@ -476,6 +477,10 @@ pub const Window = struct {
                 if (@hasDecl(T, "beginFrame")) return self(p).beginFrame();
                 return error.Unsupported;
             }
+            fn beginDmabufFrameFn(p: *anyopaque) ?gfx.DmabufTarget {
+                if (@hasDecl(T, "beginDmabufFrame")) return self(p).beginDmabufFrame();
+                return null;
+            }
             fn bufferAgeFn(p: *anyopaque) u32 {
                 if (@hasDecl(T, "bufferAge")) return self(p).bufferAge();
                 return 0;
@@ -557,6 +562,7 @@ pub const Window = struct {
                 .applyConfigure = applyConfigureFn,
                 .releaseSpareBuffers = releaseSpareBuffersFn,
                 .beginFrame = beginFrameFn,
+                .beginDmabufFrame = beginDmabufFrameFn,
                 .bufferAge = bufferAgeFn,
                 .finishFrame = finishFrameFn,
                 .showDamaged = showDamagedFn,
@@ -699,6 +705,11 @@ pub const Window = struct {
     /// The buffer to draw the next frame into.
     pub fn beginFrame(w: Window) !gfx.software.Image {
         return w.vtable.beginFrame(w.ptr);
+    }
+    /// The buffer to draw the next frame into, as a dmabuf for the GPU to
+    /// draw into directly (instead of `beginFrame`), or null if it is not one.
+    pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
+        return w.vtable.beginDmabufFrame(w.ptr);
     }
     /// How many frames ago `beginFrame`'s buffer was last drawn: 1 if in
     /// the frame before, 0 if never.

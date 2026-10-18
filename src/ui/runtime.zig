@@ -163,6 +163,9 @@ pub const Ui = struct {
     wanted_tooltip: ?window_mod.PopupPlacement = null,
     /// How many of `segments` are the window's (the rest are popups').
     main_segments: usize = 0,
+    /// The renderer could not draw straight into the window's dmabufs, so
+    /// frames are drawn into them on the CPU.
+    no_direct: bool = false,
     /// What is being dragged, if anything (see drag.zig), and the chip
     /// that follows the pointer.
     drag: ?drag_mod.Drag = null,
@@ -297,6 +300,7 @@ pub const Ui = struct {
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
     /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`).
     pub fn attachRenderer(ui: *Ui, r: gfx.Renderer, take_ownership: bool) void {
+        ui.no_direct = false;
         if (ui.owns_renderer) if (ui.renderer) |old| old.deinit();
         ui.vulkan_renderer = null;
         ui.opengl_renderer = null;
@@ -869,17 +873,40 @@ pub const Ui = struct {
         const w = window_mod.Window.from(win);
         const popups = try ui.presentPopups(w);
         if (!ui.changed()) return popups;
-        var img = try w.beginFrame();
-        const repaint_region = ui.repaint(w.bufferAge());
+        const main = ui.segments.items[0..ui.main_segments];
         var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
-        const vps = regionViewports(&repaint_region, &repaint_vps);
         var uncovered_buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
-        img.clearViewports(clear, gfx.renderer.uncovered(&uncovered_buf, vps, ui.segments.items));
-        try ui.render(&img, vps);
-        w.finishFrame(vps);
+        // On the GPU straight into the window's buffer if they can, or else
+        // into the buffer on the CPU.
+        const direct = if (ui.directRenderer()) |r| if (w.beginDmabufFrame()) |target| blk: {
+            const repaint_region = ui.repaint(w.bufferAge());
+            const vps = regionViewports(&repaint_region, &repaint_vps);
+            r.renderDmabuf(ui.canvases.items[0..ui.canvases_used], main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
+                ui.no_direct = true;
+                break :blk false;
+            };
+            w.finishFrame(vps);
+            break :blk true;
+        } else false else false;
+        if (!direct) {
+            var img = try w.beginFrame();
+            const repaint_region = ui.repaint(w.bufferAge());
+            const vps = regionViewports(&repaint_region, &repaint_vps);
+            img.clearViewports(clear, gfx.renderer.uncovered(&uncovered_buf, vps, main));
+            try ui.render(&img, vps);
+            w.finishFrame(vps);
+        }
         var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         try w.showDamaged(ui.damagedViewports(&damage));
         return true;
+    }
+
+    /// The renderer, if it may draw frames straight into the window's
+    /// dmabufs (it has not failed to).
+    fn directRenderer(ui: *const Ui) ?gfx.Renderer {
+        if (ui.no_direct) return null;
+        const r = ui.renderer orelse return null;
+        return if (r.hasDmabuf()) r else null;
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).

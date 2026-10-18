@@ -1746,3 +1746,80 @@ test "menus and tooltips go in popups of their own when the window has them" {
     try testing.expect(u.menu_popup == null);
     try testing.expectEqual(-@as(i64, id), win.log.items[win.log.items.len - 1]);
 }
+
+/// A renderer that can draw straight into dmabufs (or fail to), and draws
+/// the CPU way with the software renderer.
+const DirectRenderer = struct {
+    fail: bool = false,
+    direct: u32 = 0,
+    clears: usize = 0,
+    damage: usize = 0,
+    pub fn prepare(_: *DirectRenderer, _: []const *const gfx.Canvas) !void {}
+    pub fn record(_: *DirectRenderer, c: *const gfx.Canvas, target: *gfx.software.Image, damage: ?[]const gfx.Viewport) !void {
+        try gfx.software.renderWithDamage(c, target.*, damage);
+    }
+    pub fn renderDmabuf(r: *DirectRenderer, _: []const *const gfx.Canvas, _: []const gfx.Segment, _: *const gfx.DmabufTarget, _: u32, clear_rects: []const gfx.Viewport, damage: []const gfx.Viewport) !void {
+        if (r.fail) return error.Unsupported;
+        r.direct += 1;
+        r.clears = clear_rects.len;
+        r.damage = damage.len;
+    }
+};
+
+/// A window whose buffers are dmabufs.
+const DmabufWin = struct {
+    width: u32 = 200,
+    height: u32 = 100,
+    pixels: [200 * 100]u32 = @splat(0),
+    cpu_frames: u32 = 0,
+    shown: u32 = 0,
+    pub fn beginFrame(w: *DmabufWin) !gfx.software.Image {
+        w.cpu_frames += 1;
+        return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+    }
+    pub fn beginDmabufFrame(w: *DmabufWin) ?gfx.DmabufTarget {
+        return .{ .id = 1, .fd = -1, .fourcc = 0, .modifier = 0, .offset = 0, .stride = w.width * 4, .width = w.width, .height = w.height, .origin = .{ 0, 0 }, .content = .{ w.width, w.height }, .cpu = .{ .ctx = w, .begin = cpuBegin, .end = cpuEnd } };
+    }
+    fn cpuBegin(ctx: *anyopaque) anyerror!gfx.software.Image {
+        const w: *DmabufWin = @ptrCast(@alignCast(ctx));
+        return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+    }
+    fn cpuEnd(_: *anyopaque) void {}
+    pub fn showDamaged(w: *DmabufWin, _: ?[]const gfx.Viewport) !void {
+        w.shown += 1;
+    }
+};
+
+test "frames are drawn straight into dmabufs when the renderer can, and the CPU way when it cannot" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    var r: DirectRenderer = .{};
+    u.attachRenderer(gfx.Renderer.of(&r), false);
+    var win: DmabufWin = .{};
+    u.attachWindow(&win, null);
+    const content = ui.SizedBox{ .width = 20, .height = 20 };
+
+    // On the GPU: the whole window is cleared and drawn, and nothing is
+    // mapped for the CPU.
+    u.frame(win.width, win.height, 0, content);
+    try testing.expect(try u.present(&win, 0xff102030));
+    try testing.expectEqual(@as(u32, 1), r.direct);
+    try testing.expectEqual(@as(usize, 1), r.clears);
+    try testing.expectEqual(@as(u32, 0), win.cpu_frames);
+    try testing.expectEqual(@as(u32, 1), win.shown);
+
+    // A renderer that fails: the frame is drawn on the CPU, and the GPU way
+    // is not tried again.
+    r.fail = true;
+    u.frame(win.width, win.height, 1, content);
+    u.damage.invalidate();
+    try testing.expect(try u.present(&win, 0xff102030));
+    try testing.expectEqual(@as(u32, 1), win.cpu_frames);
+    try testing.expectEqual(@as(u32, 0xff102030), win.pixels[0]);
+    r.fail = false;
+    u.frame(win.width, win.height, 2, content);
+    u.damage.invalidate();
+    _ = try u.present(&win, 0xff102030);
+    try testing.expectEqual(@as(u32, 1), r.direct);
+    try testing.expectEqual(@as(u32, 2), win.cpu_frames);
+}

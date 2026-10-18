@@ -14,7 +14,7 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
 - **Pluggable Rendering Backends (`facet.gfx`):**
   - **Software (`SoftwareRenderer`):** Zero-dependency CPU rasterizer for all 2D SDF shapes, polygons, alpha/color glyphs, and bilinear images.
   - **OpenGL (`OpenGlRenderer`, `OpenGlContext`):** OpenGL 3.3+ backend and offscreen 3D widget framework using runtime `GetProcAddress` function loading (no C headers required).
-  - **Vulkan (`VulkanRenderer`, `VulkanContext`):** Vulkan 1.1+ backend and offscreen 3D widget framework using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders.
+  - **Vulkan (`VulkanRenderer`, `VulkanContext`):** Vulkan 1.1+ backend and offscreen 3D widget framework using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders. On Wayland it draws frames straight into the window's `linux_dmabuf` buffers when the GPU can import them (`VK_EXT_external_memory_dma_buf`, `VK_EXT_image_drm_format_modifier`), and into the buffers through the CPU otherwise.
   - **Custom Backends:** Implement `prepare` and `record` and wrap with `facet.Renderer.of(&my_backend)`. Rendering into a pointer to anything but the backend's target type returns `error.WrongTarget`.
 - **Windowing (`facet.window`):**
   - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell` (with menus and tooltips in `xdg_popup` surfaces), `zxdg_decoration_manager_v1` (automatic client-side title bar & shadows or server-side decorations), `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
