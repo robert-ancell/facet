@@ -264,6 +264,15 @@ pub const xdg_positioner = struct {
         pub const top_right = 7;
         pub const bottom_right = 8;
     };
+    /// What it may do to stay on screen (`set_constraint_adjustment`).
+    pub const constraint_adjustment = struct {
+        pub const slide_x = 1;
+        pub const slide_y = 2;
+        pub const flip_x = 4;
+        pub const flip_y = 8;
+        pub const resize_x = 16;
+        pub const resize_y = 32;
+    };
     pub const err = struct {
         pub const invalid_input = 0;
     };

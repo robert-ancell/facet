@@ -17,7 +17,7 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
   - **Vulkan (`VulkanRenderer`, `VulkanContext`):** Vulkan 1.1+ backend and offscreen 3D widget framework using runtime `GetDeviceProcAddr` loading and Zig-compiled SPIR-V shaders.
   - **Custom Backends:** Implement `prepare` and `record` and wrap with `facet.Renderer.of(&my_backend)`. Rendering into a pointer to anything but the backend's target type returns `error.WrongTarget`.
 - **Windowing (`facet.window`):**
-  - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell`, `zxdg_decoration_manager_v1` (automatic client-side title bar & shadows or server-side decorations), `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
+  - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell` (with menus and tooltips in `xdg_popup` surfaces), `zxdg_decoration_manager_v1` (automatic client-side title bar & shadows or server-side decorations), `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, and `wp_presentation`.
   - Generic, platform-neutral **`Window` interface (`facet.Window.of(&my_window)`)** for custom windowing backends (and future macOS/Windows support); run an app in one with `facet.App.openIn(gpa, &my_window, options)`.
 - **Bundled Fonts & Icons (`facet.font`, `facet.icons`):**
   - Pure-Zig OpenType/TrueType parser, shaper, and rasterizer (`kern`/`GPOS`, `liga`/`GSUB`, `COLR`/`CPAL` color emoji).

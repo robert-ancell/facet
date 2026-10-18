@@ -154,6 +154,15 @@ pub const Ui = struct {
         owner: *Node,
     } = null,
     menu_root: ?*Node = null,
+    /// The menu and tooltip in popups of their own, when the window has
+    /// them (`Window.openPopup`); otherwise they are drawn in the window.
+    menu_popup: ?PopupLayer = null,
+    tooltip_popup: ?PopupLayer = null,
+    /// Where the menu and tooltip built this frame want to be, if in popups.
+    wanted_menu: ?window_mod.PopupPlacement = null,
+    wanted_tooltip: ?window_mod.PopupPlacement = null,
+    /// How many of `segments` are the window's (the rest are popups').
+    main_segments: usize = 0,
     /// What is being dragged, if anything (see drag.zig), and the chip
     /// that follows the pointer.
     drag: ?drag_mod.Drag = null,
@@ -185,6 +194,15 @@ pub const Ui = struct {
     paint_order: u64 = 0,
     /// How many scroll views are laying out their children.
     scrolling: u32 = 0,
+
+    /// A menu or tooltip in a popup: the window's popup, where it is, and
+    /// which of the frame's segments are drawn in it.
+    pub const PopupLayer = struct {
+        id: u32,
+        placement: window_mod.PopupPlacement,
+        first: usize = 0,
+        end: usize = 0,
+    };
 
     /// A builder that creates a popup widget each frame while open.
     pub const PopupBuilder = struct {
@@ -249,6 +267,10 @@ pub const Ui = struct {
     }
 
     pub fn destroy(ui: *Ui) void {
+        if (ui.win) |w| {
+            if (ui.tooltip_popup) |t| w.closePopup(t.id);
+            if (ui.menu_popup) |m| w.closePopup(m.id);
+        }
         ui.closeMenu();
         ui.endDrag(false);
         if (ui.title_bar_root) |tb| tb.destroy();
@@ -464,6 +486,7 @@ pub const Ui = struct {
         const m = ui.buildMenu(window);
         const d = ui.buildDrag(window);
         const tt = ui.buildTooltip(window);
+        ui.syncPopups(m, tt);
         ui.paint(tb, r, d, m, tt, w_px, h_px);
         if (tb) |n| ui.damage.sweep(n);
         ui.damage.sweep(r);
@@ -498,6 +521,7 @@ pub const Ui = struct {
     }
 
     fn buildMenu(ui: *Ui, window: Size) ?*Node {
+        ui.wanted_menu = null;
         const menu = ui.menu orelse {
             if (ui.menu_root) |n| n.destroy();
             ui.menu_root = null;
@@ -517,6 +541,12 @@ pub const Ui = struct {
         n.build(w);
         const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
         n.offset = menu_mod.place(window, menu.at, size);
+        if (ui.usesPopups()) ui.wanted_menu = .{
+            .kind = .menu,
+            .anchor = .{ @intFromFloat(@round(menu.at[0])), @intFromFloat(@round(menu.at[1])), 1, 1 },
+            .size = popupSize(size),
+            .side = .below_right,
+        };
         return n;
     }
 
@@ -540,6 +570,7 @@ pub const Ui = struct {
     }
 
     fn buildTooltip(ui: *Ui, window: Size) ?*Node {
+        ui.wanted_tooltip = null;
         if (ui.menu == null and ui.drag == null) {
             for (ui.hovered.items) |target| {
                 if (target.laid_out != ui.frame_no) continue;
@@ -553,6 +584,13 @@ pub const Ui = struct {
                 const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
                 const at = target.position();
                 n.offset = tooltip_mod.place(window, .{ .x = at[0], .y = at[1], .w = target.size.w, .h = target.size.h }, size);
+                if (ui.usesPopups()) ui.wanted_tooltip = .{
+                    .kind = .tooltip,
+                    .anchor = .{ @intFromFloat(@round(at[0])), @intFromFloat(@round(at[1])), @intFromFloat(@round(target.size.w)), @intFromFloat(@round(target.size.h)) },
+                    .size = popupSize(size),
+                    .side = .above,
+                    .gap = tooltip_mod.gap,
+                };
                 return n;
             }
         }
@@ -573,8 +611,68 @@ pub const Ui = struct {
         if (tb) |t| p.paintNode(t);
         p.paintNode(r);
         if (drag) |d| p.paintNode(d);
-        if (menu) |m| p.paintNode(m);
-        if (tooltip) |tt| p.paintNode(tt);
+        if (menu) |m| if (ui.menu_popup == null) p.paintNode(m);
+        if (tooltip) |tt| if (ui.tooltip_popup == null) p.paintNode(tt);
+        ui.main_segments = ui.segments.items.len;
+        if (menu) |m| if (ui.menu_popup) |*layer| ui.paintPopup(m, layer);
+        if (tooltip) |tt| if (ui.tooltip_popup) |*layer| ui.paintPopup(tt, layer);
+    }
+
+    /// Whether menus and tooltips go in popups of their own.
+    fn usesPopups(ui: *const Ui) bool {
+        const w = ui.win orelse return false;
+        return w.supportsPopups();
+    }
+
+    fn popupSize(size: Size) [2]u32 {
+        return .{ @intFromFloat(@max(@ceil(size.w), 1)), @intFromFloat(@max(@ceil(size.h), 1)) };
+    }
+
+    /// Opens and closes the popups for the menu and tooltip built this
+    /// frame (closing first, the newest first, as the window system
+    /// requires), and puts the menu and tooltip where their popups are.
+    fn syncPopups(ui: *Ui, menu: ?*Node, tooltip: ?*Node) void {
+        const w = ui.win orelse return;
+        const stale = struct {
+            fn f(layer: ?PopupLayer, wanted: ?window_mod.PopupPlacement) bool {
+                const l = layer orelse return false;
+                const want = wanted orelse return true;
+                return !l.placement.eql(want);
+            }
+        }.f;
+        const menu_stale = stale(ui.menu_popup, ui.wanted_menu);
+        if (stale(ui.tooltip_popup, ui.wanted_tooltip) or menu_stale) if (ui.tooltip_popup) |t| {
+            w.closePopup(t.id);
+            ui.tooltip_popup = null;
+        };
+        if (menu_stale) {
+            w.closePopup(ui.menu_popup.?.id);
+            ui.menu_popup = null;
+        }
+        if (ui.wanted_menu) |pl| if (ui.menu_popup == null) {
+            if (w.openPopup(pl)) |id| ui.menu_popup = .{ .id = id, .placement = pl };
+        };
+        if (ui.wanted_tooltip) |pl| if (ui.tooltip_popup == null) {
+            if (w.openPopup(pl)) |id| ui.tooltip_popup = .{ .id = id, .placement = pl };
+        };
+        // Where the window system put them (until it has, where they
+        // would go in the window).
+        if (menu) |n| if (ui.menu_popup) |l| if (w.popupPosition(l.id)) |at| {
+            n.offset = .{ @floatFromInt(at[0]), @floatFromInt(at[1]) };
+        };
+        if (tooltip) |n| if (ui.tooltip_popup) |l| if (w.popupPosition(l.id)) |at| {
+            n.offset = .{ @floatFromInt(at[0]), @floatFromInt(at[1]) };
+        };
+    }
+
+    /// Paints a menu or tooltip on canvases of its own, its size, with its
+    /// top left at the origin.
+    fn paintPopup(ui: *Ui, n: *Node, layer: *PopupLayer) void {
+        layer.first = ui.segments.items.len;
+        _ = ui.newCanvasSized(layer.placement.size);
+        var p: Painter = .{ .ui = ui, .node = n, .origin = .{ -n.offset[0], -n.offset[1] }, .track_damage = false };
+        p.paintNode(n);
+        layer.end = ui.segments.items.len;
     }
 
     // --- Menus ------------------------------------------------------------------
@@ -692,6 +790,10 @@ pub const Ui = struct {
     var scratch_canvas: gfx.Canvas = .init(std.heap.page_allocator);
 
     fn newCanvas(ui: *Ui) ?*gfx.Canvas {
+        return ui.newCanvasSized(ui.logical_size);
+    }
+
+    fn newCanvasSized(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
         if (ui.canvases_used == ui.canvases.items.len) {
             const c = ui.gpa.create(gfx.Canvas) catch return null;
             c.* = .init(ui.gpa);
@@ -701,7 +803,7 @@ pub const Ui = struct {
             };
         }
         const c = ui.canvases.items[ui.canvases_used];
-        c.beginScaled(ui.logical_size[0], ui.logical_size[1], @max(ui.scale, 1));
+        c.beginScaled(size[0], size[1], @max(ui.scale, 1));
         ui.segments.append(ui.gpa, .{ .canvas = c }) catch return null;
         ui.canvases_used += 1;
         return c;
@@ -749,7 +851,7 @@ pub const Ui = struct {
     /// for the software renderer); another type is `error.WrongTarget`.
     pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
         const r = ui.renderer orelse return error.NoRenderer;
-        try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items, target, damage);
+        try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items[0..ui.main_segments], target, damage);
     }
 
     /// Draws the last painted frame into `img` on the CPU using `gfx.software`.
@@ -764,8 +866,9 @@ pub const Ui = struct {
     /// If the last `frame` changed anything, renders only the damaged parts
     /// into `win` (a `window.Window`, or a pointer to a window) and presents it.
     pub fn present(ui: *Ui, win: anytype, clear: u32) !bool {
-        if (!ui.changed()) return false;
         const w = window_mod.Window.from(win);
+        const popups = try ui.presentPopups(w);
+        if (!ui.changed()) return popups;
         var img = try w.beginFrame();
         const repaint_region = ui.repaint(w.bufferAge());
         var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
@@ -777,6 +880,33 @@ pub const Ui = struct {
         var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         try w.showDamaged(ui.damagedViewports(&damage));
         return true;
+    }
+
+    /// Draws the menu and tooltip popups (whole: they are small).
+    fn presentPopups(ui: *Ui, w: window_mod.Window) !bool {
+        const r = ui.renderer orelse return error.NoRenderer;
+        var shown = false;
+        for ([_]?PopupLayer{ ui.menu_popup, ui.tooltip_popup }) |maybe| {
+            const layer = maybe orelse continue;
+            if (layer.end <= layer.first) continue;
+            var img = (try w.beginPopupFrame(layer.id)) orelse continue;
+            img.clear(0);
+            const segments = ui.segments.items[layer.first..layer.end];
+            var canvases: [16]*const gfx.Canvas = undefined;
+            var n: usize = 0;
+            for (segments) |s| switch (s) {
+                .canvas => |c| if (n < canvases.len) {
+                    canvases[n] = c;
+                    n += 1;
+                },
+                .gpu => {},
+            };
+            try r.prepare(canvases[0..n]);
+            try r.render(segments, &img, null);
+            try w.showPopup(layer.id);
+            shown = true;
+        }
+        return shown;
     }
 
     // --- Input ------------------------------------------------------------------
@@ -810,6 +940,24 @@ pub const Ui = struct {
                 ui.updateHover(pos);
             },
             .drag_leave => ui.pointerLeave(),
+            .popup_done => |id| {
+                // The window system closed it: a menu goes; a tooltip
+                // comes back next frame if it is still wanted.
+                if (ui.menu_popup) |m| if (m.id == id) {
+                    if (ui.tooltip_popup) |t| if (ui.win) |w| {
+                        w.closePopup(t.id);
+                        ui.tooltip_popup = null;
+                    };
+                    if (ui.win) |w| w.closePopup(id);
+                    ui.menu_popup = null;
+                    ui.closeMenu();
+                };
+                if (ui.tooltip_popup) |t| if (t.id == id) {
+                    if (ui.win) |w| w.closePopup(id);
+                    ui.tooltip_popup = null;
+                    ui.needs_frame = true;
+                };
+            },
         }
     }
 

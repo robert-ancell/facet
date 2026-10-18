@@ -41,6 +41,9 @@ pub const Painter = struct {
     clip: ?Rect = null,
     /// What the node being painted draws (see `damage.zig`).
     rec: ?*gfx.Record = null,
+    /// Whether what is painted damages the window (not in a popup, which
+    /// is drawn whole).
+    track_damage: bool = true,
 
     /// The canvas to draw on now, with the origin at the widget's top left
     /// and its clip applied.
@@ -182,7 +185,7 @@ pub const Painter = struct {
         p.rec = &rec;
         if (vt.paint_over) |f| f(n.widget.ptr, n, p);
         if (overflowing) p.paintOverflow(n, box);
-        p.ui.damage.painted(n, &rec);
+        if (p.track_damage) p.ui.damage.painted(n, &rec);
     }
 
     /// Stripes along each edge that something reaches past.

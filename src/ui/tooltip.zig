@@ -60,10 +60,12 @@ pub const Bubble = struct {
     }
 };
 
+/// The space between a tooltip and what it is for.
+pub const gap = 6;
+
 /// Places a tooltip bubble of `size` above `target` (or below it when there
 /// is no room above), clamped to `window`.
 pub fn place(window: Size, target: Rect, size: Size) Point {
-    const gap = 6;
     const margin = 4;
     const x_ideal = target.x + (target.w - size.w) / 2;
     const x = std.math.clamp(x_ideal, margin, @max(margin, window.w - size.w - margin));

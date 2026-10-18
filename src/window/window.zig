@@ -114,6 +114,9 @@ pub const InputEvent = union(enum) {
     drag_motion: [2]f32,
     drag_leave,
     drop: [2]f32,
+    /// The window system closed a popup (`Window.openPopup`), with this id:
+    /// a menu, when its pointer or keyboard was used elsewhere.
+    popup_done: u32,
 };
 
 /// Windowing system / display server backend.
@@ -204,6 +207,36 @@ pub const FrameSync = packed struct(u8) {
     _pad: u3 = 0,
 };
 
+/// What a popup is for. A menu takes the keyboard and the pointer, and
+/// goes when they are used outside the app; a tooltip takes no input (the
+/// pointer goes through it).
+pub const PopupKind = enum { menu, tooltip };
+
+/// Where a popup goes (`Window.openPopup`), in the window's coordinates
+/// (logical pixels). Where there is no room on the screen, it flips to the
+/// other side of the anchor, or slides along it.
+pub const PopupPlacement = struct {
+    kind: PopupKind,
+    /// The rectangle it is placed against, `[x, y, width, height]`.
+    anchor: [4]i32,
+    size: [2]u32,
+    side: Side,
+    /// How far it is from the anchor.
+    gap: i32 = 0,
+
+    pub const Side = enum {
+        /// Down and to the right of the anchor's top left corner (a menu at
+        /// a point: a 1 by 1 anchor).
+        below_right,
+        /// Centred above the anchor (a tooltip).
+        above,
+    };
+
+    pub fn eql(a: PopupPlacement, b: PopupPlacement) bool {
+        return std.meta.eql(a, b);
+    }
+};
+
 /// Generic window interface (`Window.of(&impl)`).
 pub const Window = struct {
     ptr: *anyopaque,
@@ -251,6 +284,12 @@ pub const Window = struct {
         finishFrame: *const fn (ptr: *anyopaque, repainted: ?[]const gfx.Viewport) void,
         showDamaged: *const fn (ptr: *anyopaque, damage: ?[]const gfx.Viewport) anyerror!void,
         close: *const fn (ptr: *anyopaque) void,
+        supportsPopups: *const fn (ptr: *anyopaque) bool,
+        openPopup: *const fn (ptr: *anyopaque, placement: PopupPlacement) ?u32,
+        closePopup: *const fn (ptr: *anyopaque, id: u32) void,
+        popupPosition: *const fn (ptr: *anyopaque, id: u32) ?[2]i32,
+        beginPopupFrame: *const fn (ptr: *anyopaque, id: u32) anyerror!?gfx.software.Image,
+        showPopup: *const fn (ptr: *anyopaque, id: u32) anyerror!void,
         copy: ?*const fn (ptr: *anyopaque, text: []const u8) void = null,
         paste: ?*const fn (ptr: *anyopaque, sink: clipboard.Sink) void = null,
     };
@@ -448,6 +487,27 @@ pub const Window = struct {
                 if (@hasDecl(T, "showDamaged")) return self(p).showDamaged(damage);
                 return error.Unsupported;
             }
+            fn supportsPopupsFn(_: *anyopaque) bool {
+                return @hasDecl(T, "openPopup");
+            }
+            fn openPopupFn(p: *anyopaque, placement: PopupPlacement) ?u32 {
+                if (@hasDecl(T, "openPopup")) return self(p).openPopup(placement);
+                return null;
+            }
+            fn closePopupFn(p: *anyopaque, id: u32) void {
+                if (@hasDecl(T, "closePopup")) self(p).closePopup(id);
+            }
+            fn popupPositionFn(p: *anyopaque, id: u32) ?[2]i32 {
+                if (@hasDecl(T, "popupPosition")) return self(p).popupPosition(id);
+                return null;
+            }
+            fn beginPopupFrameFn(p: *anyopaque, id: u32) anyerror!?gfx.software.Image {
+                if (@hasDecl(T, "beginPopupFrame")) return self(p).beginPopupFrame(id);
+                return null;
+            }
+            fn showPopupFn(p: *anyopaque, id: u32) anyerror!void {
+                if (@hasDecl(T, "showPopup")) return self(p).showPopup(id);
+            }
             fn closeFn(p: *anyopaque) void {
                 if (@hasDecl(T, "close")) self(p).close();
             }
@@ -501,6 +561,12 @@ pub const Window = struct {
                 .finishFrame = finishFrameFn,
                 .showDamaged = showDamagedFn,
                 .close = closeFn,
+                .supportsPopups = supportsPopupsFn,
+                .openPopup = openPopupFn,
+                .closePopup = closePopupFn,
+                .popupPosition = popupPositionFn,
+                .beginPopupFrame = beginPopupFrameFn,
+                .showPopup = showPopupFn,
                 .copy = if (@hasDecl(T, "copy") or @hasField(T, "clipboard")) copyFn else null,
                 .paste = if (@hasDecl(T, "paste") or @hasField(T, "clipboard")) pasteFn else null,
             };
@@ -650,6 +716,32 @@ pub const Window = struct {
         return w.vtable.showDamaged(w.ptr, damage);
     }
     /// Closes the window and frees it.
+    /// Opens a surface of its own over the window (and maybe beyond it),
+    /// placed as `placement` says: its id, or null if the window cannot.
+    /// A frame is drawn in it with `beginPopupFrame` and `showPopup`.
+    pub fn supportsPopups(w: Window) bool {
+        return w.vtable.supportsPopups(w.ptr);
+    }
+    pub fn openPopup(w: Window, placement: PopupPlacement) ?u32 {
+        return w.vtable.openPopup(w.ptr, placement);
+    }
+    /// Closes the popup (popups are closed newest first).
+    pub fn closePopup(w: Window, id: u32) void {
+        w.vtable.closePopup(w.ptr, id);
+    }
+    /// Where the window system put the popup (in the window's
+    /// coordinates), once it has.
+    pub fn popupPosition(w: Window, id: u32) ?[2]i32 {
+        return w.vtable.popupPosition(w.ptr, id);
+    }
+    /// The buffer to draw the popup's next frame into (all of it), or null
+    /// if it cannot be drawn yet.
+    pub fn beginPopupFrame(w: Window, id: u32) !?gfx.software.Image {
+        return w.vtable.beginPopupFrame(w.ptr, id);
+    }
+    pub fn showPopup(w: Window, id: u32) !void {
+        return w.vtable.showPopup(w.ptr, id);
+    }
     pub fn close(w: Window) void {
         w.vtable.close(w.ptr);
     }

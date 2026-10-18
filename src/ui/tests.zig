@@ -1628,3 +1628,121 @@ test "any window can show frames and give the clipboard, not only Wayland's" {
     var wrong: u32 = 0;
     try testing.expectError(error.WrongTarget, u.render(&wrong, null));
 }
+
+/// A window with popups (as Wayland's `xdg_popup`): it records what is
+/// opened and closed, and puts each popup at a fixed place.
+const PopupWin = struct {
+    width: u32 = 400,
+    height: u32 = 300,
+    pixels: [400 * 300]u32 = @splat(0),
+    popup_pixels: [300 * 300]u32 = @splat(0),
+    opened: std.ArrayList(window.PopupPlacement) = .empty,
+    /// Opens (positive ids) and closes (negative), in order.
+    log: std.ArrayList(i64) = .empty,
+    next: u32 = 1,
+    popup_size: [2]u32 = .{ 0, 0 },
+    shown: u32 = 0,
+    /// Where popups go: past the window's right edge, as a popup can.
+    const at: [2]i32 = .{ 350, 40 };
+
+    fn deinit(w: *PopupWin) void {
+        w.opened.deinit(testing.allocator);
+        w.log.deinit(testing.allocator);
+    }
+    pub fn beginFrame(w: *PopupWin) !gfx.software.Image {
+        return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+    }
+    pub fn showDamaged(_: *PopupWin, _: ?[]const gfx.Viewport) !void {}
+    pub fn openPopup(w: *PopupWin, pl: window.PopupPlacement) ?u32 {
+        w.opened.append(testing.allocator, pl) catch return null;
+        w.log.append(testing.allocator, w.next) catch return null;
+        w.popup_size = pl.size;
+        w.next += 1;
+        return w.next - 1;
+    }
+    pub fn closePopup(w: *PopupWin, id: u32) void {
+        w.log.append(testing.allocator, -@as(i64, id)) catch {};
+    }
+    pub fn popupPosition(_: *PopupWin, _: u32) ?[2]i32 {
+        return at;
+    }
+    pub fn beginPopupFrame(w: *PopupWin, _: u32) !?gfx.software.Image {
+        return .{ .pixels = w.popup_pixels[0 .. w.popup_size[0] * w.popup_size[1]], .width = w.popup_size[0], .height = w.popup_size[1] };
+    }
+    pub fn showPopup(w: *PopupWin, _: u32) !void {
+        w.shown += 1;
+    }
+};
+
+test "menus and tooltips go in popups of their own when the window has them" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.theme = .light;
+    var win: PopupWin = .{};
+    defer win.deinit();
+    u.attachWindow(&win, null);
+
+    const HelpRoot = struct {
+        pub fn build(_: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Tooltip{
+                .text = "Help",
+                .child = cx.make(ui.SizedBox{ .width = 100, .height = 40 }),
+            }) });
+        }
+    };
+    var pressed = false;
+    const press = struct {
+        fn f(b: *bool) void {
+            b.* = true;
+        }
+    }.f;
+
+    // Hovering the widget opens its tooltip in a popup above it.
+    u.frame(win.width, win.height, 0, HelpRoot{});
+    u.pointerMotion(.{ 50, 20 });
+    u.frame(win.width, win.height, 1, HelpRoot{});
+    try testing.expectEqual(@as(usize, 1), win.opened.items.len);
+    const tip = win.opened.items[0];
+    try testing.expectEqual(window.PopupKind.tooltip, tip.kind);
+    try testing.expectEqual(window.PopupPlacement.Side.above, tip.side);
+    try testing.expectEqual([4]i32{ 0, 0, 100, 40 }, tip.anchor);
+
+    // A menu: the tooltip's popup closes before the menu's opens.
+    u.openMenu(u.root.?, .{ 30, 25 }, &.{.{ .label = "Copy", .on_press = .of(&pressed, press) }});
+    u.frame(win.width, win.height, 2, HelpRoot{});
+    try testing.expectEqualSlices(i64, &.{ 1, -1, 2 }, win.log.items);
+    const menu = win.opened.items[1];
+    try testing.expectEqual(window.PopupKind.menu, menu.kind);
+    try testing.expectEqual([4]i32{ 30, 25, 1, 1 }, menu.anchor);
+    try testing.expectEqual(window.PopupPlacement.Side.below_right, menu.side);
+    // It is where the popup is (past the window's edge), drawn in the
+    // popup and not in the window.
+    try testing.expectEqual(ui.Point{ 350, 40 }, u.menu_root.?.offset);
+    @memset(&win.pixels, 0);
+    try testing.expect(try u.present(&win, 0xff000000));
+    try testing.expect(win.shown > 0);
+    const surface = u.theme.surface_container.toArgb();
+    try testing.expectEqual(surface, win.popup_pixels[10 * win.popup_size[0] + 10]);
+    try testing.expect(win.pixels[60 * win.width + 60] != surface);
+
+    // Pointer events there go to it: pressing its item does the action and
+    // closes it (and its popup).
+    const item: ui.Point = .{ 350 + 20, 40 + 8 + 20 };
+    u.pointerMotion(item);
+    u.pointerButton(item, ui.btn_left, true);
+    u.pointerButton(item, ui.btn_left, false);
+    try testing.expect(pressed);
+    try testing.expect(u.menu == null);
+    u.frame(win.width, win.height, 3, HelpRoot{});
+    try testing.expectEqual(@as(i64, -2), win.log.items[win.log.items.len - 1]);
+
+    // The window system closing a menu's popup closes the menu.
+    u.openMenu(u.root.?, .{ 30, 25 }, &.{.{ .label = "Copy" }});
+    u.frame(win.width, win.height, 4, HelpRoot{});
+    const id: u32 = @intCast(win.log.items[win.log.items.len - 1]);
+    u.handleInput(.{ .popup_done = id });
+    try testing.expect(u.menu == null);
+    try testing.expect(u.menu_popup == null);
+    try testing.expectEqual(-@as(i64, id), win.log.items[win.log.items.len - 1]);
+}

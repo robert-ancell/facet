@@ -497,6 +497,26 @@ pub const Buffer = struct {
     }
 };
 
+/// A popup's surface (`WaylandWindow.openPopup`): an `xdg_popup` above the
+/// window, drawn in its own `wl_shm` buffers.
+const PopupSurface = struct {
+    id: u32,
+    placement: window_mod.PopupPlacement,
+    surface: client.Proxy,
+    xdg_surface: client.Proxy,
+    popup: client.Proxy,
+    scale: u32,
+    /// Where the compositor put it, relative to the window's geometry
+    /// (from `xdg_popup.configure`), once it has.
+    position: ?[2]i32 = null,
+    /// It has been configured, so it can be drawn.
+    configured: bool = false,
+    buffers: [2]?Buffer = @splat(null),
+    back: ?usize = null,
+};
+
+pub const max_popups = 4;
+
 pub const WaylandWindow = struct {
     pub const platform: window_mod.Platform = .wayland;
 
@@ -639,6 +659,19 @@ pub const WaylandWindow = struct {
     fifo_barrier_pending: bool = false,
     /// When the next frame shown is drawn for (`setPresentationTime`).
     target_ns: ?u64 = null,
+
+    /// Menus and tooltips (`openPopup`).
+    popups: [max_popups]?PopupSurface = @splat(null),
+    next_popup_id: u32 = 1,
+    /// The serial of the last button, key or touch press: a menu's grab
+    /// needs one.
+    grab_serial: u32 = 0,
+    /// The surface the pointer (or the last touch) is on.
+    pointer_surface: u32 = 0,
+    touch_surface: u32 = 0,
+    /// The pointer left a surface; unless it enters another of the
+    /// window's in the same frame, it has left the window.
+    leave_pending: bool = false,
     commit_timing_manager: ?client.Proxy = null,
     commit_timer: ?client.Proxy = null,
     extensions_buf: [16][]const u8 = undefined,
@@ -884,6 +917,12 @@ pub const WaylandWindow = struct {
     }
 
     pub fn close(w: *WaylandWindow) void {
+        var i: usize = w.popups.len;
+        while (i > 0) {
+            i -= 1;
+            if (w.popups[i]) |*pop| w.destroyPopup(pop);
+            w.popups[i] = null;
+        }
         w.clipboard.deinit();
         for (&w.buffers) |*slot| if (slot.*) |*b| w.freeBuffer(b, slot);
         if (w.syncobj_surface) |ss| {
@@ -979,6 +1018,187 @@ pub const WaylandWindow = struct {
         const dx: f32 = @floatCast(r.fixed() catch return);
         const dy: f32 = @floatCast(r.fixed() catch return);
         w.pushInput(.{ .relative_motion = .{ dx, dy } });
+    }
+
+    fn findPopup(w: *WaylandWindow, id: u32) ?*PopupSurface {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) return pop;
+        return null;
+    }
+
+    /// Opens an `xdg_popup` placed as `placement` says, or returns null if
+    /// it cannot. A menu takes an explicit grab (with the last press's
+    /// serial); a tooltip lets the pointer through.
+    pub fn openPopup(w: *WaylandWindow, placement: window_mod.PopupPlacement) ?u32 {
+        const slot = for (&w.popups) |*slot| {
+            if (slot.* == null) break slot;
+        } else return null;
+        const pop = w.createPopup(placement) catch return null;
+        slot.* = pop;
+        return pop.id;
+    }
+
+    fn createPopup(w: *WaylandWindow, pl: window_mod.PopupPlacement) !PopupSurface {
+        const pos_p = p.xdg_positioner;
+        const positioner = try w.conn.newObject(null);
+        var m = try w.wm_base.request(p.xdg_wm_base.request.create_positioner);
+        m.uint(positioner.id).end();
+        m = try positioner.request(pos_p.request.set_size);
+        m.int(@intCast(@max(pl.size[0], 1))).int(@intCast(@max(pl.size[1], 1))).end();
+        // The anchor may not reach outside the window.
+        const ww: i32 = @intCast(@max(w.width, 1));
+        const wh: i32 = @intCast(@max(w.height, 1));
+        const ax = std.math.clamp(pl.anchor[0], 0, ww - 1);
+        const ay = std.math.clamp(pl.anchor[1], 0, wh - 1);
+        const aw = std.math.clamp(pl.anchor[2], 1, ww - ax);
+        const ah = std.math.clamp(pl.anchor[3], 1, wh - ay);
+        m = try positioner.request(pos_p.request.set_anchor_rect);
+        m.int(ax).int(ay).int(aw).int(ah).end();
+        const adj = pos_p.constraint_adjustment;
+        const anchor: u32, const gravity: u32, const offset: [2]i32, const adjust: u32 = switch (pl.side) {
+            .below_right => .{ pos_p.anchor.top_left, pos_p.anchor.bottom_right, .{ pl.gap, pl.gap }, adj.flip_x | adj.flip_y | adj.slide_x | adj.slide_y },
+            .above => .{ pos_p.anchor.top, pos_p.anchor.top, .{ 0, -pl.gap }, adj.flip_y | adj.slide_x | adj.slide_y },
+        };
+        m = try positioner.request(pos_p.request.set_anchor);
+        m.uint(anchor).end();
+        m = try positioner.request(pos_p.request.set_gravity);
+        m.uint(gravity).end();
+        m = try positioner.request(pos_p.request.set_constraint_adjustment);
+        m.uint(adjust).end();
+        m = try positioner.request(pos_p.request.set_offset);
+        m.int(offset[0]).int(offset[1]).end();
+
+        const surface = try w.conn.newObject(null);
+        m = try w.compositor.request(p.wl_compositor.request.create_surface);
+        m.uint(surface.id).end();
+        const scale = @max(w.scale, 1);
+        m = try surface.request(p.wl_surface.request.set_buffer_scale);
+        m.int(@intCast(scale)).end();
+        const xdg_surface = try w.conn.newObject(.{ .ptr = w, .handler = popupXdgSurfaceEvent });
+        m = try w.wm_base.request(p.xdg_wm_base.request.get_xdg_surface);
+        m.uint(xdg_surface.id).uint(surface.id).end();
+        const popup = try w.conn.newObject(.{ .ptr = w, .handler = popupEvent });
+        m = try xdg_surface.request(p.xdg_surface.request.get_popup);
+        m.uint(popup.id).uint(w.xdg_surface.id).uint(positioner.id).end();
+        m = try positioner.request(pos_p.request.destroy);
+        m.end();
+        w.conn.forget(positioner.id);
+
+        switch (pl.kind) {
+            .menu => if (w.seat) |seat| if (w.grab_serial != 0) {
+                m = try popup.request(p.xdg_popup.request.grab);
+                m.uint(seat.id).uint(w.grab_serial).end();
+            },
+            .tooltip => {
+                // An empty input region: the pointer goes through it.
+                const region = try w.conn.newObject(null);
+                m = try w.compositor.request(p.wl_compositor.request.create_region);
+                m.uint(region.id).end();
+                m = try surface.request(p.wl_surface.request.set_input_region);
+                m.uint(region.id).end();
+                m = try region.request(p.wl_region.request.destroy);
+                m.end();
+                w.conn.forget(region.id);
+            },
+        }
+        // The first commit, without a buffer, asks for a configure.
+        m = try surface.request(p.wl_surface.request.commit);
+        m.end();
+        try w.conn.flush();
+        const id = w.next_popup_id;
+        w.next_popup_id +%= 1;
+        return .{ .id = id, .placement = pl, .surface = surface, .xdg_surface = xdg_surface, .popup = popup, .scale = scale };
+    }
+
+    pub fn closePopup(w: *WaylandWindow, id: u32) void {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) {
+            w.destroyPopup(pop);
+            slot.* = null;
+        };
+        w.conn.flush() catch {};
+    }
+
+    fn destroyPopup(w: *WaylandWindow, pop: *PopupSurface) void {
+        for ([_]struct { proxy: client.Proxy, op: u16 }{
+            .{ .proxy = pop.popup, .op = p.xdg_popup.request.destroy },
+            .{ .proxy = pop.xdg_surface, .op = p.xdg_surface.request.destroy },
+            .{ .proxy = pop.surface, .op = p.wl_surface.request.destroy },
+        }) |o| {
+            if (o.proxy.request(o.op)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(o.proxy.id);
+        }
+        for (&pop.buffers) |*b| if (b.*) |*buf| w.freeBuffer(buf, b);
+        if (w.pointer_surface == pop.surface.id) w.pointer_surface = 0;
+        if (w.touch_surface == pop.surface.id) w.touch_surface = 0;
+    }
+
+    pub fn popupPosition(w: *WaylandWindow, id: u32) ?[2]i32 {
+        const pop = w.findPopup(id) orelse return null;
+        return pop.position;
+    }
+
+    /// A free buffer the popup's size, once it is configured; null until
+    /// then, or while both its buffers are being shown.
+    pub fn beginPopupFrame(w: *WaylandWindow, id: u32) !?gfx.software.Image {
+        const pop = w.findPopup(id) orelse return null;
+        if (!pop.configured) return null;
+        const bw = @max(pop.placement.size[0], 1) * pop.scale;
+        const bh = @max(pop.placement.size[1], 1) * pop.scale;
+        const i = for (&pop.buffers, 0..) |*slot, i| {
+            if (slot.*) |*b| {
+                if (b.busy) continue;
+                if (b.width == bw and b.height == bh) break i;
+                w.freeBuffer(b, slot);
+            }
+            slot.* = try w.allocShmBuffer(slot, bw, bh, bw, bh, 0, pop.scale, true);
+            break i;
+        } else return null;
+        pop.back = i;
+        return pop.buffers[i].?.image();
+    }
+
+    pub fn showPopup(w: *WaylandWindow, id: u32) !void {
+        const pop = w.findPopup(id) orelse return;
+        const i = pop.back orelse return error.NoFrameBegun;
+        pop.back = null;
+        const b = &pop.buffers[i].?;
+        var m = try pop.surface.request(p.wl_surface.request.attach);
+        m.uint(b.proxy.id).int(0).int(0).end();
+        m = try pop.surface.request(p.wl_surface.request.damage_buffer);
+        m.int(0).int(0).int(@intCast(b.width)).int(@intCast(b.height)).end();
+        m = try pop.surface.request(p.wl_surface.request.commit);
+        m.end();
+        try w.conn.flush();
+        b.busy = true;
+    }
+
+    fn popupXdgSurfaceEvent(ptr: ?*anyopaque, _: *client.Display, id: u32, opcode: u16, r: *wire.Reader) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        if (opcode != p.xdg_surface.event.configure) return;
+        const serial = r.uint() catch return;
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.xdg_surface.id == id) {
+            var m = pop.xdg_surface.request(p.xdg_surface.request.ack_configure) catch return;
+            m.uint(serial).end();
+            pop.configured = true;
+        };
+    }
+
+    fn popupEvent(ptr: ?*anyopaque, _: *client.Display, id: u32, opcode: u16, r: *wire.Reader) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        const pop = for (&w.popups) |*slot| {
+            if (slot.*) |*pop| if (pop.popup.id == id) break pop;
+        } else return;
+        switch (opcode) {
+            p.xdg_popup.event.configure => {
+                const x = r.int() catch return;
+                const y = r.int() catch return;
+                pop.position = .{ x, y };
+            },
+            p.xdg_popup.event.popup_done => w.pushInput(.{ .popup_done = pop.id }),
+            else => {},
+        }
     }
 
     pub fn setMinimized(w: *WaylandWindow) void {
@@ -1467,6 +1687,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn takeInput(w: *WaylandWindow) []const InputEvent {
+        w.flushLeave();
         defer w.input_len = 0;
         return w.input[0..w.input_len];
     }
@@ -1543,7 +1764,7 @@ pub const WaylandWindow = struct {
                 w.updateExtensions();
             }
         }
-        return w.allocShmBuffer(slot, bw, bh, cw, ch, m_px, s);
+        return w.allocShmBuffer(&w.buffers[slot], bw, bh, cw, ch, m_px, s, m_px > 0);
     }
 
     fn allocDmabufBuffer(w: *WaylandWindow, slot: usize, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32) !Buffer {
@@ -1628,7 +1849,7 @@ pub const WaylandWindow = struct {
         };
     }
 
-    fn allocShmBuffer(w: *WaylandWindow, slot: usize, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32) !Buffer {
+    fn allocShmBuffer(w: *WaylandWindow, slot: *?Buffer, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32, alpha: bool) !Buffer {
         const stride = bw * 4;
         const size: usize = @as(usize, stride) * @as(usize, bh);
         const rc = linux.memfd_create("facet-shm", linux.MFD.CLOEXEC);
@@ -1645,9 +1866,9 @@ pub const WaylandWindow = struct {
         var m = try w.shm.request(p.wl_shm.request.create_pool);
         m.uint(pool.id).fd(fd).int(@intCast(size)).end();
 
-        const proxy = try w.conn.newObject(.{ .ptr = &w.buffers[slot], .handler = bufferEvent });
+        const proxy = try w.conn.newObject(.{ .ptr = slot, .handler = bufferEvent });
         m = try pool.request(p.wl_shm_pool.request.create_buffer);
-        const fmt: u32 = if (m_px > 0) p.wl_shm.format.argb8888 else p.wl_shm.format.xrgb8888;
+        const fmt: u32 = if (alpha) p.wl_shm.format.argb8888 else p.wl_shm.format.xrgb8888;
         m.uint(proxy.id).int(0).int(@intCast(bw)).int(@intCast(bh)).int(@intCast(stride)).uint(fmt).end();
 
         return .{
@@ -1757,6 +1978,25 @@ pub const WaylandWindow = struct {
             },
             else => {},
         }
+    }
+
+    /// A position on `surface` (the window's, or a popup's) in the window's
+    /// coordinates.
+    fn toWindow(w: *const WaylandWindow, surface: u32, pos: [2]f32) [2]f32 {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.surface.id == surface) {
+            const at = pop.position orelse return pos;
+            return .{ pos[0] + @as(f32, @floatFromInt(at[0])), pos[1] + @as(f32, @floatFromInt(at[1])) };
+        };
+        return w.surfaceToContent(pos);
+    }
+
+    /// The pointer left the window's surfaces (and entered none of them).
+    fn flushLeave(w: *WaylandWindow) void {
+        if (!w.leave_pending) return;
+        w.leave_pending = false;
+        w.buttons_down = 0;
+        w.pointer_surface = 0;
+        w.pushInput(.leave);
     }
 
     fn surfaceToContent(w: *const WaylandWindow, pos: [2]f32) [2]f32 {
@@ -1929,14 +2169,17 @@ pub const WaylandWindow = struct {
             p.wl_pointer.event.enter, p.wl_pointer.event.motion => {
                 const first = r.uint() catch return;
                 if (opcode == p.wl_pointer.event.enter) {
-                    _ = r.uint() catch return;
+                    const surface = r.uint() catch return;
                     w.enter_serial = first;
-                    w.buttons_down = 0;
                     w.cursor_shape = p.wp_cursor_shape_device_v1.shape.default;
+                    // Moving between the window's surfaces is not leaving.
+                    if (!w.leave_pending) w.buttons_down = 0;
+                    w.leave_pending = false;
+                    w.pointer_surface = surface;
                 }
                 const x = r.fixed() catch return;
                 const y = r.fixed() catch return;
-                w.pointer_pos = w.surfaceToContent(.{ @floatCast(x), @floatCast(y) });
+                w.pointer_pos = w.toWindow(w.pointer_surface, .{ @floatCast(x), @floatCast(y) });
                 w.updateCursor();
                 w.pushInput(.{ .motion = w.pointer_pos });
             },
@@ -1948,11 +2191,13 @@ pub const WaylandWindow = struct {
                 const pressed = state == p.wl_pointer.button_state.pressed;
                 if (pressed) {
                     w.press_serial = serial;
+                    w.grab_serial = serial;
                     w.clipboard.serial = serial;
                 } else {
                     w.press_serial = 0;
                 }
-                if (pressed and code == p.input.btn_left) {
+                const on_window = w.pointer_surface == w.surface.id or w.pointer_surface == 0;
+                if (pressed and code == p.input.btn_left and on_window) {
                     const edges = w.edgesAt(w.pointer_pos);
                     if (edges != 0) if (w.seat) |seat| {
                         var m = w.toplevel.request(p.xdg_toplevel.request.resize) catch return;
@@ -1961,7 +2206,7 @@ pub const WaylandWindow = struct {
                         return;
                     };
                 }
-                if (pressed and w.buttons_down == 0 and !w.isInsideContent(w.pointer_pos)) return;
+                if (pressed and w.buttons_down == 0 and on_window and !w.isInsideContent(w.pointer_pos)) return;
                 const bit = @as(u32, 1) << @intCast(@min(code -% p.input.btn_left, 31));
                 w.buttons_down = if (pressed) w.buttons_down | bit else w.buttons_down & ~bit;
                 if (!pressed and w.buttons_down == 0) w.updateCursor();
@@ -1975,11 +2220,13 @@ pub const WaylandWindow = struct {
                 w.pushInput(.{ .scroll = .{ .pos = w.pointer_pos, .dx = if (vertical) 0 else value, .dy = if (vertical) value else 0 } });
             },
             p.wl_pointer.event.leave => {
-                w.buttons_down = 0;
                 w.press_serial = 0;
                 w.cursor_shape = null;
-                w.pushInput(.leave);
+                // Sent with the next frame, unless the pointer enters
+                // another of the window's surfaces first.
+                w.leave_pending = true;
             },
+            p.wl_pointer.event.frame => w.flushLeave(),
             else => {},
         }
     }
@@ -1990,25 +2237,27 @@ pub const WaylandWindow = struct {
             p.wl_touch.event.down => {
                 const serial = r.uint() catch return;
                 _ = r.uint() catch return;
-                _ = r.uint() catch return;
+                w.touch_surface = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
-                const pos = w.surfaceToContent(.{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
+                const pos = w.toWindow(w.touch_surface, .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.press_serial = serial;
+                w.grab_serial = serial;
                 w.clipboard.serial = serial;
-                const edges = w.edgesAt(pos);
+                const on_window = w.touch_surface == w.surface.id;
+                const edges = if (on_window) w.edgesAt(pos) else 0;
                 if (edges != 0) if (w.seat) |seat| {
                     var m = w.toplevel.request(p.xdg_toplevel.request.resize) catch return;
                     m.uint(seat.id).uint(serial).uint(edges).end();
                     w.conn.flush() catch {};
                     return;
                 };
-                if (!w.isInsideContent(pos)) return;
+                if (on_window and !w.isInsideContent(pos)) return;
                 w.pushInput(.{ .touch_down = .{ .id = id, .pos = pos } });
             },
             p.wl_touch.event.motion => {
                 _ = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
-                const pos = w.surfaceToContent(.{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
+                const pos = w.toWindow(w.touch_surface, .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.pushInput(.{ .touch_motion = .{ .id = id, .pos = pos } });
             },
             p.wl_touch.event.up => {
@@ -2041,7 +2290,10 @@ pub const WaylandWindow = struct {
                 const code = r.uint() catch return;
                 const state = r.uint() catch return;
                 const pressed = state == p.wl_keyboard.key_state.pressed;
-                if (pressed) w.clipboard.serial = serial;
+                if (pressed) {
+                    w.clipboard.serial = serial;
+                    w.grab_serial = serial;
+                }
                 if (code < 256) w.keys_down.setValue(code, pressed);
                 if (pressed) {
                     if (!isModifierKey(code) and w.repeat_rate > 0) {
@@ -2499,4 +2751,36 @@ test "xdg_toplevel.wm_capabilities says whether the window can be minimized and 
     r = .{ .data = std.mem.sliceAsBytes(&both), .c = undefined };
     WaylandWindow.toplevelEvent(&win, &disp, 0, p.xdg_toplevel.event.wm_capabilities, &r);
     try std.testing.expect(win.canMinimize() and win.canMaximize());
+}
+
+test "a popup's configure places it, input on it is in window coordinates, and popup_done is passed on" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+        .surface = .{ .id = 3 },
+    };
+    win.popups[0] = .{
+        .id = 7,
+        .placement = .{ .kind = .menu, .anchor = .{ 10, 10, 1, 1 }, .size = .{ 100, 50 }, .side = .below_right },
+        .surface = .{ .id = 20 },
+        .xdg_surface = .{ .id = 21 },
+        .popup = .{ .id = 22 },
+        .scale = 1,
+    };
+    var disp: client.Display = .{ .gpa = std.testing.allocator, .conn = undefined };
+    try std.testing.expect(win.popupPosition(7) == null);
+    const configure = [_]u32{ 300, 40, 100, 50 };
+    var r = wire.Reader{ .data = std.mem.sliceAsBytes(&configure), .c = undefined };
+    WaylandWindow.popupEvent(&win, &disp, 22, p.xdg_popup.event.configure, &r);
+    try std.testing.expectEqual([2]i32{ 300, 40 }, win.popupPosition(7).?);
+    // On the popup, a position is offset by where the popup is; on the
+    // window, by its shadow margin.
+    try std.testing.expectEqual([2]f32{ 305, 46 }, win.toWindow(20, .{ 5, 6 }));
+    try std.testing.expectEqual(win.surfaceToContent(.{ 5, 6 }), win.toWindow(3, .{ 5, 6 }));
+    r = .{ .data = &.{}, .c = undefined };
+    WaylandWindow.popupEvent(&win, &disp, 22, p.xdg_popup.event.popup_done, &r);
+    const events = win.takeInput();
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(@as(u32, 7), events[0].popup_done);
 }
