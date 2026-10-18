@@ -124,7 +124,7 @@ pub fn VulkanArea(comptime Scene: type) type {
 
         pub fn paint(self: *const Self, n: *Node, p: *Painter) void {
             const st = n.state(State);
-            const t = &n.ui.theme;
+            const t = n.theme();
             const bg = self.clear_color orelse t.surface_container;
 
             if (!st.init_failed and st.vk_ctx == null) {

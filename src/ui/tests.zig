@@ -1985,3 +1985,81 @@ test "what a popup paints is told apart by its shapes, clips and images, and not
     }.f;
     try testing.expectEqual(@as(?u64, null), hash(&.{ .{ .canvas = &a }, .{ .gpu = .{ .ctx = undefined, .f = noop, .area = undefined } } }));
 }
+
+test "Themed gives the widgets below it, and the menus they open, a theme of its own" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    // Notes the primary colour of the theme it is built and laid out in.
+    const Probe = struct {
+        built: *gfx.Color,
+        laid_out: *gfx.Color,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            self.built.* = cx.theme().primary;
+            return cx.make(ProbeLeaf{ .laid_out = self.laid_out });
+        }
+    };
+    var outside: [2]gfx.Color = undefined;
+    var inside: [2]gfx.Color = undefined;
+    var nested: [2]gfx.Color = undefined;
+    const Probes = struct {
+        outside: *[2]gfx.Color,
+        inside: *[2]gfx.Color,
+        nested: *[2]gfx.Color,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            var reds = cx.theme().*;
+            reds.primary = red;
+            var blues = reds;
+            blues.primary = blue;
+            return cx.make(ui.Row{ .children = &.{
+                cx.make(Probe{ .built = &self.outside[0], .laid_out = &self.outside[1] }),
+                cx.make(ui.Themed{ .theme = reds, .child = cx.make(ui.Row{ .children = &.{
+                    cx.make(Probe{ .built = &self.inside[0], .laid_out = &self.inside[1] }),
+                    cx.make(ui.Themed{ .theme = blues, .child = cx.make(Probe{ .built = &self.nested[0], .laid_out = &self.nested[1] }) }),
+                } }) }),
+            } });
+        }
+    };
+    const root: Probes = .{ .outside = &outside, .inside = &inside, .nested = &nested };
+    u.frame(300, 100, 0, root);
+    try testing.expectEqual(ui.Theme.dark.primary, outside[0]);
+    try testing.expectEqual(ui.Theme.dark.primary, outside[1]);
+    try testing.expectEqual(red, inside[0]);
+    try testing.expectEqual(red, inside[1]);
+    try testing.expectEqual(blue, nested[0]);
+    try testing.expectEqual(blue, nested[1]);
+    // The app's theme still reaches what is not themed, as it changes.
+    u.theme = .light;
+    u.frame(300, 100, 1, root);
+    try testing.expectEqual(ui.Theme.light.primary, outside[0]);
+    try testing.expectEqual(red, inside[0]);
+    // A menu opened from inside is in the theme it was opened in.
+    var leaves: std.ArrayList(*Node) = .empty;
+    defer leaves.deinit(testing.allocator);
+    try findAll(u.root.?, ProbeLeaf, &leaves);
+    u.openMenu(leaves.items[1], .{ 10, 10 }, &.{.{ .label = "Copy" }});
+    u.frame(300, 100, 2, root);
+    try testing.expectEqual(red, u.menu_root.?.theme().primary);
+    try testing.expectEqual(red, find(u.menu_root.?, ui.Text).?.theme().primary);
+    u.closeMenu();
+    u.openMenu(leaves.items[0], .{ 10, 10 }, &.{.{ .label = "Copy" }});
+    u.frame(300, 100, 3, root);
+    try testing.expectEqual(ui.Theme.light.primary, u.menu_root.?.theme().primary);
+}
+
+/// Notes the primary colour of the theme it is laid out in.
+const ProbeLeaf = struct {
+    laid_out: *gfx.Color,
+    pub fn layout(self: *const ProbeLeaf, n: *Node, c: ui.Constraints) ui.Size {
+        self.laid_out.* = n.theme().primary;
+        return c.constrain(.{ .w = 20, .h = 20 });
+    }
+};
+
+test "the baseline schemes are Material's, and say which is dark" {
+    try testing.expectEqual(ui.Brightness.dark, ui.Theme.dark.brightness);
+    try testing.expectEqual(ui.Brightness.light, ui.Theme.light.brightness);
+    try testing.expectEqual(gfx.Color.rgb(0xf2b8b5), ui.Theme.dark.@"error");
+    try testing.expectEqual(gfx.Color.rgb(0x601410), ui.Theme.dark.on_error);
+    try testing.expectEqual(gfx.Color.rgb(0xb3261e), ui.Theme.light.@"error");
+    try testing.expectEqual(gfx.Color.rgb(0xffffff), ui.Theme.light.on_error);
+}

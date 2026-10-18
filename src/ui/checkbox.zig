@@ -55,7 +55,7 @@ pub const CheckboxMark = struct {
     }
 
     pub fn paint(self: *const CheckboxMark, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const mid: gfx.Point = .{ n.size.w / 2, n.size.h / 2 };
         const layer = layerAlpha(self.interaction, self.enabled);

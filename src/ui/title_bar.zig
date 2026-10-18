@@ -117,7 +117,7 @@ const Bar = struct {
 
     pub fn minSize(self: *const Bar, n: *Node, c: Constraints) Size {
         const buttons = n.child(1).minSize(.{});
-        const title: f32 = if (n.ui.font) |f| n.ui.atlas.runs.measure(.{ .font = f, .size = n.ui.theme.body_size }, self.title) else 0;
+        const title: f32 = if (n.ui.font) |f| n.ui.atlas.runs.measure(.{ .font = f, .size = n.theme().body_size }, self.title) else 0;
         const gap: f32 = if (buttons.w > 0) TitleBar.margin else 0;
         return c.constrain(.{ .w = TitleBar.margin + @ceil(@min(title, TitleBar.min_title_width)) + gap + buttons.w + TitleBar.margin, .h = TitleBar.height });
     }

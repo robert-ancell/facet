@@ -136,7 +136,7 @@ pub const DropTarget = struct {
     pub fn paint(self: *const DropTarget, n: *Node, p: *Painter) void {
         const d = n.ui.drag orelse return;
         if (d.target != n) return;
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };
         c.fillRoundedRect(r, .all(self.radius), t.primary.withAlpha(0.12));

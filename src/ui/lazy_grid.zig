@@ -169,7 +169,7 @@ pub const LazyGrid = struct {
         const st = n.state(State);
         if (std.meta.eql(st.*, want) and n.children.items.len == len) return;
         st.* = want;
-        var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n };
+        var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
         n.reconcile(self.make(&cx, want));
         if (n.children.items.len != len) {
             // Out of memory: none rather than the wrong ones.

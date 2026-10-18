@@ -461,6 +461,7 @@ pub const Ui = struct {
         };
         if (ui.root == null) ui.root = Node.create(ui, w);
         const r = ui.root orelse return;
+        r.theme_ptr = null;
         r.build(w);
         const tb = ui.buildTitleBar();
         const tb_min: Size = if (tb) |t| t.minSize(.unbounded) else .{};
@@ -526,6 +527,7 @@ pub const Ui = struct {
         };
         if (ui.title_bar_root == null) ui.title_bar_root = Node.create(ui, w);
         const n = ui.title_bar_root orelse return null;
+        n.theme_ptr = null;
         n.build(w);
         return n;
     }
@@ -537,7 +539,8 @@ pub const Ui = struct {
             ui.menu_root = null;
             return null;
         };
-        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+        // In the theme of the widget that opened it.
+        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined, .theme_ptr = menu.owner.theme_ptr };
         const w = switch (menu.content) {
             .items => |items| cx.make(menu_mod.Menu{ .items = items }),
             .popup => |popup| popup.f(popup.ctx, &cx),
@@ -548,6 +551,7 @@ pub const Ui = struct {
         };
         if (ui.menu_root == null) ui.menu_root = Node.create(ui, w);
         const n = ui.menu_root orelse return null;
+        n.theme_ptr = menu.owner.theme_ptr;
         n.build(w);
         const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
         n.offset = menu_mod.place(window, menu.at, size);
@@ -570,6 +574,7 @@ pub const Ui = struct {
         const w = cx.make(drag_mod.Chip{ .label = d.label, .icon = d.icon });
         if (ui.drag_root == null) ui.drag_root = Node.create(ui, w);
         const n = ui.drag_root orelse return null;
+        n.theme_ptr = d.source.theme_ptr;
         n.build(w);
         const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
         n.offset = .{
@@ -590,6 +595,7 @@ pub const Ui = struct {
                 const w = cx.make(tooltip_mod.Bubble{ .text = tt.text });
                 if (ui.tooltip_root == null) ui.tooltip_root = Node.create(ui, w);
                 const n = ui.tooltip_root orelse return null;
+                n.theme_ptr = target.theme_ptr;
                 n.build(w);
                 const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
                 const at = target.position();

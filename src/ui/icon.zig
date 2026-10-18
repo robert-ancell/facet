@@ -30,6 +30,6 @@ pub const Icon = struct {
     pub fn paint(self: *const Icon, n: *Node, p: *Painter) void {
         // In the middle of the space given, at most as big as it.
         const s = @min(self.size, @min(n.size.w, n.size.h));
-        p.icon(self.icon, (n.size.w - s) / 2, (n.size.h - s) / 2, s, self.color orelse n.ui.theme.on_surface);
+        p.icon(self.icon, (n.size.w - s) / 2, (n.size.h - s) / 2, s, self.color orelse n.theme().on_surface);
     }
 };

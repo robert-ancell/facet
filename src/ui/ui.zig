@@ -80,6 +80,7 @@ pub const lazy_grid = @import("lazy_grid.zig");
 pub const icon = @import("icon.zig");
 pub const image = @import("image.zig");
 pub const qr_code = @import("qr_code.zig");
+pub const themed = @import("themed.zig");
 pub const animated = @import("animated.zig");
 pub const tween = @import("tween.zig");
 pub const opengl_area = @import("opengl_area.zig");
@@ -139,6 +140,8 @@ pub const TextStyle = text.TextStyle;
 pub const TextAlign = text.TextAlign;
 
 pub const Theme = theme.Theme;
+pub const Brightness = theme.Brightness;
+pub const Themed = themed.Themed;
 pub const Highlight = theme.Highlight;
 pub const OutlinedButton = button.OutlinedButton;
 pub const FilledButton = button.FilledButton;
@@ -236,6 +239,7 @@ test {
     _ = icon;
     _ = image;
     _ = qr_code;
+    _ = themed;
     _ = animated;
     _ = tween;
     _ = opengl_area;

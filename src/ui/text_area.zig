@@ -286,7 +286,7 @@ pub const TextArea = struct {
 
     fn style(self: *const TextArea, n: *const Node) ?font.Style {
         const f = n.ui.font orelse return null;
-        return .{ .font = f, .size = self.size orelse n.ui.theme.body_size };
+        return .{ .font = f, .size = self.size orelse n.theme().body_size };
     }
 
     fn remember(self: *const TextArea, n: *Node) *State {
@@ -400,7 +400,7 @@ pub const TextArea = struct {
     }
 
     pub fn paint(self: *const TextArea, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const st = n.state(State);
         const c = p.canvas();
         const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };

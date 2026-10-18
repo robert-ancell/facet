@@ -26,6 +26,7 @@
 //! state and layout carry over; nodes that no longer match are freed.
 
 const std = @import("std");
+const Theme = @import("theme.zig").Theme;
 const gfx = @import("gfx");
 const window_mod = @import("window");
 const geometry = @import("geometry.zig");
@@ -317,6 +318,8 @@ pub const Context = struct {
     arena: std.mem.Allocator,
     /// The node being built.
     node: *Node,
+    /// The theme the widget is built in (see `theme`).
+    theme_ptr: ?*const Theme = null,
 
     /// A widget of `value`'s type, copied into the frame's arena (with
     /// its `children` slice, so `&.{ a, b }` can be passed directly).
@@ -341,8 +344,10 @@ pub const Context = struct {
         return cx.arena.print(f, args) catch "…";
     }
 
-    pub fn theme(cx: *const Context) *const @import("theme.zig").Theme {
-        return &cx.ui.theme;
+    /// The theme the widget is in: the app's, or that of the nearest
+    /// `Themed` above it.
+    pub fn theme(cx: *const Context) *const Theme {
+        return cx.theme_ptr orelse &cx.ui.theme;
     }
 
     /// The frame's time, in nanoseconds (for animations).
@@ -437,6 +442,15 @@ pub const Node = struct {
     scratch: ?*anyopaque = null,
     /// What it drew when last painted (to find what changed).
     paint: @import("damage.zig").Painted = .{},
+    /// The theme it is in, if not the app's: its parent's, or one a
+    /// `Themed` gives (set as it is built; see `theme`).
+    theme_ptr: ?*const Theme = null,
+
+    /// The theme the widget is in: the app's, or that of the nearest
+    /// `Themed` above it (for `layout`, `paint` and `event` functions).
+    pub fn theme(n: *const Node) *const Theme {
+        return n.theme_ptr orelse &n.ui.theme;
+    }
 
     pub fn child(n: *const Node, i: usize) *Node {
         return n.children.items[i];
@@ -590,12 +604,15 @@ pub const Node = struct {
     /// for the children.
     pub fn build(n: *Node, w: Widget) void {
         n.widget = w;
+        // In its parent's theme (a root's is given before it is built),
+        // unless it gives one of its own (`Themed`).
+        if (n.parent) |p| n.theme_ptr = p.theme_ptr;
         if (w.vtable.build) |f| {
-            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n };
+            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             const built = f(w.ptr, &cx, n.state_ptr);
             n.reconcile(&.{built});
         } else if (w.vtable.lazy_children) |f| {
-            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n };
+            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             n.reconcile(f(w.ptr, &cx, n));
         } else {
             n.reconcile(w.vtable.children(w.ptr));

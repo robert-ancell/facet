@@ -72,7 +72,7 @@ pub const Slider = struct {
     }
 
     pub fn paint(self: *const Slider, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const st = n.state(State);
         const enabled = self.on_changed != null;

@@ -30,7 +30,7 @@ pub const PillBar = struct {
     }
 
     pub fn paintOver(_: *const PillBar, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const r: f32 = PillButton.height / 2;
         c.strokeRoundedRect(.{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, .all(r), 1, t.outline);

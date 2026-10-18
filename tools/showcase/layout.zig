@@ -12,6 +12,8 @@ pub const State = struct {
     hover: facet.Interaction = .{},
     presses: u32 = 0,
     basket: [fruit.len]bool = @splat(false),
+    /// Each theme panel's switch.
+    themed_switches: [3]bool = .{ true, true, true },
 
     fn press(s: *State) void {
         s.presses += 1;
@@ -41,6 +43,68 @@ fn strip(cx: *facet.Context, height: f32, child: facet.Widget) facet.Widget {
         .child = cx.make(facet.Padding{ .padding = .all(6), .child = child }),
     }) }) });
 }
+
+/// The light theme in a dark one, and the other way round.
+fn opposite(t: *const facet.Theme) facet.Theme {
+    return if (t.brightness == .dark) .light else .dark;
+}
+
+/// The theme with its primary colour teal, and its error colour a brighter
+/// red than Material's.
+fn custom(t: *const facet.Theme) facet.Theme {
+    var out = t.*;
+    switch (t.brightness) {
+        .dark => {
+            out.primary = .rgb(0x4fd8c4);
+            out.on_primary = .rgb(0x003731);
+            out.@"error" = .rgb(0xff5449);
+            out.on_error = .rgb(0xffffff);
+        },
+        .light => {
+            out.primary = .rgb(0x006a60);
+            out.on_primary = .rgb(0xffffff);
+            out.@"error" = .rgb(0xd32f2f);
+        },
+    }
+    return out;
+}
+
+/// A few widgets on a surface, in whatever theme it is in.
+const ThemePanel = struct {
+    title: []const u8,
+    on: *bool,
+
+    fn set(on: *bool, v: bool) void {
+        on.* = v;
+    }
+
+    pub fn build(self: *const ThemePanel, cx: *facet.Context) facet.Widget {
+        const t = cx.theme();
+        return cx.make(facet.Decorated{
+            .color = t.surface,
+            .border = .{ .width = 1, .color = t.outline_variant },
+            .radius = .all(12),
+            .child = cx.make(facet.Padding{ .padding = .all(12), .child = cx.make(facet.Column{
+                .main_axis_size = .min,
+                .cross_axis_alignment = .start,
+                .spacing = 10,
+                .children = &.{
+                    cx.make(facet.Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true }),
+                    cx.make(facet.Row{ .spacing = 10, .cross_axis_alignment = .center, .children = &.{
+                        cx.make(facet.Switch{ .value = self.on.*, .on_changed = .of(self.on, set) }),
+                        cx.make(facet.Badge{ .count = 3, .child = cx.make(facet.Icon{ .icon = .mail }) }),
+                    } }),
+                    cx.make(facet.FilledButton{ .label = "Save", .on_press = .of(self.on, toggle) }),
+                    cx.make(facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = .of(self.on, toggle) }),
+                },
+            }) }),
+        });
+    }
+
+    fn toggle(on: *bool) void {
+        on.* = !on.*;
+    }
+};
 
 /// A fruit, to drag or in the basket.
 fn fruitPill(cx: *facet.Context, name: []const u8, in_basket: bool) facet.Widget {
@@ -178,6 +242,13 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) }),
                 cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border = .{ .width = 2, .color = t.primary }, .radius = .all(12) }) }),
                 cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border = .{ .width = 4, .color = t.outline }, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) }),
+            } }),
+        }),
+        common.section(cx, "Themes", "Themed gives the widgets below it a theme of its own: here the opposite one, and one with colours changed", &.{
+            cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .start, .children = &.{
+                cx.make(facet.Expanded{ .child = cx.make(ThemePanel{ .title = "The app's theme", .on = &s.themed_switches[0] }) }),
+                cx.make(facet.Expanded{ .child = cx.make(facet.Themed{ .theme = opposite(cx.theme()), .child = cx.make(ThemePanel{ .title = "The opposite", .on = &s.themed_switches[1] }) }) }),
+                cx.make(facet.Expanded{ .child = cx.make(facet.Themed{ .theme = custom(cx.theme()), .child = cx.make(ThemePanel{ .title = "Changed colours", .on = &s.themed_switches[2] }) }) }),
             } }),
         }),
         common.section(cx, "Pressing", "Pressable makes anything a button, and says when the pointer is over it or pressing it", &.{

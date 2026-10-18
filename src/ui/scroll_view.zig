@@ -134,7 +134,7 @@ pub const ScrollView = struct {
     pub fn paintOver(self: *const ScrollView, n: *Node, p: *Painter) void {
         const s = n.state(State);
         const t = self.thumb(s) orelse return;
-        const theme = &n.ui.theme;
+        const theme = n.theme();
         const inset = @max(self.bar_width / 4, 1);
         const w = self.bar_width - 2 * inset;
         p.canvas().fillRoundedRect(

@@ -46,7 +46,7 @@ const Mark = struct {
     }
 
     pub fn paint(self: *const Mark, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const mid: gfx.Point = .{ n.size.w / 2, n.size.h / 2 };
         if (self.hovered or self.pressed) c.fillCircle(mid, n.size.w / 2, t.on_surface.withAlpha(if (self.pressed) 0.16 else 0.08));

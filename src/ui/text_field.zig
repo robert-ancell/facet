@@ -324,7 +324,7 @@ pub const TextField = struct {
 
     fn fontStyle(self: *const TextField, n: *const Node) ?font.Style {
         const f = n.ui.font orelse return null;
-        return .{ .font = f, .size = self.size orelse n.ui.theme.body_size };
+        return .{ .font = f, .size = self.size orelse n.theme().body_size };
     }
 
     /// Notes what the state's actions (the menu's, which come later) need.
@@ -444,7 +444,7 @@ pub const TextField = struct {
     }
 
     pub fn paint(self: *const TextField, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const st = n.state(State);
         const c = p.canvas();
         const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };

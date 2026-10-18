@@ -91,7 +91,7 @@ pub const Showcase = struct {
 
     pub fn build(self: *const Showcase, cx: *facet.Context, s: *State) facet.Widget {
         // Start with the system's theme, and follow it when it changes.
-        const ui_light = cx.ui.theme.surface.r > 0.5;
+        const ui_light = cx.ui.theme.brightness == .light;
         if (s.system_light == null or ui_light != s.system_light.? and ui_light != s.light_theme) {
             s.system_light = ui_light;
             s.light_theme = ui_light;

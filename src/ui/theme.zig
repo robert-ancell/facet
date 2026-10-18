@@ -120,8 +120,14 @@ pub const Watch = struct {
     }
 };
 
-/// A Material 3 colour scheme, and text sizes in pixels.
+/// Whether a scheme is light (dark on light) or dark (light on dark).
+pub const Brightness = enum { light, dark };
+
+/// A Material 3 colour scheme, and text sizes in pixels. The app's (`Ui`'s)
+/// is the light or dark baseline, as the system asks; `Themed` gives the
+/// widgets below it another (changing a colour or two of `cx.theme()`, say).
 pub const Theme = struct {
+    brightness: Brightness,
     primary: Color,
     on_primary: Color,
     primary_container: Color,
@@ -146,6 +152,7 @@ pub const Theme = struct {
 
     /// The baseline light scheme.
     pub const light: Theme = .{
+        .brightness = .light,
         .primary = .rgb(0x6750a4),
         .on_primary = .rgb(0xffffff),
         .primary_container = .rgb(0xeaddff),
@@ -175,6 +182,7 @@ pub const Theme = struct {
 
     /// The baseline dark scheme.
     pub const dark: Theme = .{
+        .brightness = .dark,
         .primary = .rgb(0xd0bcff),
         .on_primary = .rgb(0x381e72),
         .primary_container = .rgb(0x4f378b),
@@ -187,10 +195,8 @@ pub const Theme = struct {
         .on_surface_variant = .rgb(0xcac4d0),
         .outline = .rgb(0x938f99),
         .outline_variant = .rgb(0x49454f),
-        // Material's error tone 60, rather than its tone 80: still clear
-        // (5.9:1) as text on the surface, but red rather than pink.
-        .@"error" = .rgb(0xff5449),
-        .on_error = .rgb(0xffffff),
+        .@"error" = .rgb(0xf2b8b5),
+        .on_error = .rgb(0x601410),
         .syntax = .{
             .keyword = .rgb(0xd0a8ff),
             .type = .rgb(0x80cbc4),

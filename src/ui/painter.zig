@@ -45,6 +45,11 @@ pub const Painter = struct {
     /// is drawn whole).
     track_damage: bool = true,
 
+    /// The theme the widget being painted is in.
+    pub fn theme(p: *const Painter) *const @import("theme.zig").Theme {
+        return p.node.theme();
+    }
+
     /// The canvas to draw on now, with the origin at the widget's top left
     /// and its clip applied.
     pub fn canvas(p: *Painter) *gfx.Canvas {

@@ -32,6 +32,8 @@ pub const ValueCallback = ui.ValueCallback;
 pub const Painter = ui.Painter;
 pub const GpuArea = ui.GpuArea;
 pub const Theme = ui.Theme;
+pub const Brightness = ui.Brightness;
+pub const Themed = ui.Themed;
 pub const Highlight = ui.Highlight;
 pub const Clipboard = ui.Clipboard;
 

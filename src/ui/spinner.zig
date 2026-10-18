@@ -38,6 +38,6 @@ pub const Spinner = struct {
             const a = start + sweep * @as(f32, @floatFromInt(i)) / 32;
             pt.* = .{ n.size.w / 2 + radius * @cos(a), n.size.h / 2 + radius * @sin(a) };
         }
-        p.canvas().strokePolyline(&points, false, width, self.color orelse n.ui.theme.primary);
+        p.canvas().strokePolyline(&points, false, width, self.color orelse n.theme().primary);
     }
 };

@@ -43,7 +43,7 @@ pub const Text = struct {
 
     fn fontStyle(self: *const Text, n: *const Node) ?font.Style {
         const f = self.style.font orelse n.ui.font orelse return null;
-        const size = self.style.size orelse n.ui.theme.body_size;
+        const size = self.style.size orelse n.theme().body_size;
         if (!(size > 0) or !std.math.isFinite(size)) return null;
         return .{ .font = f, .size = size };
     }
@@ -81,7 +81,7 @@ pub const Text = struct {
 
     pub fn paint(self: *const Text, n: *Node, p: *Painter) void {
         const laid: *const Laid = @ptrCast(@alignCast(n.scratch orelse return));
-        const color = self.style.color orelse n.ui.theme.on_surface;
+        const color = self.style.color orelse n.theme().on_surface;
         const lh = laid.style.lineHeight();
         for (laid.lines, 0..) |l, i| {
             const x = switch (self.text_align) {

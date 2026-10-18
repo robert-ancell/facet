@@ -32,7 +32,7 @@ pub const ProgressBar = struct {
     }
 
     pub fn paint(self: *const ProgressBar, n: *widget.Node, p: *painter.Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const w = n.size.w;
         const h = n.size.h;

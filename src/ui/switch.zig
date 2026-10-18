@@ -76,7 +76,7 @@ pub const SwitchMark = struct {
     }
 
     pub fn paint(self: *const SwitchMark, n: *Node, p: *Painter) void {
-        const t = &n.ui.theme;
+        const t = n.theme();
         const c = p.canvas();
         const k = std.math.clamp(self.position, 0, 1);
         const track: gfx.Rect = .{ .x = (n.size.w - width) / 2, .y = (n.size.h - height) / 2, .w = width, .h = height };

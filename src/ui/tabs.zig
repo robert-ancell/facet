@@ -146,7 +146,7 @@ const TabItem = struct {
 
     pub fn paintOver(self: *const TabItem, n: *Node, p: *Painter) void {
         if (!self.selected) return;
-        const t = &n.ui.theme;
+        const t = n.theme();
         const indicator_w = @max(24, @min(n.size.w - 24, n.size.w * 0.6));
         const x = (n.size.w - indicator_w) / 2;
         p.canvas().fillRoundedRect(
