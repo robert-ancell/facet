@@ -158,8 +158,12 @@ pub const Ui = struct {
     touch: ?struct { id: i32, start: Point, last: Point, moved: bool = false, panning: bool = false } = null,
     /// The release of a press that became a long press is not sent.
     swallow_release: bool = false,
-    /// The window's size at the last frame.
+    /// The window's physical buffer size at the last frame (`logical_size * scale`).
     frame_size: [2]u32 = .{ 1, 1 },
+    /// The window's logical size at the last frame.
+    logical_size: [2]u32 = .{ 1, 1 },
+    /// The integer buffer scale factor (1 for standard DPI, 2+ for HiDPI).
+    scale: u32 = 1,
     /// The minimum window size required by the widget tree at the last frame
     /// (at least `min_size_floor`).
     min_size: [2]u32 = .{ 1, 1 },
@@ -302,6 +306,7 @@ pub const Ui = struct {
         ui.keyboard = w.layout();
         ui.fullscreen = w.isFullscreen();
         ui.maximized = w.isMaximized();
+        ui.scale = @max(w.scale(), 1);
     }
 
     /// The pointer cursor shape requested by the currently dragged,
@@ -411,7 +416,8 @@ pub const Ui = struct {
         ui.now_ns = now_ns;
         ui.needs_frame = false;
         ui.checkHold();
-        ui.damage.begin(ui.frame_no, width, height);
+        const s = @max(ui.scale, 1);
+        ui.damage.begin(ui.frame_no, width * s, height * s);
         var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
         const w = cx.make(root);
         if (ui.root) |r| if (r.widget.vtable != w.vtable) {
@@ -434,7 +440,7 @@ pub const Ui = struct {
                 w_px = @max(w_px, ui.min_size[0]);
                 h_px = @max(h_px, ui.min_size[1]);
             }
-            ui.damage.resize(w_px, h_px);
+            ui.damage.resize(w_px * s, h_px * s);
         }
         if (ui.last_surface == null or !std.meta.eql(ui.last_surface.?, ui.theme.surface)) {
             ui.last_surface = ui.theme.surface;
@@ -527,7 +533,9 @@ pub const Ui = struct {
         ui.atlas.beginFrame();
         ui.canvases_used = 0;
         ui.segments.clearRetainingCapacity();
-        ui.frame_size = .{ width, height };
+        const s = @max(ui.scale, 1);
+        ui.logical_size = .{ width, height };
+        ui.frame_size = .{ width * s, height * s };
         ui.paint_order = 0;
         var p: Painter = .{ .ui = ui, .node = r };
         p.paintNode(r);
@@ -658,7 +666,7 @@ pub const Ui = struct {
             };
         }
         const c = ui.canvases.items[ui.canvases_used];
-        c.begin(ui.frame_size[0], ui.frame_size[1]);
+        c.beginScaled(ui.logical_size[0], ui.logical_size[1], @max(ui.scale, 1));
         ui.segments.append(ui.gpa, .{ .canvas = c }) catch return null;
         ui.canvases_used += 1;
         return c;
@@ -1116,6 +1124,10 @@ pub const App = struct {
             a.dirty = true;
             a.resized = true;
         }
+        if (a.win.scale_changed) {
+            a.win.scale_changed = false;
+            a.dirty = true;
+        }
         a.suspended_changed = a.win.suspended != a.suspended;
         if (a.suspended_changed) {
             a.suspended = a.win.suspended;
@@ -1133,6 +1145,7 @@ pub const App = struct {
         if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
+        a.ui.scale = @max(a.win.scale, 1);
         return true;
     }
 
@@ -1140,6 +1153,7 @@ pub const App = struct {
         if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
+        a.ui.scale = @max(a.win.scale, 1);
         for (a.win.takeInput()) |e| a.ui.handleInput(e);
         a.ui.syncCursor(a.win);
     }

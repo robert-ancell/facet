@@ -1427,3 +1427,39 @@ test "minimum window size is computed from widget tree and synchronized to windo
     try testing.expectEqual([2]u32{ 500, 400 }, u.min_size);
     try testing.expectEqual([2]u32{ 500, 400 }, mock.min_size);
 }
+
+test "HiDPI scale factor renders text and shapes at physical buffer resolution while keeping logical layout" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+    u.theme = .light;
+
+    const HiDpiWin = struct {
+        width: u32 = 200,
+        height: u32 = 80,
+        scale: u32 = 2,
+    };
+    var win: HiDpiWin = .{};
+    u.attachWindow(&win, null);
+    try testing.expectEqual(@as(u32, 2), u.scale);
+
+    var clicked = false;
+    u.frame(200, 80, 0, ui.FilledButton{
+        .label = "Sharp Text",
+        .icon = .check,
+        .on_press = .of(&clicked, struct {
+            fn f(flag: *bool) void {
+                flag.* = true;
+            }
+        }.f),
+    });
+    try testing.expectEqual([2]u32{ 200, 80 }, u.logical_size);
+    try testing.expectEqual([2]u32{ 400, 160 }, u.frame_size);
+
+    const img = try Image.init(u, 400, 160);
+    defer img.deinit();
+    // Both top-left and bottom-right quadrants of the 400x160 physical buffer
+    // should contain rendered button pixels.
+    try testing.expectEqual(u.theme.primary.toArgb(), img.at(40, 40));
+    try testing.expectEqual(u.theme.primary.toArgb(), img.at(360, 120));
+}
+

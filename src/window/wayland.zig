@@ -42,6 +42,7 @@ const Buffer = struct {
     proxy: client.Proxy,
     width: u32,
     height: u32,
+    scale: u32 = 1,
     busy: bool = false,
 
     pub fn image(b: *Buffer) gfx.software.Image {
@@ -70,6 +71,7 @@ pub const WaylandWindow = struct {
     height: u32 = default_size[1],
     min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
+    scale_changed: bool = false,
     next_size: [2]i32 = .{ 0, 0 },
     pending_serial: ?u32 = null,
     closed: bool = false,
@@ -562,7 +564,9 @@ pub const WaylandWindow = struct {
             if (w.suspended) w.releaseSpareBuffers();
         }
         const b = &w.buffers[i].?;
-        var m = try w.surface.request(p.wl_surface.request.attach);
+        var m = try w.surface.request(p.wl_surface.request.set_buffer_scale);
+        m.int(@intCast(b.scale)).end();
+        m = try w.surface.request(p.wl_surface.request.attach);
         m.uint(b.proxy.id).int(0).int(0).end();
         if (damage) |rects| {
             for (rects) |r| {
@@ -596,13 +600,16 @@ pub const WaylandWindow = struct {
     }
 
     fn pickBack(w: *WaylandWindow) !usize {
+        const s = @max(w.scale, 1);
+        const bw = w.width * s;
+        const bh = w.height * s;
         while (true) {
             var empty: ?usize = null;
             var stale: ?usize = null;
             for (&w.buffers, 0..) |*slot, i| {
                 if (slot.*) |*b| {
                     if (b.busy) continue;
-                    if (b.width == w.width and b.height == w.height) return i;
+                    if (b.width == bw and b.height == bh and b.scale == s) return i;
                     stale = i;
                 } else empty = i;
             }
@@ -626,8 +633,11 @@ pub const WaylandWindow = struct {
     }
 
     fn allocBuffer(w: *WaylandWindow, slot: usize) !Buffer {
-        const stride = w.width * 4;
-        const size: usize = @as(usize, stride) * @as(usize, w.height);
+        const s = @max(w.scale, 1);
+        const bw = w.width * s;
+        const bh = w.height * s;
+        const stride = bw * 4;
+        const size: usize = @as(usize, stride) * @as(usize, bh);
         const rc = linux.memfd_create("facet-shm", linux.MFD.CLOEXEC);
         if (linux.errno(rc) != .SUCCESS) return error.OutOfMemory;
         const fd: linux.fd_t = @intCast(rc);
@@ -644,15 +654,16 @@ pub const WaylandWindow = struct {
 
         const proxy = try w.conn.newObject(.{ .ptr = &w.buffers[slot], .handler = bufferEvent });
         m = try pool.request(p.wl_shm_pool.request.create_buffer);
-        m.uint(proxy.id).int(0).int(@intCast(w.width)).int(@intCast(w.height)).int(@intCast(stride)).uint(p.wl_shm.format.xrgb8888).end();
+        m.uint(proxy.id).int(0).int(@intCast(bw)).int(@intCast(bh)).int(@intCast(stride)).uint(p.wl_shm.format.xrgb8888).end();
 
         return .{
             .fd = fd,
             .pixels = pixels,
             .pool = pool,
             .proxy = proxy,
-            .width = w.width,
-            .height = w.height,
+            .width = bw,
+            .height = bh,
+            .scale = s,
         };
     }
 
@@ -689,7 +700,13 @@ pub const WaylandWindow = struct {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
         if (opcode == p.wl_surface.event.preferred_buffer_scale) {
             const factor = r.int() catch return;
-            if (factor > 0) w.scale = @intCast(factor);
+            if (factor > 0) {
+                const new_scale: u32 = @intCast(factor);
+                if (new_scale != w.scale) {
+                    w.scale = new_scale;
+                    w.scale_changed = true;
+                }
+            }
         }
     }
 

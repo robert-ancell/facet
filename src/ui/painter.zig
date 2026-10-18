@@ -47,7 +47,7 @@ pub const Painter = struct {
     pub fn canvas(p: *Painter) *gfx.Canvas {
         const c = p.ui.currentCanvas();
         c.setOrigin(p.origin);
-        c.clip = p.clip;
+        c.clip = if (p.clip) |r| scaleRect(r, c.scale) else null;
         c.recorder = p.rec;
         return c;
     }
@@ -100,16 +100,18 @@ pub const Painter = struct {
         const Ctx = @TypeOf(ctx);
         const FnInfo = @typeInfo(@TypeOf(f)).@"fn";
         const TargetPtr = FnInfo.param_types[1].?;
+        const s: f32 = @floatFromInt(@max(p.ui.scale, 1));
         const box = p.boxRect();
-        const vp = viewport(box) orelse return;
+        const vp = viewport(scaleRect(box, s)) orelse return;
         var scissor: ?gfx.Viewport = null;
-        if (p.clip) |clip| scissor = viewport(intersect(clip, box).?) orelse return;
+        if (p.clip) |clip| scissor = viewport(scaleRect(intersect(clip, box).?, s)) orelse return;
         if (p.rec) |rec| {
             const key = options.key orelse p.ui.frame_no;
             rec.hash.update(std.mem.asBytes(&key));
             const b = if (options.bounds) |r| intersect(box, .{ .x = r.x + p.origin[0], .y = r.y + p.origin[1], .w = r.w, .h = r.h }).? else box;
             if (intersect(p.clip, b)) |area| if (area.w > 0 and area.h > 0) {
-                rec.bounds = if (rec.bounds) |old| old.unite(area) else area;
+                const scaled_area = scaleRect(area, s);
+                rec.bounds = if (rec.bounds) |old| old.unite(scaled_area) else scaled_area;
             };
         }
         p.ui.addGpu(.{
@@ -181,13 +183,13 @@ pub const Painter = struct {
         if (o.bottom > 0) p.stripes(.{ .x = box.x, .y = box.y + box.h - dy, .w = box.w, .h = dy });
     }
 
-    /// Diagonal black and yellow stripes over `r` (in frame pixels).
+    /// Diagonal black and yellow stripes over `r` (in logical frame pixels).
     pub fn stripes(p: *Painter, r: Rect) void {
         const clip = intersect(p.clip, r) orelse return;
         if (clip.w <= 0 or clip.h <= 0) return;
         const c = p.ui.currentCanvas();
         c.setOrigin(.{ 0, 0 });
-        c.clip = clip;
+        c.clip = scaleRect(clip, c.scale);
         c.recorder = p.rec;
         c.fillRect(r, stripe_colors[1]);
         const half = stripe_period / 2;
@@ -197,6 +199,10 @@ pub const Painter = struct {
         }
     }
 };
+
+fn scaleRect(r: Rect, s: f32) Rect {
+    return .{ .x = r.x * s, .y = r.y * s, .w = r.w * s, .h = r.h * s };
+}
 
 pub fn intersect(a: ?Rect, b: Rect) ?Rect {
     const r = a orelse return b;

@@ -216,6 +216,7 @@ pub const Canvas = struct {
     gpa: std.mem.Allocator,
     width: f32 = 1,
     height: f32 = 1,
+    scale: f32 = 1,
     inv_w: f32 = 2,
     inv_h: f32 = 2,
     batches: std.ArrayList(Batch) = .empty,
@@ -251,8 +252,17 @@ pub const Canvas = struct {
 
     /// Starts a frame on a target of this size, forgetting the last one.
     pub fn begin(c: *Canvas, width: u32, height: u32) void {
-        c.width = @floatFromInt(width);
-        c.height = @floatFromInt(height);
+        c.beginScaled(width, height, 1);
+    }
+
+    /// Starts a frame on a logical `width` by `height` target rendered at
+    /// integer buffer scale `scale` (physical target size `width * scale`
+    /// by `height * scale`), forgetting the last frame.
+    pub fn beginScaled(c: *Canvas, width: u32, height: u32, scale: u32) void {
+        const s: f32 = @floatFromInt(@max(scale, 1));
+        c.scale = s;
+        c.width = @as(f32, @floatFromInt(width)) * s;
+        c.height = @as(f32, @floatFromInt(height)) * s;
         c.inv_w = 2.0 / c.width;
         c.inv_h = 2.0 / c.height;
         // Kept in reverse, so the next frame's batches (popped off the end)
@@ -276,14 +286,15 @@ pub const Canvas = struct {
         c.recorder = null;
     }
 
-    /// Limits drawing to a rectangle (whole pixels, relative to the
+    /// Limits drawing to a rectangle (in logical coordinates, relative to the
     /// origin), or not at all.
     pub fn setClip(c: *Canvas, clip: ?Rect) void {
-        c.clip = if (clip) |r| .{ .x = r.x + c.origin[0], .y = r.y + c.origin[1], .w = r.w, .h = r.h } else null;
+        const s = c.scale;
+        c.clip = if (clip) |r| .{ .x = (r.x + c.origin[0]) * s, .y = (r.y + c.origin[1]) * s, .w = r.w * s, .h = r.h * s } else null;
     }
 
     /// Moves the origin: later coordinates are relative to this point (in
-    /// the target's pixels).
+    /// logical coordinates).
     pub fn setOrigin(c: *Canvas, origin: Point) void {
         c.origin = origin;
     }
@@ -318,39 +329,57 @@ pub const Canvas = struct {
 
     /// Fills a simple polygon (convex or concave, not self-intersecting).
     pub fn fillPolygon(c: *Canvas, points: []const Point, color: Color) void {
-        c.note(.polygon, c.moved(boundsOf(points)).outset(1), .{ c.origin, color }, std.mem.sliceAsBytes(points));
-        var sink: SolidSink = .{ .canvas = c, .bounds = c.moved(boundsOf(points)).outset(1), .color = color, .offset = c.origin };
-        geometry.fillPolygon(sink.sink(), points);
+        const s = c.scale;
+        const bounds = c.moved(boundsOf(points)).outset(1);
+        c.note(.polygon, bounds, .{ c.origin, s, color }, std.mem.sliceAsBytes(points));
+        var scaled: [geometry.max_points]Point = undefined;
+        const n = @min(points.len, geometry.max_points);
+        for (points[0..n], scaled[0..n]) |p, *out| {
+            out.* = .{ (p[0] + c.origin[0]) * s, (p[1] + c.origin[1]) * s };
+        }
+        var sink: SolidSink = .{ .canvas = c, .bounds = bounds, .color = color };
+        geometry.fillPolygon(sink.sink(), scaled[0..n]);
     }
 
     /// Strokes a polyline centred on it, with mitred joins and butt ends.
     pub fn strokePolyline(c: *Canvas, points: []const Point, closed: bool, width: f32, color: Color) void {
-        c.note(.polyline, c.moved(boundsOf(points)).outset(width * geometry.miter_limit / 2 + 1), .{ c.origin, color, width, closed }, std.mem.sliceAsBytes(points));
-        var sink: SolidSink = .{ .canvas = c, .bounds = c.moved(boundsOf(points)).outset(width * geometry.miter_limit / 2 + 1), .color = color, .offset = c.origin };
-        geometry.strokePolyline(sink.sink(), points, closed, width);
+        const s = c.scale;
+        const sw = width * s;
+        const bounds = c.moved(boundsOf(points)).outset(sw * geometry.miter_limit / 2 + 1);
+        c.note(.polyline, bounds, .{ c.origin, s, color, width, closed }, std.mem.sliceAsBytes(points));
+        var scaled: [geometry.max_points]Point = undefined;
+        const n = @min(points.len, geometry.max_points);
+        for (points[0..n], scaled[0..n]) |p, *out| {
+            out.* = .{ (p[0] + c.origin[0]) * s, (p[1] + c.origin[1]) * s };
+        }
+        var sink: SolidSink = .{ .canvas = c, .bounds = bounds, .color = color };
+        geometry.strokePolyline(sink.sink(), scaled[0..n], closed, sw);
     }
 
     // --- Text -----------------------------------------------------------------
 
     /// Draws one line of text with its baseline at `baseline` (rounded to
-    /// a pixel), starting at `x`, with glyphs from `atlas` (every text
+    /// a physical pixel), starting at `x`, with glyphs from `atlas` (every text
     /// batch of a canvas uses the same one). Returns the pen position after
-    /// the text. Glyphs that do not fit in the atlas are left out.
+    /// the text (in logical coordinates). Glyphs that do not fit in the atlas are left out.
     pub fn drawText(c: *Canvas, atlas: *Atlas, style: font.Style, x: f32, baseline: f32, text: []const u8, color: Color) f32 {
         c.atlas = atlas;
+        const s = c.scale;
         const ox = c.origin[0];
-        const base = @round(baseline + c.origin[1]);
+        const base = @round((baseline + c.origin[1]) * s);
+        const phys_size = style.size * s;
         const run = atlas.runs.get(style, text);
         const end = x + if (run) |r| r.width else font.measure(style, text);
         if (color.a <= 0 or text.len == 0) return end;
-        c.note(.text, .{ .x = x + ox - style.size, .y = base - 1.5 * style.size, .w = end - x + 2 * style.size, .h = 2.5 * style.size }, .{ @intFromPtr(style.font), @intFromPtr(style.font.fallback), style.size, x + ox, base, color }, text);
+        const bounds: Rect = .{ .x = (x + ox - style.size) * s, .y = base - 1.5 * phys_size, .w = (end - x + 2 * style.size) * s, .h = 2.5 * phys_size };
+        c.note(.text, bounds, .{ @intFromPtr(style.font), @intFromPtr(style.font.fallback), phys_size, (x + ox) * s, base, color }, text);
         // Glyphs reach about an em above and below the baseline at most.
-        const b = c.batchFor(.text, .{ .x = x + ox - style.size, .y = base - 1.5 * style.size, .w = end - x + 2 * style.size, .h = 2.5 * style.size }) orelse return end;
+        const b = c.batchFor(.text, bounds) orelse return end;
         var l = font.Layout.init(style, text, 0);
         var i: usize = 0;
         while (true) : (i += 1) {
             const item = if (run) |r| (if (i < r.glyphs.len) r.glyphs[i] else break) else l.next() orelse break;
-            const quarter: i32 = @intFromFloat(@round(std.math.clamp(item.x + x + ox, -1e6, 1e6) * 4));
+            const quarter: i32 = @intFromFloat(@round(std.math.clamp((item.x + x + ox) * s, -1e6, 1e6) * 4));
             if (item.font.colorLayers(item.glyph)) |layers_init| {
                 var layers = layers_init;
                 while (layers.next()) |layer| {
@@ -358,11 +387,11 @@ pub const Canvas = struct {
                         const p = Color.argb(hex);
                         break :blk p.withAlpha(p.a * color.a);
                     } else color;
-                    if (!c.emitGlyph(b, atlas, item.font, layer.glyph, style.size, quarter, base, lc)) return end;
+                    if (!c.emitGlyph(b, atlas, item.font, layer.glyph, phys_size, quarter, base, lc)) return end;
                 }
                 continue;
             }
-            if (!c.emitGlyph(b, atlas, item.font, item.glyph, style.size, quarter, base, color)) return end;
+            if (!c.emitGlyph(b, atlas, item.font, item.glyph, phys_size, quarter, base, color)) return end;
         }
         return end;
     }
@@ -416,15 +445,22 @@ pub const Canvas = struct {
 
     // --- Rounded rectangles --------------------------------------------------
 
-    fn roundedRect(c: *Canvas, r_in: Rect, radii_in: Radii, stroke: f32, color: Color) void {
+    fn roundedRect(c: *Canvas, r_in: Rect, radii_in: Radii, stroke_in: f32, color: Color) void {
+        const s = c.scale;
         const r = c.moved(r_in);
         if (r.w <= 0 or r.h <= 0 or color.a <= 0) return;
+        const filled = stroke_in >= fill_stroke;
+        const stroke = if (filled) fill_stroke else stroke_in * s;
         c.note(.rounded_rect, r.outset(1), .{ r, radii_in, stroke, color }, "");
         const hw = r.w / 2;
         const hh = r.h / 2;
         const limit = @min(hw, hh);
-        const radii: Radii = .{ .tl = std.math.clamp(radii_in.tl, 0, limit), .tr = std.math.clamp(radii_in.tr, 0, limit), .br = std.math.clamp(radii_in.br, 0, limit), .bl = std.math.clamp(radii_in.bl, 0, limit) };
-        const filled = stroke >= fill_stroke;
+        const radii: Radii = .{
+            .tl = std.math.clamp(radii_in.tl * s, 0, limit),
+            .tr = std.math.clamp(radii_in.tr * s, 0, limit),
+            .br = std.math.clamp(radii_in.br * s, 0, limit),
+            .bl = std.math.clamp(radii_in.bl * s, 0, limit),
+        };
         // Corner cells: deep enough for the radius, and for the stroke
         // where it turns the corner; at least the edge's half-pixel fade.
         const e = @max(@max(radii.max(), if (filled) 0 else stroke), 0.5);
@@ -443,8 +479,8 @@ pub const Canvas = struct {
         // Solid parts: the edges between the corners, and the centre.
         if (x1 - ex > x0 + ex or y1 - ey > y0 + ey) {
             {
-                var s: SolidSink = .{ .canvas = c, .bounds = bounds, .color = color };
-                const out = s.sink();
+                var sink: SolidSink = .{ .canvas = c, .bounds = bounds, .color = color };
+                const out = sink.sink();
                 // Across an edge (from outside in): faded, solid, then the
                 // stroke's inner edge fading again, or the corner cell's
                 // depth when filled.
@@ -551,7 +587,8 @@ pub const Canvas = struct {
     // --- Batches ----------------------------------------------------------------
 
     fn moved(c: *const Canvas, r: Rect) Rect {
-        return .{ .x = r.x + c.origin[0], .y = r.y + c.origin[1], .w = r.w, .h = r.h };
+        const s = c.scale;
+        return .{ .x = (r.x + c.origin[0]) * s, .y = (r.y + c.origin[1]) * s, .w = r.w * s, .h = r.h * s };
     }
 
     inline fn clipX(c: *const Canvas, x: f32) f32 {
