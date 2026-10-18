@@ -47,6 +47,20 @@ pub const shape_layout: Layout = .{
     },
 };
 
+/// Floats per window frame vertex: clip x, y; buffer pixel x, y; the
+/// window's centre x, y and half size; radius, scale, mode, unused.
+pub const window_floats = 12;
+
+pub const window_layout: Layout = .{
+    .vertex_stride = window_floats * 4,
+    .attributes = &.{
+        .{ .location = 0, .components = 2, .offset = 0 },
+        .{ .location = 1, .components = 2, .offset = 8 },
+        .{ .location = 2, .components = 4, .offset = 16 },
+        .{ .location = 3, .components = 4, .offset = 32 },
+    },
+};
+
 pub const solid_layout: Layout = .{
     .vertex_stride = solid_floats * 4,
     .attributes = &.{
@@ -70,6 +84,8 @@ pub const shape_spv align(4) = @embedFile("shape.spv").*;
 pub const solid_spv align(4) = @embedFile("solid.spv").*;
 pub const text_spv align(4) = @embedFile("text.spv").*;
 pub const image_spv align(4) = @embedFile("image.spv").*;
+/// A window's shadow and rounded corners (`window.zig`).
+pub const window_spv align(4) = @embedFile("window.spv").*;
 
 pub const shape_gl_spv align(4) = @embedFile("shape_gl.spv").*;
 pub const solid_gl_spv align(4) = @embedFile("solid_gl.spv").*;

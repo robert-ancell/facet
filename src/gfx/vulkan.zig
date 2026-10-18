@@ -1467,6 +1467,18 @@ const Owned2DContext = struct {
     import_clock: u64 = 0,
     /// Pictures drawn on other APIs (OpenGL), imported to copy in.
     sources: [max_imports]?SourceImport = @splat(null),
+    /// Drawing a window's frame (`drawFrame`): the shader, pipelines that
+    /// round its corners (`mask`) and put its shadow under it (`under`),
+    /// and the vertices.
+    frame_module: VkShaderModule = VK_NULL_HANDLE,
+    frame_mask: VkPipeline = VK_NULL_HANDLE,
+    frame_under: VkPipeline = VK_NULL_HANDLE,
+    frame_vbo: VkBuffer = VK_NULL_HANDLE,
+    frame_mem: VkDeviceMemory = VK_NULL_HANDLE,
+    frame_map: []f32 = &.{},
+
+    /// The margin's 4 quads, and each corner's 2.
+    const frame_vertices = (4 + 4 * 2) * 6;
 
     const max_imports = 8;
 
@@ -1493,6 +1505,8 @@ const Owned2DContext = struct {
         used: u64 = 0,
         /// It has been drawn into, so its layout is `GENERAL`.
         initialized: bool = false,
+        /// The window's shadow has been drawn in its margin.
+        frame_drawn: bool = false,
     };
 
     fn hasExtensions(procs: InstanceProcs, phys: VkPhysicalDevice, names: []const [*:0]const u8) bool {
@@ -1676,14 +1690,20 @@ const Owned2DContext = struct {
         if (self.vk.CreatePipelineLayout(self.device, &pl_info, null, &self.pipelines.layout) != .success) {
             return error.VkCreatePipelineLayoutFailed;
         }
-        self.pipelines.shape = try self.create2DPipeline(mods.shape, shaders.shape_layout, true);
-        self.pipelines.solid = try self.create2DPipeline(mods.solid, shaders.solid_layout, true);
-        self.pipelines.@"opaque" = try self.create2DPipeline(mods.solid, shaders.solid_layout, false);
-        self.pipelines.text = try self.create2DPipeline(mods.text, shaders.text_layout, true);
-        self.pipelines.image = try self.create2DPipeline(mods.image, shaders.text_layout, true);
+        self.pipelines.shape = try self.create2DPipeline(mods.shape, shaders.shape_layout, .over);
+        self.pipelines.solid = try self.create2DPipeline(mods.solid, shaders.solid_layout, .over);
+        self.pipelines.@"opaque" = try self.create2DPipeline(mods.solid, shaders.solid_layout, .none);
+        self.pipelines.text = try self.create2DPipeline(mods.text, shaders.text_layout, .over);
+        self.pipelines.image = try self.create2DPipeline(mods.image, shaders.text_layout, .over);
+        if (self.dmabuf != null) self.initFrame();
     }
 
-    fn create2DPipeline(self: *Owned2DContext, shader_mod: VkShaderModule, layout: shaders.Layout, blend: bool) !VkPipeline {
+    /// How a pipeline's output goes with what is there: replacing it,
+    /// source-over, multiplying it by the output's alpha (`mask`), or under
+    /// it (`under`, premultiplied).
+    const Blend = enum { none, over, mask, under };
+
+    fn create2DPipeline(self: *Owned2DContext, shader_mod: VkShaderModule, layout: shaders.Layout, blend: Blend) !VkPipeline {
         const stages = [2]VkPipelineShaderStageCreateInfo{
             .{ .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = shader_mod, .pName = "vertex" },
             .{ .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = shader_mod, .pName = "fragment" },
@@ -1722,18 +1742,13 @@ const Owned2DContext = struct {
             .depthTestEnable = VK_FALSE,
             .depthWriteEnable = VK_FALSE,
         };
-        const blend_att = [1]VkPipelineColorBlendAttachmentState{if (blend) .{
-            .blendEnable = VK_TRUE,
-            .srcColorBlendFactor = 6, // VK_BLEND_FACTOR_SRC_ALPHA
-            .dstColorBlendFactor = 7, // VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
-            .colorBlendOp = 0, // VK_BLEND_OP_ADD
-            .srcAlphaBlendFactor = 1, // VK_BLEND_FACTOR_ONE
-            .dstAlphaBlendFactor = 7, // VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
-            .alphaBlendOp = 0, // VK_BLEND_OP_ADD
-            .colorWriteMask = 0xF,
-        } else .{
-            .blendEnable = VK_FALSE,
-            .colorWriteMask = 0xF,
+        // VK_BLEND_FACTOR_ZERO 0, ONE 1, SRC_ALPHA 6, ONE_MINUS_SRC_ALPHA 7,
+        // ONE_MINUS_DST_ALPHA 9; VK_BLEND_OP_ADD 0.
+        const blend_att = [1]VkPipelineColorBlendAttachmentState{switch (blend) {
+            .none => .{ .blendEnable = VK_FALSE, .colorWriteMask = 0xF },
+            .over => .{ .blendEnable = VK_TRUE, .srcColorBlendFactor = 6, .dstColorBlendFactor = 7, .colorBlendOp = 0, .srcAlphaBlendFactor = 1, .dstAlphaBlendFactor = 7, .alphaBlendOp = 0, .colorWriteMask = 0xF },
+            .mask => .{ .blendEnable = VK_TRUE, .srcColorBlendFactor = 0, .dstColorBlendFactor = 6, .colorBlendOp = 0, .srcAlphaBlendFactor = 0, .dstAlphaBlendFactor = 6, .alphaBlendOp = 0, .colorWriteMask = 0xF },
+            .under => .{ .blendEnable = VK_TRUE, .srcColorBlendFactor = 9, .dstColorBlendFactor = 1, .colorBlendOp = 0, .srcAlphaBlendFactor = 9, .dstAlphaBlendFactor = 1, .alphaBlendOp = 0, .colorWriteMask = 0xF },
         }};
         const color_blend: VkPipelineColorBlendStateCreateInfo = .{ .pAttachments = &blend_att };
         const dyn_states = [2]u32{ 0, 1 }; // VIEWPORT, SCISSOR
@@ -1774,6 +1789,7 @@ const Owned2DContext = struct {
             slot.* = null;
         };
         if (self.dmabuf) |d| if (self.fence != VK_NULL_HANDLE) d.DestroyFence(self.device, self.fence, null);
+        self.destroyFrame();
         if (self.direct_pass != VK_NULL_HANDLE) self.vk.DestroyRenderPass(self.device, self.direct_pass, null);
         if (self.upload_map.len > 0) self.vk.UnmapMemory(self.device, self.upload_mem);
         if (self.upload_buf != VK_NULL_HANDLE) self.vk.DestroyBuffer(self.device, self.upload_buf, null);
@@ -2353,8 +2369,13 @@ const Owned2DContext = struct {
     /// waits for the GPU (so the frame is complete when it is shown, and
     /// the CPU may draw in it).
     fn endDirect(self: *Owned2DContext, im: *DmabufImport) !void {
-        const d = self.dmabuf.?;
         self.vk.CmdEndRenderPass(self.cmd);
+        try self.submitDirect(im);
+    }
+
+    /// Gives `im` back to the compositor, submits the frame and waits for it.
+    fn submitDirect(self: *Owned2DContext, im: *DmabufImport) !void {
+        const d = self.dmabuf.?;
         const release = [1]VkImageMemoryBarrier{.{
             .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
             .dstAccessMask = 0,
@@ -2381,6 +2402,8 @@ const Owned2DContext = struct {
     fn renderDirect(self: *Owned2DContext, r: *VulkanRenderer, segments: []const Segment, t: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
         const d = self.dmabuf orelse return error.Unsupported;
         if (t.content[0] == 0 or t.content[1] == 0) return;
+        // A frame needs its pipelines (or it is drawn the CPU way).
+        if (t.frame != null and self.frame_map.len == 0) return error.Unsupported;
         const im = try self.importTarget(t);
         const origin: [2]i32 = .{ @intCast(t.origin[0]), @intCast(t.origin[1]) };
         try self.beginDirect(im, t);
@@ -2434,7 +2457,11 @@ const Owned2DContext = struct {
                 try self.beginDirect(im, t);
             },
         };
-        try self.endDirect(im);
+        if (t.frame) |frame| {
+            self.vk.CmdEndRenderPass(self.cmd);
+            self.drawFrame(im, t, frame, damage);
+            try self.submitDirect(im);
+        } else try self.endDirect(im);
     }
 
     /// Imports a one-plane dmabuf as an image of `format`, for `usage`.
@@ -2542,6 +2569,138 @@ const Owned2DContext = struct {
         };
         self.vk.CmdPipelineBarrier(frame.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, null, 0, null, 2, &after);
         return true;
+    }
+
+    /// Makes what the window's frame is drawn with (`drawFrame`): its
+    /// pipelines and a buffer for its vertices. Without them, frames that
+    /// need one are drawn the CPU way.
+    fn initFrame(self: *Owned2DContext) void {
+        const mod_info: VkShaderModuleCreateInfo = .{ .codeSize = shaders.window_spv.len, .pCode = @ptrCast(&shaders.window_spv) };
+        if (self.vk.CreateShaderModule(self.device, &mod_info, null, &self.frame_module) != .success) return;
+        self.frame_mask = self.create2DPipeline(self.frame_module, shaders.window_layout, .mask) catch return;
+        self.frame_under = self.create2DPipeline(self.frame_module, shaders.window_layout, .under) catch return;
+        const size = frame_vertices * shaders.window_floats * 4;
+        const buf_info: VkBufferCreateInfo = .{ .size = size, .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT };
+        if (self.vk.CreateBuffer(self.device, &buf_info, null, &self.frame_vbo) != .success) return;
+        var req: VkMemoryRequirements = undefined;
+        self.vk.GetBufferMemoryRequirements(self.device, self.frame_vbo, &req);
+        const mem_type = self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) catch return;
+        const alloc_info: VkMemoryAllocateInfo = .{ .allocationSize = @max(req.size, size), .memoryTypeIndex = mem_type };
+        if (self.vk.AllocateMemory(self.device, &alloc_info, null, &self.frame_mem) != .success) return;
+        if (self.vk.BindBufferMemory(self.device, self.frame_vbo, self.frame_mem, 0) != .success) return;
+        var ptr: ?*anyopaque = null;
+        if (self.vk.MapMemory(self.device, self.frame_mem, 0, size, 0, &ptr) != .success or ptr == null) return;
+        self.frame_map = @as([*]f32, @ptrCast(@alignCast(ptr.?)))[0 .. frame_vertices * shaders.window_floats];
+    }
+
+    fn destroyFrame(self: *Owned2DContext) void {
+        if (self.frame_map.len > 0) self.vk.UnmapMemory(self.device, self.frame_mem);
+        if (self.frame_vbo != VK_NULL_HANDLE) self.vk.DestroyBuffer(self.device, self.frame_vbo, null);
+        if (self.frame_mem != VK_NULL_HANDLE) self.vk.FreeMemory(self.device, self.frame_mem, null);
+        for ([_]VkPipeline{ self.frame_mask, self.frame_under }) |p| if (p != VK_NULL_HANDLE) self.vk.DestroyPipeline(self.device, p, null);
+        if (self.frame_module != VK_NULL_HANDLE) self.vk.DestroyShaderModule(self.device, self.frame_module, null);
+    }
+
+    /// Draws the window's frame (`t.frame`) after its content: the shadow in
+    /// the margin the first time the buffer is drawn into, and the rounded
+    /// corners (with the shadow under them) where `damage` repainted them.
+    /// The content's render pass has ended.
+    fn drawFrame(self: *Owned2DContext, im: *DmabufImport, t: *const DmabufTarget, frame: renderer_mod.WindowFrame, damage: []const Viewport) void {
+        const d = self.dmabuf.?;
+        const bw: f32 = @floatFromInt(t.width);
+        const bh: f32 = @floatFromInt(t.height);
+        const m: f32 = @floatFromInt(t.origin[0]);
+        const cw: f32 = @floatFromInt(t.content[0]);
+        const ch: f32 = @floatFromInt(t.content[1]);
+        const r = frame.radius;
+        const box = [4]f32{ m + cw / 2, m + ch / 2, @max(cw / 2 - r, 0), @max(ch / 2 - r, 0) };
+        // The corners' squares, in the content's pixels.
+        const corner: u32 = @min(@as(u32, @intFromFloat(@ceil(r))) + 1, @min(t.content[0] / 2, t.content[1] / 2));
+        const corners = [4]Viewport{
+            .{ .x = 0, .y = 0, .width = corner, .height = corner },
+            .{ .x = @intCast(t.content[0] - corner), .y = 0, .width = corner, .height = corner },
+            .{ .x = 0, .y = @intCast(t.content[1] - corner), .width = corner, .height = corner },
+            .{ .x = @intCast(t.content[0] - corner), .y = @intCast(t.content[1] - corner), .width = corner, .height = corner },
+        };
+        // The margin around the content, in the buffer's pixels.
+        const om: u32 = t.origin[0];
+        const margin = [4]Viewport{
+            .{ .x = 0, .y = 0, .width = t.width, .height = om },
+            .{ .x = 0, .y = @intCast(om + t.content[1]), .width = t.width, .height = t.height - om - t.content[1] },
+            .{ .x = 0, .y = @intCast(om), .width = om, .height = t.content[1] },
+            .{ .x = @intCast(om + t.content[0]), .y = @intCast(om), .width = t.width - om - t.content[0], .height = t.content[1] },
+        };
+        // Quads: the margin's (shadow), then each corner's twice (rounding,
+        // then shadow).
+        var n: usize = 0;
+        const quad = struct {
+            fn f(out: []f32, at: *usize, v: Viewport, w: f32, h: f32, b: [4]f32, params: [4]f32) void {
+                const x0: f32 = @floatFromInt(v.x);
+                const y0: f32 = @floatFromInt(v.y);
+                const x1 = x0 + @as(f32, @floatFromInt(v.width));
+                const y1 = y0 + @as(f32, @floatFromInt(v.height));
+                for ([6][2]f32{ .{ x0, y0 }, .{ x1, y0 }, .{ x0, y1 }, .{ x1, y0 }, .{ x1, y1 }, .{ x0, y1 } }) |p| {
+                    const o = out[at.* * shaders.window_floats ..][0..shaders.window_floats];
+                    o.* = .{ p[0] / w * 2 - 1, p[1] / h * 2 - 1, p[0], p[1], b[0], b[1], b[2], b[3], params[0], params[1], params[2], params[3] };
+                    at.* += 1;
+                }
+            }
+        }.f;
+        const shadow_params = [4]f32{ r, frame.scale, 1, 0 };
+        const mask_params = [4]f32{ r, frame.scale, 0, 0 };
+        for (margin) |v| quad(self.frame_map, &n, v, bw, bh, box, shadow_params);
+        for (corners) |v| {
+            const bv: Viewport = .{ .x = v.x + @as(i32, @intCast(om)), .y = v.y + @as(i32, @intCast(om)), .width = v.width, .height = v.height };
+            quad(self.frame_map, &n, bv, bw, bh, box, mask_params);
+            quad(self.frame_map, &n, bv, bw, bh, box, shadow_params);
+        }
+
+        const no_clear = [1]VkClearValue{.{ .color = .{ 0, 0, 0, 0 } }};
+        const rp_begin: VkRenderPassBeginInfo = .{
+            .renderPass = self.direct_pass,
+            .framebuffer = im.framebuffer,
+            .renderArea = .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{ .width = t.width, .height = t.height } },
+            .clearValueCount = 0,
+            .pClearValues = &no_clear,
+        };
+        self.vk.CmdBeginRenderPass(self.cmd, &rp_begin, 0);
+        defer self.vk.CmdEndRenderPass(self.cmd);
+        const vp = [1]VkViewport{.{ .x = 0, .y = 0, .width = bw, .height = bh }};
+        self.vk.CmdSetViewport(self.cmd, 0, 1, &vp);
+        const bufs = [1]VkBuffer{self.frame_vbo};
+        const offs = [1]VkDeviceSize{0};
+        self.vk.CmdBindVertexBuffers(self.cmd, 0, 1, &bufs, &offs);
+        const scissor = struct {
+            fn f(o: *Owned2DContext, v: Viewport) void {
+                const rect = [1]VkRect2D{.{ .offset = .{ .x = v.x, .y = v.y }, .extent = .{ .width = v.width, .height = v.height } }};
+                o.vk.CmdSetScissor(o.cmd, 0, 1, &rect);
+            }
+        }.f;
+        if (!im.frame_drawn) {
+            // The margin, cleared, then its shadow.
+            var rects: [4]VkClearRect = undefined;
+            var count: u32 = 0;
+            for (margin) |v| if (v.width > 0 and v.height > 0) {
+                rects[count] = .{ .rect = .{ .offset = .{ .x = v.x, .y = v.y }, .extent = .{ .width = v.width, .height = v.height } } };
+                count += 1;
+            };
+            const att = [1]VkClearAttachment{.{ .aspectMask = VK_IMAGE_ASPECT_COLOR, .colorAttachment = 0, .clearValue = .{ .color = .{ 0, 0, 0, 0 } } }};
+            if (count > 0) d.CmdClearAttachments(self.cmd, 1, &att, count, &rects);
+            scissor(self, .{ .x = 0, .y = 0, .width = t.width, .height = t.height });
+            self.vk.CmdBindPipeline(self.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, self.frame_under);
+            self.vk.CmdDraw(self.cmd, 4 * 6, 1, 0, 0);
+            im.frame_drawn = true;
+        }
+        // Each corner where it was repainted: rounded, then the shadow under.
+        for (corners, 0..) |c, i| for (damage) |dmg| {
+            const part = c.intersect(dmg) orelse continue;
+            scissor(self, .{ .x = part.x + @as(i32, @intCast(om)), .y = part.y + @as(i32, @intCast(om)), .width = part.width, .height = part.height });
+            const first: u32 = @intCast(4 * 6 + i * 12);
+            self.vk.CmdBindPipeline(self.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, self.frame_mask);
+            self.vk.CmdDraw(self.cmd, 6, 1, first, 0);
+            self.vk.CmdBindPipeline(self.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, self.frame_under);
+            self.vk.CmdDraw(self.cmd, 6, 1, first + 6, 0);
+        };
     }
 
     fn renderCanvasToImage(self: *Owned2DContext, r: *VulkanRenderer, c: *const Canvas, target: *software.Image, damage: ?[]const Viewport) !void {

@@ -97,6 +97,9 @@ pub const DmabufTarget = struct {
     origin: [2]u32,
     content: [2]u32,
     cpu: CpuAccess,
+    /// The window's frame to draw around the content, if it has one (a
+    /// floating window with client-side decorations).
+    frame: ?WindowFrame = null,
 
     /// Maps the frame for the CPU (`begin`: the frame's pixels, as for the
     /// CPU path) until `end`.
@@ -105,6 +108,15 @@ pub const DmabufTarget = struct {
         begin: *const fn (ctx: *anyopaque) anyerror!@import("software.zig").Image,
         end: *const fn (ctx: *anyopaque) void,
     };
+};
+
+/// A window's frame, drawn around its content in the shadow margin
+/// (`DmabufTarget.origin`): its drop shadow, and its rounded corners.
+pub const WindowFrame = struct {
+    /// The corner radius, and the scale (for the shadow's size), in the
+    /// buffer's pixels.
+    radius: f32,
+    scale: f32,
 };
 
 /// An image in a dmabuf (one plane), as a GPU draw on another API exports

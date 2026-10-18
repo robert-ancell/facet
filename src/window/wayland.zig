@@ -275,6 +275,9 @@ pub const Buffer = struct {
     modifier: u64 = 0,
     offset: u32 = 0,
     export_fd: linux.fd_t = -1,
+    /// The renderer draws the shadow and corners of frames given it to
+    /// draw on the GPU (`beginDmabufFrame`), so `finishFrame` need not.
+    gpu_frame: bool = false,
     pool: client.Proxy = .{},
     proxy: client.Proxy = .{},
     width: u32,
@@ -1518,6 +1521,7 @@ pub const WaylandWindow = struct {
         const i = w.back orelse try w.pickBack();
         w.back = i;
         w.frame_corners_applied = false;
+        w.buffers[i].?.gpu_frame = false;
         try w.buffers[i].?.beginCpuAccess();
         return w.buffers[i].?.image();
     }
@@ -1548,6 +1552,11 @@ pub const WaylandWindow = struct {
             .origin = .{ b.margin, b.margin },
             .content = .{ if (b.content_w > 0) b.content_w else b.width, if (b.content_h > 0) b.content_h else b.height },
             .cpu = .{ .ctx = b, .begin = cpuBegin, .end = cpuEnd },
+            .frame = if (b.margin > 0) frame: {
+                const s: f32 = @floatFromInt(@max(b.scale, 1));
+                b.gpu_frame = true;
+                break :frame .{ .radius = corner_radius * s, .scale = s };
+            } else null,
         };
     }
 
@@ -1567,7 +1576,10 @@ pub const WaylandWindow = struct {
     pub fn finishFrame(w: *WaylandWindow, repainted: ?[]const gfx.Viewport) void {
         const i = w.back orelse return;
         const b = &w.buffers[i].?;
-        if (b.margin > 0 and b.needsCpuFinish(if (b.drawn == 0) null else repainted)) {
+        if (b.gpu_frame) {
+            // Drawn with the frame on the GPU.
+            b.shadow_drawn = true;
+        } else if (b.margin > 0 and b.needsCpuFinish(if (b.drawn == 0) null else repainted)) {
             // Drawn on the GPU, it is mapped only for this.
             b.beginCpuAccess() catch return;
             b.renderShadowMargin();
@@ -1601,7 +1613,7 @@ pub const WaylandWindow = struct {
             if (w.suspended) w.releaseSpareBuffers();
         }
         const b = &w.buffers[i].?;
-        if (!w.frame_corners_applied) {
+        if (!w.frame_corners_applied and !b.gpu_frame) {
             if (b.margin > 0 and b.needsCpuFinish(if (b.drawn == 0) null else damage)) {
                 if (b.beginCpuAccess()) {
                     b.renderShadowMargin();

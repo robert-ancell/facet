@@ -110,7 +110,7 @@ pub fn createModules(
             .{ .name = "font", .module = font },
         },
     });
-    for ([_][]const u8{ "shape", "solid", "text", "image" }) |shader_name| {
+    for ([_][]const u8{ "shape", "solid", "text", "image", "window" }) |shader_name| {
         const spv = addSpirv(b, shader_name, b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .vulkan);
         gfx.addAnonymousImport(b.fmt("{s}.spv", .{shader_name}), .{ .root_source_file = spv });
         const gl_spv = addSpirv(b, b.fmt("{s}_gl", .{shader_name}), b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .opengl);
