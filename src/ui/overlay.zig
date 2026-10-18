@@ -28,4 +28,13 @@ pub const Overlay = struct {
         for (n.children.items) |ch| _ = ch.layout(.tight(size));
         return size;
     }
+
+    pub fn minSize(_: *const Overlay, n: *Node, c: Constraints) Size {
+        var want: Size = .{};
+        for (n.children.items) |ch| {
+            const s = ch.minSize(c.loosen());
+            want = .{ .w = @max(want.w, s.w), .h = @max(want.h, s.h) };
+        }
+        return c.constrain(want);
+    }
 };

@@ -65,6 +65,20 @@ pub const Text = struct {
         return c.constrain(.{ .w = @ceil(widest), .h = @ceil(height) });
     }
 
+    pub fn minSize(self: *const Text, n: *Node, c: Constraints) Size {
+        const style = self.fontStyle(n) orelse return c.smallest();
+        const arena = n.ui.arena();
+        const lines = wrap(arena, &n.ui.atlas.runs, style, self.text, if (self.wrap) c.max_w else geometry.inf) catch return c.smallest();
+        var widest: f32 = 0;
+        if (self.ellipsis) {
+            widest = if (self.text.len > 0) n.ui.atlas.runs.measure(style, ellipsis_text) else 0;
+        } else {
+            for (lines) |l| widest = @max(widest, l.width);
+        }
+        const height = @as(f32, @floatFromInt(lines.len)) * style.lineHeight();
+        return c.constrain(.{ .w = @ceil(widest), .h = @ceil(height) });
+    }
+
     pub fn paint(self: *const Text, n: *Node, p: *Painter) void {
         const laid: *const Laid = @ptrCast(@alignCast(n.scratch orelse return));
         const color = self.style.color orelse n.ui.theme.on_surface;

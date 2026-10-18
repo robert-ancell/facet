@@ -198,6 +198,7 @@ pub const VTable = struct {
     build: ?*const fn (*const anyopaque, *Context, ?*anyopaque) Widget,
     children: *const fn (*const anyopaque) []const Widget,
     layout: ?*const fn (*const anyopaque, *Node, Constraints) Size,
+    min_size: ?*const fn (*const anyopaque, *Node, Constraints) Size,
     paint: ?*const fn (*const anyopaque, *Node, *Painter) void,
     paint_over: ?*const fn (*const anyopaque, *Node, *Painter) void,
     event: ?*const fn (*const anyopaque, *Node, Event) bool,
@@ -255,6 +256,9 @@ fn makeVTable(comptime T: type) VTable {
         fn layout(ptr: *const anyopaque, n: *Node, c: Constraints) Size {
             return T.layout(self(ptr), n, c);
         }
+        fn minSize(ptr: *const anyopaque, n: *Node, c: Constraints) Size {
+            return T.minSize(self(ptr), n, c);
+        }
         fn paint(ptr: *const anyopaque, n: *Node, p: *Painter) void {
             T.paint(self(ptr), n, p);
         }
@@ -292,6 +296,7 @@ fn makeVTable(comptime T: type) VTable {
         .build = if (@hasDecl(T, "build")) S.build else null,
         .children = S.children,
         .layout = if (@hasDecl(T, "layout")) S.layout else null,
+        .min_size = if (@hasDecl(T, "minSize")) S.minSize else null,
         .paint = if (@hasDecl(T, "paint")) S.paint else null,
         .paint_over = if (@hasDecl(T, "paintOver")) S.paintOver else null,
         .event = if (@hasDecl(T, "event")) S.event else null,
@@ -447,6 +452,44 @@ pub const Node = struct {
         var biggest: Size = .{};
         for (n.children.items) |ch| {
             const s = ch.layout(c);
+            biggest = .{ .w = @max(biggest.w, s.w), .h = @max(biggest.h, s.h) };
+        }
+        return c.constrain(biggest);
+    }
+
+    /// The smallest size the node and its children need within `c` without
+    /// overflowing or mutating layout state.
+    pub fn minSize(n: *Node, c_in: Constraints) Size {
+        const c = c_in.sanitize();
+        const want = if (n.widget.vtable.min_size) |f|
+            f(n.widget.ptr, n, c)
+        else if (n.widget.vtable.layout) |f| blk: {
+            const saved_size = n.size;
+            const saved_offset = n.offset;
+            const saved_content = n.content;
+            const saved_overflow = n.overflow;
+            const saved_laid_out = n.laid_out;
+            const saved_scratch = n.scratch;
+            const saved_needs_frame = n.ui.needs_frame;
+            defer {
+                n.size = saved_size;
+                n.offset = saved_offset;
+                n.content = saved_content;
+                n.overflow = saved_overflow;
+                n.laid_out = saved_laid_out;
+                n.scratch = saved_scratch;
+                n.ui.needs_frame = saved_needs_frame;
+            }
+            break :blk f(n.widget.ptr, n, c);
+        } else n.defaultMinSize(c);
+        return c.sanitizeSize(want);
+    }
+
+    fn defaultMinSize(n: *Node, c: Constraints) Size {
+        if (n.children.items.len == 0) return c.smallest();
+        var biggest: Size = .{};
+        for (n.children.items) |ch| {
+            const s = ch.minSize(c);
             biggest = .{ .w = @max(biggest.w, s.w), .h = @max(biggest.h, s.h) };
         }
         return c.constrain(biggest);

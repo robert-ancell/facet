@@ -331,6 +331,11 @@ pub const TextArea = struct {
         return size;
     }
 
+    pub fn minSize(self: *const TextArea, n: *Node, c: Constraints) Size {
+        const lh = if (self.style(n)) |s| s.lineHeight() else 20;
+        return c.constrain(.{ .w = 200, .h = @ceil(lh * 3 + 2 * pad) });
+    }
+
     /// Wraps the text at `width` (again only if it or the text changed).
     fn wrap(self: *const TextArea, n: *Node, width: f32) void {
         const st = n.state(State);

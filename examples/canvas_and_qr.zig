@@ -86,6 +86,7 @@ pub const CanvasAndQrDemo = struct {
                                 cx.make(facet.Card{
                                     .variant = .outlined,
                                     .child = cx.make(facet.Column{
+                                        .main_axis_size = .min,
                                         .cross_axis_alignment = .start,
                                         .spacing = 12,
                                         .children = &.{
@@ -117,6 +118,7 @@ pub const CanvasAndQrDemo = struct {
                                 cx.make(facet.Card{
                                     .variant = .outlined,
                                     .child = cx.make(facet.Column{
+                                        .main_axis_size = .min,
                                         .cross_axis_alignment = .center,
                                         .spacing = 12,
                                         .children = &.{
@@ -159,10 +161,40 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-test "CanvasAndQrDemo example builds and paints custom canvas and QR code" {
+fn hasOverflow(n: *const facet.Node) bool {
+    if (n.overflow.any()) return true;
+    for (n.children.items) |ch| {
+        if (ch.laid_out == n.laid_out and hasOverflow(ch)) return true;
+    }
+    return false;
+}
+
+test "CanvasAndQrDemo example computes minimum window size and has no overflow" {
     const ui = try facet.Ui.createDefault(std.testing.allocator);
     defer ui.destroy();
 
-    ui.frame(740, 460, 0, CanvasAndQrDemo{});
+    const MockWin = struct {
+        w: u32 = 740,
+        h: u32 = 460,
+        min_size: [2]u32 = .{ 0, 0 },
+        pub fn size(self: *const @This()) [2]u32 {
+            return .{ self.w, self.h };
+        }
+        pub fn setMinSize(self: *@This(), mw: u32, mh: u32) void {
+            self.min_size = .{ mw, mh };
+            if (self.w < mw) self.w = mw;
+            if (self.h < mh) self.h = mh;
+        }
+    };
+    var mock: MockWin = .{};
+    ui.attachWindow(&mock, null);
+    ui.maximized = false;
+
+    ui.frame(mock.w, mock.h, 0, CanvasAndQrDemo{});
     try std.testing.expect(ui.needs_frame);
+    try std.testing.expect(ui.min_size[0] > 0 and ui.min_size[1] > 460);
+    try std.testing.expectEqual(ui.min_size, mock.min_size);
+    try std.testing.expectEqual(@as(u32, 740), ui.frame_size[0]);
+    try std.testing.expectEqual(ui.min_size[1], ui.frame_size[1]);
+    try std.testing.expect(!hasOverflow(ui.root.?));
 }

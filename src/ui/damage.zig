@@ -122,6 +122,12 @@ pub const Tracker = struct {
         }
         t.frame = .{};
         t.frame_no = frame_no;
+        t.resize(width, height);
+    }
+
+    /// Updates the current frame's window size (invalidating the frame if
+    /// it changed).
+    pub fn resize(t: *Tracker, width: u32, height: u32) void {
         const size = [2]f32{ @floatFromInt(width), @floatFromInt(height) };
         if (size[0] != t.size[0] or size[1] != t.size[1]) {
             t.size = size;

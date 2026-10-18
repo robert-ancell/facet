@@ -22,4 +22,11 @@ pub const Padding = struct {
         ch.place(p.left, p.top);
         return c.constrain(.{ .w = s.w + p.horizontal(), .h = s.h + p.vertical() });
     }
+
+    pub fn minSize(self: *const Padding, n: *Node, c: Constraints) Size {
+        const p = self.padding;
+        if (n.childCount() == 0) return c.constrain(.{ .w = p.horizontal(), .h = p.vertical() });
+        const s = n.child(0).minSize(c.deflate(p));
+        return c.constrain(.{ .w = s.w + p.horizontal(), .h = s.h + p.vertical() });
+    }
 };

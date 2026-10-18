@@ -68,6 +68,7 @@ pub const WaylandWindow = struct {
 
     width: u32 = default_size[0],
     height: u32 = default_size[1],
+    min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
     next_size: [2]i32 = .{ 0, 0 },
     pending_serial: ?u32 = null,
@@ -172,12 +173,14 @@ pub const WaylandWindow = struct {
     pub fn openOn(gpa: std.mem.Allocator, conn: *client.Display, options: Options) !*WaylandWindow {
         const w = try gpa.create(WaylandWindow);
         errdefer gpa.destroy(w);
+        const min_size = options.min_size orelse [2]u32{ 0, 0 };
         w.* = .{
             .gpa = gpa,
             .conn = conn,
             .clipboard = .{ .gpa = gpa },
-            .width = options.size[0],
-            .height = options.size[1],
+            .width = if (options.maximized) options.size[0] else @max(options.size[0], min_size[0]),
+            .height = if (options.maximized) options.size[1] else @max(options.size[1], min_size[1]),
+            .min_size = min_size,
             .maximized = options.maximized,
         };
         w.clipboard.drag_callbacks = .{
@@ -224,9 +227,9 @@ pub const WaylandWindow = struct {
             m = try w.toplevel.request(p.xdg_toplevel.request.set_app_id);
             m.string(app_id).end();
         }
-        if (options.min_size) |min_size| {
+        if (options.min_size) |ms| {
             m = try w.toplevel.request(p.xdg_toplevel.request.set_min_size);
-            m.int(@intCast(min_size[0])).int(@intCast(min_size[1])).end();
+            m.int(@intCast(ms[0])).int(@intCast(ms[1])).end();
         }
         if (options.maximized) {
             m = try w.toplevel.request(p.xdg_toplevel.request.set_maximized);
@@ -322,6 +325,12 @@ pub const WaylandWindow = struct {
     }
 
     pub fn setMinSize(w: *WaylandWindow, width: u32, height: u32) void {
+        if (!w.maximized and !w.fullscreen) {
+            if (w.width < width) w.width = width;
+            if (w.height < height) w.height = height;
+        }
+        if (w.min_size[0] == width and w.min_size[1] == height) return;
+        w.min_size = .{ width, height };
         var m = w.toplevel.request(p.xdg_toplevel.request.set_min_size) catch return;
         m.int(@intCast(width)).int(@intCast(height)).end();
         w.conn.flush() catch {};
@@ -504,10 +513,14 @@ pub const WaylandWindow = struct {
     pub fn applyConfigure(w: *WaylandWindow) !?[2]u32 {
         const serial = w.pending_serial orelse return null;
         w.pending_serial = null;
-        const size = [2]u32{
+        var size = [2]u32{
             if (w.next_size[0] > 0) @intCast(w.next_size[0]) else w.width,
             if (w.next_size[1] > 0) @intCast(w.next_size[1]) else w.height,
         };
+        if (!w.maximized and !w.fullscreen) {
+            size[0] = @max(size[0], w.min_size[0]);
+            size[1] = @max(size[1], w.min_size[1]);
+        }
         var m = try w.xdg_surface.request(p.xdg_surface.request.ack_configure);
         m.uint(serial).end();
         if (size[0] == w.width and size[1] == w.height) return null;
@@ -1133,4 +1146,21 @@ test "held keys repeat after the delay, except modifiers, and stop on release or
     try std.testing.expectEqual(@as(usize, 1), left.len);
     try std.testing.expectEqual(@as(u32, 42), left[0].key.code);
     try std.testing.expect(!left[0].key.pressed);
+}
+
+test "setMinSize clamps non-maximized window dimensions" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+        .width = 400,
+        .height = 300,
+        .maximized = false,
+        .fullscreen = false,
+    };
+    // Pre-populate min_size so setMinSize returns before touching the wire connection.
+    win.min_size = .{ 640, 480 };
+    win.setMinSize(640, 480);
+    try std.testing.expectEqual(@as(u32, 640), win.width);
+    try std.testing.expectEqual(@as(u32, 480), win.height);
 }

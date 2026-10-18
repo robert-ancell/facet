@@ -138,4 +138,22 @@ const SnackbarRow = struct {
         }
         return .{ .w = main_size, .h = final_cross };
     }
+
+    pub fn minSize(self: *const SnackbarRow, n: *Node, c: Constraints) Size {
+        const count = n.childCount();
+        if (count == 0) return c.smallest();
+        var trailing_w: f32 = 0;
+        var cross_size: f32 = 0;
+        if (count > 1) {
+            for (n.children.items[1..]) |ch| {
+                const s = ch.minSize(.{ .min_w = 0, .max_w = geometry.inf, .min_h = 0, .max_h = c.max_h });
+                trailing_w += self.spacing + s.w;
+                cross_size = @max(cross_size, s.h);
+            }
+        }
+        const avail_w = if (c.boundedWidth()) @max(c.max_w - trailing_w, 0) else geometry.inf;
+        const msg_s = n.child(0).minSize(.{ .min_w = 0, .max_w = avail_w, .min_h = 0, .max_h = c.max_h });
+        cross_size = @max(cross_size, msg_s.h);
+        return c.constrain(.{ .w = msg_s.w + trailing_w, .h = cross_size });
+    }
 };

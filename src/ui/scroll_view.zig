@@ -115,6 +115,22 @@ pub const ScrollView = struct {
         return c.constrain(.{ .w = if (std.math.isFinite(width)) width else size.w + bar, .h = height });
     }
 
+    pub fn minSize(self: *const ScrollView, n: *Node, c: Constraints) Size {
+        if (n.childCount() == 0) return c.smallest();
+        const ch = n.child(0);
+        const width = if (c.boundedWidth()) c.max_w else geometry.inf;
+        const inner: Constraints = if (std.math.isFinite(width)) .{ .min_w = width, .max_w = width } else .{};
+        n.ui.scrolling += 1;
+        defer n.ui.scrolling -= 1;
+        const size = ch.minSize(inner);
+        const bar = if (size.h > 0) self.bar_width else 0;
+        const min_h = @min(size.h, self.bar_width * 3);
+        return c.constrain(.{
+            .w = if (std.math.isFinite(width)) width else size.w + bar,
+            .h = min_h,
+        });
+    }
+
     pub fn paintOver(self: *const ScrollView, n: *Node, p: *Painter) void {
         const s = n.state(State);
         const t = self.thumb(s) orelse return;

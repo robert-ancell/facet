@@ -24,6 +24,13 @@ pub const ProgressBar = struct {
         });
     }
 
+    pub fn minSize(self: *const ProgressBar, _: *widget.Node, c: geometry.Constraints) geometry.Size {
+        return c.constrain(.{
+            .w = self.height * 4,
+            .h = self.height,
+        });
+    }
+
     pub fn paint(self: *const ProgressBar, n: *widget.Node, p: *painter.Painter) void {
         const t = &n.ui.theme;
         const c = p.canvas();

@@ -160,6 +160,11 @@ pub const Ui = struct {
     swallow_release: bool = false,
     /// The window's size at the last frame.
     frame_size: [2]u32 = .{ 1, 1 },
+    /// The minimum window size required by the widget tree at the last frame
+    /// (at least `min_size_floor`).
+    min_size: [2]u32 = .{ 1, 1 },
+    /// Optional explicit floor for `min_size` (e.g. from `App.Options.min_size`).
+    min_size_floor: [2]u32 = .{ 0, 0 },
     /// What changed in the last frame (and the frames before).
     damage: damage_mod.Tracker = .{},
     /// Counts nodes as they are painted (their order is part of what they
@@ -283,6 +288,9 @@ pub const Ui = struct {
             } else if (@hasDecl(Child, "copy") and @hasDecl(Child, "paste")) {
                 ui.clipboard = .of(win_any);
             }
+            if (@hasField(Child, "min_size") and ui.min_size_floor[0] == 0 and ui.min_size_floor[1] == 0) {
+                ui.min_size_floor = win_any.min_size;
+            }
         }
         ui.controls = controls;
         ui.syncWindow(w);
@@ -342,6 +350,12 @@ pub const Ui = struct {
     pub fn syncCursor(ui: *const Ui, win_any: anytype) void {
         const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
         w.setCursor(cursorShape(ui.cursor()));
+    }
+
+    /// Updates `win`'s minimum size to match `ui.min_size`.
+    pub fn syncMinSize(ui: *const Ui, win_any: anytype) void {
+        const w: window_mod.Window = if (@TypeOf(win_any) == window_mod.Window) win_any else window_mod.Window.of(win_any);
+        w.setMinSize(ui.min_size[0], ui.min_size[1]);
     }
 
     /// The `zwp_text_input_v3` state for the currently focused widget, or
@@ -407,17 +421,32 @@ pub const Ui = struct {
         if (ui.root == null) ui.root = Node.create(ui, w);
         const r = ui.root orelse return;
         r.build(w);
+        const min = r.minSize(.unbounded);
+        ui.min_size = .{
+            @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(min.w, 1))))),
+            @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(min.h, 1))))),
+        };
+        var w_px = width;
+        var h_px = height;
+        if (ui.win) |win| {
+            ui.syncMinSize(win);
+            if (!ui.fullscreen and !ui.maximized) {
+                w_px = @max(w_px, ui.min_size[0]);
+                h_px = @max(h_px, ui.min_size[1]);
+            }
+            ui.damage.resize(w_px, h_px);
+        }
         if (ui.last_surface == null or !std.meta.eql(ui.last_surface.?, ui.theme.surface)) {
             ui.last_surface = ui.theme.surface;
             ui.damage.invalidate();
         }
-        const window: Size = .{ .w = @floatFromInt(width), .h = @floatFromInt(height) };
+        const window: Size = .{ .w = @floatFromInt(w_px), .h = @floatFromInt(h_px) };
         _ = r.layout(.tight(window));
         r.offset = .{ 0, 0 };
         const m = ui.buildMenu(window);
         const d = ui.buildDrag(window);
         const tt = ui.buildTooltip(window);
-        ui.paint(r, d, m, tt, width, height);
+        ui.paint(r, d, m, tt, w_px, h_px);
         ui.damage.sweep(r);
         if (d) |n| ui.damage.sweep(n);
         if (m) |n| ui.damage.sweep(n);
@@ -1040,6 +1069,7 @@ pub const App = struct {
         a.controls = .init(a.win);
         a.ui = try Ui.createWithFont(gpa, name, options.font_path);
         errdefer a.ui.destroy();
+        a.ui.min_size_floor = options.min_size orelse .{ 0, 0 };
         a.ui.attachWindow(a.win, &a.controls);
         a.clear_color = options.clear_color;
         a.appearance = theme_mod.loadSettings();
@@ -1120,6 +1150,8 @@ pub const App = struct {
             a.dirty = false;
             const target_ns = a.win.nextPresentationNs(now_ns);
             a.ui.frame(a.width, a.height, target_ns, root);
+            a.width = a.win.width;
+            a.height = a.win.height;
             const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
             if (try a.ui.present(a.win, clear)) a.idle = false;
         }

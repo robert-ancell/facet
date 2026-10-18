@@ -132,6 +132,13 @@ pub const LazyGrid = struct {
         return size;
     }
 
+    pub fn minSize(self: *const LazyGrid, _: *Node, c: Constraints) Size {
+        if (self.count == 0) return c.smallest();
+        const cw = if (self.isList()) 0 else @max(self.cell.w, 0);
+        const ch = @max(self.cell.h, 0);
+        return c.constrain(.{ .w = cw, .h = ch });
+    }
+
     /// Lays out the items made, each in its cell.
     fn place(self: *const LazyGrid, n: *Node, cols: usize) void {
         const st = n.state(State);

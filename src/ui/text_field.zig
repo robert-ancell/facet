@@ -323,6 +323,12 @@ pub const TextField = struct {
         return c.constrain(.{ .w = self.width, .h = h });
     }
 
+    pub fn minSize(self: *const TextField, n: *Node, c: Constraints) Size {
+        const s = self.fontStyle(n);
+        const h: f32 = if (s) |st| @max(height, @ceil(st.lineHeight() + 20)) else height;
+        return c.constrain(.{ .w = self.width, .h = h });
+    }
+
     /// Whether the field is currently hiding its characters as dots.
     pub fn isObscured(self: *const TextField, st: *const State) bool {
         return self.obscure and !st.revealed;

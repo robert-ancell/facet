@@ -1376,3 +1376,54 @@ test "Ui.createDefault loads bundled Fira Sans and Twemoji fallback fonts" {
     };
     try testing.expect(lit > 50);
 }
+
+test "minimum window size is computed from widget tree and synchronized to window" {
+    const u = try ui.Ui.createDefault(testing.allocator);
+    defer u.destroy();
+
+    const MockWin = struct {
+        w: u32 = 300,
+        h: u32 = 200,
+        min_size: [2]u32 = .{ 0, 0 },
+        pub fn size(self: *const @This()) [2]u32 {
+            return .{ self.w, self.h };
+        }
+        pub fn setMinSize(self: *@This(), mw: u32, mh: u32) void {
+            self.min_size = .{ mw, mh };
+            if (self.w < mw) self.w = mw;
+            if (self.h < mh) self.h = mh;
+        }
+    };
+    var mock: MockWin = .{};
+    u.attachWindow(&mock, null);
+    u.maximized = false;
+
+    const MinApp = struct {
+        pub fn build(_: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.Column{
+                .cross_axis_alignment = .stretch,
+                .children = &.{
+                    cx.make(ui.TitleBar{ .title = "Min Size" }),
+                    cx.make(ui.Expanded{
+                        .child = cx.make(ui.Padding{
+                            .padding = .all(20),
+                            .child = cx.make(ui.SizedBox{ .width = 400, .height = 260 }),
+                        }),
+                    }),
+                },
+            });
+        }
+    };
+
+    u.frame(mock.w, mock.h, 0, MinApp{});
+    try testing.expectEqual([2]u32{ 440, 344 }, u.min_size);
+    try testing.expectEqual([2]u32{ 440, 344 }, mock.min_size);
+    try testing.expectEqual([2]u32{ 440, 344 }, u.frame_size);
+    try testing.expect(!u.root.?.overflow.any());
+
+    // Explicit min_size_floor is respected when larger than content minimum.
+    u.min_size_floor = .{ 500, 400 };
+    u.frame(mock.w, mock.h, 1, MinApp{});
+    try testing.expectEqual([2]u32{ 500, 400 }, u.min_size);
+    try testing.expectEqual([2]u32{ 500, 400 }, mock.min_size);
+}

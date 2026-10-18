@@ -994,6 +994,9 @@ test "every page of the showcase fits without overflowing across window sizes an
                 st.light_theme = true;
                 u.frame(size[0], size[1], 2, app);
                 try checkNoOverflow(u.root.?);
+
+                u.frame(u.min_size[0], u.min_size[1], 3, app);
+                try checkNoOverflow(u.root.?);
             }
         }
     }

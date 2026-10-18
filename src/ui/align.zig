@@ -30,4 +30,12 @@ pub const Align = struct {
         }
         return size;
     }
+
+    pub fn minSize(self: *const Align, n: *Node, c: Constraints) Size {
+        const s = if (n.childCount() > 0) n.child(0).minSize(c.loosen()) else Size{};
+        return c.constrain(.{
+            .w = if (self.width_factor) |f| s.w * f else s.w,
+            .h = if (self.height_factor) |f| s.h * f else s.h,
+        });
+    }
 };

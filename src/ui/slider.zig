@@ -42,6 +42,13 @@ pub const Slider = struct {
         });
     }
 
+    pub fn minSize(_: *const Slider, _: *Node, c: Constraints) Size {
+        return c.constrain(.{
+            .w = 100,
+            .h = height,
+        });
+    }
+
     fn trackEnds(w: f32) [2]f32 {
         const inset = @min(@as(f32, halo_radius), w / 2);
         return .{ inset, @max(inset, w - inset) };

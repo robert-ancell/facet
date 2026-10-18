@@ -137,5 +137,37 @@ pub fn Flex(comptime axis: Axis) type {
             }
             return sized(main_size, final_cross);
         }
+
+        pub fn minSize(self: *const Self, n: *Node, c: Constraints) Size {
+            const max_main = if (axis == .horizontal) c.max_w else c.max_h;
+            const min_main = if (axis == .horizontal) c.min_w else c.min_h;
+            const max_cross = if (axis == .horizontal) c.max_h else c.max_w;
+            const min_cross = if (axis == .horizontal) c.min_h else c.min_w;
+            const stretch = self.cross_axis_alignment == .stretch and std.math.isFinite(max_cross);
+            const count = n.childCount();
+            const spacing = if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
+            const gaps = spacing * @as(f32, @floatFromInt(if (count > 0) count - 1 else 0));
+            const cross_min: f32 = if (stretch) max_cross else 0;
+
+            var total_flex: f32 = 0;
+            var non_flex_used: f32 = 0;
+            var max_flex_unit: f32 = 0;
+            var cross_size: f32 = 0;
+            for (n.children.items) |ch| {
+                const flex = flexOf(ch);
+                const s = ch.minSize(constraints(0, geometry.inf, cross_min, max_cross));
+                if (flex > 0) {
+                    total_flex += flex;
+                    max_flex_unit = @max(max_flex_unit, main(s) / flex);
+                } else {
+                    non_flex_used += main(s);
+                }
+                cross_size = @max(cross_size, cross(s));
+            }
+            const used = gaps + non_flex_used + max_flex_unit * total_flex;
+            const main_size = std.math.clamp(used, min_main, max_main);
+            const final_cross = std.math.clamp(if (stretch) max_cross else cross_size, min_cross, max_cross);
+            return sized(main_size, final_cross);
+        }
     };
 }

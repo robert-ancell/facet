@@ -91,4 +91,11 @@ const BadgedChild = struct {
         pill.place(@max(0, w - ps.w), 0);
         return c.constrain(.{ .w = w, .h = h });
     }
+
+    pub fn minSize(_: *const BadgedChild, n: *Node, c: Constraints) Size {
+        if (n.childCount() < 2) return c.smallest();
+        const cs = n.child(0).minSize(c.loosen());
+        const ps = n.child(1).minSize(c.loosen());
+        return c.constrain(.{ .w = @max(cs.w, ps.w), .h = @max(cs.h, ps.h) });
+    }
 };

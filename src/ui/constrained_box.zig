@@ -18,4 +18,10 @@ pub const ConstrainedBox = struct {
         if (n.childCount() > 0) return n.child(0).layout(inner);
         return inner.smallest();
     }
+
+    pub fn minSize(self: *const ConstrainedBox, n: *Node, c: Constraints) Size {
+        const inner = c.enforce(self.constraints.sanitize());
+        if (n.childCount() > 0) return n.child(0).minSize(inner);
+        return inner.smallest();
+    }
 };

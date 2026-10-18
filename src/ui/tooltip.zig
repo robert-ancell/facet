@@ -26,6 +26,11 @@ pub const Tooltip = struct {
         return n.child(0).layout(c);
     }
 
+    pub fn minSize(_: *const Tooltip, n: *Node, c: Constraints) Size {
+        if (n.childCount() == 0) return c.smallest();
+        return n.child(0).minSize(c);
+    }
+
     /// Having an `event` handler puts `Tooltip` in `Ui.hovered` whenever
     /// the pointer is over its child, without consuming any events.
     pub fn event(_: *const Tooltip, _: *Node, _: Event) bool {

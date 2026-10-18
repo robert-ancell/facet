@@ -40,4 +40,22 @@ pub const Grid = struct {
             .h = r * (chh + gap) - (if (rows > 0) gap else 0),
         });
     }
+
+    pub fn minSize(self: *const Grid, n: *Node, c: Constraints) Size {
+        const count = n.childCount();
+        if (count == 0) return c.smallest();
+        const gap = if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
+        const cw = @max(self.cell.w, 0);
+        const chh = @max(self.cell.h, 0);
+        if (!c.boundedWidth() or n.ui.scrolling > 0) {
+            return c.constrain(.{ .w = cw, .h = chh });
+        }
+        const columns: usize = @max(1, @as(usize, @intFromFloat(@max(@floor((c.max_w + gap) / (cw + gap)), 0))));
+        const rows = (count + columns - 1) / columns;
+        const r: f32 = @floatFromInt(rows);
+        return c.constrain(.{
+            .w = cw,
+            .h = r * (chh + gap) - (if (rows > 0) gap else 0),
+        });
+    }
 };
