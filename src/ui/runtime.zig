@@ -124,6 +124,8 @@ pub const Ui = struct {
     fullscreen: bool = false,
     /// Whether the window fills the work area (for `TitleBar`).
     maximized: bool = true,
+    /// Whether the window is tiled by the compositor.
+    tiled: bool = false,
     /// The window attached to the UI, if any.
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).
@@ -306,6 +308,7 @@ pub const Ui = struct {
         ui.keyboard = w.layout();
         ui.fullscreen = w.isFullscreen();
         ui.maximized = w.isMaximized();
+        ui.tiled = w.isTiled();
         ui.scale = @max(w.scale(), 1);
     }
 
@@ -436,7 +439,7 @@ pub const Ui = struct {
         var h_px = height;
         if (ui.win) |win| {
             ui.syncMinSize(win);
-            if (!ui.fullscreen and !ui.maximized) {
+            if (!ui.fullscreen and !ui.maximized and !ui.tiled) {
                 w_px = @max(w_px, ui.min_size[0]);
                 h_px = @max(h_px, ui.min_size[1]);
             }
@@ -739,6 +742,7 @@ pub const Ui = struct {
         const vps = regionViewports(&repaint_region, &repaint_vps);
         img.clearViewports(clear, vps);
         try ui.render(&img, vps);
+        win.finishFrame(vps);
         var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         try win.showDamaged(ui.damagedViewports(&damage));
         return true;
@@ -1143,8 +1147,13 @@ pub const App = struct {
             a.dirty = true;
         }
         if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
+        if (a.resized or a.ui.fullscreen != a.win.fullscreen or a.ui.maximized != a.win.maximized or a.ui.tiled != a.win.tiled) {
+            a.ui.damage.invalidate();
+            a.dirty = true;
+        }
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
+        a.ui.tiled = a.win.tiled;
         a.ui.scale = @max(a.win.scale, 1);
         return true;
     }
@@ -1153,6 +1162,7 @@ pub const App = struct {
         if (a.sync_keyboard) a.ui.keyboard = a.win.layout;
         a.ui.fullscreen = a.win.fullscreen;
         a.ui.maximized = a.win.maximized;
+        a.ui.tiled = a.win.tiled;
         a.ui.scale = @max(a.win.scale, 1);
         for (a.win.takeInput()) |e| a.ui.handleInput(e);
         a.ui.syncCursor(a.win);

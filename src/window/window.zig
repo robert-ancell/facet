@@ -106,6 +106,7 @@ pub const Window = struct {
         isSuspended: *const fn (ptr: *anyopaque) bool,
         isMaximized: *const fn (ptr: *anyopaque) bool,
         isFullscreen: *const fn (ptr: *anyopaque) bool,
+        isTiled: *const fn (ptr: *anyopaque) bool,
         setCursor: *const fn (ptr: *anyopaque, shape: u32) void,
         setMinSize: *const fn (ptr: *anyopaque, width: u32, height: u32) void,
         setMaximized: *const fn (ptr: *anyopaque, on: bool) void,
@@ -168,6 +169,11 @@ pub const Window = struct {
                 if (@hasField(T, "fullscreen")) return s.fullscreen;
                 return false;
             }
+            fn isTiledFn(p: *anyopaque) bool {
+                const s = self(p);
+                if (@hasField(T, "tiled")) return s.tiled;
+                return false;
+            }
             fn setCursorFn(p: *anyopaque, shape: u32) void {
                 if (@hasDecl(T, "setCursor")) self(p).setCursor(shape);
             }
@@ -221,6 +227,7 @@ pub const Window = struct {
                 .isSuspended = isSuspendedFn,
                 .isMaximized = isMaximizedFn,
                 .isFullscreen = isFullscreenFn,
+                .isTiled = isTiledFn,
                 .setCursor = setCursorFn,
                 .setMinSize = setMinSizeFn,
                 .setMaximized = setMaximizedFn,
@@ -264,6 +271,9 @@ pub const Window = struct {
     }
     pub fn isFullscreen(w: Window) bool {
         return w.vtable.isFullscreen(w.ptr);
+    }
+    pub fn isTiled(w: Window) bool {
+        return w.vtable.isTiled(w.ptr);
     }
     pub fn setCursor(w: Window, shape: u32) void {
         w.vtable.setCursor(w.ptr, shape);

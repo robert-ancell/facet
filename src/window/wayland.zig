@@ -24,6 +24,9 @@ pub const nowNs = clipboard_mod.nowNs;
 
 const default_size = [2]u32{ 1280, 720 };
 
+pub const shadow_margin: u32 = 28;
+pub const corner_radius: f32 = 12.0;
+pub const resize_outset: f32 = 10.0;
 pub const resize_border = 6;
 pub const resize_corner = 20;
 
@@ -34,25 +37,187 @@ pub const edge_right = 8;
 
 const max_buffers = 2;
 
-const Buffer = struct {
+inline fn sdfRoundedBox(dx: f32, dy: f32, hx: f32, hy: f32, r: f32) f32 {
+    const qx = @abs(dx) - hx;
+    const qy = @abs(dy) - hy;
+    const mx = @max(qx, 0.0);
+    const my = @max(qy, 0.0);
+    return @sqrt(mx * mx + my * my) + @min(@max(qx, qy), 0.0) - r;
+}
+
+inline fn shadowAlphaAt(px: f32, py: f32, cx0: f32, cy0: f32, hx: f32, hy: f32, r: f32, sf: f32, d_win: f32) f32 {
+    const d_key = sdfRoundedBox(px - cx0, py - (cy0 + 4.0 * sf), hx, hy, r);
+    const key_rad = 22.0 * sf;
+    const u_key = std.math.clamp(1.0 - @max(d_key, 0.0) / key_rad, 0.0, 1.0);
+    const t_key = u_key * u_key * u_key;
+
+    const d_amb = sdfRoundedBox(px - cx0, py - (cy0 + 1.0 * sf), hx, hy, r);
+    const amb_rad = 7.0 * sf;
+    const u_amb = std.math.clamp(1.0 - @max(d_amb, 0.0) / amb_rad, 0.0, 1.0);
+    const t_amb = u_amb * u_amb * (3.0 - 2.0 * u_amb);
+
+    const outline_a = if (d_win >= -0.5 and d_win <= 1.2 * sf)
+        0.18 * std.math.clamp(1.0 - @abs(d_win - 0.3 * sf) / (0.9 * sf), 0.0, 1.0)
+    else
+        0.0;
+
+    return std.math.clamp(0.28 * t_key + 0.14 * t_amb + outline_a, 0.0, 1.0);
+}
+
+pub const Buffer = struct {
     drawn: u64 = 0,
-    fd: linux.fd_t,
+    fd: linux.fd_t = -1,
     pixels: []align(std.heap.page_size_min) u8,
-    pool: client.Proxy,
-    proxy: client.Proxy,
+    pool: client.Proxy = undefined,
+    proxy: client.Proxy = undefined,
     width: u32,
     height: u32,
+    content_w: u32 = 0,
+    content_h: u32 = 0,
+    margin: u32 = 0,
     scale: u32 = 1,
     busy: bool = false,
+    shadow_drawn: bool = false,
 
+    /// Returns the window content sub-image (inside the shadow margin) with
+    /// `stride` set to the full buffer width.
     pub fn image(b: *Buffer) gfx.software.Image {
+        const cw = if (b.content_w > 0) b.content_w else b.width;
+        const ch = if (b.content_h > 0) b.content_h else b.height;
         const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
+        const total = @as(usize, b.width) * @as(usize, b.height);
+        const start = @as(usize, b.margin) * @as(usize, b.width) + @as(usize, b.margin);
         return .{
-            .pixels = words[0 .. @as(usize, b.width) * @as(usize, b.height)],
+            .pixels = words[start..total],
             .stride = b.width,
-            .width = b.width,
-            .height = b.height,
+            .width = cw,
+            .height = ch,
         };
+    }
+
+    /// Renders the drop shadow into the outer margin around the window content.
+    pub fn renderShadowMargin(b: *Buffer) void {
+        if (b.margin == 0 or b.content_w == 0 or b.content_h == 0) return;
+        const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
+        const m = b.margin;
+        const cw = b.content_w;
+        const ch = b.content_h;
+        const bw = b.width;
+        const bh = b.height;
+        const sf: f32 = @floatFromInt(@max(b.scale, 1));
+        const r = corner_radius * sf;
+        const f_m: f32 = @floatFromInt(m);
+        const f_cw: f32 = @floatFromInt(cw);
+        const f_ch: f32 = @floatFromInt(ch);
+        const cx0 = f_m + f_cw * 0.5;
+        const cy0 = f_m + f_ch * 0.5;
+        const hx = @max(f_cw * 0.5 - r, 0.0);
+        const hy = @max(f_ch * 0.5 - r, 0.0);
+
+        for (0..bh) |by| {
+            const py = @as(f32, @floatFromInt(by)) + 0.5;
+            const row = words[by * bw ..][0..bw];
+            const in_y = by >= m and by < m + ch;
+            if (!in_y) {
+                for (0..bw) |bx| {
+                    const px = @as(f32, @floatFromInt(bx)) + 0.5;
+                    const d_win = sdfRoundedBox(px - cx0, py - cy0, hx, hy, r);
+                    const sa = shadowAlphaAt(px, py, cx0, cy0, hx, hy, r, sf, d_win);
+                    const a_u32: u32 = @intFromFloat(@round(sa * 255.0));
+                    row[bx] = a_u32 << 24;
+                }
+            } else {
+                for (0..m) |bx| {
+                    const px = @as(f32, @floatFromInt(bx)) + 0.5;
+                    const d_win = sdfRoundedBox(px - cx0, py - cy0, hx, hy, r);
+                    const sa = shadowAlphaAt(px, py, cx0, cy0, hx, hy, r, sf, d_win);
+                    const a_u32: u32 = @intFromFloat(@round(sa * 255.0));
+                    row[bx] = a_u32 << 24;
+                }
+                for (m + cw..bw) |bx| {
+                    const px = @as(f32, @floatFromInt(bx)) + 0.5;
+                    const d_win = sdfRoundedBox(px - cx0, py - cy0, hx, hy, r);
+                    const sa = shadowAlphaAt(px, py, cx0, cy0, hx, hy, r, sf, d_win);
+                    const a_u32: u32 = @intFromFloat(@round(sa * 255.0));
+                    row[bx] = a_u32 << 24;
+                }
+            }
+        }
+        b.shadow_drawn = true;
+    }
+
+    /// Rounds the 4 corners of the window content over the drop shadow for any
+    /// corner pixels covered by `repainted` (or all 4 corners if `repainted == null`).
+    pub fn applyRoundedCorners(b: *Buffer, repainted: ?[]const gfx.Viewport) void {
+        if (b.margin == 0 or b.content_w == 0 or b.content_h == 0) return;
+        const words: [*]u32 = @ptrCast(@alignCast(b.pixels.ptr));
+        const m = b.margin;
+        const cw = b.content_w;
+        const ch = b.content_h;
+        const bw = b.width;
+        const sf: f32 = @floatFromInt(@max(b.scale, 1));
+        const r = corner_radius * sf;
+        const corner_px: u32 = @min(@as(u32, @intFromFloat(@ceil(r))) + 1, @min(cw / 2, ch / 2));
+        if (corner_px == 0) return;
+
+        const f_m: f32 = @floatFromInt(m);
+        const f_cw: f32 = @floatFromInt(cw);
+        const f_ch: f32 = @floatFromInt(ch);
+        const cx0 = f_m + f_cw * 0.5;
+        const cy0 = f_m + f_ch * 0.5;
+        const hx = @max(f_cw * 0.5 - r, 0.0);
+        const hy = @max(f_ch * 0.5 - r, 0.0);
+
+        const corners = [4][2]u32{
+            .{ 0, 0 },
+            .{ cw - corner_px, 0 },
+            .{ 0, ch - corner_px },
+            .{ cw - corner_px, ch - corner_px },
+        };
+
+        for (corners) |c0| {
+            var cy: u32 = c0[1];
+            while (cy < c0[1] + corner_px) : (cy += 1) {
+                var cx: u32 = c0[0];
+                while (cx < c0[0] + corner_px) : (cx += 1) {
+                    if (repainted) |vps| {
+                        var in_vp = false;
+                        for (vps) |vp| {
+                            if (cx >= @as(u32, @intCast(@max(vp.x, 0))) and
+                                cy >= @as(u32, @intCast(@max(vp.y, 0))) and
+                                @as(i32, @intCast(cx)) < vp.x + @as(i32, @intCast(vp.width)) and
+                                @as(i32, @intCast(cy)) < vp.y + @as(i32, @intCast(vp.height)))
+                            {
+                                in_vp = true;
+                                break;
+                            }
+                        }
+                        if (!in_vp) continue;
+                    }
+
+                    const bx = m + cx;
+                    const by = m + cy;
+                    const px = @as(f32, @floatFromInt(bx)) + 0.5;
+                    const py = @as(f32, @floatFromInt(by)) + 0.5;
+                    const d_win = sdfRoundedBox(px - cx0, py - cy0, hx, hy, r);
+                    if (d_win <= -0.5) continue;
+
+                    const cov = std.math.clamp(0.5 - d_win, 0.0, 1.0);
+                    const sa = shadowAlphaAt(px, py, cx0, cy0, hx, hy, r, sf, d_win);
+                    const idx = @as(usize, by) * bw + bx;
+                    const src = words[idx];
+                    const sr: f32 = @floatFromInt((src >> 16) & 0xff);
+                    const sg: f32 = @floatFromInt((src >> 8) & 0xff);
+                    const sb: f32 = @floatFromInt(src & 0xff);
+                    const src_a: f32 = (@as(f32, @floatFromInt((src >> 24) & 0xff)) / 255.0) * cov;
+                    const out_a: u32 = @intFromFloat(@round(std.math.clamp(src_a + sa * (1.0 - src_a), 0.0, 1.0) * 255.0));
+                    const out_r: u32 = @intFromFloat(@round(sr * cov));
+                    const out_g: u32 = @intFromFloat(@round(sg * cov));
+                    const out_b: u32 = @intFromFloat(@round(sb * cov));
+                    words[idx] = (out_a << 24) | (out_r << 16) | (out_g << 8) | out_b;
+                }
+            }
+        }
     }
 };
 
@@ -72,12 +237,15 @@ pub const WaylandWindow = struct {
     min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
     scale_changed: bool = false,
+    decoration_changed: bool = false,
+    last_geometry: ?[3]u32 = null,
     next_size: [2]i32 = .{ 0, 0 },
     pending_serial: ?u32 = null,
     closed: bool = false,
     suspended: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
+    tiled: bool = false,
     press_serial: u32 = 0,
     buttons_down: u32 = 0,
     enter_serial: u32 = 0,
@@ -89,6 +257,7 @@ pub const WaylandWindow = struct {
 
     buffers: [max_buffers]?Buffer = @splat(null),
     back: ?usize = null,
+    frame_corners_applied: bool = false,
     frame_pending: bool = false,
     frames: u64 = 0,
 
@@ -327,7 +496,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn setMinSize(w: *WaylandWindow, width: u32, height: u32) void {
-        if (!w.maximized and !w.fullscreen) {
+        if (w.hasClientDecorations()) {
             if (w.width < width) w.width = width;
             if (w.height < height) w.height = height;
         }
@@ -338,16 +507,37 @@ pub const WaylandWindow = struct {
         w.conn.flush() catch {};
     }
 
+    /// True when the window is floating and draws client-side drop shadows,
+    /// rounded corners, and an outer resize border. False when maximized,
+    /// fullscreen, or tiled.
+    pub fn hasClientDecorations(w: *const WaylandWindow) bool {
+        return !w.maximized and !w.fullscreen and !w.tiled;
+    }
+
+    pub fn frameMargin(w: *const WaylandWindow) u32 {
+        return if (w.hasClientDecorations()) shadow_margin else 0;
+    }
+
     pub fn edgesAt(w: *const WaylandWindow, pos: [2]f32) u32 {
-        if (w.maximized or w.fullscreen) return 0;
+        if (!w.hasClientDecorations()) return 0;
         const width: f32 = @floatFromInt(w.width);
         const height: f32 = @floatFromInt(w.height);
         const x = pos[0];
         const y = pos[1];
-        if (x < 0 or y < 0 or x >= width or y >= height) return 0;
+        if (x < -resize_outset or y < -resize_outset or x >= width + resize_outset or y >= height + resize_outset) return 0;
+        if (w.isInsideContent(pos)) return 0;
+
         var edges: u32 = 0;
-        if (x < resize_border) edges |= edge_left else if (x >= width - resize_border) edges |= edge_right;
-        if (y < resize_border) edges |= edge_top else if (y >= height - resize_border) edges |= edge_bottom;
+        if (x < 0 or (x < corner_radius and (y < corner_radius or y >= height - corner_radius))) {
+            edges |= edge_left;
+        } else if (x >= width or (x >= width - corner_radius and (y < corner_radius or y >= height - corner_radius))) {
+            edges |= edge_right;
+        }
+        if (y < 0 or (y < corner_radius and (x < corner_radius or x >= width - corner_radius))) {
+            edges |= edge_top;
+        } else if (y >= height or (y >= height - corner_radius and (x < corner_radius or x >= width - corner_radius))) {
+            edges |= edge_bottom;
+        }
         if (edges & (edge_left | edge_right) != 0 and edges & (edge_top | edge_bottom) == 0) {
             if (y < resize_corner) edges |= edge_top else if (y >= height - resize_corner) edges |= edge_bottom;
         }
@@ -445,7 +635,8 @@ pub const WaylandWindow = struct {
         m = ti.request(p.zwp_text_input_v3.request.set_content_type) catch return;
         m.uint(s.content_hint).uint(s.content_purpose).end();
         m = ti.request(p.zwp_text_input_v3.request.set_cursor_rectangle) catch return;
-        m.int(s.cursor_rect[0]).int(s.cursor_rect[1]).int(s.cursor_rect[2]).int(s.cursor_rect[3]).end();
+        const m_off: i32 = @intCast(w.frameMargin());
+        m.int(s.cursor_rect[0] + m_off).int(s.cursor_rect[1] + m_off).int(s.cursor_rect[2]).int(s.cursor_rect[3]).end();
         m = ti.request(p.zwp_text_input_v3.request.commit) catch return;
         m.end();
         w.text_input_serial +%= 1;
@@ -515,28 +706,43 @@ pub const WaylandWindow = struct {
     pub fn applyConfigure(w: *WaylandWindow) !?[2]u32 {
         const serial = w.pending_serial orelse return null;
         w.pending_serial = null;
+        const dec_changed = w.decoration_changed;
+        w.decoration_changed = false;
         var size = [2]u32{
             if (w.next_size[0] > 0) @intCast(w.next_size[0]) else w.width,
             if (w.next_size[1] > 0) @intCast(w.next_size[1]) else w.height,
         };
-        if (!w.maximized and !w.fullscreen) {
+        if (w.hasClientDecorations()) {
             size[0] = @max(size[0], w.min_size[0]);
             size[1] = @max(size[1], w.min_size[1]);
         }
         var m = try w.xdg_surface.request(p.xdg_surface.request.ack_configure);
         m.uint(serial).end();
-        if (size[0] == w.width and size[1] == w.height) return null;
+        if (size[0] == w.width and size[1] == w.height and !dec_changed) return null;
         w.width = size[0];
         w.height = size[1];
         return size;
     }
 
     /// Acquires a free `wl_shm` buffer of the window's current size and returns
-    /// its CPU pixel slice as a `gfx.software.Image`.
+    /// its inner content CPU pixel slice as a `gfx.software.Image`.
     pub fn beginFrame(w: *WaylandWindow) !gfx.software.Image {
         const i = w.back orelse try w.pickBack();
         w.back = i;
+        w.frame_corners_applied = false;
         return w.buffers[i].?.image();
+    }
+
+    /// Applies rounded window corners and drop-shadow margin to the current
+    /// back buffer for the `repainted` viewports (or the entire window if `null`).
+    pub fn finishFrame(w: *WaylandWindow, repainted: ?[]const gfx.Viewport) void {
+        const i = w.back orelse return;
+        const b = &w.buffers[i].?;
+        if (b.margin > 0) {
+            b.renderShadowMargin();
+            b.applyRoundedCorners(if (b.drawn == 0) null else repainted);
+        }
+        w.frame_corners_applied = true;
     }
 
     /// How many frames ago the buffer `beginFrame` gave was last drawn: 1
@@ -564,18 +770,88 @@ pub const WaylandWindow = struct {
             if (w.suspended) w.releaseSpareBuffers();
         }
         const b = &w.buffers[i].?;
+        if (!w.frame_corners_applied) {
+            if (b.margin > 0) {
+                b.renderShadowMargin();
+                b.applyRoundedCorners(if (b.drawn == 0) null else damage);
+            }
+            w.frame_corners_applied = true;
+        }
+        const s = @max(b.scale, 1);
+        const m_logical = b.margin / s;
+        const cw_logical = (if (b.content_w > 0) b.content_w else b.width) / s;
+        const ch_logical = (if (b.content_h > 0) b.content_h else b.height) / s;
+        const geom_key = [3]u32{ m_logical, cw_logical, ch_logical };
+        if (w.last_geometry == null or !std.meta.eql(w.last_geometry.?, geom_key)) {
+            w.last_geometry = geom_key;
+            var gm = try w.xdg_surface.request(p.xdg_surface.request.set_window_geometry);
+            gm.int(@intCast(m_logical)).int(@intCast(m_logical)).int(@intCast(cw_logical)).int(@intCast(ch_logical)).end();
+            if (m_logical > 0) {
+                const outset: i32 = @intFromFloat(resize_outset);
+                const rx: i32 = @as(i32, @intCast(m_logical)) - outset;
+                const ry: i32 = @as(i32, @intCast(m_logical)) - outset;
+                const rw: i32 = @as(i32, @intCast(cw_logical)) + 2 * outset;
+                const rh: i32 = @as(i32, @intCast(ch_logical)) + 2 * outset;
+                const in_reg = try w.conn.newObject(null);
+                var rm = try w.compositor.request(p.wl_compositor.request.create_region);
+                rm.uint(in_reg.id).end();
+                rm = try in_reg.request(p.wl_region.request.add);
+                rm.int(rx).int(ry).int(rw).int(rh).end();
+                rm = try w.surface.request(p.wl_surface.request.set_input_region);
+                rm.uint(in_reg.id).end();
+                rm = try in_reg.request(p.wl_region.request.destroy);
+                rm.end();
+                w.conn.forget(in_reg.id);
+
+                const r_i: i32 = @intFromFloat(@ceil(corner_radius));
+                const cw_i: i32 = @intCast(cw_logical);
+                const ch_i: i32 = @intCast(ch_logical);
+                const m_i: i32 = @intCast(m_logical);
+                if (cw_i > 2 * r_i and ch_i > 2 * r_i) {
+                    const op_reg = try w.conn.newObject(null);
+                    rm = try w.compositor.request(p.wl_compositor.request.create_region);
+                    rm.uint(op_reg.id).end();
+                    rm = try op_reg.request(p.wl_region.request.add);
+                    rm.int(m_i + r_i).int(m_i).int(cw_i - 2 * r_i).int(ch_i).end();
+                    rm = try op_reg.request(p.wl_region.request.add);
+                    rm.int(m_i).int(m_i + r_i).int(cw_i).int(ch_i - 2 * r_i).end();
+                    rm = try w.surface.request(p.wl_surface.request.set_opaque_region);
+                    rm.uint(op_reg.id).end();
+                    rm = try op_reg.request(p.wl_region.request.destroy);
+                    rm.end();
+                    w.conn.forget(op_reg.id);
+                } else {
+                    rm = try w.surface.request(p.wl_surface.request.set_opaque_region);
+                    rm.uint(0).end();
+                }
+            } else {
+                var rm = try w.surface.request(p.wl_surface.request.set_input_region);
+                rm.uint(0).end();
+                const op_reg = try w.conn.newObject(null);
+                rm = try w.compositor.request(p.wl_compositor.request.create_region);
+                rm.uint(op_reg.id).end();
+                rm = try op_reg.request(p.wl_region.request.add);
+                rm.int(0).int(0).int(@intCast(cw_logical)).int(@intCast(ch_logical)).end();
+                rm = try w.surface.request(p.wl_surface.request.set_opaque_region);
+                rm.uint(op_reg.id).end();
+                rm = try op_reg.request(p.wl_region.request.destroy);
+                rm.end();
+                w.conn.forget(op_reg.id);
+            }
+        }
         var m = try w.surface.request(p.wl_surface.request.set_buffer_scale);
         m.int(@intCast(b.scale)).end();
         m = try w.surface.request(p.wl_surface.request.attach);
         m.uint(b.proxy.id).int(0).int(0).end();
-        if (damage) |rects| {
-            for (rects) |r| {
-                m = try w.surface.request(p.wl_surface.request.damage_buffer);
-                m.int(r.x).int(r.y).int(@intCast(r.width)).int(@intCast(r.height)).end();
-            }
-        } else {
+        const m_px: i32 = @intCast(b.margin);
+        if (b.drawn == 0 or damage == null) {
             m = try w.surface.request(p.wl_surface.request.damage_buffer);
             m.int(0).int(0).int(@intCast(b.width)).int(@intCast(b.height)).end();
+        } else if (damage) |rects| {
+            for (rects) |r| {
+                m = try w.surface.request(p.wl_surface.request.damage_buffer);
+                m.int(r.x + m_px).int(r.y + m_px).int(@intCast(r.width)).int(@intCast(r.height)).end();
+            }
         }
         const cb = try w.conn.newObject(.{ .ptr = w, .handler = frameDone });
         m = try w.surface.request(p.wl_surface.request.frame);
@@ -601,15 +877,19 @@ pub const WaylandWindow = struct {
 
     fn pickBack(w: *WaylandWindow) !usize {
         const s = @max(w.scale, 1);
-        const bw = w.width * s;
-        const bh = w.height * s;
+        const m_logical = w.frameMargin();
+        const cw = w.width * s;
+        const ch = w.height * s;
+        const m_px = m_logical * s;
+        const bw = cw + 2 * m_px;
+        const bh = ch + 2 * m_px;
         while (true) {
             var empty: ?usize = null;
             var stale: ?usize = null;
             for (&w.buffers, 0..) |*slot, i| {
                 if (slot.*) |*b| {
                     if (b.busy) continue;
-                    if (b.width == bw and b.height == bh and b.scale == s) return i;
+                    if (b.width == bw and b.height == bh and b.content_w == cw and b.content_h == ch and b.margin == m_px and b.scale == s) return i;
                     stale = i;
                 } else empty = i;
             }
@@ -634,8 +914,12 @@ pub const WaylandWindow = struct {
 
     fn allocBuffer(w: *WaylandWindow, slot: usize) !Buffer {
         const s = @max(w.scale, 1);
-        const bw = w.width * s;
-        const bh = w.height * s;
+        const m_logical = w.frameMargin();
+        const cw = w.width * s;
+        const ch = w.height * s;
+        const m_px = m_logical * s;
+        const bw = cw + 2 * m_px;
+        const bh = ch + 2 * m_px;
         const stride = bw * 4;
         const size: usize = @as(usize, stride) * @as(usize, bh);
         const rc = linux.memfd_create("facet-shm", linux.MFD.CLOEXEC);
@@ -654,7 +938,8 @@ pub const WaylandWindow = struct {
 
         const proxy = try w.conn.newObject(.{ .ptr = &w.buffers[slot], .handler = bufferEvent });
         m = try pool.request(p.wl_shm_pool.request.create_buffer);
-        m.uint(proxy.id).int(0).int(@intCast(bw)).int(@intCast(bh)).int(@intCast(stride)).uint(p.wl_shm.format.xrgb8888).end();
+        const fmt: u32 = if (m_px > 0) p.wl_shm.format.argb8888 else p.wl_shm.format.xrgb8888;
+        m.uint(proxy.id).int(0).int(@intCast(bw)).int(@intCast(bh)).int(@intCast(stride)).uint(fmt).end();
 
         return .{
             .fd = fd,
@@ -663,6 +948,9 @@ pub const WaylandWindow = struct {
             .proxy = proxy,
             .width = bw,
             .height = bh,
+            .content_w = cw,
+            .content_h = ch,
+            .margin = m_px,
             .scale = s,
         };
     }
@@ -747,18 +1035,36 @@ pub const WaylandWindow = struct {
         }
     }
 
+    fn surfaceToContent(w: *const WaylandWindow, pos: [2]f32) [2]f32 {
+        const m: f32 = @floatFromInt(w.frameMargin());
+        return .{ pos[0] - m, pos[1] - m };
+    }
+
+    fn isInsideContent(w: *const WaylandWindow, pos: [2]f32) bool {
+        const width: f32 = @floatFromInt(w.width);
+        const height: f32 = @floatFromInt(w.height);
+        if (pos[0] < 0 or pos[1] < 0 or pos[0] >= width or pos[1] >= height) return false;
+        if (w.hasClientDecorations()) {
+            const hx = @max(width * 0.5 - corner_radius, 0.0);
+            const hy = @max(height * 0.5 - corner_radius, 0.0);
+            if (sdfRoundedBox(pos[0] - width * 0.5, pos[1] - height * 0.5, hx, hy, corner_radius) > 0.0) return false;
+        }
+        return true;
+    }
+
     fn onDragEnter(ptr: ?*anyopaque, pos: [2]f32, _: ?[]const u8) void {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
-        w.pushInput(.{ .drag_enter = pos });
+        w.pushInput(.{ .drag_enter = w.surfaceToContent(pos) });
     }
 
     fn onDragMotion(ptr: ?*anyopaque, pos: [2]f32) void {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        const cpos = w.surfaceToContent(pos);
         if (w.input_len > 0 and w.input[w.input_len - 1] == .drag_motion) {
-            w.input[w.input_len - 1] = .{ .drag_motion = pos };
+            w.input[w.input_len - 1] = .{ .drag_motion = cpos };
             return;
         }
-        w.pushInput(.{ .drag_motion = pos });
+        w.pushInput(.{ .drag_motion = cpos });
     }
 
     fn onDragLeave(ptr: ?*anyopaque) void {
@@ -768,7 +1074,7 @@ pub const WaylandWindow = struct {
 
     fn onDragDrop(ptr: ?*anyopaque, pos: [2]f32, _: []const u8, _: []const u8, _: u32) void {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
-        w.pushInput(.{ .drop = pos });
+        w.pushInput(.{ .drop = w.surfaceToContent(pos) });
     }
 
     fn textInputEvent(ptr: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
@@ -906,7 +1212,7 @@ pub const WaylandWindow = struct {
                 }
                 const x = r.fixed() catch return;
                 const y = r.fixed() catch return;
-                w.pointer_pos = .{ @floatCast(x), @floatCast(y) };
+                w.pointer_pos = w.surfaceToContent(.{ @floatCast(x), @floatCast(y) });
                 w.updateCursor();
                 w.pushInput(.{ .motion = w.pointer_pos });
             },
@@ -931,6 +1237,7 @@ pub const WaylandWindow = struct {
                         return;
                     };
                 }
+                if (pressed and w.buttons_down == 0 and !w.isInsideContent(w.pointer_pos)) return;
                 const bit = @as(u32, 1) << @intCast(@min(code -% p.input.btn_left, 31));
                 w.buttons_down = if (pressed) w.buttons_down | bit else w.buttons_down & ~bit;
                 if (!pressed and w.buttons_down == 0) w.updateCursor();
@@ -961,7 +1268,7 @@ pub const WaylandWindow = struct {
                 _ = r.uint() catch return;
                 _ = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
-                const pos: [2]f32 = .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) };
+                const pos = w.surfaceToContent(.{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.press_serial = serial;
                 w.clipboard.serial = serial;
                 const edges = w.edgesAt(pos);
@@ -971,12 +1278,13 @@ pub const WaylandWindow = struct {
                     w.conn.flush() catch {};
                     return;
                 };
+                if (!w.isInsideContent(pos)) return;
                 w.pushInput(.{ .touch_down = .{ .id = id, .pos = pos } });
             },
             p.wl_touch.event.motion => {
                 _ = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
-                const pos: [2]f32 = .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) };
+                const pos = w.surfaceToContent(.{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.pushInput(.{ .touch_motion = .{ .id = id, .pos = pos } });
             },
             p.wl_touch.event.up => {
@@ -1071,17 +1379,27 @@ pub const WaylandWindow = struct {
                 var suspended = false;
                 var maximized = false;
                 var fullscreen = false;
+                var tiled = false;
                 var i: usize = 0;
                 while (i + 4 <= states.len) : (i += 4) switch (std.mem.readInt(u32, states[i..][0..4], .little)) {
                     p.xdg_toplevel.state.suspended => suspended = true,
                     p.xdg_toplevel.state.maximized => maximized = true,
                     p.xdg_toplevel.state.fullscreen => fullscreen = true,
+                    p.xdg_toplevel.state.tiled_left,
+                    p.xdg_toplevel.state.tiled_right,
+                    p.xdg_toplevel.state.tiled_top,
+                    p.xdg_toplevel.state.tiled_bottom,
+                    => tiled = true,
                     else => {},
                 };
                 if (suspended) w.repeat = null;
+                if (w.maximized != maximized or w.fullscreen != fullscreen or w.tiled != tiled) {
+                    w.decoration_changed = true;
+                }
                 w.suspended = suspended;
                 w.maximized = maximized;
                 w.fullscreen = fullscreen;
+                w.tiled = tiled;
             },
             p.xdg_toplevel.event.close => w.closed = true,
             else => {},
@@ -1181,3 +1499,89 @@ test "setMinSize clamps non-maximized window dimensions" {
     try std.testing.expectEqual(@as(u32, 640), win.width);
     try std.testing.expectEqual(@as(u32, 480), win.height);
 }
+
+test "edgesAt detects resize edges only outside the window content and respects maximized state" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+        .width = 400,
+        .height = 300,
+        .maximized = false,
+        .fullscreen = false,
+    };
+    // Outer band outside the edges triggers resize.
+    try std.testing.expectEqual(@as(u32, edge_left), win.edgesAt(.{ -5, 150 }));
+    try std.testing.expectEqual(@as(u32, edge_right), win.edgesAt(.{ 405, 150 }));
+    try std.testing.expectEqual(@as(u32, edge_top), win.edgesAt(.{ 200, -5 }));
+    try std.testing.expectEqual(@as(u32, edge_bottom), win.edgesAt(.{ 200, 305 }));
+    try std.testing.expectEqual(@as(u32, edge_top | edge_left), win.edgesAt(.{ -4, -4 }));
+    try std.testing.expectEqual(@as(u32, edge_top | edge_left), win.edgesAt(.{ -4, 10 }));
+    // Outside the rounded corner arc at (1, 1) triggers corner resize.
+    try std.testing.expectEqual(@as(u32, edge_top | edge_left), win.edgesAt(.{ 1, 1 }));
+    // Inside the window content (including 1px inside the border) never triggers resize.
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ 1, 150 }));
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ 398, 150 }));
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ 200, 1 }));
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ 200, 298 }));
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ 200, 150 }));
+    // Beyond resize_outset does not trigger resize.
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -15, 150 }));
+    // Maximized, fullscreen, or tiled window has no resize edges and zero frame margin.
+    win.maximized = true;
+    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
+    win.maximized = false;
+    win.tiled = true;
+    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
+    try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
+}
+
+test "Buffer renders drop shadow margin and rounds window corners while exposing inner content Image" {
+    const cw: u32 = 80;
+    const ch: u32 = 60;
+    const m: u32 = shadow_margin;
+    const bw: u32 = cw + 2 * m;
+    const bh: u32 = ch + 2 * m;
+    const bytes = try std.testing.allocator.alignedAlloc(u8, .fromByteUnits(std.heap.page_size_min), @as(usize, bw) * @as(usize, bh) * 4);
+    defer std.testing.allocator.free(bytes);
+    @memset(bytes, 0);
+
+    var buf: Buffer = .{
+        .fd = -1,
+        .pixels = bytes,
+        .width = bw,
+        .height = bh,
+        .content_w = cw,
+        .content_h = ch,
+        .margin = m,
+        .scale = 1,
+    };
+
+    var img = buf.image();
+    try std.testing.expectEqual(cw, img.width);
+    try std.testing.expectEqual(ch, img.height);
+    try std.testing.expectEqual(bw, img.rowStride());
+
+    // Clear the content image to opaque white.
+    img.clear(0xffffffff);
+    buf.renderShadowMargin();
+    buf.applyRoundedCorners(null);
+
+    const words = std.mem.bytesAsSlice(u32, bytes);
+    // Center of the content area remains opaque white.
+    const center = words[@as(usize, m + ch / 2) * bw + (m + cw / 2)];
+    try std.testing.expectEqual(@as(u32, 0xffffffff), center);
+
+    // Extreme top-left corner of the content box (outside the 12px radius arc) is clipped to shadow (not white).
+    const corner_px = words[@as(usize, m) * bw + m];
+    try std.testing.expect((corner_px & 0x00ffffff) == 0);
+
+    // Just below the bottom edge of the window has non-zero drop shadow alpha.
+    const shadow_below = words[@as(usize, m + ch + 3) * bw + (m + cw / 2)];
+    try std.testing.expect((shadow_below >> 24) > 0);
+    try std.testing.expect((shadow_below & 0x00ffffff) == 0);
+}
+
