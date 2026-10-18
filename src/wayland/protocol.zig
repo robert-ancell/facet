@@ -744,7 +744,7 @@ pub const zwp_relative_pointer_v1 = struct {
 /// Presentation timing feedback (`presentation-time.xml`).
 pub const wp_presentation = struct {
     pub const name = "wp_presentation";
-    pub const version = 1;
+    pub const version = 2;
     pub const request = struct {
         pub const destroy = 0;
         pub const feedback = 1;
@@ -764,6 +764,7 @@ pub const wp_presentation = struct {
 
 pub const wp_presentation_feedback = struct {
     pub const name = "wp_presentation_feedback";
+    pub const version = 2;
     pub const event = struct {
         pub const sync_output = 0;
         pub const presented = 1;
@@ -774,6 +775,100 @@ pub const wp_presentation_feedback = struct {
         pub const hw_clock = 0x2;
         pub const hw_completion = 0x4;
         pub const zero_copy = 0x8;
+    };
+};
+
+/// Display refresh barrier constraints (`fifo-v1.xml`).
+pub const wp_fifo_manager_v1 = struct {
+    pub const name = "wp_fifo_manager_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const get_fifo = 1;
+    };
+    pub const err = struct {
+        pub const already_exists = 0;
+    };
+};
+
+pub const wp_fifo_v1 = struct {
+    pub const name = "wp_fifo_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const set_barrier = 0;
+        pub const wait_barrier = 1;
+        pub const destroy = 2;
+    };
+    pub const err = struct {
+        pub const surface_destroyed = 0;
+    };
+};
+
+/// Target presentation timestamp constraints (`commit-timing-v1.xml`).
+pub const wp_commit_timing_manager_v1 = struct {
+    pub const name = "wp_commit_timing_manager_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const get_timer = 1;
+    };
+    pub const err = struct {
+        pub const commit_timer_exists = 0;
+    };
+};
+
+pub const wp_commit_timer_v1 = struct {
+    pub const name = "wp_commit_timer_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const set_timestamp = 0;
+        pub const destroy = 1;
+    };
+    pub const err = struct {
+        pub const invalid_timestamp = 0;
+        pub const timestamp_exists = 1;
+        pub const surface_destroyed = 2;
+    };
+};
+
+/// Explicit buffer synchronization via Linux DRM timeline syncobjs (`linux-drm-syncobj-v1.xml`).
+pub const wp_linux_drm_syncobj_manager_v1 = struct {
+    pub const name = "wp_linux_drm_syncobj_manager_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const get_surface = 1;
+        pub const import_timeline = 2;
+    };
+    pub const err = struct {
+        pub const surface_exists = 0;
+        pub const invalid_timeline = 1;
+    };
+};
+
+pub const wp_linux_drm_syncobj_timeline_v1 = struct {
+    pub const name = "wp_linux_drm_syncobj_timeline_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+    };
+};
+
+pub const wp_linux_drm_syncobj_surface_v1 = struct {
+    pub const name = "wp_linux_drm_syncobj_surface_v1";
+    pub const version = 1;
+    pub const request = struct {
+        pub const destroy = 0;
+        pub const set_acquire_point = 1;
+        pub const set_release_point = 2;
+    };
+    pub const err = struct {
+        pub const no_surface = 1;
+        pub const unsupported_buffer = 2;
+        pub const no_buffer = 3;
+        pub const no_acquire_point = 4;
+        pub const no_release_point = 5;
+        pub const conflicting_points = 6;
     };
 };
 

@@ -1504,16 +1504,30 @@ test "Context.backend reports platform, buffer transport, and renderer" {
         .gpa = testing.allocator,
         .conn = undefined,
         .clipboard = .{ .gpa = testing.allocator },
+        .wm_base = .{ .id = 2 },
+        .presentation = .{ .id = 3 },
+        .fifo = .{ .id = 4 },
         .width = 800,
         .height = 600,
         .min_size = .{ 1, 1 },
         .scale = 2,
     };
+    wl_win.updateExtensions();
     u.attachWindow(&wl_win, null);
     u.frame(800, 600, 1, Probe{ .out = &info });
     try testing.expectEqual(window.Platform.wayland, info.platform);
     try testing.expectEqual(window.Decorations.client, info.decorations);
     try testing.expectEqual(window.BufferTransport.wl_shm, info.buffer_transport);
+    try testing.expectEqual(window.BufferSync.implicit, info.buffer_sync);
+    try testing.expect(info.vsync);
+    try testing.expect(info.frame_sync.frame_callback);
+    try testing.expect(info.frame_sync.presentation_time);
+    try testing.expect(info.frame_sync.fifo_v1);
+    try testing.expect(!info.frame_sync.commit_timing_v1);
+    try testing.expect(info.hasWaylandExtension("xdg_wm_base"));
+    try testing.expect(info.hasWaylandExtension("wp_presentation"));
+    try testing.expect(info.hasWaylandExtension("wp_fifo_manager_v1"));
+    try testing.expect(!info.hasWaylandExtension("wp_commit_timing_manager_v1"));
     try testing.expectEqual(expected_renderer, info.renderer);
     try testing.expectEqual([2]u32{ 800, 600 }, info.logical_size);
     try testing.expectEqual([2]u32{ 1600, 1200 }, info.physical_size);
@@ -1571,7 +1585,6 @@ test "VulkanRenderer, OpenGlRenderer, and SoftwareRenderer render UI widgets and
         try testing.expectEqual(u.theme.primary.toArgb(), img.at(180, 60));
     }
 }
-
 test "any window can show frames and give the clipboard, not only Wayland's" {
     const u = try ui.Ui.createDefault(testing.allocator);
     defer u.destroy();

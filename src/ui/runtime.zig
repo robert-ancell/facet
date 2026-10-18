@@ -323,13 +323,18 @@ pub const Ui = struct {
     }
 
     /// Returns information about the active windowing platform, surface buffer
-    /// transport, and 2D rendering backend.
+    /// transport, synchronization protocols, and 2D rendering backend.
     pub fn backend(ui: *const Ui) widget.BackendInfo {
         const s = @max(ui.scale, 1);
         const lsize = if (ui.win) |w| w.size() else ui.logical_size;
         return .{
             .platform = if (ui.win) |w| w.platform() else .headless,
             .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
+            .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
+            .frame_sync = if (ui.win) |w| w.frameSync() else .{},
+            .vsync = if (ui.win) |w| w.vsync() else false,
+            .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
+            .wayland_extensions = if (ui.win) |w| w.waylandExtensions() else &.{},
             .renderer = if (ui.renderer) |r| r.backend() else .software,
             .decorations = ui.decorations,
             .logical_size = lsize,
@@ -1132,9 +1137,6 @@ pub const App = struct {
         a.dirty = true;
     }
 
-    /// Waits for (or, after a frame was shown, just takes) what the window
-    /// has to tell, and brings the UI up to date with it. False when the
-    /// app should end.
     /// Waits until there is something to do: a frame to draw that the
     /// window is ready for, or something from the window (or, with nothing
     /// to draw, `idle_timeout_ns`); then brings the UI up to date with the

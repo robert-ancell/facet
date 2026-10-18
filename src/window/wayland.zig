@@ -73,7 +73,9 @@ pub const DmaBufDevice = struct {
     gbm_lib: std.DynLib,
     drm_fd: linux.fd_t,
     gbm_dev: *GbmDevice,
+    drm: DrmProcs,
     gbm: GbmProcs,
+    supports_syncobj: bool = false,
 
     const drm_node_primary = 0;
     const drm_node_render = 2;
@@ -86,14 +88,24 @@ pub const DmaBufDevice = struct {
         deviceinfo: ?*anyopaque,
     };
 
-    const DrmProcs = struct {
+    pub const DrmProcs = struct {
         GetDevices2: *const fn (u32, ?[*]*DrmDevice, c_int) callconv(.c) c_int,
         FreeDevices: *const fn ([*]*DrmDevice, c_int) callconv(.c) void,
+        SyncobjCreate: ?*const fn (c_int, u32, *u32) callconv(.c) c_int = null,
+        SyncobjDestroy: ?*const fn (c_int, u32) callconv(.c) c_int = null,
+        SyncobjHandleToFD: ?*const fn (c_int, u32, *c_int) callconv(.c) c_int = null,
+        SyncobjTimelineSignal: ?*const fn (c_int, *const u32, *const u64, u32) callconv(.c) c_int = null,
+        SyncobjTimelineWait: ?*const fn (c_int, *u32, *u64, u32, i64, u32, ?*u32) callconv(.c) c_int = null,
 
         fn load(lib: *std.DynLib) !DrmProcs {
             return .{
                 .GetDevices2 = lib.lookup(*const fn (u32, ?[*]*DrmDevice, c_int) callconv(.c) c_int, "drmGetDevices2") orelse return error.MissingDrmFunction,
                 .FreeDevices = lib.lookup(*const fn ([*]*DrmDevice, c_int) callconv(.c) void, "drmFreeDevices") orelse return error.MissingDrmFunction,
+                .SyncobjCreate = lib.lookup(*const fn (c_int, u32, *u32) callconv(.c) c_int, "drmSyncobjCreate"),
+                .SyncobjDestroy = lib.lookup(*const fn (c_int, u32) callconv(.c) c_int, "drmSyncobjDestroy"),
+                .SyncobjHandleToFD = lib.lookup(*const fn (c_int, u32, *c_int) callconv(.c) c_int, "drmSyncobjHandleToFD"),
+                .SyncobjTimelineSignal = lib.lookup(*const fn (c_int, *const u32, *const u64, u32) callconv(.c) c_int, "drmSyncobjTimelineSignal"),
+                .SyncobjTimelineWait = lib.lookup(*const fn (c_int, *u32, *u64, u32, i64, u32, ?*u32) callconv(.c) c_int, "drmSyncobjTimelineWait"),
             };
         }
     };
@@ -161,7 +173,7 @@ pub const DmaBufDevice = struct {
             for ([_]u5{ drm_node_render, drm_node_primary }) |node_type| {
                 for (devices[0..n]) |dev| {
                     if ((dev.available_nodes & (@as(c_int, 1) << node_type)) == 0) continue;
-                    if (tryOpenNode(dev.nodes[node_type], drm_lib, gbm_lib, gbm)) |d| return d;
+                    if (tryOpenNode(dev.nodes[node_type], drm_lib, gbm_lib, drm, gbm)) |d| return d;
                 }
             }
         }
@@ -171,7 +183,7 @@ pub const DmaBufDevice = struct {
         return null;
     }
 
-    fn tryOpenNode(path: [*:0]const u8, drm_lib: std.DynLib, gbm_lib: std.DynLib, gbm: GbmProcs) ?DmaBufDevice {
+    fn tryOpenNode(path: [*:0]const u8, drm_lib: std.DynLib, gbm_lib: std.DynLib, drm: DrmProcs, gbm: GbmProcs) ?DmaBufDevice {
         const rc = linux.open(path, .{ .ACCMODE = .RDWR, .CLOEXEC = true }, 0);
         if (linux.errno(rc) != .SUCCESS) return null;
         const fd: linux.fd_t = @intCast(rc);
@@ -179,12 +191,29 @@ pub const DmaBufDevice = struct {
             _ = linux.close(fd);
             return null;
         };
+        var supports_syncobj = false;
+        if (drm.SyncobjCreate != null and drm.SyncobjDestroy != null and drm.SyncobjHandleToFD != null and drm.SyncobjTimelineSignal != null and drm.SyncobjTimelineWait != null) {
+            var handle: u32 = 0;
+            if (drm.SyncobjCreate.?(fd, 0, &handle) == 0) {
+                var pt: u64 = 1;
+                if (drm.SyncobjTimelineSignal.?(fd, &handle, &pt, 1) == 0) {
+                    var obj_fd: c_int = -1;
+                    if (drm.SyncobjHandleToFD.?(fd, handle, &obj_fd) == 0 and obj_fd >= 0) {
+                        _ = linux.close(obj_fd);
+                        supports_syncobj = true;
+                    }
+                }
+                _ = drm.SyncobjDestroy.?(fd, handle);
+            }
+        }
         const dev: DmaBufDevice = .{
             .drm_lib = drm_lib,
             .gbm_lib = gbm_lib,
             .drm_fd = fd,
             .gbm_dev = gbm_dev,
+            .drm = drm,
             .gbm = gbm,
+            .supports_syncobj = supports_syncobj,
         };
         if (dev.alloc(4, 4, p.fourcc.argb8888)) |probe| {
             _ = linux.close(probe.dmabuf_fd);
@@ -225,9 +254,18 @@ pub const DmaBufDevice = struct {
 };
 
 pub const Buffer = struct {
+    pub const drm_syncobj_wait_flags_wait_all: u32 = 1 << 0;
+    pub const drm_syncobj_wait_flags_wait_for_submit: u32 = 1 << 1;
+
     drawn: u64 = 0,
     bo: ?*GbmBo = null,
     gbm: ?DmaBufDevice.GbmProcs = null,
+    drm_fd: linux.fd_t = -1,
+    drm: ?DmaBufDevice.DrmProcs = null,
+    syncobj_handle: u32 = 0,
+    syncobj_timeline: client.Proxy = .{},
+    syncobj_point: u64 = 0,
+    release_point: u64 = 0,
     map_data: ?*anyopaque = null,
     pixels: []u8 = &.{},
     pool: client.Proxy = .{},
@@ -246,8 +284,47 @@ pub const Buffer = struct {
         return if (b.stride_words > 0) b.stride_words else b.width;
     }
 
+    /// True when the compositor has finished reading the buffer (either via
+    /// `wp_linux_drm_syncobj_v1` release timeline point or `wl_buffer.release`).
+    pub fn isReady(b: *Buffer) bool {
+        if (b.release_point > 0) {
+            if (b.drm) |drm| if (drm.SyncobjTimelineWait) |wait_fn| {
+                var handle = b.syncobj_handle;
+                var pt = b.release_point;
+                if (wait_fn(b.drm_fd, &handle, &pt, 1, 0, drm_syncobj_wait_flags_wait_all, null) == 0) {
+                    b.release_point = 0;
+                    b.busy = false;
+                    return true;
+                }
+            };
+            return false;
+        }
+        return !b.busy;
+    }
+
+    /// Waits up to `timeout_ns` for the buffer's explicit release timeline point
+    /// to signal, returning true once the buffer is ready for reuse.
+    pub fn waitReady(b: *Buffer, timeout_ns: u64) bool {
+        if (b.release_point > 0) {
+            if (b.drm) |drm| if (drm.SyncobjTimelineWait) |wait_fn| {
+                var handle = b.syncobj_handle;
+                var pt = b.release_point;
+                const deadline: i64 = @intCast(@min(nowNs() +| timeout_ns, @as(u64, std.math.maxInt(i64))));
+                const flags = drm_syncobj_wait_flags_wait_all | drm_syncobj_wait_flags_wait_for_submit;
+                if (wait_fn(b.drm_fd, &handle, &pt, 1, deadline, flags, null) == 0) {
+                    b.release_point = 0;
+                    b.busy = false;
+                    return true;
+                }
+            };
+            return false;
+        }
+        return !b.busy;
+    }
+
     pub fn beginCpuAccess(b: *Buffer) !void {
         const bo = b.bo orelse return;
+        if (b.release_point > 0) _ = b.waitReady(100 * std.time.ns_per_ms);
         if (b.map_data != null) return;
         const gbm = b.gbm orelse return error.OutOfMemory;
         var map_stride: u32 = 0;
@@ -428,8 +505,38 @@ pub const WaylandWindow = struct {
         return w.dmabuf != null and w.dmabuf_dev != null and (w.dmabuf_argb8888 or w.dmabuf_xrgb8888);
     }
 
+    pub fn usingDrmSyncobj(w: *const WaylandWindow) bool {
+        if (w.syncobj_surface != null) return true;
+        if (!w.usingDmabuf()) return false;
+        if (w.drm_syncobj_manager == null) return false;
+        return w.dmabuf_dev.?.supports_syncobj;
+    }
+
     pub fn bufferTransport(w: *const WaylandWindow) window_mod.BufferTransport {
         return if (w.usingDmabuf()) .linux_dmabuf else .wl_shm;
+    }
+
+    pub fn bufferSync(w: *const WaylandWindow) window_mod.BufferSync {
+        return if (w.usingDrmSyncobj()) .linux_drm_syncobj_v1 else .implicit;
+    }
+
+    pub fn frameSync(w: *const WaylandWindow) window_mod.FrameSync {
+        return .{
+            .vsync = w.vsync,
+            .frame_callback = true,
+            .presentation_time = w.presentation != null,
+            .fifo_v1 = w.fifo != null,
+            .commit_timing_v1 = w.commit_timer != null,
+        };
+    }
+
+    pub fn refreshHz(w: *const WaylandWindow) f32 {
+        if (w.refresh_ns == 0) return 0.0;
+        return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(w.refresh_ns));
+    }
+
+    pub fn waylandExtensions(w: *const WaylandWindow) []const []const u8 {
+        return w.extensions_buf[0..w.extensions_len];
     }
 
     pub fn decorations(w: *const WaylandWindow) window_mod.Decorations {
@@ -450,6 +557,8 @@ pub const WaylandWindow = struct {
     dmabuf_dev: ?DmaBufDevice = null,
     dmabuf_argb8888: bool = false,
     dmabuf_xrgb8888: bool = false,
+    drm_syncobj_manager: ?client.Proxy = null,
+    syncobj_surface: ?client.Proxy = null,
     surface: client.Proxy = .{},
     xdg_surface: client.Proxy = .{},
     toplevel: client.Proxy = .{},
@@ -472,6 +581,7 @@ pub const WaylandWindow = struct {
     maximized: bool = false,
     fullscreen: bool = false,
     tiled: bool = false,
+    vsync: bool = true,
     press_serial: u32 = 0,
     buttons_down: u32 = 0,
     enter_serial: u32 = 0,
@@ -495,6 +605,14 @@ pub const WaylandWindow = struct {
     presentation_flags: u32 = 0,
     presented_frames: u64 = 0,
     discarded_frames: u64 = 0,
+
+    fifo_manager: ?client.Proxy = null,
+    fifo: ?client.Proxy = null,
+    fifo_barrier_pending: bool = false,
+    commit_timing_manager: ?client.Proxy = null,
+    commit_timer: ?client.Proxy = null,
+    extensions_buf: [16][]const u8 = undefined,
+    extensions_len: usize = 0,
 
     seat: ?client.Proxy = null,
     touch: ?client.Proxy = null,
@@ -617,7 +735,12 @@ pub const WaylandWindow = struct {
 
         w.decoration_manager = try w.globals.bind(registry, p.zxdg_decoration_manager_v1.name, 1, null);
         w.cursor_shape_manager = try w.globals.bind(registry, p.wp_cursor_shape_manager_v1.name, 1, null);
-        w.presentation = try w.globals.bind(registry, p.wp_presentation.name, 1, .{ .ptr = w, .handler = presentationEvent });
+        w.presentation = try w.globals.bind(registry, p.wp_presentation.name, p.wp_presentation.version, .{ .ptr = w, .handler = presentationEvent });
+        w.fifo_manager = try w.globals.bind(registry, p.wp_fifo_manager_v1.name, 1, null);
+        w.commit_timing_manager = try w.globals.bind(registry, p.wp_commit_timing_manager_v1.name, 1, null);
+        if (w.dmabuf != null and w.dmabuf_dev != null and w.dmabuf_dev.?.supports_syncobj) {
+            w.drm_syncobj_manager = try w.globals.bind(registry, p.wp_linux_drm_syncobj_manager_v1.name, 1, null);
+        }
         w.pointer_constraints = try w.globals.bind(registry, p.zwp_pointer_constraints_v1.name, 1, null);
         w.relative_pointer_manager = try w.globals.bind(registry, p.zwp_relative_pointer_manager_v1.name, 1, null);
         w.seat = try w.globals.bind(registry, p.wl_seat.name, 5, .{ .ptr = w, .handler = seatEvent });
@@ -635,6 +758,18 @@ pub const WaylandWindow = struct {
         w.surface = try conn.newObject(.{ .ptr = w, .handler = surfaceEvent });
         var m = try w.compositor.request(p.wl_compositor.request.create_surface);
         m.uint(w.surface.id).end();
+        if (w.fifo_manager) |mgr| {
+            const fifo = try conn.newObject(null);
+            m = try mgr.request(p.wp_fifo_manager_v1.request.get_fifo);
+            m.uint(fifo.id).uint(w.surface.id).end();
+            w.fifo = fifo;
+        }
+        if (w.commit_timing_manager) |mgr| {
+            const timer = try conn.newObject(null);
+            m = try mgr.request(p.wp_commit_timing_manager_v1.request.get_timer);
+            m.uint(timer.id).uint(w.surface.id).end();
+            w.commit_timer = timer;
+        }
         w.xdg_surface = try conn.newObject(.{ .ptr = w, .handler = xdgSurfaceEvent });
         m = try w.wm_base.request(p.xdg_wm_base.request.get_xdg_surface);
         m.uint(w.xdg_surface.id).uint(w.surface.id).end();
@@ -665,12 +800,83 @@ pub const WaylandWindow = struct {
         m.end();
         while (w.pending_serial == null) try conn.dispatch();
         _ = try w.applyConfigure();
+        w.updateExtensions();
         return w;
+    }
+
+    pub fn updateExtensions(w: *WaylandWindow) void {
+        var n: usize = 0;
+        if (w.wm_base.id != 0) {
+            w.extensions_buf[n] = p.xdg_wm_base.name;
+            n += 1;
+        }
+        if (w.usingDmabuf()) {
+            w.extensions_buf[n] = p.zwp_linux_dmabuf_v1.name;
+            n += 1;
+        }
+        if (w.usingDrmSyncobj()) {
+            w.extensions_buf[n] = p.wp_linux_drm_syncobj_manager_v1.name;
+            n += 1;
+        }
+        if (w.presentation != null) {
+            w.extensions_buf[n] = p.wp_presentation.name;
+            n += 1;
+        }
+        if (w.fifo != null) {
+            w.extensions_buf[n] = p.wp_fifo_manager_v1.name;
+            n += 1;
+        }
+        if (w.commit_timer != null) {
+            w.extensions_buf[n] = p.wp_commit_timing_manager_v1.name;
+            n += 1;
+        }
+        if (w.decoration_manager != null) {
+            w.extensions_buf[n] = p.zxdg_decoration_manager_v1.name;
+            n += 1;
+        }
+        if (w.cursor_shape_manager != null) {
+            w.extensions_buf[n] = p.wp_cursor_shape_manager_v1.name;
+            n += 1;
+        }
+        if (w.text_input_manager != null) {
+            w.extensions_buf[n] = p.zwp_text_input_manager_v3.name;
+            n += 1;
+        }
+        if (w.pointer_constraints != null) {
+            w.extensions_buf[n] = p.zwp_pointer_constraints_v1.name;
+            n += 1;
+        }
+        if (w.relative_pointer_manager != null) {
+            w.extensions_buf[n] = p.zwp_relative_pointer_manager_v1.name;
+            n += 1;
+        }
+        w.extensions_len = n;
     }
 
     pub fn close(w: *WaylandWindow) void {
         w.clipboard.deinit();
         for (&w.buffers) |*slot| if (slot.*) |*b| w.freeBuffer(b, slot);
+        if (w.syncobj_surface) |ss| {
+            if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(ss.id);
+        }
+        if (w.fifo) |fifo| {
+            if (fifo.request(p.wp_fifo_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(fifo.id);
+        }
+        if (w.commit_timer) |timer| {
+            if (timer.request(p.wp_commit_timer_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(timer.id);
+        }
         if (w.dmabuf_dev) |*dev| dev.close();
         w.conn.flush() catch {};
         w.conn.disconnect();
@@ -1048,8 +1254,21 @@ pub const WaylandWindow = struct {
         w.back = null;
     }
 
+    /// Waits for a pending `wl_surface.frame` callback (`frame_pending`) when
+    /// vertical synchronization is enabled, coalescing incoming input events.
+    pub fn waitForFrame(w: *WaylandWindow) !void {
+        if (!w.vsync or !w.frame_pending or w.closed or w.suspended) return;
+        const refresh = if (w.refresh_ns > 0) w.refresh_ns else 16 * std.time.ns_per_ms;
+        const deadline = nowNs() +| (refresh * 4);
+        while (w.vsync and w.frame_pending and !w.closed and !w.suspended) {
+            const now = nowNs();
+            if (now >= deadline) break;
+            try w.wait(deadline - now);
+        }
+    }
+
     fn showBuffer(w: *WaylandWindow, i: usize, damage: ?[]const gfx.Viewport) !void {
-        while (w.frame_pending) {
+        while (w.vsync and w.frame_pending) {
             try w.conn.dispatch();
             if (w.suspended) w.releaseSpareBuffers();
         }
@@ -1138,9 +1357,53 @@ pub const WaylandWindow = struct {
                 m.int(r.x + m_px).int(r.y + m_px).int(@intCast(r.width)).int(@intCast(r.height)).end();
             }
         }
-        const cb = try w.conn.newObject(.{ .ptr = w, .handler = frameDone });
-        m = try w.surface.request(p.wl_surface.request.frame);
-        m.uint(cb.id).end();
+        if (b.syncobj_timeline.id != 0) {
+            if (w.syncobj_surface == null) if (w.drm_syncobj_manager) |mgr| {
+                const ss = try w.conn.newObject(null);
+                var sm = try mgr.request(p.wp_linux_drm_syncobj_manager_v1.request.get_surface);
+                sm.uint(ss.id).uint(w.surface.id).end();
+                w.syncobj_surface = ss;
+            };
+            if (w.syncobj_surface) |ss| if (b.drm) |drm| if (drm.SyncobjTimelineSignal) |signal_fn| {
+                const acquire_pt = b.syncobj_point + 1;
+                const release_pt = acquire_pt + 1;
+                var handle = b.syncobj_handle;
+                var pt = acquire_pt;
+                _ = signal_fn(b.drm_fd, &handle, &pt, 1);
+                b.syncobj_point = release_pt;
+                b.release_point = release_pt;
+
+                var sm = try ss.request(p.wp_linux_drm_syncobj_surface_v1.request.set_acquire_point);
+                sm.uint(b.syncobj_timeline.id).uint(@intCast(acquire_pt >> 32)).uint(@truncate(acquire_pt)).end();
+                sm = try ss.request(p.wp_linux_drm_syncobj_surface_v1.request.set_release_point);
+                sm.uint(b.syncobj_timeline.id).uint(@intCast(release_pt >> 32)).uint(@truncate(release_pt)).end();
+            };
+        }
+        if (w.vsync) {
+            const cb = try w.conn.newObject(.{ .ptr = w, .handler = frameDone });
+            m = try w.surface.request(p.wl_surface.request.frame);
+            m.uint(cb.id).end();
+            if (w.fifo) |fifo| {
+                if (w.fifo_barrier_pending) {
+                    m = try fifo.request(p.wp_fifo_v1.request.wait_barrier);
+                    m.end();
+                }
+                m = try fifo.request(p.wp_fifo_v1.request.set_barrier);
+                m.end();
+                w.fifo_barrier_pending = true;
+            }
+            if (w.commit_timer) |timer| {
+                if (w.presented_ns > 0 and w.refresh_ns > 0 and w.presentation_clock_id == p.wp_presentation.clock.monotonic) {
+                    const earliest_ns = w.presented_ns + (w.refresh_ns / 2);
+                    if (nowNs() < earliest_ns) {
+                        const secs = earliest_ns / std.time.ns_per_s;
+                        const nsec: u32 = @intCast(earliest_ns % std.time.ns_per_s);
+                        m = try timer.request(p.wp_commit_timer_v1.request.set_timestamp);
+                        m.uint(@intCast(secs >> 32)).uint(@truncate(secs)).uint(nsec).end();
+                    }
+                }
+            }
+        }
         if (w.presentation) |pres| {
             const fb = try w.conn.newObject(.{ .ptr = w, .handler = feedbackEvent });
             m = try pres.request(p.wp_presentation.request.feedback);
@@ -1152,7 +1415,7 @@ pub const WaylandWindow = struct {
         b.busy = true;
         w.frames += 1;
         b.drawn = w.frames;
-        w.frame_pending = true;
+        if (w.vsync) w.frame_pending = true;
     }
 
     pub fn takeInput(w: *WaylandWindow) []const InputEvent {
@@ -1171,9 +1434,17 @@ pub const WaylandWindow = struct {
         while (true) {
             var empty: ?usize = null;
             var stale: ?usize = null;
+            var syncobj_wait_idx: ?usize = null;
             for (&w.buffers, 0..) |*slot, i| {
                 if (slot.*) |*b| {
-                    if (b.busy) continue;
+                    if (!b.isReady()) {
+                        if (b.release_point > 0) {
+                            if (syncobj_wait_idx == null or b.drawn < w.buffers[syncobj_wait_idx.?].?.drawn) {
+                                syncobj_wait_idx = i;
+                            }
+                        }
+                        continue;
+                    }
                     if (b.width == bw and b.height == bh and b.content_w == cw and b.content_h == ch and b.margin == m_px and b.scale == s) return i;
                     stale = i;
                 } else empty = i;
@@ -1186,13 +1457,18 @@ pub const WaylandWindow = struct {
                 w.buffers[i] = try w.allocBuffer(i);
                 return i;
             }
-            try w.conn.dispatch();
+            if (syncobj_wait_idx) |i| {
+                _ = w.buffers[i].?.waitReady(16 * std.time.ns_per_ms);
+                _ = try w.conn.dispatchPending();
+            } else {
+                try w.conn.dispatch();
+            }
         }
     }
 
     pub fn releaseSpareBuffers(w: *WaylandWindow) void {
         for (&w.buffers, 0..) |*slot, i| if (slot.*) |*b| {
-            if (b.busy or w.back == i) continue;
+            if (!b.isReady() or w.back == i) continue;
             w.freeBuffer(b, slot);
         };
     }
@@ -1210,8 +1486,17 @@ pub const WaylandWindow = struct {
                 return buf;
             } else |err| {
                 if (w.shm.id == 0) return err;
+                if (w.syncobj_surface) |ss| {
+                    if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
+                        var m = m0;
+                        m.end();
+                    } else |_| {}
+                    w.conn.forget(ss.id);
+                    w.syncobj_surface = null;
+                }
                 if (w.dmabuf_dev) |*dev| dev.close();
                 w.dmabuf_dev = null;
+                w.updateExtensions();
             }
         }
         return w.allocShmBuffer(slot, bw, bh, cw, ch, m_px, s);
@@ -1248,9 +1533,41 @@ pub const WaylandWindow = struct {
         m.end();
         w.conn.forget(params.id);
 
+        var syncobj_handle: u32 = 0;
+        var syncobj_timeline: client.Proxy = .{};
+        if (w.usingDrmSyncobj()) if (w.drm_syncobj_manager) |mgr| {
+            var handle: u32 = 0;
+            if (dev.drm.SyncobjCreate.?(dev.drm_fd, 0, &handle) == 0) {
+                var obj_fd: c_int = -1;
+                if (dev.drm.SyncobjHandleToFD.?(dev.drm_fd, handle, &obj_fd) == 0 and obj_fd >= 0) {
+                    if (w.conn.newObject(null)) |tl| {
+                        if (mgr.request(p.wp_linux_drm_syncobj_manager_v1.request.import_timeline)) |tm0| {
+                            var tm = tm0;
+                            tm.uint(tl.id).fd(obj_fd).end();
+                            syncobj_handle = handle;
+                            syncobj_timeline = tl;
+                        } else |_| {
+                            w.conn.forget(tl.id);
+                            _ = linux.close(obj_fd);
+                            _ = dev.drm.SyncobjDestroy.?(dev.drm_fd, handle);
+                        }
+                    } else |_| {
+                        _ = linux.close(obj_fd);
+                        _ = dev.drm.SyncobjDestroy.?(dev.drm_fd, handle);
+                    }
+                } else {
+                    _ = dev.drm.SyncobjDestroy.?(dev.drm_fd, handle);
+                }
+            }
+        };
+
         return .{
             .bo = alloc.bo,
             .gbm = dev.gbm,
+            .drm_fd = dev.drm_fd,
+            .drm = dev.drm,
+            .syncobj_handle = syncobj_handle,
+            .syncobj_timeline = syncobj_timeline,
             .proxy = proxy,
             .width = bw,
             .height = bh,
@@ -1299,7 +1616,18 @@ pub const WaylandWindow = struct {
     }
 
     fn freeBuffer(w: *WaylandWindow, b: *Buffer, slot: *?Buffer) void {
+        if (b.release_point > 0) _ = b.waitReady(100 * std.time.ns_per_ms);
         b.endCpuAccess();
+        if (b.syncobj_timeline.id != 0) {
+            if (b.syncobj_timeline.request(p.wp_linux_drm_syncobj_timeline_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(b.syncobj_timeline.id);
+            if (b.drm) |drm| if (drm.SyncobjDestroy) |destroy_fn| {
+                _ = destroy_fn(b.drm_fd, b.syncobj_handle);
+            };
+        }
         if (b.proxy.request(p.wl_buffer.request.destroy)) |m0| {
             var m = m0;
             m.end();
@@ -2024,3 +2352,56 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
     }
 }
 
+test "WaylandWindow reports active Wayland extensions, synchronization protocols, and presentation refresh rate" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+        .compositor = .{ .id = 2 },
+        .shm = .{ .id = 3 },
+        .wm_base = .{ .id = 4 },
+        .presentation = .{ .id = 5 },
+        .fifo_manager = .{ .id = 6 },
+        .fifo = .{ .id = 7 },
+        .commit_timing_manager = .{ .id = 8 },
+        .commit_timer = .{ .id = 9 },
+        .drm_syncobj_manager = .{ .id = 10 },
+        .syncobj_surface = .{ .id = 11 },
+    };
+    win.updateExtensions();
+
+    try std.testing.expect(win.vsync);
+    try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
+    const fs = win.frameSync();
+    try std.testing.expect(fs.vsync);
+    try std.testing.expect(fs.frame_callback);
+    try std.testing.expect(fs.presentation_time);
+    try std.testing.expect(fs.fifo_v1);
+    try std.testing.expect(fs.commit_timing_v1);
+
+    const exts = win.waylandExtensions();
+    try std.testing.expectEqual(@as(usize, 5), exts.len);
+    var has_fifo = false;
+    var has_commit_timing = false;
+    var has_syncobj = false;
+    var has_presentation = false;
+    for (exts) |ext| {
+        if (std.mem.eql(u8, ext, p.wp_fifo_manager_v1.name)) has_fifo = true;
+        if (std.mem.eql(u8, ext, p.wp_commit_timing_manager_v1.name)) has_commit_timing = true;
+        if (std.mem.eql(u8, ext, p.wp_linux_drm_syncobj_manager_v1.name)) has_syncobj = true;
+        if (std.mem.eql(u8, ext, p.wp_presentation.name)) has_presentation = true;
+    }
+    try std.testing.expect(has_fifo);
+    try std.testing.expect(has_commit_timing);
+    try std.testing.expect(has_syncobj);
+    try std.testing.expect(has_presentation);
+
+    var disp: client.Display = .{ .gpa = std.testing.allocator, .conn = undefined };
+    // Simulate wp_presentation_feedback.presented with 16_666_666 ns refresh (~60 Hz)
+    const presented_msg = [_]u32{ 0, 1, 500_000_000, 16_666_666, 0, 1, p.wp_presentation_feedback.kind.vsync };
+    var r_pres = wire.Reader{ .data = std.mem.sliceAsBytes(&presented_msg), .c = undefined };
+    WaylandWindow.feedbackEvent(&win, &disp, 0, p.wp_presentation_feedback.event.presented, &r_pres);
+    try std.testing.expectEqual(@as(u64, 16_666_666), win.refresh_ns);
+    const hz = win.refreshHz();
+    try std.testing.expect(@abs(hz - 60.0) < 0.1);
+}

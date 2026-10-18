@@ -173,6 +173,31 @@ pub const Decorations = enum {
     }
 };
 
+/// Surface buffer synchronization mechanism used between client and compositor.
+pub const BufferSync = enum {
+    none,
+    implicit,
+    linux_drm_syncobj_v1,
+
+    pub fn name(s: BufferSync) []const u8 {
+        return switch (s) {
+            .none => "None",
+            .implicit => "Implicit (wl_buffer.release)",
+            .linux_drm_syncobj_v1 => "wp_linux_drm_syncobj_v1",
+        };
+    }
+};
+
+/// Active frame pacing and vertical synchronization protocols on the surface.
+pub const FrameSync = packed struct(u8) {
+    vsync: bool = false,
+    frame_callback: bool = false,
+    presentation_time: bool = false,
+    fifo_v1: bool = false,
+    commit_timing_v1: bool = false,
+    _pad: u3 = 0,
+};
+
 /// Generic window interface (`Window.of(&impl)`).
 pub const Window = struct {
     ptr: *anyopaque,
@@ -181,6 +206,11 @@ pub const Window = struct {
     pub const VTable = struct {
         platform: *const fn (ptr: *anyopaque) Platform,
         bufferTransport: *const fn (ptr: *anyopaque) BufferTransport,
+        bufferSync: *const fn (ptr: *anyopaque) BufferSync,
+        frameSync: *const fn (ptr: *anyopaque) FrameSync,
+        vsync: *const fn (ptr: *anyopaque) bool,
+        refreshHz: *const fn (ptr: *anyopaque) f32,
+        waylandExtensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) Decorations,
         title: *const fn (ptr: *anyopaque) []const u8,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
@@ -242,6 +272,37 @@ pub const Window = struct {
                 if (@hasDecl(T, "buffer_transport")) return T.buffer_transport;
                 if (@hasField(T, "buffer_transport")) return self(p).buffer_transport;
                 return .custom;
+            }
+            fn bufferSyncFn(p: *anyopaque) BufferSync {
+                if (@hasDecl(T, "bufferSync")) return self(p).bufferSync();
+                if (@hasField(T, "buffer_sync")) return self(p).buffer_sync;
+                return switch (platformFn(p)) {
+                    .headless => .none,
+                    else => .implicit,
+                };
+            }
+            fn frameSyncFn(p: *anyopaque) FrameSync {
+                if (@hasDecl(T, "frameSync")) return self(p).frameSync();
+                if (@hasField(T, "frame_sync")) return self(p).frame_sync;
+                return .{ .vsync = vsyncFn(p) };
+            }
+            fn vsyncFn(p: *anyopaque) bool {
+                if (@hasDecl(T, "isVsync")) return self(p).isVsync();
+                if (@hasField(T, "vsync")) return self(p).vsync;
+                return platformFn(p) != .headless;
+            }
+            fn refreshHzFn(p: *anyopaque) f32 {
+                if (@hasDecl(T, "refreshHz")) return self(p).refreshHz();
+                if (@hasField(T, "refresh_ns")) {
+                    const r = self(p).refresh_ns;
+                    if (r > 0) return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(r));
+                }
+                return 0.0;
+            }
+            fn waylandExtensionsFn(p: *anyopaque) []const []const u8 {
+                if (@hasDecl(T, "waylandExtensions")) return self(p).waylandExtensions();
+                if (@hasField(T, "wayland_extensions")) return self(p).wayland_extensions;
+                return &.{};
             }
             fn decorationsFn(p: *anyopaque) Decorations {
                 if (@hasDecl(T, "decorations")) {
@@ -387,6 +448,11 @@ pub const Window = struct {
             const vt = VTable{
                 .platform = platformFn,
                 .bufferTransport = bufferTransportFn,
+                .bufferSync = bufferSyncFn,
+                .frameSync = frameSyncFn,
+                .vsync = vsyncFn,
+                .refreshHz = refreshHzFn,
+                .waylandExtensions = waylandExtensionsFn,
                 .decorations = decorationsFn,
                 .title = titleFn,
                 .poll = pollFn,
@@ -430,6 +496,21 @@ pub const Window = struct {
     }
     pub fn bufferTransport(w: Window) BufferTransport {
         return w.vtable.bufferTransport(w.ptr);
+    }
+    pub fn bufferSync(w: Window) BufferSync {
+        return w.vtable.bufferSync(w.ptr);
+    }
+    pub fn frameSync(w: Window) FrameSync {
+        return w.vtable.frameSync(w.ptr);
+    }
+    pub fn vsync(w: Window) bool {
+        return w.vtable.vsync(w.ptr);
+    }
+    pub fn refreshHz(w: Window) f32 {
+        return w.vtable.refreshHz(w.ptr);
+    }
+    pub fn waylandExtensions(w: Window) []const []const u8 {
+        return w.vtable.waylandExtensions(w.ptr);
     }
     pub fn decorations(w: Window) Decorations {
         return w.vtable.decorations(w.ptr);

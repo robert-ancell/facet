@@ -361,13 +361,23 @@ pub const Context = struct {
     }
 };
 
-/// Describes the active windowing platform, surface buffer transport, and
-/// rendering backend for the UI.
+/// Describes the active windowing platform, surface buffer transport,
+/// synchronization protocols, and rendering backend for the UI.
 pub const BackendInfo = struct {
     /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
     platform: window_mod.Platform = .headless,
     /// Surface buffer transport (`wl_shm`, `linux_dmabuf`, `memory`, `swapchain`, `custom`).
     buffer_transport: window_mod.BufferTransport = .memory,
+    /// Buffer synchronization mechanism (`none`, `implicit`, `linux_drm_syncobj_v1`).
+    buffer_sync: window_mod.BufferSync = .none,
+    /// Active frame pacing and vertical synchronization protocols.
+    frame_sync: window_mod.FrameSync = .{},
+    /// Whether vertical synchronization is active on the window surface.
+    vsync: bool = false,
+    /// Display refresh rate in Hz (from `wp_presentation`), or `0.0` if unknown.
+    refresh_hz: f32 = 0.0,
+    /// Active Wayland protocol extensions bound by the window backend.
+    wayland_extensions: []const []const u8 = &.{},
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `custom`).
     renderer: gfx.RenderBackend = .software,
     /// Window decoration mode (`none`, `client`, `server`).
@@ -384,6 +394,13 @@ pub const BackendInfo = struct {
     maximized: bool = false,
     fullscreen: bool = false,
     tiled: bool = false,
+
+    pub fn hasWaylandExtension(info: BackendInfo, ext_name: []const u8) bool {
+        for (info.wayland_extensions) |ext| {
+            if (std.mem.eql(u8, ext, ext_name)) return true;
+        }
+        return false;
+    }
 };
 
 pub const Edges = struct {

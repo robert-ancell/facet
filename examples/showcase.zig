@@ -983,6 +983,63 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
     else
         "Floating";
 
+    const sync_text = if (info.refresh_hz > 0)
+        cx.fmt("Frame pacing: {s} ({d:.1} Hz)  ·  Buffer sync: {s}", .{
+            if (info.vsync) "VSync enabled" else "Uncapped",
+            info.refresh_hz,
+            info.buffer_sync.name(),
+        })
+    else
+        cx.fmt("Frame pacing: {s}  ·  Buffer sync: {s}", .{
+            if (info.vsync) "VSync enabled" else "Uncapped",
+            info.buffer_sync.name(),
+        });
+
+    const vsync_badge = if (info.refresh_hz > 0)
+        cx.fmt("{s} · {d:.0} Hz", .{ if (info.vsync) "VSync" else "Off", info.refresh_hz })
+    else if (info.vsync)
+        "VSync ON"
+    else
+        "VSync OFF";
+
+    const ext_section: facet.Widget = if (info.wayland_extensions.len > 0) blk: {
+        const rows_list = cx.arena.alloc(facet.Widget, info.wayland_extensions.len) catch unreachable;
+        var row_count: usize = 0;
+        var i: usize = 0;
+        while (i < info.wayland_extensions.len) {
+            const row_chips = cx.arena.alloc(facet.Widget, 4) catch unreachable;
+            var chip_count: usize = 0;
+            var row_chars: usize = 0;
+            while (i < info.wayland_extensions.len and chip_count < 4) {
+                const ext = info.wayland_extensions[i];
+                if (chip_count > 0 and row_chars + ext.len > 56) break;
+                row_chips[chip_count] = cx.make(facet.Chip{
+                    .label = ext,
+                    .selected = true,
+                });
+                chip_count += 1;
+                row_chars += ext.len + 4;
+                i += 1;
+            }
+            rows_list[row_count] = cx.make(facet.Row{
+                .spacing = 8,
+                .main_axis_size = .min,
+                .cross_axis_alignment = .center,
+                .children = row_chips[0..chip_count],
+            });
+            row_count += 1;
+        }
+        break :blk cx.make(facet.Column{
+            .main_axis_size = .min,
+            .cross_axis_alignment = .start,
+            .spacing = 8,
+            .children = rows_list[0..row_count],
+        });
+    } else cx.make(facet.Text{
+        .text = "No Wayland extensions active (non-Wayland or headless backend)",
+        .style = .{ .size = 13, .color = t.on_surface_variant },
+    });
+
     return cx.make(facet.Column{
         .main_axis_size = .min,
         .cross_axis_alignment = .stretch,
@@ -1066,7 +1123,7 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 },
             }),
             cx.make(facet.Divider{}),
-            sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, decoration mode, and rendering pipeline"),
+            sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, synchronization, decoration mode, and rendering pipeline"),
             cx.make(facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
@@ -1097,6 +1154,29 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .children = &.{
+                    cx.make(facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
+                    cx.make(facet.Chip{ .label = "Implicit", .selected = info.buffer_sync == .implicit }),
+                    cx.make(facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = info.buffer_sync == .linux_drm_syncobj_v1 }),
+                    cx.make(facet.Chip{ .label = "None", .selected = info.buffer_sync == .none }),
+                },
+            }),
+            cx.make(facet.Row{
+                .spacing = 8,
+                .main_axis_size = .min,
+                .cross_axis_alignment = .center,
+                .children = &.{
+                    cx.make(facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
+                    cx.make(facet.Chip{ .label = "wl_surface.frame", .selected = info.frame_sync.frame_callback }),
+                    cx.make(facet.Chip{ .label = "wp_presentation", .selected = info.frame_sync.presentation_time }),
+                    cx.make(facet.Chip{ .label = "wp_fifo_v1", .selected = info.frame_sync.fifo_v1 }),
+                    cx.make(facet.Chip{ .label = "wp_commit_timing_v1", .selected = info.frame_sync.commit_timing_v1 }),
+                },
+            }),
+            cx.make(facet.Row{
+                .spacing = 8,
+                .main_axis_size = .min,
+                .cross_axis_alignment = .center,
+                .children = &.{
                     cx.make(facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
                     cx.make(facet.Chip{ .label = "Client-side (CSD)", .selected = info.decorations == .client }),
                     cx.make(facet.Chip{ .label = "Server-side (SSD)", .selected = info.decorations == .server }),
@@ -1115,7 +1195,14 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                 },
             }),
             cx.make(facet.Divider{}),
-            sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, window decorations, window state, and input configuration"),
+            sectionHeading(
+                cx,
+                "Wayland Extensions",
+                cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{info.wayland_extensions.len}),
+            ),
+            ext_section,
+            cx.make(facet.Divider{}),
+            sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, VSync & synchronization, window decorations, window state, and input configuration"),
             cx.make(facet.Card{
                 .variant = .outlined,
                 .padding = .all(4),
@@ -1131,6 +1218,13 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
                                 .label = cx.fmt("{s} ({s})", .{ info.platform.name(), info.buffer_transport.name() }),
                                 .color = t.primary,
                             }),
+                        }),
+                        cx.make(facet.Divider{ .inset = 16 }),
+                        cx.make(facet.ListItem{
+                            .headline = "VSync & Frame Synchronization",
+                            .supporting_text = sync_text,
+                            .leading_icon = .speed,
+                            .trailing = cx.make(facet.Badge{ .label = vsync_badge, .color = t.primary }),
                         }),
                         cx.make(facet.Divider{ .inset = 16 }),
                         cx.make(facet.ListItem{
