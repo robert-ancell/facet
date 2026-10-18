@@ -372,12 +372,11 @@ pub const BackendInfo = struct {
     buffer_sync: window_mod.BufferSync = .none,
     /// Active frame pacing and vertical synchronization protocols.
     frame_sync: window_mod.FrameSync = .{},
-    /// Whether vertical synchronization is active on the window surface.
-    vsync: bool = false,
     /// Display refresh rate in Hz (from `wp_presentation`), or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
-    /// Active Wayland protocol extensions bound by the window backend.
-    wayland_extensions: []const []const u8 = &.{},
+    /// The window system's protocol extensions the window uses (for
+    /// Wayland, the global interfaces bound).
+    extensions: []const []const u8 = &.{},
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `custom`).
     renderer: gfx.RenderBackend = .software,
     /// Window decoration mode (`none`, `client`, `server`).
@@ -395,8 +394,8 @@ pub const BackendInfo = struct {
     fullscreen: bool = false,
     tiled: bool = false,
 
-    pub fn hasWaylandExtension(info: BackendInfo, ext_name: []const u8) bool {
-        for (info.wayland_extensions) |ext| {
+    pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
+        for (info.extensions) |ext| {
             if (std.mem.eql(u8, ext, ext_name)) return true;
         }
         return false;

@@ -173,16 +173,21 @@ pub const Decorations = enum {
     }
 };
 
-/// Surface buffer synchronization mechanism used between client and compositor.
+/// How the window system knows a GPU buffer's drawing is finished (and
+/// the window when it may draw in it again).
 pub const BufferSync = enum {
+    /// There is nothing to wait for: the buffers are in CPU memory
+    /// (`wl_shm`, headless).
     none,
+    /// Fences the kernel keeps with each buffer (dmabuf implicit sync).
     implicit,
+    /// Explicit timeline points (`wp_linux_drm_syncobj_v1`).
     linux_drm_syncobj_v1,
 
     pub fn name(s: BufferSync) []const u8 {
         return switch (s) {
             .none => "None",
-            .implicit => "Implicit (wl_buffer.release)",
+            .implicit => "Implicit (dma-buf fences)",
             .linux_drm_syncobj_v1 => "wp_linux_drm_syncobj_v1",
         };
     }
@@ -190,6 +195,7 @@ pub const BufferSync = enum {
 
 /// Active frame pacing and vertical synchronization protocols on the surface.
 pub const FrameSync = packed struct(u8) {
+    /// Frames are shown at most once a refresh, without tearing.
     vsync: bool = false,
     frame_callback: bool = false,
     presentation_time: bool = false,
@@ -208,9 +214,8 @@ pub const Window = struct {
         bufferTransport: *const fn (ptr: *anyopaque) BufferTransport,
         bufferSync: *const fn (ptr: *anyopaque) BufferSync,
         frameSync: *const fn (ptr: *anyopaque) FrameSync,
-        vsync: *const fn (ptr: *anyopaque) bool,
         refreshHz: *const fn (ptr: *anyopaque) f32,
-        waylandExtensions: *const fn (ptr: *anyopaque) []const []const u8,
+        extensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) Decorations,
         title: *const fn (ptr: *anyopaque) []const u8,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
@@ -233,6 +238,7 @@ pub const Window = struct {
         startDrag: *const fn (ptr: *anyopaque, mime_type: []const u8, bytes: []const u8, actions: u32) bool,
         takeDrop: *const fn (ptr: *anyopaque) ?DroppedData,
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
+        setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
         layout: *const fn (ptr: *anyopaque) Keyboard,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
@@ -276,20 +282,12 @@ pub const Window = struct {
             fn bufferSyncFn(p: *anyopaque) BufferSync {
                 if (@hasDecl(T, "bufferSync")) return self(p).bufferSync();
                 if (@hasField(T, "buffer_sync")) return self(p).buffer_sync;
-                return switch (platformFn(p)) {
-                    .headless => .none,
-                    else => .implicit,
-                };
+                return .none;
             }
             fn frameSyncFn(p: *anyopaque) FrameSync {
                 if (@hasDecl(T, "frameSync")) return self(p).frameSync();
                 if (@hasField(T, "frame_sync")) return self(p).frame_sync;
-                return .{ .vsync = vsyncFn(p) };
-            }
-            fn vsyncFn(p: *anyopaque) bool {
-                if (@hasDecl(T, "isVsync")) return self(p).isVsync();
-                if (@hasField(T, "vsync")) return self(p).vsync;
-                return platformFn(p) != .headless;
+                return .{};
             }
             fn refreshHzFn(p: *anyopaque) f32 {
                 if (@hasDecl(T, "refreshHz")) return self(p).refreshHz();
@@ -299,9 +297,8 @@ pub const Window = struct {
                 }
                 return 0.0;
             }
-            fn waylandExtensionsFn(p: *anyopaque) []const []const u8 {
-                if (@hasDecl(T, "waylandExtensions")) return self(p).waylandExtensions();
-                if (@hasField(T, "wayland_extensions")) return self(p).wayland_extensions;
+            fn extensionsFn(p: *anyopaque) []const []const u8 {
+                if (@hasDecl(T, "extensions")) return self(p).extensions();
                 return &.{};
             }
             fn decorationsFn(p: *anyopaque) Decorations {
@@ -398,6 +395,9 @@ pub const Window = struct {
                 if (@hasDecl(T, "takeDrop")) return self(p).takeDrop();
                 return null;
             }
+            fn setPresentationTimeFn(p: *anyopaque, target_ns: u64) void {
+                if (@hasDecl(T, "setPresentationTime")) self(p).setPresentationTime(target_ns);
+            }
             fn nextPresentationNsFn(p: *anyopaque, now_ns: u64) u64 {
                 if (@hasDecl(T, "nextPresentationNs")) return self(p).nextPresentationNs(now_ns);
                 return now_ns;
@@ -450,9 +450,8 @@ pub const Window = struct {
                 .bufferTransport = bufferTransportFn,
                 .bufferSync = bufferSyncFn,
                 .frameSync = frameSyncFn,
-                .vsync = vsyncFn,
                 .refreshHz = refreshHzFn,
-                .waylandExtensions = waylandExtensionsFn,
+                .extensions = extensionsFn,
                 .decorations = decorationsFn,
                 .title = titleFn,
                 .poll = pollFn,
@@ -475,6 +474,7 @@ pub const Window = struct {
                 .startDrag = startDragFn,
                 .takeDrop = takeDropFn,
                 .nextPresentationNs = nextPresentationNsFn,
+                .setPresentationTime = setPresentationTimeFn,
                 .layout = layoutFn,
                 .refreshNs = refreshNsFn,
                 .applyConfigure = applyConfigureFn,
@@ -503,14 +503,13 @@ pub const Window = struct {
     pub fn frameSync(w: Window) FrameSync {
         return w.vtable.frameSync(w.ptr);
     }
-    pub fn vsync(w: Window) bool {
-        return w.vtable.vsync(w.ptr);
-    }
     pub fn refreshHz(w: Window) f32 {
         return w.vtable.refreshHz(w.ptr);
     }
-    pub fn waylandExtensions(w: Window) []const []const u8 {
-        return w.vtable.waylandExtensions(w.ptr);
+    /// The window system's protocol extensions the window uses (for
+    /// Wayland, the global interfaces bound).
+    pub fn extensions(w: Window) []const []const u8 {
+        return w.vtable.extensions(w.ptr);
     }
     pub fn decorations(w: Window) Decorations {
         return w.vtable.decorations(w.ptr);
@@ -576,6 +575,12 @@ pub const Window = struct {
     }
     pub fn takeDrop(w: Window) ?DroppedData {
         return w.vtable.takeDrop(w.ptr);
+    }
+    /// Says the next frame shown is drawn for `target_ns` (on the monotonic
+    /// clock, as `nextPresentationNs` gives): a window that can, does not
+    /// show it before then.
+    pub fn setPresentationTime(w: Window, target_ns: u64) void {
+        w.vtable.setPresentationTime(w.ptr, target_ns);
     }
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);

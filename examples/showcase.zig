@@ -985,33 +985,33 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
 
     const sync_text = if (info.refresh_hz > 0)
         cx.fmt("Frame pacing: {s} ({d:.1} Hz)  ·  Buffer sync: {s}", .{
-            if (info.vsync) "VSync enabled" else "Uncapped",
+            if (info.frame_sync.vsync) "VSync enabled" else "Uncapped",
             info.refresh_hz,
             info.buffer_sync.name(),
         })
     else
         cx.fmt("Frame pacing: {s}  ·  Buffer sync: {s}", .{
-            if (info.vsync) "VSync enabled" else "Uncapped",
+            if (info.frame_sync.vsync) "VSync enabled" else "Uncapped",
             info.buffer_sync.name(),
         });
 
     const vsync_badge = if (info.refresh_hz > 0)
-        cx.fmt("{s} · {d:.0} Hz", .{ if (info.vsync) "VSync" else "Off", info.refresh_hz })
-    else if (info.vsync)
+        cx.fmt("{s} · {d:.0} Hz", .{ if (info.frame_sync.vsync) "VSync" else "Off", info.refresh_hz })
+    else if (info.frame_sync.vsync)
         "VSync ON"
     else
         "VSync OFF";
 
-    const ext_section: facet.Widget = if (info.wayland_extensions.len > 0) blk: {
-        const rows_list = cx.arena.alloc(facet.Widget, info.wayland_extensions.len) catch unreachable;
+    const ext_section: facet.Widget = if (info.extensions.len > 0) blk: {
+        const rows_list = cx.arena.alloc(facet.Widget, info.extensions.len) catch unreachable;
         var row_count: usize = 0;
         var i: usize = 0;
-        while (i < info.wayland_extensions.len) {
+        while (i < info.extensions.len) {
             const row_chips = cx.arena.alloc(facet.Widget, 4) catch unreachable;
             var chip_count: usize = 0;
             var row_chars: usize = 0;
-            while (i < info.wayland_extensions.len and chip_count < 4) {
-                const ext = info.wayland_extensions[i];
+            while (i < info.extensions.len and chip_count < 4) {
+                const ext = info.extensions[i];
                 if (chip_count > 0 and row_chars + ext.len > 56) break;
                 row_chips[chip_count] = cx.make(facet.Chip{
                     .label = ext,
@@ -1198,7 +1198,7 @@ fn buildBackendPage(cx: *facet.Context) facet.Widget {
             sectionHeading(
                 cx,
                 "Wayland Extensions",
-                cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{info.wayland_extensions.len}),
+                cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{info.extensions.len}),
             ),
             ext_section,
             cx.make(facet.Divider{}),

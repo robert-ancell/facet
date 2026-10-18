@@ -324,7 +324,6 @@ pub const Buffer = struct {
 
     pub fn beginCpuAccess(b: *Buffer) !void {
         const bo = b.bo orelse return;
-        if (b.release_point > 0) _ = b.waitReady(100 * std.time.ns_per_ms);
         if (b.map_data != null) return;
         const gbm = b.gbm orelse return error.OutOfMemory;
         var map_stride: u32 = 0;
@@ -512,18 +511,43 @@ pub const WaylandWindow = struct {
         return w.dmabuf_dev.?.supports_syncobj;
     }
 
+    /// Stops using explicit synchronization (`wp_linux_drm_syncobj_v1`) for
+    /// the window, for good. It is all or nothing: while the surface has a
+    /// syncobj surface, every buffer committed must have timeline points,
+    /// and must be a dmabuf. Points already committed are still signalled.
+    fn stopSyncobj(w: *WaylandWindow) void {
+        if (w.syncobj_surface) |ss| {
+            if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(ss.id);
+            w.syncobj_surface = null;
+        }
+        if (w.drm_syncobj_manager) |mgr| {
+            if (mgr.request(p.wp_linux_drm_syncobj_manager_v1.request.destroy)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            w.conn.forget(mgr.id);
+            w.drm_syncobj_manager = null;
+        }
+        w.updateExtensions();
+    }
+
     pub fn bufferTransport(w: *const WaylandWindow) window_mod.BufferTransport {
         return if (w.usingDmabuf()) .linux_dmabuf else .wl_shm;
     }
 
     pub fn bufferSync(w: *const WaylandWindow) window_mod.BufferSync {
-        return if (w.usingDrmSyncobj()) .linux_drm_syncobj_v1 else .implicit;
+        if (w.usingDrmSyncobj()) return .linux_drm_syncobj_v1;
+        return if (w.usingDmabuf()) .implicit else .none;
     }
 
     pub fn frameSync(w: *const WaylandWindow) window_mod.FrameSync {
         return .{
             .vsync = w.vsync,
-            .frame_callback = true,
+            .frame_callback = w.vsync,
             .presentation_time = w.presentation != null,
             .fifo_v1 = w.fifo != null,
             .commit_timing_v1 = w.commit_timer != null,
@@ -535,7 +559,7 @@ pub const WaylandWindow = struct {
         return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(w.refresh_ns));
     }
 
-    pub fn waylandExtensions(w: *const WaylandWindow) []const []const u8 {
+    pub fn extensions(w: *const WaylandWindow) []const []const u8 {
         return w.extensions_buf[0..w.extensions_len];
     }
 
@@ -609,6 +633,8 @@ pub const WaylandWindow = struct {
     fifo_manager: ?client.Proxy = null,
     fifo: ?client.Proxy = null,
     fifo_barrier_pending: bool = false,
+    /// When the next frame shown is drawn for (`setPresentationTime`).
+    target_ns: ?u64 = null,
     commit_timing_manager: ?client.Proxy = null,
     commit_timer: ?client.Proxy = null,
     extensions_buf: [16][]const u8 = undefined,
@@ -1052,6 +1078,12 @@ pub const WaylandWindow = struct {
         return w.clipboard.takeDrop();
     }
 
+    /// The next frame shown is drawn for `target_ns`: with
+    /// `wp_commit_timing_v1`, it is not shown before then.
+    pub fn setPresentationTime(w: *WaylandWindow, target_ns: u64) void {
+        w.target_ns = target_ns;
+    }
+
     pub fn nextPresentationNs(w: *const WaylandWindow, now_ns: u64) u64 {
         if (w.presented_ns == 0 or w.refresh_ns == 0) return now_ns;
         if (now_ns < w.presented_ns) return w.presented_ns + w.refresh_ns;
@@ -1254,19 +1286,6 @@ pub const WaylandWindow = struct {
         w.back = null;
     }
 
-    /// Waits for a pending `wl_surface.frame` callback (`frame_pending`) when
-    /// vertical synchronization is enabled, coalescing incoming input events.
-    pub fn waitForFrame(w: *WaylandWindow) !void {
-        if (!w.vsync or !w.frame_pending or w.closed or w.suspended) return;
-        const refresh = if (w.refresh_ns > 0) w.refresh_ns else 16 * std.time.ns_per_ms;
-        const deadline = nowNs() +| (refresh * 4);
-        while (w.vsync and w.frame_pending and !w.closed and !w.suspended) {
-            const now = nowNs();
-            if (now >= deadline) break;
-            try w.wait(deadline - now);
-        }
-    }
-
     fn showBuffer(w: *WaylandWindow, i: usize, damage: ?[]const gfx.Viewport) !void {
         while (w.vsync and w.frame_pending) {
             try w.conn.dispatch();
@@ -1364,12 +1383,19 @@ pub const WaylandWindow = struct {
                 sm.uint(ss.id).uint(w.surface.id).end();
                 w.syncobj_surface = ss;
             };
-            if (w.syncobj_surface) |ss| if (b.drm) |drm| if (drm.SyncobjTimelineSignal) |signal_fn| {
+            if (w.syncobj_surface != null) {
+                // The CPU has finished drawing: the buffer can be read now.
+                var handle = b.syncobj_handle;
+                var pt = b.syncobj_point + 1;
+                if (b.drm.?.SyncobjTimelineSignal.?(b.drm_fd, &handle, &pt, 1) != 0) {
+                    // An acquire point that is never signalled would hang
+                    // the surface: go without explicit synchronization.
+                    w.stopSyncobj();
+                }
+            }
+            if (w.syncobj_surface) |ss| {
                 const acquire_pt = b.syncobj_point + 1;
                 const release_pt = acquire_pt + 1;
-                var handle = b.syncobj_handle;
-                var pt = acquire_pt;
-                _ = signal_fn(b.drm_fd, &handle, &pt, 1);
                 b.syncobj_point = release_pt;
                 b.release_point = release_pt;
 
@@ -1377,7 +1403,7 @@ pub const WaylandWindow = struct {
                 sm.uint(b.syncobj_timeline.id).uint(@intCast(acquire_pt >> 32)).uint(@truncate(acquire_pt)).end();
                 sm = try ss.request(p.wp_linux_drm_syncobj_surface_v1.request.set_release_point);
                 sm.uint(b.syncobj_timeline.id).uint(@intCast(release_pt >> 32)).uint(@truncate(release_pt)).end();
-            };
+            }
         }
         if (w.vsync) {
             const cb = try w.conn.newObject(.{ .ptr = w, .handler = frameDone });
@@ -1392,18 +1418,22 @@ pub const WaylandWindow = struct {
                 m.end();
                 w.fifo_barrier_pending = true;
             }
-            if (w.commit_timer) |timer| {
-                if (w.presented_ns > 0 and w.refresh_ns > 0 and w.presentation_clock_id == p.wp_presentation.clock.monotonic) {
-                    const earliest_ns = w.presented_ns + (w.refresh_ns / 2);
-                    if (nowNs() < earliest_ns) {
-                        const secs = earliest_ns / std.time.ns_per_s;
-                        const nsec: u32 = @intCast(earliest_ns % std.time.ns_per_s);
-                        m = try timer.request(p.wp_commit_timer_v1.request.set_timestamp);
-                        m.uint(@intCast(secs >> 32)).uint(@truncate(secs)).uint(nsec).end();
-                    }
+        }
+        if (w.commit_timer) |timer| if (w.target_ns) |target_ns| {
+            // Not before half a refresh ahead of the time it is drawn
+            // for, so that it shows at the refresh nearest that time
+            // (not the one after, if the time is a little late).
+            if (w.refresh_ns > 0 and w.presentation_clock_id == p.wp_presentation.clock.monotonic) {
+                const earliest_ns = target_ns -| w.refresh_ns / 2;
+                if (nowNs() < earliest_ns) {
+                    const secs = earliest_ns / std.time.ns_per_s;
+                    const nsec: u32 = @intCast(earliest_ns % std.time.ns_per_s);
+                    m = try timer.request(p.wp_commit_timer_v1.request.set_timestamp);
+                    m.uint(@intCast(secs >> 32)).uint(@truncate(secs)).uint(nsec).end();
                 }
             }
-        }
+        };
+        w.target_ns = null;
         if (w.presentation) |pres| {
             const fb = try w.conn.newObject(.{ .ptr = w, .handler = feedbackEvent });
             m = try pres.request(p.wp_presentation.request.feedback);
@@ -1486,14 +1516,10 @@ pub const WaylandWindow = struct {
                 return buf;
             } else |err| {
                 if (w.shm.id == 0) return err;
-                if (w.syncobj_surface) |ss| {
-                    if (ss.request(p.wp_linux_drm_syncobj_surface_v1.request.destroy)) |m0| {
-                        var m = m0;
-                        m.end();
-                    } else |_| {}
-                    w.conn.forget(ss.id);
-                    w.syncobj_surface = null;
-                }
+                // wl_shm buffers cannot be explicitly synchronized, and the
+                // dmabuf buffers belong to the device being closed.
+                w.stopSyncobj();
+                for (&w.buffers, 0..) |*other, i| if (i != slot) if (other.*) |*b| if (b.bo != null) w.freeBuffer(b, other);
                 if (w.dmabuf_dev) |*dev| dev.close();
                 w.dmabuf_dev = null;
                 w.updateExtensions();
@@ -1535,6 +1561,11 @@ pub const WaylandWindow = struct {
 
         var syncobj_handle: u32 = 0;
         var syncobj_timeline: client.Proxy = .{};
+        defer if (syncobj_timeline.id == 0 and w.usingDrmSyncobj()) {
+            // Every buffer needs a timeline while explicit synchronization
+            // is on (or committing it is a protocol error).
+            w.stopSyncobj();
+        };
         if (w.usingDrmSyncobj()) if (w.drm_syncobj_manager) |mgr| {
             var handle: u32 = 0;
             if (dev.drm.SyncobjCreate.?(dev.drm_fd, 0, &handle) == 0) {
@@ -1615,8 +1646,9 @@ pub const WaylandWindow = struct {
         };
     }
 
+    /// Frees the buffer. The compositor may still be reading it: it keeps
+    /// its own reference to the memory, and the timeline's points stay set.
     fn freeBuffer(w: *WaylandWindow, b: *Buffer, slot: *?Buffer) void {
-        if (b.release_point > 0) _ = b.waitReady(100 * std.time.ns_per_ms);
         b.endCpuAccess();
         if (b.syncobj_timeline.id != 0) {
             if (b.syncobj_timeline.request(p.wp_linux_drm_syncobj_timeline_v1.request.destroy)) |m0| {
@@ -2379,7 +2411,7 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     try std.testing.expect(fs.fifo_v1);
     try std.testing.expect(fs.commit_timing_v1);
 
-    const exts = win.waylandExtensions();
+    const exts = win.extensions();
     try std.testing.expectEqual(@as(usize, 5), exts.len);
     var has_fifo = false;
     var has_commit_timing = false;
@@ -2404,4 +2436,18 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     try std.testing.expectEqual(@as(u64, 16_666_666), win.refresh_ns);
     const hz = win.refreshHz();
     try std.testing.expect(@abs(hz - 60.0) < 0.1);
+}
+
+test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only while it has a syncobj surface" {
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = undefined,
+        .clipboard = .{ .gpa = std.testing.allocator },
+    };
+    try std.testing.expectEqual(window_mod.BufferSync.none, win.bufferSync());
+    win.vsync = false;
+    try std.testing.expect(!win.frameSync().vsync);
+    try std.testing.expect(!win.frameSync().frame_callback);
+    win.syncobj_surface = .{ .id = 11 };
+    try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
 }

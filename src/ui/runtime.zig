@@ -332,9 +332,8 @@ pub const Ui = struct {
             .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
             .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
             .frame_sync = if (ui.win) |w| w.frameSync() else .{},
-            .vsync = if (ui.win) |w| w.vsync() else false,
             .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
-            .wayland_extensions = if (ui.win) |w| w.waylandExtensions() else &.{},
+            .extensions = if (ui.win) |w| w.extensions() else &.{},
             .renderer = if (ui.renderer) |r| r.backend() else .software,
             .decorations = ui.decorations,
             .logical_size = lsize,
@@ -1185,7 +1184,9 @@ pub const App = struct {
         if (!a.wantsFrame() or a.win.isFramePending()) return;
         a.dirty = false;
         const size = a.win.size();
-        a.ui.frame(size[0], size[1], a.win.nextPresentationNs(now_ns), root);
+        const target_ns = a.win.nextPresentationNs(now_ns);
+        a.ui.frame(size[0], size[1], target_ns, root);
+        a.win.setPresentationTime(target_ns);
         const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
         if (try a.ui.present(a.win, clear)) a.idle = false;
     }
