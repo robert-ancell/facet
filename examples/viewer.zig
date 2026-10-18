@@ -105,6 +105,25 @@ pub fn Viewer(comptime Backend: type) type {
             speed: f32 = 1.0,
             paused: bool = false,
             last_ns: ?u64 = null,
+            /// Frames counted since `fps_since`, and the rate over the last
+            /// half second counted.
+            fps_frames: u32 = 0,
+            fps_since: ?u64 = null,
+            fps: f32 = 0,
+
+            fn countFrame(s: *State, now: u64) void {
+                const since = s.fps_since orelse {
+                    s.fps_since = now;
+                    s.fps_frames = 0;
+                    return;
+                };
+                s.fps_frames += 1;
+                const elapsed = now -| since;
+                if (elapsed < std.time.ns_per_s / 2) return;
+                s.fps = @as(f32, @floatFromInt(s.fps_frames)) * std.time.ns_per_s / @as(f32, @floatFromInt(elapsed));
+                s.fps_since = now;
+                s.fps_frames = 0;
+            }
 
             pub fn chooseShape(s: *State, sh: Shape) void {
                 s.shape = sh;
@@ -141,6 +160,8 @@ pub fn Viewer(comptime Backend: type) type {
             pub fn togglePause(s: *State) void {
                 s.paused = !s.paused;
                 s.last_ns = null;
+                s.fps_since = null;
+                s.fps = 0;
             }
 
             pub fn resetView(s: *State) void {
@@ -164,6 +185,7 @@ pub fn Viewer(comptime Backend: type) type {
                     state.roll = @mod(state.roll + dt_s * 0.45 * state.speed, std.math.tau);
                 }
                 state.last_ns = now;
+                state.countFrame(now);
                 cx.requestFrame();
             } else {
                 state.last_ns = null;
@@ -197,7 +219,8 @@ pub fn Viewer(comptime Backend: type) type {
                         .child = cx.make(facet.Padding{
                             .padding = .symmetric(12, 6),
                             .child = cx.make(facet.Text{
-                                .text = cx.fmt(Backend.name ++ "  ·  {s}  ·  {s} ({d} triangles)  ·  Drag to orbit", .{
+                                .text = cx.fmt(Backend.name ++ "  ·  {s}  ·  {s}  ·  {s} ({d} triangles)  ·  Drag to orbit", .{
+                                    if (state.paused) "Paused" else if (state.fps == 0) "– FPS" else cx.fmt("{d:.0} FPS", .{state.fps}),
                                     msaa_label,
                                     state.shape.name(),
                                     state.shape.triangles(),
