@@ -82,7 +82,7 @@ pub const TitleBar = struct {
             buttons[n] = cx.make(BarButton{ .on_press = f, .size = button_size, .icon = .close });
             n += 1;
         }
-        return cx.make(DragArea{ .on_drag = on_drag, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(Bar{
+        return cx.make(DragArea{ .on_drag = on_drag, .on_maximize = on_maximize, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(Bar{
             .title = self.title,
             .children = &.{
                 cx.make(Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true }),
@@ -123,16 +123,21 @@ const Bar = struct {
     }
 };
 
-/// Calls `on_drag` when pressed (the buttons on it get their presses
-/// first). It does not take the pointer: the shell does, to move the
-/// window, so the release never comes here.
+/// Calls `on_drag` when pressed, and `on_maximize` instead on the second
+/// click of a double click (the buttons on it get their presses first). It
+/// does not take the pointer: the shell does, to move the window, so the
+/// release never comes here.
 const DragArea = struct {
     on_drag: ?widget.Callback,
+    on_maximize: ?widget.Callback,
     child: ?Widget = null,
 
     pub fn event(self: *const DragArea, _: *Node, e: widget.Event) bool {
         switch (e) {
-            .press => |p| if (p.button == btn_left) if (self.on_drag) |f| f.call(),
+            .press => |p| if (p.button == btn_left) {
+                const double = p.clicks % 2 == 0 and self.on_maximize != null;
+                if (if (double) self.on_maximize else self.on_drag) |f| f.call();
+            },
             else => {},
         }
         return false;
@@ -193,6 +198,56 @@ test "the title bar's buttons, and dragging it" {
     u.pointerButton(max_at, btn_left, false);
     try testing.expectEqual(@as(u32, 1), app.maximizes);
     try testing.expectEqual(@as(u32, 1), app.drags);
+}
+
+test "double clicking the title bar toggles maximize, instead of dragging" {
+    const Ui = @import("runtime.zig").Ui;
+    const font = @import("font");
+    const f = try font.Font.init(font.default_font_data);
+    const u = try Ui.create(testing.allocator, &f);
+    defer u.destroy();
+    const App = struct {
+        drags: u32 = 0,
+        maximizes: u32 = 0,
+        fn drag(a: *@This()) void {
+            a.drags += 1;
+        }
+        fn maximize(a: *@This()) void {
+            a.maximizes += 1;
+        }
+    };
+    var app: App = .{};
+    const Root = struct {
+        app: *App,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = &.{
+                cx.make(TitleBar{ .title = "Settings", .on_maximize = .of(self.app, App.maximize), .on_drag = .of(self.app, App.drag) }),
+            } });
+        }
+    };
+    u.frame(800, 600, 0, Root{ .app = &app });
+    const ms = std.time.ns_per_ms;
+    const at: geometry.Point = .{ 400, 22 };
+    u.pointerMotion(at);
+    // The first press drags; the shell takes the pointer, so no release
+    // comes. The second, soon after, maximizes.
+    u.pointerButtonAt(at, btn_left, true, 1000 * ms);
+    u.pointerButtonAt(at, btn_left, true, 1200 * ms);
+    try testing.expectEqual(@as(u32, 1), app.drags);
+    try testing.expectEqual(@as(u32, 1), app.maximizes);
+    // A third drags again, and a fourth restores.
+    u.pointerButtonAt(at, btn_left, true, 1400 * ms);
+    u.pointerButtonAt(at, btn_left, true, 1600 * ms);
+    try testing.expectEqual(@as(u32, 2), app.drags);
+    try testing.expectEqual(@as(u32, 2), app.maximizes);
+    // Presses too slow, or too far apart, are separate clicks.
+    u.pointerButtonAt(at, btn_left, true, 3000 * ms);
+    u.pointerButtonAt(at, btn_left, true, 3000 * ms + Ui.multi_click_ns + 1);
+    const away: geometry.Point = .{ 400 + Ui.multi_click_slop + 1, 22 };
+    u.pointerMotion(away);
+    u.pointerButtonAt(away, btn_left, true, 3000 * ms + Ui.multi_click_ns + 100 * ms);
+    try testing.expectEqual(@as(u32, 5), app.drags);
+    try testing.expectEqual(@as(u32, 2), app.maximizes);
 }
 
 test "a fullscreen window has no title bar" {

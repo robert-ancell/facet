@@ -114,6 +114,8 @@ pub const Ui = struct {
     /// The button that went down when it was taken (only its release
     /// gives it back).
     captured_button: u32 = widget.btn_left,
+    /// The last press, to count the clicks of a double click.
+    last_press: ?struct { ns: u64, pos: Point, button: u32, clicks: u8 } = null,
     /// The widget keys go to.
     focused: ?*Node = null,
     shift: u2 = 0,
@@ -1007,7 +1009,17 @@ pub const Ui = struct {
         if (ui.win) |win| ui.syncCursor(win);
     }
 
+    /// Presses this close together, in time and space, are one double
+    /// (or triple...) click.
+    pub const multi_click_ns = 400 * std.time.ns_per_ms;
+    pub const multi_click_slop = 6;
+
     pub fn pointerButton(ui: *Ui, pos: Point, button: u32, pressed: bool) void {
+        ui.pointerButtonAt(pos, button, pressed, window_mod.nowNs());
+    }
+
+    /// `pointerButton`, at a time on the monotonic clock (`window.nowNs`).
+    pub fn pointerButtonAt(ui: *Ui, pos: Point, button: u32, pressed: bool, now_ns: u64) void {
         ui.pointer = pos;
         ui.updateHover(pos);
         ui.needs_frame = true;
@@ -1018,9 +1030,14 @@ pub const Ui = struct {
                 ui.closeMenu();
                 return;
             }
+            const clicks: u8 = if (ui.last_press) |last| if (last.button == button and
+                now_ns -| last.ns <= multi_click_ns and
+                @abs(pos[0] - last.pos[0]) <= multi_click_slop and
+                @abs(pos[1] - last.pos[1]) <= multi_click_slop) last.clicks +| 1 else 1 else 1;
+            ui.last_press = .{ .ns = now_ns, .pos = pos, .button = button, .clicks = clicks };
             if (ui.focused) |f| if (std.mem.indexOfScalar(*Node, ui.hovered.items, f) == null) ui.focus(null);
             if (button == widget.btn_right) for (ui.hovered.items) |n| if (send(n, .{ .context = local(n, pos) })) return;
-            for (ui.hovered.items) |n| if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button } })) {
+            for (ui.hovered.items) |n| if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button, .clicks = clicks } })) {
                 ui.captured = n;
                 ui.captured_button = button;
                 return;

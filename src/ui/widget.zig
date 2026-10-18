@@ -90,8 +90,10 @@ pub const Event = union(enum) {
     enter,
     leave,
     /// A button went down over it. Returning true takes the pointer: it
-    /// gets the release, wherever that is.
-    press: struct { pos: Point, button: u32 },
+    /// gets the release, wherever that is. `clicks` counts the presses in
+    /// quick succession at about the same place: 2 for the second of a
+    /// double click, 3 for a triple click, and so on.
+    press: struct { pos: Point, button: u32, clicks: u8 = 1 },
     release: struct { pos: Point, button: u32, inside: bool },
     /// The pointer moved, over it or while it has the pointer.
     motion: Point,
