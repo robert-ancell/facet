@@ -604,6 +604,7 @@ pub const VK_IMAGE_ASPECT_DEPTH_BIT: VkFlags = 0x00000002;
 pub const VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT: VkFlags = 0x00000001;
 pub const VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT: VkFlags = 0x00000002;
 pub const VK_MEMORY_PROPERTY_HOST_COHERENT_BIT: VkFlags = 0x00000004;
+pub const VK_MEMORY_PROPERTY_HOST_CACHED_BIT: VkFlags = 0x00000008;
 
 pub const VK_SHADER_STAGE_VERTEX_BIT: VkFlags = 0x00000001;
 pub const VK_SHADER_STAGE_FRAGMENT_BIT: VkFlags = 0x00000010;
@@ -1951,7 +1952,7 @@ const Owned2DContext = struct {
         if (self.vk.CreateBuffer(self.device, &buf_info, null, &self.staging_buf) != .success) return error.VkCreateBufferFailed;
         var buf_req: VkMemoryRequirements = undefined;
         self.vk.GetBufferMemoryRequirements(self.device, self.staging_buf, &buf_req);
-        const buf_mt = try self.findMemoryType(buf_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const buf_mt = try readbackMemoryType(self, buf_req.memoryTypeBits);
         const buf_alloc: VkMemoryAllocateInfo = .{
             .allocationSize = @max(buf_req.size, byte_size),
             .memoryTypeIndex = buf_mt,
@@ -2070,6 +2071,14 @@ const Owned2DContext = struct {
         }
     }
 };
+
+/// A host-visible memory type for a buffer the CPU reads back from: a
+/// cached one if there is one, since reading uncached memory is many times
+/// slower (10 ms instead of 0.25 ms for a 1.3 megapixel frame).
+fn readbackMemoryType(ctx: anytype, type_bits: u32) !u32 {
+    const host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    return ctx.findMemoryType(type_bits, host | VK_MEMORY_PROPERTY_HOST_CACHED_BIT) catch ctx.findMemoryType(type_bits, host);
+}
 
 /// Managed offscreen Vulkan 1.1+ context with configurable MSAA (`1`, `2`, `4`, `8` samples)
 /// render passes, dynamic uniform buffer (`gpu.uniforms`), pipeline builder, and
@@ -2720,7 +2729,7 @@ pub const OffscreenContext = struct {
         if (self.vk.CreateBuffer(self.device, &buf_info, null, &self.readback_buf) != .success) return error.VkCreateBufferFailed;
         var req: VkMemoryRequirements = undefined;
         self.vk.GetBufferMemoryRequirements(self.device, self.readback_buf, &req);
-        const mem_type = try self.findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const mem_type = try readbackMemoryType(self, req.memoryTypeBits);
         const alloc_info: VkMemoryAllocateInfo = .{
             .allocationSize = @max(req.size, byte_size),
             .memoryTypeIndex = mem_type,
