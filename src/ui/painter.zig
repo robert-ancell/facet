@@ -71,11 +71,21 @@ pub const Painter = struct {
     pub fn clipTo(p: *Painter, r: Rect) ?Rect {
         const old = p.clip;
         p.clip = intersect(p.clip, .{ .x = r.x + p.origin[0], .y = r.y + p.origin[1], .w = r.w, .h = r.h });
+        p.syncCanvasClip();
         return old;
     }
 
     pub fn restoreClip(p: *Painter, old: ?Rect) void {
         p.clip = old;
+        p.syncCanvasClip();
+    }
+
+    fn syncCanvasClip(p: *const Painter) void {
+        const items = p.ui.segments.items;
+        if (items.len > 0) switch (items[items.len - 1]) {
+            .canvas => |c| c.clip = if (p.clip) |cl| scaleRect(cl, c.scale) else null,
+            .gpu => {},
+        };
     }
 
     /// Adds a draw straight into the target frame over the widget's box,

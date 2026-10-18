@@ -72,6 +72,36 @@ pub const Document = struct {
         d.cursor = d.bytes.items.len;
     }
 
+    pub fn selectWordAt(d: *Document, index: usize) void {
+        const t = d.bytes.items;
+        if (t.len == 0) {
+            d.anchor = null;
+            d.cursor = 0;
+            return;
+        }
+        var pivot = d.snap(@min(index, t.len));
+        if (pivot == t.len) {
+            pivot = d.before(t.len);
+        } else if (pivot > 0 and charClassAt(t, pivot) != .word) {
+            const prev = d.before(pivot);
+            if (charClassAt(t, prev) == .word) pivot = prev;
+        }
+        const cls = charClassAt(t, pivot);
+        var start = pivot;
+        while (start > 0) {
+            const prev = d.before(start);
+            if (charClassAt(t, prev) != cls) break;
+            start = prev;
+        }
+        var end = d.after(pivot);
+        while (end < t.len) {
+            if (charClassAt(t, end) != cls) break;
+            end = d.after(end);
+        }
+        d.anchor = start;
+        d.cursor = end;
+    }
+
     /// Moves the cursor, extending the selection or dropping it.
     pub fn moveTo(d: *Document, to: usize, extend: bool) void {
         if (extend) {
@@ -209,6 +239,9 @@ pub const TextArea = struct {
         preedit_buf: [128]u8 = undefined,
         preedit_len: usize = 0,
         last_change_other: bool = false,
+        last_click_ns: u64 = 0,
+        last_click_pos: Point = .{ 0, 0 },
+        click_count: u8 = 0,
 
         pub fn deinit(s: *State) void {
             if (s.gpa) |g| {
@@ -439,9 +472,35 @@ pub const TextArea = struct {
             .press => |pr| {
                 if (pr.button != widget.btn_left) return false;
                 n.ui.focus(n);
-                d.moveTo(self.offsetAt(n, pr.pos), false);
-                d.anchor = d.cursor;
-                st.dragging = true;
+                const now = n.ui.now_ns;
+                const multi_click_ns = 400 * std.time.ns_per_ms;
+                const multi_click_slop = 6;
+                if (st.click_count > 0 and
+                    now -| st.last_click_ns <= multi_click_ns and
+                    @abs(pr.pos[0] - st.last_click_pos[0]) <= multi_click_slop and
+                    @abs(pr.pos[1] - st.last_click_pos[1]) <= multi_click_slop)
+                {
+                    st.click_count = if (st.click_count >= 3) 1 else st.click_count + 1;
+                } else {
+                    st.click_count = 1;
+                }
+                st.last_click_ns = now;
+                st.last_click_pos = pr.pos;
+                switch (st.click_count) {
+                    1 => {
+                        d.moveTo(self.offsetAt(n, pr.pos), false);
+                        d.anchor = d.cursor;
+                        st.dragging = true;
+                    },
+                    2 => {
+                        d.selectWordAt(self.offsetAt(n, pr.pos));
+                        st.dragging = false;
+                    },
+                    else => {
+                        d.selectAll();
+                        st.dragging = false;
+                    },
+                }
                 st.goal_x = null;
                 st.last_change_other = true;
                 n.ui.needs_frame = true;
@@ -625,6 +684,16 @@ pub const TextArea = struct {
         return best;
     }
 };
+
+const CharClass = enum { word, space, punct };
+
+fn charClassAt(text: []const u8, i: usize) CharClass {
+    const b = text[i];
+    if (b >= 0x80) return .word;
+    if (std.ascii.isAlphanumeric(b) or b == '_') return .word;
+    if (std.ascii.isWhitespace(b)) return .space;
+    return .punct;
+}
 
 /// The line (an index) the cursor at `offset` is on: at a wrap, the line
 /// after.

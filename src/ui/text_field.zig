@@ -81,6 +81,11 @@ pub const TextField = struct {
         toggle_hovered: bool = false,
         toggle_pressed: bool = false,
         on_changed: ?widget.ValueCallback([]const u8) = null,
+        /// Horizontal scroll offset in pixels.
+        scroll: f32 = 0,
+        last_click_ns: u64 = 0,
+        last_click_pos: geometry.Point = .{ 0, 0 },
+        click_count: u8 = 0,
         preedit_buf: [capacity]u8 = undefined,
         preedit_len: usize = 0,
         preedit_cursor_begin: i32 = 0,
@@ -198,6 +203,42 @@ pub const TextField = struct {
             s.cursor = s.len;
         }
 
+        /// Selects the word (or contiguous run of whitespace/punctuation)
+        /// at byte `index`.
+        pub fn selectWordAt(s: *State, index: usize) void {
+            if (s.len == 0) {
+                s.anchor = null;
+                s.cursor = 0;
+                return;
+            }
+            if (s.isObscured()) {
+                s.selectAll();
+                return;
+            }
+            const text_slice = s.buf[0..s.len];
+            var pivot = s.snap(@min(index, s.len));
+            if (pivot == s.len) {
+                pivot = s.before(s.len);
+            } else if (pivot > 0 and charClassAt(text_slice, pivot) != .word) {
+                const prev = s.before(pivot);
+                if (charClassAt(text_slice, prev) == .word) pivot = prev;
+            }
+            const cls = charClassAt(text_slice, pivot);
+            var start = pivot;
+            while (start > 0) {
+                const prev = s.before(start);
+                if (charClassAt(text_slice, prev) != cls) break;
+                start = prev;
+            }
+            var end = s.after(pivot);
+            while (end < s.len) {
+                if (charClassAt(text_slice, end) != cls) break;
+                end = s.after(end);
+            }
+            s.anchor = start;
+            s.cursor = end;
+        }
+
         pub fn isObscured(s: *const State) bool {
             return s.obscure and !s.revealed;
         }
@@ -283,6 +324,8 @@ pub const TextField = struct {
     const toggle_radius = 16;
     const toggle_icon_size = 20;
     const dot = "•";
+    pub const multi_click_ns = 400 * std.time.ns_per_ms;
+    pub const multi_click_slop = 6;
 
     fn fontStyle(self: *const TextField, n: *const Node) ?font.Style {
         const f = n.ui.font orelse return null;
@@ -355,9 +398,7 @@ pub const TextField = struct {
         var ch_px: i32 = @max(1, @as(i32, @intFromFloat(@round(n.size.h))) - 16);
         if (self.fontStyle(n)) |style| {
             const cursor_x = self.xOf(style, st, st.cursor);
-            const right_pad: f32 = if (self.obscure) toggle_pad else pad;
-            const room = @max(n.size.w - pad - right_pad, 0);
-            const scroll = @max(cursor_x - room, 0);
+            const scroll = self.updateScroll(n, style, st);
             const baseline = @round((n.size.h - style.lineHeight()) / 2 + style.ascent());
             cx_px = @intFromFloat(@round(pad - scroll + cursor_x));
             cy_px = @intFromFloat(@round(baseline - style.ascent()));
@@ -391,6 +432,22 @@ pub const TextField = struct {
         return font.measure(style, self.shown(st, &buf, st.text()[0..i]));
     }
 
+    /// Updates and returns `st.scroll` so the cursor stays within the visible
+    /// text area without jumping when clicking or selecting inside the field.
+    fn updateScroll(self: *const TextField, n: *const Node, style: font.Style, st: *State) f32 {
+        const right_pad: f32 = if (self.obscure) toggle_pad else pad;
+        const room = @max(n.size.w - pad - right_pad, 0);
+        const cursor_x = self.xOf(style, st, st.cursor);
+        const total_w = self.xOf(style, st, st.len);
+        if (cursor_x < st.scroll) {
+            st.scroll = cursor_x;
+        } else if (cursor_x > st.scroll + room) {
+            st.scroll = cursor_x - room;
+        }
+        st.scroll = std.math.clamp(st.scroll, 0, @max(total_w - room, 0));
+        return st.scroll;
+    }
+
     pub fn paint(self: *const TextField, n: *Node, p: *Painter) void {
         const t = &n.ui.theme;
         const st = n.state(State);
@@ -421,7 +478,7 @@ pub const TextField = struct {
         // Long text scrolls to keep the cursor in view.
         const right_pad: f32 = if (self.obscure) toggle_pad else pad;
         const room = @max(n.size.w - pad - right_pad, 0);
-        const scroll = @max(cursor_x - room, 0);
+        const scroll = self.updateScroll(n, style, st);
         const old = p.clipTo(.{ .x = pad - 2, .y = 0, .w = room + 4, .h = n.size.h });
         defer p.restoreClip(old);
         if (!self.enabled) {
@@ -433,7 +490,11 @@ pub const TextField = struct {
         if (st.selection()) |sel| {
             const x0 = self.xOf(style, st, sel[0]);
             const x1 = self.xOf(style, st, sel[1]);
-            c.fillRect(.{ .x = @round(pad - scroll + x0), .y = baseline - style.ascent(), .w = @round(x1 - x0), .h = style.lineHeight() }, t.primary.withAlpha(if (st.focused) 0.35 else 0.15));
+            const sx0 = @max(@round(pad - scroll + x0), pad - 2);
+            const sx1 = @min(@round(pad - scroll + x1), pad + room + 2);
+            if (sx1 > sx0) {
+                c.fillRect(.{ .x = sx0, .y = baseline - style.ascent(), .w = sx1 - sx0, .h = style.lineHeight() }, t.primary.withAlpha(if (st.focused) 0.35 else 0.15));
+            }
         }
         if (st.len == 0 and st.preedit_len == 0 and !st.focused) {
             _ = p.text(style.size, pad, baseline, self.placeholder, t.on_surface_variant);
@@ -479,11 +540,36 @@ pub const TextField = struct {
                     return true;
                 }
                 n.ui.focus(n);
-                // Dragging selects from where it went down.
-                st.moveTo(self.cursorAt(n, pr.pos[0]), false);
-                st.anchor = st.cursor;
-                st.dragging = true;
+                const now = n.ui.now_ns;
+                if (st.click_count > 0 and
+                    now -| st.last_click_ns <= multi_click_ns and
+                    @abs(pr.pos[0] - st.last_click_pos[0]) <= multi_click_slop and
+                    @abs(pr.pos[1] - st.last_click_pos[1]) <= multi_click_slop)
+                {
+                    st.click_count = if (st.click_count >= 3) 1 else st.click_count + 1;
+                } else {
+                    st.click_count = 1;
+                }
+                st.last_click_ns = now;
+                st.last_click_pos = pr.pos;
+                switch (st.click_count) {
+                    1 => {
+                        // Dragging selects from where it went down.
+                        st.moveTo(self.cursorAt(n, pr.pos[0]), false);
+                        st.anchor = st.cursor;
+                        st.dragging = true;
+                    },
+                    2 => {
+                        st.selectWordAt(self.cursorAt(n, pr.pos[0]));
+                        st.dragging = false;
+                    },
+                    else => {
+                        st.selectAll();
+                        st.dragging = false;
+                    },
+                }
                 st.last_change_other = true;
+                n.ui.needs_frame = true;
                 return true;
             },
             .motion => |pos| {
@@ -575,9 +661,7 @@ pub const TextField = struct {
     fn cursorAt(self: *const TextField, n: *const Node, x: f32) usize {
         const st = n.state(State);
         const style = self.fontStyle(n) orelse return st.len;
-        const right_pad: f32 = if (self.obscure) toggle_pad else pad;
-        const room = @max(n.size.w - pad - right_pad, 0);
-        const scroll = @max(self.xOf(style, st, st.cursor) - room, 0);
+        const scroll = self.updateScroll(n, style, st);
         var best: usize = 0;
         var best_d = std.math.inf(f32);
         for (0..st.len + 1) |i| {
@@ -592,6 +676,16 @@ pub const TextField = struct {
         return best;
     }
 };
+
+const CharClass = enum { word, space, punct };
+
+fn charClassAt(text: []const u8, i: usize) CharClass {
+    const b = text[i];
+    if (b >= 0x80) return .word;
+    if (std.ascii.isAlphanumeric(b) or b == '_') return .word;
+    if (std.ascii.isWhitespace(b)) return .space;
+    return .punct;
+}
 
 const testing = std.testing;
 
@@ -1064,3 +1158,75 @@ test "initial text and max_len never split a multi-byte UTF-8 character" {
     st.moveTo(6, true); // inside '€' (bytes 4..7)
     try testing.expectEqual(@as(usize, 4), st.cursor);
 }
+
+test "double click selects current word, triple click selects all, and selection is clipped to field bounds" {
+    const Ui = @import("runtime.zig").Ui;
+    const f = try font.Font.init(@embedFile("FiraSans-Regular.ttf"));
+    const u = try Ui.create(testing.allocator, &f);
+    defer u.destroy();
+
+    const App = struct {
+        pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
+            return cx.make(Padding{
+                .padding = .all(40),
+                .child = cx.make(Column{
+                    .cross_axis_alignment = .start,
+                    .children = &.{
+                        cx.make(TextField{
+                            .initial = "https://github.com/robert-ancell/facet",
+                            .width = 160,
+                        }),
+                    },
+                }),
+            });
+        }
+    };
+
+    u.frame(300, 140, 100 * std.time.ns_per_ms, App{});
+    var field_node = u.root.?;
+    while (field_node.children.items.len > 0) field_node = field_node.children.items[0];
+    const st = field_node.state(TextField.State);
+    // Move to the start so "https://github.com" is at the left edge of the field.
+    st.moveTo(0, false);
+    u.frame(300, 140, 110 * std.time.ns_per_ms, App{});
+
+    const pos = field_node.position();
+    const click_at: geometry.Point = .{ pos[0] + TextField.pad + 10, pos[1] + field_node.size.h / 2 };
+
+    // Single click places cursor without selecting.
+    u.now_ns = 200 * std.time.ns_per_ms;
+    u.pointerMotion(click_at);
+    u.pointerButton(click_at, btn_left, true);
+    u.pointerButton(click_at, btn_left, false);
+    try testing.expect(st.selection() == null);
+
+    // Second click within multi_click_ns selects the word ("https").
+    u.now_ns = 300 * std.time.ns_per_ms;
+    u.pointerButton(click_at, btn_left, true);
+    u.pointerButton(click_at, btn_left, false);
+    try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
+
+    // Third click within multi_click_ns selects all text.
+    u.now_ns = 400 * std.time.ns_per_ms;
+    u.pointerButton(click_at, btn_left, true);
+    u.pointerButton(click_at, btn_left, false);
+    try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
+
+    // Render frame with full selection on overflowing text and verify no pixels
+    // are drawn outside the TextField's horizontal bounds [40, 200).
+    u.frame(300, 140, 410 * std.time.ns_per_ms, App{});
+    const pixels = try testing.allocator.alloc(u32, 300 * 140);
+    defer testing.allocator.free(pixels);
+    @memset(pixels, 0xff000000);
+    const img: gfx.software.Image = .{ .pixels = pixels, .width = 300, .height = 140 };
+    try u.preview(img);
+
+    const mid_y: u32 = @intFromFloat(@round(pos[1] + field_node.size.h / 2));
+    for (0..38) |x| {
+        try testing.expectEqual(@as(u32, 0xff000000), img.at(@intCast(x), mid_y));
+    }
+    for (202..300) |x| {
+        try testing.expectEqual(@as(u32, 0xff000000), img.at(@intCast(x), mid_y));
+    }
+}
+
