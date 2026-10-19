@@ -1,6 +1,7 @@
 //! Loading images in the background, for `Image`: from files, URLs
-//! (`http://`, `https://`, `file://`, `data:`), or a file's bytes; PNG or
-//! JPEG, made smaller to fit `gfx.Image.max_size` if they are bigger.
+//! (`http://`, `https://`, `file://`, `data:`), or a file's bytes; PNG,
+//! JPEG, GIF (its first frame) or WebP, made smaller to fit
+//! `gfx.Image.max_size` if they are bigger.
 //!
 //! Loads are done by up to `max_workers` threads, which wake the UI when
 //! one is done (`wakeFd`), and the UI takes what is done (`collect`). An
@@ -22,11 +23,11 @@ pub const Source = union(enum) {
     /// Pixels in memory, shown at once (they must last as long as they
     /// show).
     image: *const gfx.Image,
-    /// A PNG or JPEG file.
+    /// A PNG, JPEG, GIF or WebP file.
     file: []const u8,
     /// `http://`, `https://`, `file://`, or `data:` (base64 or not).
     url: []const u8,
-    /// A PNG or JPEG file's bytes, copied (and known by where they are: the
+    /// An image file's bytes, copied (and known by where they are: the
     /// same place with other bytes is not loaded again).
     bytes: []const u8,
 };
@@ -388,10 +389,15 @@ fn readFile(path: []const u8) ?[]u8 {
     return out.toOwnedSlice(alloc) catch null;
 }
 
-/// A PNG or JPEG decoded, made smaller if it is bigger than the GPU takes.
+/// A PNG, JPEG, GIF or WebP decoded, made smaller if it is bigger than the
+/// GPU takes.
 fn decodeFit(data: []const u8) ?Decoded {
     const img = (if (gfx.jpeg.is(data))
         gfx.jpeg.decode(alloc, data)
+    else if (gfx.gif.is(data))
+        gfx.gif.decode(alloc, data)
+    else if (gfx.webp.is(data))
+        gfx.webp.decode(alloc, data)
     else
         gfx.png.decode(alloc, data)) catch return null;
     const max = gfx.Image.max_size;

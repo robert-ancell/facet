@@ -1,6 +1,7 @@
 //! Reading JPEG images: baseline and progressive (Huffman coded, 8-bit),
 //! grey, YCbCr, and Adobe's CMYK and YCCK, any chroma subsampling, with
-//! restart intervals. Decoded to 0xAARRGGBB pixels (opaque). Not read:
+//! restart intervals, turned as its EXIF orientation says. Decoded to
+//! 0xAARRGGBB pixels (opaque). Not read:
 //! arithmetic coding, 12-bit and lossless JPEGs.
 //!
 //! Every scan's coefficients are kept, then turned into pixels once the
@@ -119,6 +120,8 @@ const Decoder = struct {
     /// 2 YCCK; null without the marker.
     adobe: ?u8 = null,
     jfif: bool = false,
+    /// EXIF's orientation (1 to 8; 1 as it is).
+    orientation: u8 = 1,
 
     fn deinit(d: *Decoder) void {
         for (d.comps[0..d.ncomps]) |c| {
@@ -186,6 +189,10 @@ const Decoder = struct {
                 0xee => {
                     const body = try d.segment();
                     if (body.len >= 12 and std.mem.startsWith(u8, body, "Adobe")) d.adobe = body[11];
+                },
+                0xe1 => {
+                    const body = try d.segment();
+                    if (exifOrientation(body)) |o| d.orientation = o;
                 },
                 0xe0 => {
                     const body = try d.segment();
@@ -555,9 +562,58 @@ const Decoder = struct {
                 },
             };
         };
-        return .{ .pixels = out, .width = d.width, .height = d.height };
+        const img: Decoded = .{ .pixels = out, .width = d.width, .height = d.height };
+        if (d.orientation == 1) return img;
+        defer d.gpa.free(out);
+        return orient(d.gpa, img, d.orientation);
     }
 };
+
+/// The orientation in an APP1 segment's EXIF (its TIFF header, then the
+/// first IFD's tag 0x0112), if it has one.
+fn exifOrientation(body: []const u8) ?u8 {
+    if (body.len < 14 or !std.mem.startsWith(u8, body, "Exif\x00\x00")) return null;
+    const tiff = body[6..];
+    const endian: std.builtin.Endian = if (std.mem.startsWith(u8, tiff, "II")) .little else if (std.mem.startsWith(u8, tiff, "MM")) .big else return null;
+    const ifd = std.mem.readInt(u32, tiff[4..8], endian);
+    if (ifd > tiff.len - 2) return null;
+    const count = std.mem.readInt(u16, tiff[ifd..][0..2], endian);
+    for (0..count) |i| {
+        const at = ifd + 2 + i * 12;
+        if (at + 12 > tiff.len) return null;
+        const entry = tiff[at..][0..12];
+        if (std.mem.readInt(u16, entry[0..2], endian) != 0x0112) continue;
+        const v = std.mem.readInt(u16, entry[8..10], endian);
+        return if (v >= 1 and v <= 8) @intCast(v) else null;
+    }
+    return null;
+}
+
+/// `img` turned or flipped as an EXIF orientation says: 2 flipped across,
+/// 3 turned half round, 4 flipped down, 5 transposed, 6 turned a quarter
+/// clockwise, 7 transposed the other way, 8 turned a quarter anticlockwise.
+fn orient(gpa: std.mem.Allocator, img: Decoded, o: u8) Error!Decoded {
+    const w = img.width;
+    const h = img.height;
+    const sideways = o >= 5;
+    const ow = if (sideways) h else w;
+    const oh = if (sideways) w else h;
+    const out = try gpa.alloc(u32, img.pixels.len);
+    for (0..oh) |y| for (0..ow) |x| {
+        const sx: usize, const sy: usize = switch (o) {
+            2 => .{ w - 1 - x, y },
+            3 => .{ w - 1 - x, h - 1 - y },
+            4 => .{ x, h - 1 - y },
+            5 => .{ y, x },
+            6 => .{ y, h - 1 - x },
+            7 => .{ w - 1 - y, h - 1 - x },
+            8 => .{ w - 1 - y, x },
+            else => .{ x, y },
+        };
+        out[y * ow + x] = img.pixels[sy * w + sx];
+    };
+    return .{ .pixels = out, .width = ow, .height = oh };
+}
 
 fn argb(r: u8, g: u8, b: u8) u32 {
     return 0xff000000 | @as(u32, r) << 16 | @as(u32, g) << 8 | b;
@@ -742,4 +798,25 @@ test "broken JPEGs are refused, and none crash" {
         };
         if (decode(testing.allocator, buf[0..len])) |img| testing.allocator.free(img.pixels) else |_| {}
     }
+}
+
+test "a JPEG is turned as its EXIF orientation says" {
+    const plain = try decode(testing.allocator, @embedFile("testdata/gradient_444.jpg"));
+    defer testing.allocator.free(plain.pixels);
+    inline for (.{ 3, 5, 6, 8 }) |o| {
+        const img = try decode(testing.allocator, @embedFile(std.fmt.comptimePrint("testdata/gradient_exif{d}.jpg", .{o})));
+        defer testing.allocator.free(img.pixels);
+        const want = try orient(testing.allocator, plain, o);
+        defer testing.allocator.free(want.pixels);
+        try testing.expectEqual(want.width, img.width);
+        try testing.expectEqualSlices(u32, want.pixels, img.pixels);
+    }
+    // Turned a quarter clockwise: the top left corner (red's least, green's
+    // least) is at the top right.
+    const six = try decode(testing.allocator, @embedFile("testdata/gradient_exif6.jpg"));
+    defer testing.allocator.free(six.pixels);
+    try testing.expectEqual(@as(u32, 45), six.width);
+    try testing.expectEqual(@as(u32, 67), six.height);
+    const corner = six.pixels[44];
+    try testing.expect((corner >> 16) & 0xff < 16 and (corner >> 8) & 0xff < 16);
 }

@@ -1,7 +1,7 @@
 //! Reading and writing PNG images: 8-bit RGB or RGBA when writing (each row
 //! filtered by its difference from the pixel before, compressed with deflate
-//! at its fastest), and every non-interlaced colour type and depth when
-//! reading (decoded to 0xAARRGGBB, straight alpha).
+//! at its fastest), and every colour type and depth, interlaced (Adam7) or
+//! not, when reading (decoded to 0xAARRGGBB, straight alpha).
 
 const std = @import("std");
 
@@ -89,6 +89,7 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     var palette_len: usize = 0;
     // A colour that is transparent (grey or RGB images), 16-bit samples.
     var key: ?[3]u16 = null;
+    var interlaced = false;
     var idat: std.ArrayList(u8) = .empty;
     defer idat.deinit(gpa);
     while (at + 12 <= data.len) {
@@ -104,7 +105,8 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
             depth = body[8];
             color = body[9];
             if (body[10] != 0 or body[11] != 0) return error.Unsupported;
-            if (body[12] != 0) return error.Unsupported; // interlaced
+            if (body[12] > 1) return error.Unsupported;
+            interlaced = body[12] == 1;
         } else if (std.mem.eql(u8, kind, "PLTE")) {
             palette_len = @min(len / 3, 256);
             for (0..palette_len) |i| palette[i] = argb(body[i * 3], body[i * 3 + 1], body[i * 3 + 2], 255);
@@ -144,10 +146,19 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     const pixels = try gpa.alloc(u32, @as(usize, width) * height);
     errdefer gpa.free(pixels);
     const bits = channels * depth;
-    const stride = (@as(usize, width) * bits + 7) / 8;
     // Bytes to the corresponding byte of the pixel before (at least one).
     const bpp = @max(bits / 8, 1);
-    const raw = try gpa.alloc(u8, (stride + 1) * height);
+    // The passes: all the pixels, or Adam7's seven, each starting at
+    // (x, y) and taking every dx-th across and dy-th down.
+    const all = [_][4]u8{.{ 0, 0, 1, 1 }};
+    const adam7 = [_][4]u8{ .{ 0, 0, 8, 8 }, .{ 4, 0, 8, 8 }, .{ 0, 4, 4, 8 }, .{ 2, 0, 4, 4 }, .{ 0, 2, 2, 4 }, .{ 1, 0, 2, 2 }, .{ 0, 1, 1, 2 } };
+    const passes: []const [4]u8 = if (interlaced) &adam7 else &all;
+    var raw_len: usize = 0;
+    for (passes) |pass| {
+        const pw, const ph = passSize(width, height, pass);
+        if (pw > 0 and ph > 0) raw_len += ((pw * bits + 7) / 8 + 1) * ph;
+    }
+    const raw = try gpa.alloc(u8, raw_len);
     defer gpa.free(raw);
     const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
     defer gpa.free(window);
@@ -155,37 +166,58 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     var z = std.compress.flate.Decompress.init(&input, .zlib, window);
     z.reader.readSliceAll(raw) catch return error.Malformed;
 
-    var prev: []u8 = &.{};
-    for (0..height) |y| {
-        const line = raw[y * (stride + 1) ..][0 .. stride + 1];
-        const row = line[1..];
-        try unfilter(line[0], row, prev, bpp);
-        prev = row;
-        for (0..width) |x| {
-            pixels[y * width + x] = switch (color) {
-                3 => palette[sample(row, x, depth)],
-                0 => blk: {
-                    const v = sample(row, x, depth);
-                    const g = scale(v, depth);
-                    const opaque_ = if (key) |k| v != k[0] else true;
-                    break :blk argb(g, g, g, if (opaque_) 255 else 0);
-                },
-                2 => blk: {
-                    const r = sample(row, x * 3, depth);
-                    const g = sample(row, x * 3 + 1, depth);
-                    const b = sample(row, x * 3 + 2, depth);
-                    const opaque_ = if (key) |k| !(r == k[0] and g == k[1] and b == k[2]) else true;
-                    break :blk argb(scale(r, depth), scale(g, depth), scale(b, depth), if (opaque_) 255 else 0);
-                },
-                4 => blk: {
-                    const g = scale(sample(row, x * 2, depth), depth);
-                    break :blk argb(g, g, g, scale(sample(row, x * 2 + 1, depth), depth));
-                },
-                else => argb(scale(sample(row, x * 4, depth), depth), scale(sample(row, x * 4 + 1, depth), depth), scale(sample(row, x * 4 + 2, depth), depth), scale(sample(row, x * 4 + 3, depth), depth)),
-            };
+    var at_raw: usize = 0;
+    for (passes) |pass| {
+        const pw, const ph = passSize(width, height, pass);
+        if (pw == 0 or ph == 0) continue;
+        const stride = (pw * bits + 7) / 8;
+        var prev: []u8 = &.{};
+        for (0..ph) |py| {
+            const line = raw[at_raw..][0 .. stride + 1];
+            at_raw += stride + 1;
+            const row = line[1..];
+            try unfilter(line[0], row, prev, bpp);
+            prev = row;
+            const y = pass[1] + py * pass[3];
+            for (0..pw) |px| {
+                const x = pass[0] + px * pass[2];
+                pixels[y * width + x] = pixel(row, px, color, depth, &palette, key);
+            }
         }
     }
     return .{ .pixels = pixels, .width = width, .height = height };
+}
+
+/// How many pixels across and down an Adam7 pass (or all the pixels) has.
+fn passSize(width: u32, height: u32, pass: [4]u8) struct { usize, usize } {
+    const w = if (width > pass[0]) (width - pass[0] + pass[2] - 1) / pass[2] else 0;
+    const h = if (height > pass[1]) (height - pass[1] + pass[3] - 1) / pass[3] else 0;
+    return .{ w, h };
+}
+
+/// Pixel `x` of an unfiltered row.
+fn pixel(row: []const u8, x: usize, color: u8, depth: u8, palette: *const [256]u32, key: ?[3]u16) u32 {
+    return switch (color) {
+        3 => palette[sample(row, x, depth)],
+        0 => blk: {
+            const v = sample(row, x, depth);
+            const g = scale(v, depth);
+            const opaque_ = if (key) |k| v != k[0] else true;
+            break :blk argb(g, g, g, if (opaque_) 255 else 0);
+        },
+        2 => blk: {
+            const r = sample(row, x * 3, depth);
+            const g = sample(row, x * 3 + 1, depth);
+            const b = sample(row, x * 3 + 2, depth);
+            const opaque_ = if (key) |k| !(r == k[0] and g == k[1] and b == k[2]) else true;
+            break :blk argb(scale(r, depth), scale(g, depth), scale(b, depth), if (opaque_) 255 else 0);
+        },
+        4 => blk: {
+            const g = scale(sample(row, x * 2, depth), depth);
+            break :blk argb(g, g, g, scale(sample(row, x * 2 + 1, depth), depth));
+        },
+        else => argb(scale(sample(row, x * 4, depth), depth), scale(sample(row, x * 4 + 1, depth), depth), scale(sample(row, x * 4 + 2, depth), depth), scale(sample(row, x * 4 + 3, depth), depth)),
+    };
 }
 
 fn be32(b: []const u8, at: usize) u32 {
@@ -262,4 +294,39 @@ test "a PNG that decodes to the pixels" {
     const decoded_rgba = try decode(gpa, rgba_png);
     defer gpa.free(decoded_rgba.pixels);
     try testing.expectEqualSlices(u32, &pixels, decoded_rgba.pixels);
+}
+
+test "interlaced (Adam7) PNGs decode, passes empty or not" {
+    const gpa = testing.allocator;
+    {
+        const img = try decode(gpa, @embedFile("testdata/adam7_rgba.png"));
+        defer gpa.free(img.pixels);
+        try testing.expectEqual(@as(u32, 13), img.width);
+        for (0..9) |y| for (0..13) |x| {
+            const r: u32 = @intCast(x * 20 % 256);
+            const g: u32 = @intCast(y * 25 % 256);
+            const b: u32 = @intCast(x * y * 7 % 256);
+            const a: u32 = @intCast(255 - x * 10 % 256);
+            try testing.expectEqual(a << 24 | r << 16 | g << 8 | b, img.pixels[y * 13 + x]);
+        };
+    }
+    {
+        const img = try decode(gpa, @embedFile("testdata/adam7_grey16.png"));
+        defer gpa.free(img.pixels);
+        for (0..3) |y| for (0..3) |x| {
+            const v: u32 = @intCast(((x * 1000 + y * 3000) % 65536) >> 8);
+            try testing.expectEqual(0xff000000 | v << 16 | v << 8 | v, img.pixels[y * 3 + x]);
+        };
+    }
+    {
+        const img = try decode(gpa, @embedFile("testdata/adam7_1x1.png"));
+        defer gpa.free(img.pixels);
+        try testing.expectEqualSlices(u32, &.{0xff0a141e}, img.pixels);
+    }
+    {
+        const img = try decode(gpa, @embedFile("testdata/adam7_palette2.png"));
+        defer gpa.free(img.pixels);
+        const palette = [4]u32{ 0xffff0000, 0x8000ff00, 0xff0000ff, 0xffffffff };
+        for (0..6) |y| for (0..11) |x| try testing.expectEqual(palette[(x + y) % 4], img.pixels[y * 11 + x]);
+    }
 }

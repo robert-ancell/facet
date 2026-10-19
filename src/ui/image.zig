@@ -1,6 +1,6 @@
 //! Image: pixels as big as they are, or made smaller to fit the space
 //! given, keeping their shape; never bigger. From pixels in memory, or a
-//! PNG or JPEG file, URL or file's bytes, loaded in the background (see
+//! PNG, JPEG, GIF or WebP file, URL or file's bytes, loaded in the background (see
 //! image_loader.zig): while it loads, and if it cannot be, `loading` and
 //! `failed` make what shows instead (a spinner, say), or nothing does.
 //!

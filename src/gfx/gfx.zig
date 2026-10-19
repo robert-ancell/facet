@@ -23,6 +23,8 @@ pub const opengl = @import("opengl.zig");
 pub const vulkan = @import("vulkan.zig");
 pub const png = @import("png.zig");
 pub const jpeg = @import("jpeg.zig");
+pub const gif = @import("gif.zig");
+pub const webp = @import("webp.zig");
 
 pub const Canvas = canvas.Canvas;
 pub const Image = canvas.Image;
@@ -58,4 +60,6 @@ test {
     _ = vulkan;
     _ = png;
     _ = jpeg;
+    _ = gif;
+    _ = webp;
 }
