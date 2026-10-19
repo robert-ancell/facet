@@ -1,5 +1,4 @@
-//! Special widgets: QR codes, custom painting, animation, and the window's
-//! title bar.
+//! Special widgets: QR codes, custom painting, and animation.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -7,8 +6,6 @@ const common = @import("common.zig");
 
 pub const State = struct {
     qr: Text = .{},
-    maximized: bool = false,
-    log: common.Log = .{},
     plays: u64 = 0,
 
     fn setQr(s: *State, v: []const u8) void {
@@ -16,16 +13,6 @@ pub const State = struct {
     }
     fn play(s: *State) void {
         s.plays += 1;
-    }
-    fn close(s: *State) void {
-        s.log.set("Pressed close", .{});
-    }
-    fn minimize(s: *State) void {
-        s.log.set("Pressed minimize", .{});
-    }
-    fn maximize(s: *State) void {
-        s.maximized = !s.maximized;
-        if (s.maximized) s.log.set("Pressed maximize", .{}) else s.log.set("Pressed restore", .{});
     }
 };
 
@@ -61,27 +48,6 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             cx.make(Lissajous{}),
         }),
         common.section(cx, "Animation", "A widget made afresh each frame from how far through its time it is, eased by a tweening function", animation(cx, s)),
-        common.section(cx, "Title bar", "The bar the window has when it draws its own decorations, here on its own, and its buttons for other bars", &.{
-            cx.make(facet.Decorated{
-                .border = .{ .width = 1, .color = t.outline_variant },
-                .radius = .all(8),
-                .child = cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .stretch, .children = &.{
-                    cx.make(facet.TitleBar{
-                        .title = "A window",
-                        .on_close = .of(s, State.close),
-                        .on_minimize = .of(s, State.minimize),
-                        .on_maximize = .of(s, State.maximize),
-                        .maximized = s.maximized,
-                    }),
-                    cx.make(facet.Padding{ .padding = .all(16), .child = common.status(cx, s.log.text("Press the title bar's buttons")) }),
-                } }),
-            }),
-            common.labelled(cx, "Bar buttons", &.{
-                cx.make(facet.BarButton{ .icon = .menu, .size = 34, .on_press = common.pressed(cx, &s.log, "Menu") }),
-                cx.make(facet.BarButton{ .icon = .search, .size = 34, .on_press = common.pressed(cx, &s.log, "Search") }),
-                cx.make(facet.BarButton{ .icon = .more_vert, .size = 34, .on_press = common.pressed(cx, &s.log, "More") }),
-            }),
-        }),
     });
 }
 

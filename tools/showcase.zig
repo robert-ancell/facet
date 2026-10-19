@@ -69,7 +69,7 @@ pub const Page = enum {
             .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
             .icons => "Material's icons, at any size and colour",
             .three_d => "Scenes drawn on the GPU with Vulkan and OpenGL",
-            .special => "QR codes, custom painting, animation and the title bar",
+            .special => "QR codes, custom painting and animation",
         };
     }
 };

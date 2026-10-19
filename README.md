@@ -9,7 +9,7 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
 - **Declarative Material 3 Widget Set:**
   - Layout: `Row`, `Column`, `Flex`, `Expanded`, `Grid`, `LazyGrid`, `ScrollView`, `Overlay`, `Padding`, `Align`, `Center`, `SizedBox`, `ConstrainedBox`
   - Controls & Buttons: `FilledButton`, `TonalButton`, `OutlinedButton`, `TextButton`, `IconButton`, `PillBar`, `Checkbox`, `Radio`, `Switch`, `Slider`, `DropdownMenu`, `Select`
-  - Containers & Navigation: `Card`, `ListItem`, `Chip`, `Badge`, `Divider`, `NavigationRail`, `TabBar`, `Dialog`, `Snackbar`, `Tooltip`, `Menu`, `TitleBar`
+  - Containers & Navigation: `Card`, `ListItem`, `Chip`, `Badge`, `Divider`, `NavigationRail`, `TabBar`, `Dialog`, `Snackbar`, `Tooltip`, `Menu`
   - Text, Media & 3D: `Text`, `TextField`, `TextArea` (`TextDocument` with syntax highlighting), `Icon`, `Image` (PNG, JPEG, GIF or WebP, decoded in pure Zig, from memory, files or URLs, loaded in the background with an optional placeholder), `QrCode`, `Spinner`, `ProgressBar`, `OpenGlArea`, `VulkanArea`
   - Theming: Material 3's baseline light and dark schemes, following the system's setting, and `Themed` to give the widgets below it a theme of their own (`cx.theme()` is the one a widget is in)
   - Animation: `AnimatedWidget` (a child made each frame from the animation's progress) and `tween` (easing functions, including Material's, and `lerp`)
@@ -154,6 +154,6 @@ Run any of the included examples from the repository root:
 
 | Command | Source | Description |
 | --- | --- | --- |
-| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, images (each format, from memory, bytes and URLs), icons (all of them, searchable), 3D (Vulkan and OpenGL), and special widgets (QR codes, custom painting, animation and the title bar) |
+| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, images (each format, from memory, bytes and URLs), icons (all of them, searchable), 3D (Vulkan and OpenGL), and special widgets (QR codes, custom painting and animation) |
 | `zig build run-info` | `tools/info.zig` | The windowing, buffer, synchronization and rendering backends facet picks on your system |
 
