@@ -2186,3 +2186,106 @@ test "an image too big for the GPU is made smaller to fit" {
     try testing.expectEqual(@as(u32, 0xffff0000), pic.pixels[0]);
     try testing.expectEqual(@as(u32, 0xff0000ff), pic.pixels[pic.width - 1]);
 }
+
+const MapTiles = struct {
+    pictures: [2]gfx.Image,
+    /// Levels further in than this are not there yet.
+    ready_to: u8 = 30,
+    shapes: ?*const ui.VectorTile = null,
+
+    pub fn tile(s: *MapTiles, req: ui.MapSource.Request) ui.MapTile {
+        if (req.id.z > s.ready_to) return .pending;
+        if (s.shapes) |v| return .{ .vector = v };
+        return .{ .image = .{ .image = &s.pictures[req.id.x % 2] } };
+    }
+};
+
+const MapApp = struct {
+    tiles: *MapTiles,
+    camera: *ui.MapCamera,
+    projection: ui.MapProjection,
+    style: ?*const ui.MapStyle = null,
+
+    pub fn build(self: *const MapApp, cx: *Context) Widget {
+        return cx.make(ui.MapView{
+            .source = .of(self.tiles, .{}),
+            .camera = self.camera,
+            .projection = self.projection,
+            .style = self.style,
+            .space = .rgb(0x000000),
+            .atmosphere = .rgb(0x000000),
+        });
+    }
+};
+
+test "a map view shows its source's tiles, flat or on a globe, and those further out while they come" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    var tiles: MapTiles = .{ .pictures = .{
+        gfx.Image.init(&.{ 0xffff0000, 0xffff0000, 0xffff0000, 0xffff0000 }, 2, 2),
+        gfx.Image.init(&.{ 0xff0000ff, 0xff0000ff, 0xff0000ff, 0xff0000ff }, 2, 2),
+    } };
+    // Flat, at zoom 1 (the world 512 across), with 0° in the middle: the
+    // western tiles (red) left of it, the eastern (blue) right.
+    var camera: ui.MapCamera = .{ .zoom = 1 };
+    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat });
+    var img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xffff0000), img.at(100, 150));
+    try testing.expectEqual(@as(u32, 0xff0000ff), img.at(300, 150));
+    img.deinit();
+    // Those not there yet: the one further out that is (red) instead.
+    tiles.ready_to = 0;
+    u.frame(400, 300, 1, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat });
+    img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xffff0000), img.at(300, 150));
+    img.deinit();
+    tiles.ready_to = 30;
+
+    // Zoomed out, a globe in space: at its middle the tile there, and
+    // black around it.
+    camera = .{ .center = .{ .lon = 45 }, .zoom = 1 };
+    u.frame(400, 300, 2, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .globe });
+    img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xff0000ff), img.at(200, 150));
+    try testing.expectEqual(@as(u32, 0xff000000), img.at(5, 5));
+    img.deinit();
+
+    // Shapes, in a style: the tile filled green.
+    const outline = [_]ui.VectorTile.Point{ .{ 0, 0 }, .{ 4096, 0 }, .{ 4096, 4096 }, .{ 0, 4096 } };
+    const land = [_]ui.VectorTile.Feature{.{ .geometry = .{ .polygon = &.{&outline} } }};
+    const shapes: ui.VectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
+    tiles.shapes = &shapes;
+    const style: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .source_layer = "land", .draw = .{ .fill = .rgb(0x00ff00) } }} };
+    u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat, .style = &style });
+    img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xff00ff00), img.at(200, 150));
+    img.deinit();
+}
+
+test "a map view is dragged and zoomed" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    var tiles: MapTiles = .{ .pictures = .{
+        gfx.Image.init(&.{0xffff0000}, 1, 1),
+        gfx.Image.init(&.{0xff0000ff}, 1, 1),
+    } };
+    var camera: ui.MapCamera = .{ .center = .{ .lon = 45 }, .zoom = 1 };
+    const app: MapApp = .{ .tiles = &tiles, .camera = &camera, .projection = .flat };
+    u.frame(400, 300, 0, app);
+    // Dragged 50 pixels right: the world (512 across) moves with it.
+    u.pointerMotion(.{ 200, 150 });
+    u.pointerButton(.{ 200, 150 }, ui.btn_left, true);
+    try testing.expectEqual(ui.Cursor.grabbing, u.cursor());
+    u.pointerMotion(.{ 250, 150 });
+    u.pointerButton(.{ 250, 150 }, ui.btn_left, false);
+    try testing.expectApproxEqAbs(45 - 50.0 / 512.0 * 360.0, camera.center.lon, 1e-6);
+    try testing.expectApproxEqAbs(0, camera.center.lat, 1e-6);
+    // The wheel zooms in about the pointer: what is under it stays.
+    u.frame(400, 300, 1, app);
+    const before = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).unproject(.{ 300, 100 }).?;
+    u.pointerScroll(.{ 300, 100 }, 0, -30);
+    try testing.expectApproxEqAbs(2, camera.zoom, 1e-6);
+    const after = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).projectLatLon(before);
+    try testing.expectApproxEqAbs(300, after.pos[0], 1e-3);
+    try testing.expectApproxEqAbs(100, after.pos[1], 1e-3);
+}

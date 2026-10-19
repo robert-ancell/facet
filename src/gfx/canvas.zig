@@ -341,6 +341,40 @@ pub const Canvas = struct {
         geometry.fillPolygon(sink.sink(), scaled[0..n]);
     }
 
+    /// Fills what is inside an odd number of `rings` (each closed, of any
+    /// number of points): a ring inside another is a hole in it.
+    pub fn fillPath(c: *Canvas, rings: []const []const Point, color: Color) void {
+        if (color.a <= 0) return;
+        const s = c.scale;
+        var total: usize = 0;
+        var hash: std.hash.Wyhash = .init(0);
+        var bounds: ?Rect = null;
+        for (rings) |r| {
+            total += r.len;
+            hash.update(std.mem.sliceAsBytes(r));
+            hash.update(std.mem.asBytes(&r.len));
+            if (r.len > 0) bounds = if (bounds) |b| b.unite(boundsOf(r)) else boundsOf(r);
+        }
+        const area = c.moved(bounds orelse return).outset(1);
+        c.note(.path, area, .{ c.origin, s, color, hash.final() }, "");
+        const points = c.gpa.alloc(Point, total) catch return c.fail();
+        defer c.gpa.free(points);
+        const scaled = c.gpa.alloc([]const Point, rings.len) catch return c.fail();
+        defer c.gpa.free(scaled);
+        var used: usize = 0;
+        for (rings, scaled) |r, *out| {
+            for (r, points[used..][0..r.len]) |p, *q| q.* = .{ (p[0] + c.origin[0]) * s, (p[1] + c.origin[1]) * s };
+            out.* = points[used..][0..r.len];
+            used += r.len;
+        }
+        var sink: SolidSink = .{ .canvas = c, .bounds = area, .color = color };
+        geometry.fillRings(c.gpa, sink.sink(), scaled) catch c.fail();
+    }
+
+    fn fail(c: *Canvas) void {
+        c.failed = true;
+    }
+
     /// Strokes a polyline centred on it, with mitred joins and butt ends.
     pub fn strokePolyline(c: *Canvas, points: []const Point, closed: bool, width: f32, color: Color) void {
         const s = c.scale;
@@ -441,6 +475,33 @@ pub const Canvas = struct {
         for (corners, &verts) |k, *out| out.* = .{ c.clipX(k[0]), c.clipY(k[1]), k[2], k[3], 1, 1, 1, alpha };
         const out = c.vertices(b, shaders.text_floats, 6) orelse return;
         for ([_]usize{ 0, 1, 2, 0, 2, 3 }, out) |k, *o| o.* = verts[k];
+    }
+
+    /// Draws triangles of an image, three corners each: where each is
+    /// (`x`, `y`) and where in the image it shows (`u`, `v`, from 0 to 1
+    /// across and down). For pictures bent to a shape (a map's tiles on a
+    /// globe), or a part of one.
+    pub fn drawImageTriangles(c: *Canvas, img: *const Image, corners: []const [4]f32, alpha: f32) void {
+        if (corners.len < 3 or alpha <= 0 or img.width == 0 or img.height == 0) return;
+        const s = c.scale;
+        var x0 = corners[0][0];
+        var y0 = corners[0][1];
+        var x1 = x0;
+        var y1 = y0;
+        for (corners) |k| {
+            x0 = @min(x0, k[0]);
+            y0 = @min(y0, k[1]);
+            x1 = @max(x1, k[0]);
+            y1 = @max(y1, k[1]);
+        }
+        const r = c.moved(.{ .x = x0, .y = y0, .w = x1 - x0, .h = y1 - y0 });
+        c.note(.image_triangles, r, .{ img.id, alpha, std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(corners)), c.origin, s }, "");
+        const b = c.batchForImage(img, r) orelse return;
+        const n = corners.len / 3 * 3;
+        const out = c.vertices(b, shaders.text_floats, n) orelse return;
+        for (corners[0..n], out) |k, *o| {
+            o.* = .{ c.clipX((k[0] + c.origin[0]) * s), c.clipY((k[1] + c.origin[1]) * s), k[2], k[3], 1, 1, 1, alpha };
+        }
     }
 
     // --- Rounded rectangles --------------------------------------------------
@@ -552,7 +613,7 @@ pub const Canvas = struct {
 
     // --- Recording ----------------------------------------------------------------
 
-    const Op = enum(u8) { rounded_rect, polygon, polyline, text, image };
+    const Op = enum(u8) { rounded_rect, polygon, polyline, path, text, image, image_triangles };
 
     /// Notes a shape in the recorder: what it is (its operation, the
     /// fixed-size `params` and the variable `data`, with the clip) and the

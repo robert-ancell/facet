@@ -78,6 +78,19 @@ pub const Clipboard = struct {
     }
 };
 
+/// Wakes a `Ui` for a frame from any thread: for work done in the
+/// background (a map tile fetched, say). From `Ui.waker`; good for as
+/// long as the `Ui` is.
+pub const Waker = struct {
+    fd: ?std.os.linux.fd_t = null,
+
+    pub fn wake(w: Waker) void {
+        const fd = w.fd orelse return;
+        const one: u64 = 1;
+        _ = std.os.linux.write(fd, std.mem.asBytes(&one), 8);
+    }
+};
+
 pub const Ui = struct {
     gpa: std.mem.Allocator,
     /// Text is drawn in it; without one, text takes no space.
@@ -126,6 +139,8 @@ pub const Ui = struct {
     loaded_keymap: ?window_mod.xkb.Keymap = null,
     /// Images loaded in the background (for `Image`).
     images: image_loader.Cache = .{},
+    /// Readable when a `Waker` has woken it (made by the first `waker`).
+    wake_fd: ?std.os.linux.fd_t = null,
     key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
@@ -288,6 +303,10 @@ pub const Ui = struct {
         if (ui.title_bar_root) |tb| tb.destroy();
         if (ui.images.wakeFd()) |fd| if (ui.win) |w| w.watchFd(fd, false);
         ui.images.deinit();
+        if (ui.wake_fd) |fd| {
+            if (ui.win) |w| w.watchFd(fd, false);
+            _ = std.os.linux.close(fd);
+        }
         if (ui.menu_root) |m| m.destroy();
         if (ui.drag_root) |d| d.destroy();
         if (ui.tooltip_root) |t| t.destroy();
@@ -441,6 +460,25 @@ pub const Ui = struct {
     /// Synchronizes `win`'s input method state with the focused widget.
     pub fn syncTextInput(ui: *const Ui, win: anytype) void {
         window_mod.Window.from(win).setTextInput(ui.textInputState());
+    }
+
+    /// Something to wake the UI for a frame from another thread (it does
+    /// nothing if there are no fds left).
+    pub fn waker(ui: *Ui) Waker {
+        if (ui.wake_fd == null) {
+            const rc = std.os.linux.eventfd(0, std.os.linux.EFD.NONBLOCK | std.os.linux.EFD.CLOEXEC);
+            if (std.os.linux.errno(rc) != .SUCCESS) return .{};
+            ui.wake_fd = @intCast(rc);
+        }
+        return .{ .fd = ui.wake_fd };
+    }
+
+    /// Takes the wakes since the last time; true if there were any.
+    pub fn takeWakes(ui: *Ui) bool {
+        const fd = ui.wake_fd orelse return false;
+        var buf: [8]u8 = undefined;
+        const rc = std.os.linux.read(fd, &buf, buf.len);
+        return std.os.linux.errno(rc) == .SUCCESS and rc == 8;
     }
 
     /// The arena this frame's widgets are made in.
@@ -1316,8 +1354,10 @@ pub const App = struct {
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
     dirty: bool = true,
-    /// The image loader's fd, once the window wakes for it.
+    /// The image loader's fd, and the `Waker`s', once the window wakes
+    /// for them.
     watched_fd: ?std.os.linux.fd_t = null,
+    watched_wake_fd: ?std.os.linux.fd_t = null,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1402,6 +1442,10 @@ pub const App = struct {
             a.win.watchFd(fd, true);
             a.watched_fd = fd;
         };
+        if (a.watched_wake_fd == null) if (a.ui.wake_fd) |fd| {
+            a.win.watchFd(fd, true);
+            a.watched_wake_fd = fd;
+        };
         if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
@@ -1411,6 +1455,7 @@ pub const App = struct {
         }
         if (a.win.isClosed() or a.controls.quit) return false;
         if (a.ui.images.collect()) a.dirty = true;
+        if (a.ui.takeWakes()) a.dirty = true;
         if (try a.win.applyConfigure() != null) a.dirty = true;
         const suspended = a.win.isSuspended();
         if (suspended != a.suspended) {

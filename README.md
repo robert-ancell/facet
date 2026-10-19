@@ -11,6 +11,7 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
   - Controls & Buttons: `FilledButton`, `TonalButton`, `OutlinedButton`, `TextButton`, `IconButton`, `PillBar`, `Checkbox`, `Radio`, `Switch`, `Slider`, `DropdownMenu`, `Select`
   - Containers & Navigation: `Card`, `ListItem`, `Chip`, `Badge`, `Divider`, `NavigationRail`, `TabBar`, `Dialog`, `Snackbar`, `Tooltip`, `Menu`
   - Text, Media & 3D: `Text`, `TextField`, `TextArea` (`TextDocument` with syntax highlighting), `Icon`, `Image` (PNG, JPEG, GIF or WebP, decoded in pure Zig, from memory, files or URLs, loaded in the background with an optional placeholder), `QrCode`, `Spinner`, `ProgressBar`, `OpenGlArea`, `VulkanArea`
+  - Maps: `MapView`, a slippy map that is a globe zoomed out and the flat (Web Mercator) map zoomed in, dragged, flung and zoomed with the wheel. Its tiles come from the app's `MapSource` (facet ships none): pictures (anything an `Image` shows, URLs too, loaded in the background) or shapes (`VectorTile`: points, lines and polygons with holes, with properties), drawn in a `MapStyle` (layers of fills, lines, dots and labels, picked by filters and zoom, or drawn by the app's own function with a `TilePainter`). Tiles not there yet are drawn from those further out, and a source can wake the UI when one comes (`Waker`).
   - Theming: Material 3's baseline light and dark schemes, following the system's setting, and `Themed` to give the widgets below it a theme of their own (`cx.theme()` is the one a widget is in)
   - Animation: `AnimatedWidget` (a child made each frame from the animation's progress) and `tween` (easing functions, including Material's, and `lerp`)
 - **Pluggable Rendering Backends (`facet.gfx`):**
@@ -154,6 +155,6 @@ Run any of the included examples from the repository root:
 
 | Command | Source | Description |
 | --- | --- | --- |
-| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, images (each format, from memory, bytes and URLs), icons (all of them, searchable), 3D (Vulkan and OpenGL), and special widgets (QR codes, custom painting and animation) |
+| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, images (each format, from memory, bytes and URLs), icons (all of them, searchable), maps (a globe of tiles made by the showcase, as shapes in a choice of styles or as pictures), 3D (Vulkan and OpenGL), and special widgets (QR codes, custom painting and animation) |
 | `zig build run-info` | `tools/info.zig` | The windowing, buffer, synchronization and rendering backends facet picks on your system |
 

@@ -554,6 +554,33 @@ test "strokes and polygons" {
     try expectNear(0xff000000, img.at(5, 10), 1);
 }
 
+test "paths fill around their holes, and images bend to triangles" {
+    var c = Canvas.init(testing.allocator);
+    defer c.deinit();
+    c.begin(40, 40);
+    c.fillPath(&.{ &.{ .{ 4, 4 }, .{ 36, 4 }, .{ 36, 36 }, .{ 4, 36 } }, &.{ .{ 12, 12 }, .{ 28, 12 }, .{ 28, 28 }, .{ 12, 28 } } }, Color.rgb(0xffffff));
+    var pixels: [40 * 40]u32 = @splat(0xff000000);
+    const img: Image = .{ .pixels = &pixels, .width = 40, .height = 40 };
+    try render(&c, img);
+    try expectNear(0xffffffff, img.at(8, 20), 1);
+    try expectNear(0xff000000, img.at(20, 20), 1);
+    try expectNear(0xff000000, img.at(2, 20), 1);
+
+    // The left half of a 2x1 image (red), on a triangle; the right half
+    // (blue) on another, turned upside down.
+    const pic = canvas_mod.Image.init(&.{ 0xffff0000, 0xff0000ff }, 2, 1);
+    c.begin(40, 40);
+    c.drawImageTriangles(&pic, &.{
+        .{ 0, 0, 0, 0 },     .{ 20, 0, 0.5, 0 }, .{ 0, 20, 0, 1 },
+        .{ 40, 40, 0.5, 0 }, .{ 20, 40, 1, 0 },  .{ 40, 20, 0.5, 1 },
+    }, 1);
+    @memset(&pixels, 0xff000000);
+    try render(&c, img);
+    try testing.expectEqual(@as(u32, 0xffff0000), img.at(4, 4));
+    try testing.expectEqual(@as(u32, 0xff000000), img.at(16, 16));
+    try testing.expectEqual(@as(u32, 0xff0000ff), img.at(36, 36));
+}
+
 test "text matches the font renderer's own drawing" {
     const f = try font.Font.init(font.default_font_data);
     var atlas = try atlas_mod.Atlas.init(testing.allocator);

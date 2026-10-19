@@ -1,7 +1,7 @@
 //! A tour of every widget in facet, grouped into pages by what they are
 //! for (`zig build run-showcase`): buttons, selection, text, feedback,
-//! containers, layout, images, icons, 3D, and special widgets such as QR
-//! codes.
+//! containers, layout, images, icons, maps, 3D, and special widgets such
+//! as QR codes.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -13,6 +13,7 @@ const containers = @import("showcase/containers.zig");
 const layout = @import("showcase/layout.zig");
 const images = @import("showcase/images.zig");
 const icons = @import("showcase/icons.zig");
+const maps = @import("showcase/maps.zig");
 const three_d = @import("showcase/three_d.zig");
 const special = @import("showcase/special.zig");
 
@@ -25,6 +26,7 @@ pub const Page = enum {
     layout,
     images,
     icons,
+    maps,
     three_d,
     special,
 
@@ -38,6 +40,7 @@ pub const Page = enum {
             .layout => "Layout",
             .images => "Images",
             .icons => "Icons",
+            .maps => "Maps",
             .three_d => "3D",
             .special => "Special",
         };
@@ -53,6 +56,7 @@ pub const Page = enum {
             .layout => .dashboard,
             .images => .image,
             .icons => .interests,
+            .maps => .public,
             .three_d => .@"3d_rotation",
             .special => .auto_awesome,
         };
@@ -68,6 +72,7 @@ pub const Page = enum {
             .layout => "Arranging, sizing, decorating, pressing and dragging",
             .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
             .icons => "Material's icons, at any size and colour",
+            .maps => "A slippy map of tiles from a source, zoomed out a globe",
             .three_d => "Scenes drawn on the GPU with Vulkan and OpenGL",
             .special => "QR codes, custom painting and animation",
         };
@@ -94,8 +99,13 @@ pub const Showcase = struct {
         layout: layout.State = .{},
         images: images.State = .{},
         icons: icons.State = .{},
+        maps: maps.State = .{},
         three_d: three_d.State = .{},
         special: special.State = .{},
+
+        pub fn deinit(s: *State) void {
+            s.maps.deinit();
+        }
 
         fn selectPage(s: *State, i: usize) void {
             if (i < std.enums.values(Page).len) s.page = std.enums.values(Page)[i];
@@ -131,6 +141,7 @@ pub const Showcase = struct {
             .layout => layout.build(cx, &s.layout),
             .images => images.build(cx, &s.images),
             .icons => icons.build(cx, &s.icons),
+            .maps => maps.build(cx, &s.maps),
             .three_d => three_d.build(cx, &s.three_d),
             .special => special.build(cx, &s.special),
         };
@@ -248,4 +259,8 @@ fn expectSane(n: *facet.Node) !void {
         return err;
     };
     for (n.children.items) |ch| try expectSane(ch);
+}
+
+test {
+    _ = maps;
 }

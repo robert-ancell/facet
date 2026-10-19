@@ -1,0 +1,455 @@
+//! MapView: a slippy map. The world, from a `MapSource`'s tiles (pictures,
+//! or shapes drawn in a `MapStyle`), dragged about and zoomed with the
+//! wheel (or a double click); flung, it carries on a little. Zoomed out,
+//! it is a globe (as the `projection` says), turned by dragging, that
+//! becomes the flat map as it is zoomed in.
+//!
+//! Where it looks is a `Camera`: the app's (to move it, or show where it
+//! is), or the view's own.
+//!
+//!     cx.make(ui.MapView{
+//!         .source = .of(&state.tiles, .{ .max_level = 14, .attribution = "© Someone" }),
+//!         .style = &my_style,
+//!         .camera = &state.camera,
+//!     })
+//!
+//! Tiles that are not there yet are drawn from the nearest level out
+//! that is (bigger, and blurrier); picture tiles load in the background,
+//! as an `Image`'s do.
+
+const std = @import("std");
+const gfx = @import("gfx");
+const window_mod = @import("window");
+const geometry = @import("geometry.zig");
+const widget = @import("widget.zig");
+const painter_mod = @import("painter.zig");
+const projection = @import("map/projection.zig");
+const tiles = @import("map/tiles.zig");
+const style_mod = @import("map/style.zig");
+const tile_painter = @import("map/tile_painter.zig");
+
+const Size = geometry.Size;
+const Point = geometry.Point;
+const Constraints = geometry.Constraints;
+const Node = widget.Node;
+const Event = widget.Event;
+const Cursor = widget.Cursor;
+const Callback = widget.Callback;
+const Painter = painter_mod.Painter;
+const Color = gfx.Color;
+
+pub const Camera = projection.Camera;
+pub const LatLon = projection.LatLon;
+pub const Projection = projection.Projection;
+pub const View = projection.View;
+pub const TileId = tiles.TileId;
+pub const Tile = tiles.Tile;
+pub const MapSource = tiles.MapSource;
+pub const VectorTile = tiles.VectorTile;
+pub const MapStyle = style_mod.MapStyle;
+pub const TilePainter = tile_painter.TilePainter;
+pub const LabelStyle = tile_painter.LabelStyle;
+
+/// The most tiles drawn at once.
+const max_tiles = 512;
+/// How far out a tile that is not there is drawn from instead.
+const max_fallback = 6;
+
+pub const MapView = struct {
+    source: MapSource,
+    /// How vector tiles are drawn: a plain style in the theme's colours if
+    /// null.
+    style: ?*const MapStyle = null,
+    /// What it shows: the app's, which it moves, or its own if null
+    /// (starting at `initial`).
+    camera: ?*Camera = null,
+    initial: Camera = .{},
+    projection: Projection = .globe,
+    min_zoom: f64 = 0,
+    max_zoom: f64 = 20,
+    /// Called when it is moved or zoomed (by dragging, the wheel, or a
+    /// fling carrying on).
+    on_move: ?Callback = null,
+    /// Around the globe: the theme's surface if null.
+    space: ?Color = null,
+    /// Where there are no tiles (and on the globe, its poles, which the
+    /// flat map does not reach): the style's background, or the theme's
+    /// surface container, if null.
+    background: ?Color = null,
+    /// The glow around the globe: the theme's primary, faint, if null.
+    atmosphere: ?Color = null,
+    /// Its size, if not told how big to be.
+    width: f32 = 480,
+    height: f32 = 320,
+
+    pub const State = struct {
+        own: ?Camera = null,
+        /// The place grabbed, while dragging.
+        grab: ?LatLon = null,
+        /// The pointer's last moves (where, and when): how fast it was
+        /// going when let go.
+        trail: [4]struct { pos: [2]f64, ns: u64 } = undefined,
+        trail_len: usize = 0,
+        /// A fling's speed, in pixels a second.
+        velocity: [2]f64 = .{ 0, 0 },
+        last_ns: u64 = 0,
+    };
+
+    fn cameraOf(self: *const MapView, st: *State) *Camera {
+        if (self.camera) |c| return c;
+        if (st.own == null) st.own = self.initial;
+        return &st.own.?;
+    }
+
+    fn size(n: *const Node) [2]f64 {
+        return .{ n.size.w, n.size.h };
+    }
+
+    /// Sets the camera (kept in bounds), and says it moved.
+    fn moveTo(self: *const MapView, n: *Node, cam: Camera) void {
+        const c = self.cameraOf(n.state(State));
+        c.* = .{
+            .center = .{ .lat = std.math.clamp(cam.center.lat, -projection.max_lat, projection.max_lat), .lon = projection.wrapLon(cam.center.lon) },
+            .zoom = std.math.clamp(cam.zoom, self.min_zoom, self.max_zoom),
+        };
+        n.ui.needs_frame = true;
+        if (self.on_move) |f| f.call();
+    }
+
+    pub fn layout(self: *const MapView, _: *Node, c: Constraints) Size {
+        return c.constrain(.{
+            .w = if (c.boundedWidth()) c.max_w else self.width,
+            .h = if (c.boundedHeight()) c.max_h else self.height,
+        });
+    }
+
+    pub fn minSize(_: *const MapView, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = 120, .h = 90 });
+    }
+
+    pub fn cursor(_: *const MapView, n: *Node, _: Point) ?Cursor {
+        return if (n.state(State).grab != null) .grabbing else .grab;
+    }
+
+    pub fn event(self: *const MapView, n: *Node, e: Event) bool {
+        const st = n.state(State);
+        const cam = self.cameraOf(st);
+        switch (e) {
+            .press => |pr| {
+                if (pr.button != widget.btn_left) return false;
+                const at: [2]f64 = .{ pr.pos[0], pr.pos[1] };
+                st.velocity = .{ 0, 0 };
+                if (pr.clicks == 2) {
+                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, at, 1, self.min_zoom, self.max_zoom));
+                    return true;
+                }
+                st.grab = View.init(cam.*, size(n), self.projection).unproject(at);
+                st.trail[0] = .{ .pos = at, .ns = window_mod.nowNs() };
+                st.trail_len = 1;
+                n.ui.needs_frame = true;
+                return true;
+            },
+            .motion => |pos| {
+                const place = st.grab orelse return false;
+                const at: [2]f64 = .{ pos[0], pos[1] };
+                self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, at));
+                if (st.trail_len == st.trail.len) {
+                    std.mem.copyForwards(@TypeOf(st.trail[0]), st.trail[0 .. st.trail.len - 1], st.trail[1..]);
+                    st.trail_len -= 1;
+                }
+                st.trail[st.trail_len] = .{ .pos = at, .ns = window_mod.nowNs() };
+                st.trail_len += 1;
+                return true;
+            },
+            .release => {
+                if (st.grab == null) return false;
+                st.grab = null;
+                st.velocity = flingSpeed(st);
+                st.last_ns = n.ui.now_ns;
+                n.ui.needs_frame = true;
+                return true;
+            },
+            .scroll => |sc| {
+                st.velocity = .{ 0, 0 };
+                if (sc.touch) {
+                    // A finger: the map follows it.
+                    const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
+                    const place = View.init(cam.*, size(n), self.projection).unproject(c) orelse return true;
+                    self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] - sc.dx, c[1] - sc.dy }));
+                } else {
+                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, .{ sc.pos[0], sc.pos[1] }, -sc.dy / 30, self.min_zoom, self.max_zoom));
+                }
+                return true;
+            },
+            else => {},
+        }
+        return false;
+    }
+
+    /// How fast the pointer was going when let go, in pixels a second:
+    /// over its last moves, if it was still moving (none if it stopped, or
+    /// moved too quickly to tell).
+    fn flingSpeed(st: *const State) [2]f64 {
+        if (st.trail_len < 2) return .{ 0, 0 };
+        const last = st.trail[st.trail_len - 1];
+        const first = st.trail[0];
+        const now = window_mod.nowNs();
+        if (now -| last.ns > 80 * std.time.ns_per_ms) return .{ 0, 0 };
+        const dt = @as(f64, @floatFromInt(last.ns -| first.ns)) / std.time.ns_per_s;
+        if (dt < 0.008) return .{ 0, 0 };
+        var v: [2]f64 = .{ (last.pos[0] - first.pos[0]) / dt, (last.pos[1] - first.pos[1]) / dt };
+        const speed = @sqrt(v[0] * v[0] + v[1] * v[1]);
+        if (speed < 60) return .{ 0, 0 };
+        if (speed > 5000) v = .{ v[0] * 5000 / speed, v[1] * 5000 / speed };
+        return v;
+    }
+
+    /// A fling carrying on: the map moves on, slowing.
+    fn fling(self: *const MapView, n: *Node) void {
+        const st = n.state(State);
+        const now = n.ui.now_ns;
+        defer st.last_ns = now;
+        if (st.velocity[0] == 0 and st.velocity[1] == 0) return;
+        n.ui.needs_frame = true;
+        const dt = std.math.clamp(@as(f64, @floatFromInt(now -| st.last_ns)) / std.time.ns_per_s, 0, 0.05);
+        if (dt <= 0) return;
+        const cam = self.cameraOf(st);
+        const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
+        if (View.init(cam.*, size(n), self.projection).unproject(c)) |place| {
+            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] + st.velocity[0] * dt, c[1] + st.velocity[1] * dt }));
+        }
+        const k = @exp(-dt * 4);
+        st.velocity = .{ st.velocity[0] * k, st.velocity[1] * k };
+        if (@abs(st.velocity[0]) + @abs(st.velocity[1]) < 20) st.velocity = .{ 0, 0 };
+    }
+
+    /// A tile that shows, and which copy of the world it is in (how far
+    /// east of the world's tiles, in worlds).
+    const Shown = struct { id: TileId, copy: f64 };
+
+    /// What is drawn for a tile that shows: a tile at its level or
+    /// further out (`from`).
+    const Drawn = struct {
+        shown: Shown,
+        from: TileId,
+        what: union(enum) { image: *const gfx.Image, vector: *const VectorTile },
+    };
+
+    /// The tiles' level at the camera's zoom.
+    fn level(self: *const MapView, zoom: f64) u8 {
+        const z = zoom - std.math.log2(@as(f64, @max(self.source.tile_size, 1)) / 256);
+        const l: u8 = @intFromFloat(std.math.clamp(@round(z), 0, 30));
+        return std.math.clamp(l, self.source.min_level, self.source.max_level);
+    }
+
+    /// The tiles of `lvl` that show.
+    fn shownTiles(v: *const View, lvl: u8, out: *std.ArrayList(Shown), arena: std.mem.Allocator) void {
+        const n: f64 = @floatFromInt(@as(u32, 1) << @intCast(lvl));
+        if (v.flat >= 1) {
+            // On the flat map: those in the view's rectangle (in as many
+            // copies of the world as it reaches across).
+            const x0 = v.center[0] - v.size[0] / 2 / v.world;
+            const x1 = v.center[0] + v.size[0] / 2 / v.world;
+            const y0 = @max(0, v.center[1] - v.size[1] / 2 / v.world);
+            const y1 = @min(1, v.center[1] + v.size[1] / 2 / v.world);
+            if (y1 <= y0) return;
+            var ty = @floor(y0 * n);
+            while (ty < @min(n, @ceil(y1 * n))) : (ty += 1) {
+                var tx = @floor(x0 * n);
+                while (tx < @ceil(x1 * n)) : (tx += 1) {
+                    if (out.items.len == max_tiles) return;
+                    const copy = @floor(tx / n);
+                    out.append(arena, .{ .id = .{ .z = lvl, .x = @intFromFloat(tx - copy * n), .y = @intFromFloat(ty) }, .copy = copy }) catch return;
+                }
+            }
+            return;
+        }
+        visit(v, .{ .z = 0, .x = 0, .y = 0 }, lvl, out, arena);
+    }
+
+    /// Those of `id`'s tiles at `lvl` that show on the globe (or between it
+    /// and the flat map).
+    fn visit(v: *const View, id: TileId, lvl: u8, out: *std.ArrayList(Shown), arena: std.mem.Allocator) void {
+        if (out.items.len == max_tiles) return;
+        const n: f64 = @floatFromInt(id.count());
+        const copy = @round(v.center[0] - (@as(f64, @floatFromInt(id.x)) + 0.5) / n);
+        if (id.z >= 2 and !shows(v, id, copy)) return;
+        if (id.z == lvl) {
+            out.append(arena, .{ .id = id, .copy = copy }) catch {};
+            return;
+        }
+        for (0..4) |i| visit(v, .{ .z = id.z + 1, .x = id.x * 2 + @as(u32, @intCast(i % 2)), .y = id.y * 2 + @as(u32, @intCast(i / 2)) }, lvl, out, arena);
+    }
+
+    /// Whether some of a tile shows, as far as points across it tell.
+    fn shows(v: *const View, id: TileId, copy: f64) bool {
+        const n: f64 = @floatFromInt(id.count());
+        const x0 = @as(f64, @floatFromInt(id.x)) / n + copy;
+        const y0 = @as(f64, @floatFromInt(id.y)) / n;
+        // The centre is in it.
+        if (v.center[0] >= x0 and v.center[0] <= x0 + 1 / n and v.center[1] >= y0 and v.center[1] <= y0 + 1 / n) return true;
+        const k = 6;
+        var lo: [2]f64 = .{ std.math.inf(f64), std.math.inf(f64) };
+        var hi: [2]f64 = .{ -std.math.inf(f64), -std.math.inf(f64) };
+        var any = false;
+        for (0..k + 1) |j| for (0..k + 1) |i| {
+            const p = v.project(.{ x0 + @as(f64, @floatFromInt(i)) / k / n, y0 + @as(f64, @floatFromInt(j)) / k / n });
+            if (!p.visible) continue;
+            any = true;
+            lo = .{ @min(lo[0], p.pos[0]), @min(lo[1], p.pos[1]) };
+            hi = .{ @max(hi[0], p.pos[0]), @max(hi[1], p.pos[1]) };
+        };
+        if (!any) return false;
+        // Between the points, a little further.
+        const m = @max(hi[0] - lo[0], hi[1] - lo[1]) / k;
+        return hi[0] + m >= 0 and hi[1] + m >= 0 and lo[0] - m <= v.size[0] and lo[1] - m <= v.size[1];
+    }
+
+    /// What there is to draw for a tile: it, or the nearest tile further
+    /// out that is ready.
+    fn resolve(self: *const MapView, n: *Node, shown: Shown) ?Drawn {
+        var id = shown.id;
+        for (0..max_fallback + 1) |_| {
+            switch (self.source.tile(.{ .id = id, .waker = n.ui.waker() })) {
+                .none => return null,
+                .vector => |vt| return .{ .shown = shown, .from = id, .what = .{ .vector = vt } },
+                .image => |src| switch (n.ui.images.get(src, n.ui.now_ns)) {
+                    .ready => |img| return .{ .shown = shown, .from = id, .what = .{ .image = img } },
+                    .loading, .failed => {},
+                },
+                .pending => {},
+            }
+            if (id.z <= self.source.min_level) return null;
+            id = id.parent() orelse return null;
+        }
+        return null;
+    }
+
+    pub fn paint(self: *const MapView, n: *Node, p: *Painter) void {
+        self.fling(n);
+        const st = n.state(State);
+        const cam = self.cameraOf(st).*;
+        const t = n.theme();
+        const v = View.init(cam, size(n), self.projection);
+        const arena = n.ui.arena();
+        const background = self.background orelse if (self.style) |s| s.background else t.surface_container;
+        const old_clip = p.clipTo(.{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h });
+        defer p.restoreClip(old_clip);
+        const c = p.canvas();
+        const whole: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };
+
+        if (v.flat < 1) {
+            // Space, the globe's glow, and the globe (growing to fill the
+            // view as it becomes the flat map).
+            c.fillRect(whole, self.space orelse t.surface);
+            const centre: gfx.Point = .{ n.size.w / 2, n.size.h / 2 };
+            const r: f32 = @floatCast(@min(v.discRadius() / @max(1 - v.flat, 0.01) / @max(1 - v.flat, 0.01), 1e6));
+            const glow = self.atmosphere orelse t.primary.withAlpha(0.35);
+            for (0..6) |i| {
+                const k: f32 = @floatFromInt(i);
+                c.strokeCircle(centre, r + 1 + k * 2.5, 2.5, glow.withAlpha(glow.a * (1 - k / 6) * (1 - k / 6)));
+            }
+            c.fillCircle(centre, r, background);
+        } else c.fillRect(whole, background);
+
+        var shown: std.ArrayList(Shown) = .empty;
+        shownTiles(&v, self.level(cam.zoom), &shown, arena);
+        var drawn: std.ArrayList(Drawn) = .empty;
+        for (shown.items) |s| if (self.resolve(n, s)) |d| drawn.append(arena, d) catch break;
+
+        // Pictures first, then shapes (each tile once, though it may be
+        // drawn for several further in), then labels over everything.
+        for (drawn.items) |d| if (d.what == .image) drawImageTile(c, &v, d, arena);
+        var labels: tile_painter.Labels = .{ .arena = arena, .size = .{ n.size.w, n.size.h }, .font = n.ui.font, .atlas = &n.ui.atlas };
+        for ([_]bool{ false, true }) |label_pass| {
+            for (drawn.items, 0..) |d, i| {
+                const vt = switch (d.what) {
+                    .vector => |vt| vt,
+                    .image => continue,
+                };
+                const dup = for (drawn.items[0..i]) |e| {
+                    if (std.meta.eql(e.from, d.from) and e.shown.copy == d.shown.copy and e.what == .vector) break true;
+                } else false;
+                if (dup) continue;
+                const span = 1 / @as(f64, @floatFromInt(d.from.count()));
+                var tp: TilePainter = .{
+                    .canvas = c,
+                    .arena = arena,
+                    .view = &v,
+                    .id = d.from,
+                    .corner = .{ @as(f64, @floatFromInt(d.from.x)) * span + d.shown.copy, @as(f64, @floatFromInt(d.from.y)) * span },
+                    .span = span,
+                    .extent = vt.extent,
+                    .zoom = cam.zoom,
+                    .labels = &labels,
+                };
+                if (self.style) |s| s.drawTile(&tp, vt, label_pass) else MapStyle.drawPlain(t, &tp, vt, label_pass);
+            }
+        }
+
+        if (self.source.attribution.len > 0) if (n.ui.font) |f| {
+            const size_px = 11;
+            const w = n.ui.atlas.runs.measure(.{ .font = f, .size = size_px }, self.source.attribution);
+            const box: gfx.Rect = .{ .x = n.size.w - w - 12, .y = n.size.h - 20, .w = w + 12, .h = 20 };
+            c.fillRoundedRect(box, .{ .tl = 6 }, t.surface.withAlpha(0.8));
+            _ = c.drawText(&n.ui.atlas, .{ .font = f, .size = size_px }, box.x + 6, box.y + 14, self.source.attribution, t.on_surface_variant);
+        };
+    }
+
+    /// Draws a picture tile (or the part of one further out that is where
+    /// it shows): on the flat map, as it is; bent, as a mesh.
+    fn drawImageTile(c: *gfx.Canvas, v: *const View, d: Drawn, arena: std.mem.Allocator) void {
+        const img = d.what.image;
+        const id = d.shown.id;
+        // The part of the picture: all of it, or of one further out, the
+        // part that is this tile.
+        const sub: f32 = @floatFromInt(@as(u32, 1) << @intCast(id.z - d.from.z));
+        const s0 = @as(f32, @floatFromInt(id.x - d.from.x * @as(u32, @intFromFloat(sub)))) / sub;
+        const t0 = @as(f32, @floatFromInt(id.y - d.from.y * @as(u32, @intFromFloat(sub)))) / sub;
+        const uv = 1 / sub;
+        const span = 1 / @as(f64, @floatFromInt(id.count()));
+        const x0 = @as(f64, @floatFromInt(id.x)) * span + d.shown.copy;
+        const y0 = @as(f64, @floatFromInt(id.y)) * span;
+        if (v.flat >= 1) {
+            // Whole pixels, so that tiles at their size are sharp.
+            const a = v.project(.{ x0, y0 }).pos;
+            const b = v.project(.{ x0 + span, y0 + span }).pos;
+            const l: f32 = @floatCast(@round(a[0]));
+            const tp: f32 = @floatCast(@round(a[1]));
+            const r: f32 = @floatCast(@round(b[0]));
+            const bt: f32 = @floatCast(@round(b[1]));
+            c.drawImageTriangles(img, &.{
+                .{ l, tp, s0, t0 }, .{ r, tp, s0 + uv, t0 },      .{ r, bt, s0 + uv, t0 + uv },
+                .{ l, tp, s0, t0 }, .{ r, bt, s0 + uv, t0 + uv }, .{ l, bt, s0, t0 + uv },
+            }, 1);
+            return;
+        }
+        const segs: usize = std.math.clamp(@as(usize, 128) >> @intCast(@min(id.z, 7)), 2, 16);
+        const grid = arena.alloc(View.Projected, (segs + 1) * (segs + 1)) catch return;
+        for (0..segs + 1) |j| for (0..segs + 1) |i| {
+            grid[j * (segs + 1) + i] = v.project(.{ x0 + span * @as(f64, @floatFromInt(i)) / @as(f64, @floatFromInt(segs)), y0 + span * @as(f64, @floatFromInt(j)) / @as(f64, @floatFromInt(segs)) });
+        };
+        var corners: std.ArrayList([4]f32) = .empty;
+        corners.ensureTotalCapacity(arena, segs * segs * 6) catch return;
+        const step = uv / @as(f32, @floatFromInt(segs));
+        for (0..segs) |j| for (0..segs) |i| {
+            const k = [4]usize{ j * (segs + 1) + i, j * (segs + 1) + i + 1, (j + 1) * (segs + 1) + i + 1, (j + 1) * (segs + 1) + i };
+            const uvs = [4][2]f32{
+                .{ s0 + step * @as(f32, @floatFromInt(i)), t0 + step * @as(f32, @floatFromInt(j)) },
+                .{ s0 + step * @as(f32, @floatFromInt(i + 1)), t0 + step * @as(f32, @floatFromInt(j)) },
+                .{ s0 + step * @as(f32, @floatFromInt(i + 1)), t0 + step * @as(f32, @floatFromInt(j + 1)) },
+                .{ s0 + step * @as(f32, @floatFromInt(i)), t0 + step * @as(f32, @floatFromInt(j + 1)) },
+            };
+            for ([2][3]usize{ .{ 0, 1, 2 }, .{ 0, 2, 3 } }) |tri| {
+                // Triangles with a corner on the side that shows (any on
+                // the far side brought to the globe's edge).
+                if (!grid[k[tri[0]]].visible and !grid[k[tri[1]]].visible and !grid[k[tri[2]]].visible) continue;
+                for (tri) |q| {
+                    const pos = grid[k[q]].pos;
+                    corners.appendAssumeCapacity(.{ @floatCast(pos[0]), @floatCast(pos[1]), uvs[q][0], uvs[q][1] });
+                }
+            }
+        };
+        c.drawImageTriangles(img, corners.items, 1);
+    }
+};

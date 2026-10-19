@@ -137,6 +137,125 @@ pub fn fillPolygon(out: Sink, points_in: []const Point) void {
     }
 }
 
+/// Fills what is inside an odd number of `rings` (each closed, of any
+/// number of points): a ring inside another is a hole, one inside that is
+/// filled again, and so on. Bands between the points' heights are cut into
+/// trapezoids; the edges fade out over half a pixel beyond them.
+pub fn fillRings(gpa: std.mem.Allocator, out: Sink, rings: []const []const Point) error{OutOfMemory}!void {
+    var total: usize = 0;
+    for (rings) |r| total += r.len;
+    if (total < 3) return;
+    const Edge = struct { x0: f32, y0: f32, y1: f32, dxdy: f32 };
+    const edges = try gpa.alloc(Edge, total);
+    defer gpa.free(edges);
+    const ys = try gpa.alloc(f32, total);
+    defer gpa.free(ys);
+    var ne: usize = 0;
+    var ny: usize = 0;
+    for (rings) |r| {
+        if (r.len < 3) continue;
+        for (r, 0..) |a, i| {
+            const b = r[(i + 1) % r.len];
+            ys[ny] = a[1];
+            ny += 1;
+            if (a[1] == b[1]) continue;
+            const top, const bot = if (a[1] < b[1]) .{ a, b } else .{ b, a };
+            edges[ne] = .{ .x0 = top[0], .y0 = top[1], .y1 = bot[1], .dxdy = (bot[0] - top[0]) / (bot[1] - top[1]) };
+            ne += 1;
+        }
+    }
+    std.mem.sortUnstable(f32, ys[0..ny], {}, std.sort.asc(f32));
+    std.mem.sortUnstable(Edge, edges[0..ne], {}, struct {
+        fn lt(_: void, a: Edge, b: Edge) bool {
+            return a.y0 < b.y0;
+        }
+    }.lt);
+
+    // Down the bands, with the edges across each: every edge that starts
+    // at or above a band's top and ends below it spans the whole band
+    // (the bands are cut at every point's height).
+    const Cross = struct { mid: f32, top: f32, bot: f32 };
+    const active = try gpa.alloc(u32, ne);
+    defer gpa.free(active);
+    const crossings = try gpa.alloc(Cross, ne);
+    defer gpa.free(crossings);
+    var na: usize = 0;
+    var next: usize = 0;
+    var k: usize = 0;
+    while (k + 1 < ny) : (k += 1) {
+        const ya = ys[k];
+        const yb = ys[k + 1];
+        if (yb <= ya) continue;
+        var kept: usize = 0;
+        for (active[0..na]) |e| if (edges[e].y1 > ya) {
+            active[kept] = e;
+            kept += 1;
+        };
+        na = kept;
+        while (next < ne and edges[next].y0 <= ya) : (next += 1) if (edges[next].y1 > ya) {
+            active[na] = @intCast(next);
+            na += 1;
+        };
+        if (na < 2) continue;
+        for (active[0..na], crossings[0..na]) |e, *c| {
+            const edge = edges[e];
+            const top = edge.x0 + (ya - edge.y0) * edge.dxdy;
+            const bot = edge.x0 + (yb - edge.y0) * edge.dxdy;
+            c.* = .{ .mid = (top + bot) / 2, .top = top, .bot = bot };
+        }
+        std.mem.sortUnstable(Cross, crossings[0..na], {}, struct {
+            fn lt(_: void, a: Cross, b: Cross) bool {
+                return a.mid < b.mid;
+            }
+        }.lt);
+        var i: usize = 0;
+        while (i + 1 < na) : (i += 2) {
+            const l = crossings[i];
+            const r = crossings[i + 1];
+            out.quad(
+                .{ .x = l.top, .y = ya, .alpha = 1 },
+                .{ .x = r.top, .y = ya, .alpha = 1 },
+                .{ .x = r.bot, .y = yb, .alpha = 1 },
+                .{ .x = l.bot, .y = yb, .alpha = 1 },
+            );
+        }
+    }
+
+    // The fringe, outside each edge: a ring inside an odd number of the
+    // others is a hole, so outside is the other way round its edges.
+    for (rings, 0..) |r, ri| {
+        if (r.len < 3) continue;
+        const area = signedArea2(r);
+        if (@abs(area) < 1e-6) continue;
+        var depth: usize = 0;
+        for (rings, 0..) |other, oi| {
+            if (oi != ri and other.len >= 3 and insideRing(other, r[0])) depth += 1;
+        }
+        const flip: f32 = if ((area > 0) == (depth % 2 == 0)) -1 else 1;
+        for (r, 0..) |a, i| {
+            const b = r[(i + 1) % r.len];
+            const n = scale(leftNormal(a, b) orelse continue, flip * 0.5);
+            out.quad(
+                .{ .x = a[0], .y = a[1], .alpha = 0.5 },
+                .{ .x = b[0], .y = b[1], .alpha = 0.5 },
+                .{ .x = b[0] + n[0], .y = b[1] + n[1], .alpha = 0 },
+                .{ .x = a[0] + n[0], .y = a[1] + n[1], .alpha = 0 },
+            );
+        }
+    }
+}
+
+/// Whether `p` is inside `ring` (crossing its edges an odd number of times
+/// going right).
+fn insideRing(ring: []const Point, p: Point) bool {
+    var inside = false;
+    for (ring, 0..) |a, i| {
+        const b = ring[(i + 1) % ring.len];
+        if ((a[1] > p[1]) != (b[1] > p[1]) and p[0] < a[0] + (p[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0])) inside = !inside;
+    }
+    return inside;
+}
+
 /// Ear clipping: repeatedly cuts off a corner that is convex and has no
 /// other point inside it. `positive` is the polygon's winding.
 fn triangulate(out: Sink, points: []const Point, positive: bool) void {
@@ -293,6 +412,51 @@ test "polygons fill their area, concave ones included" {
     // Interior triangles: n - 2 of them, plus two per fringe edge.
     try std.testing.expectEqual(@as(usize, 4 + 12), c.n);
 }
+
+test "rings fill what is inside an odd number of them" {
+    var c: Collect = .{};
+    // A 10x10 square with a 4x4 hole, wound either way: 100 - 16, with
+    // an eighth of a pixel of fade along each edge.
+    const outer = [_]Point{ .{ 0, 0 }, .{ 10, 0 }, .{ 10, 10 }, .{ 0, 10 } };
+    const hole = [_]Point{ .{ 3, 3 }, .{ 7, 3 }, .{ 7, 7 }, .{ 3, 7 } };
+    try fillRings(std.testing.allocator, c.sink(), &.{ &outer, &hole });
+    try std.testing.expectApproxEqAbs(@as(f32, 84 + 0.125 * (40 + 16)), c.area(), 0.5);
+    c = .{};
+    const hole_back = [_]Point{ .{ 3, 3 }, .{ 3, 7 }, .{ 7, 7 }, .{ 7, 3 } };
+    try fillRings(std.testing.allocator, c.sink(), &.{ &outer, &hole_back });
+    try std.testing.expectApproxEqAbs(@as(f32, 84 + 0.125 * (40 + 16)), c.area(), 0.5);
+    // An island in the hole is filled again.
+    c = .{};
+    const island = [_]Point{ .{ 4, 4 }, .{ 6, 4 }, .{ 6, 6 }, .{ 4, 6 } };
+    try fillRings(std.testing.allocator, c.sink(), &.{ &outer, &hole, &island });
+    try std.testing.expectApproxEqAbs(@as(f32, 88 + 0.125 * (40 + 16 + 8)), c.area(), 0.5);
+    // Concave, and with more points than a polygon may have.
+    c = .{};
+    try fillRings(std.testing.allocator, c.sink(), &.{&.{ .{ 0, 0 }, .{ 10, 0 }, .{ 10, 5 }, .{ 5, 5 }, .{ 5, 10 }, .{ 0, 10 } }});
+    try std.testing.expectApproxEqAbs(@as(f32, 75 + 0.125 * 40), c.area(), 0.5);
+    var circle: [2000]Point = undefined;
+    for (&circle, 0..) |*p, i| {
+        const a = @as(f32, @floatFromInt(i)) / circle.len * std.math.tau;
+        p.* = .{ 50 + 40 * @cos(a), 50 + 40 * @sin(a) };
+    }
+    var big: Area = .{};
+    try fillRings(std.testing.allocator, big.sink(), &.{&circle});
+    try std.testing.expectApproxEqAbs(std.math.pi * 40 * 40 + 0.125 * std.math.tau * 40, big.total, 2);
+}
+
+/// Sums the coverage-weighted area of however many triangles.
+const Area = struct {
+    total: f32 = 0,
+
+    fn sink(a: *Area) Sink {
+        return .{ .ptr = a, .triangle = add3 };
+    }
+    fn add3(ptr: *anyopaque, a: Vertex, b: Vertex, cc: Vertex) void {
+        const self: *Area = @ptrCast(@alignCast(ptr));
+        const a2 = @abs(cross(.{ b.x - a.x, b.y - a.y }, .{ cc.x - a.x, cc.y - a.y }));
+        self.total += a2 / 2 * (a.alpha + b.alpha + cc.alpha) / 3;
+    }
+};
 
 test "strokes cover their width along their length" {
     var c: Collect = .{};

@@ -36,6 +36,7 @@ pub const Brightness = ui.Brightness;
 pub const Themed = ui.Themed;
 pub const Highlight = ui.Highlight;
 pub const Clipboard = ui.Clipboard;
+pub const Waker = ui.Waker;
 
 pub const Size = ui.Size;
 pub const Point = ui.Point;
@@ -112,6 +113,17 @@ pub const LazyGrid = ui.LazyGrid;
 pub const Icon = ui.Icon;
 pub const Image = ui.Image;
 pub const QrCode = ui.QrCode;
+pub const MapView = ui.MapView;
+pub const MapSource = ui.MapSource;
+pub const MapTile = ui.MapTile;
+pub const TileId = ui.TileId;
+pub const VectorTile = ui.VectorTile;
+pub const MapStyle = ui.MapStyle;
+pub const MapCamera = ui.MapCamera;
+pub const MapProjection = ui.MapProjection;
+pub const LatLon = ui.LatLon;
+pub const TilePainter = ui.TilePainter;
+pub const MapLabelStyle = ui.MapLabelStyle;
 pub const AnimatedWidget = ui.AnimatedWidget;
 /// Easing functions and interpolation for `AnimatedWidget`.
 pub const tween = ui.tween;

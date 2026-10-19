@@ -1,6 +1,7 @@
 //! 2D graphics for Facet's widget toolkit: anti-aliased rectangles with
 //! rounded corners (and circles), polygons and polylines, filled or stroked,
-//! text from a glyph `Atlas`, and images, blended source-over.
+//! paths with holes, text from a glyph `Atlas`, and images (stretched to a
+//! rectangle, or bent onto triangles), blended source-over.
 //!
 //! A `Canvas` records shapes and text into batches on the CPU, independent of
 //! the rendering backend. A `Renderer` draws those batches using one of the
