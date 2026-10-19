@@ -1,6 +1,6 @@
 //! A tour of every widget in facet, grouped into pages by what they are
 //! for (`zig build run-showcase`): buttons, selection, text, feedback,
-//! containers, layout, and special widgets such as QR codes and 3D.
+//! containers, layout, images, and special widgets such as QR codes and 3D.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -10,6 +10,7 @@ const text = @import("showcase/text.zig");
 const feedback = @import("showcase/feedback.zig");
 const containers = @import("showcase/containers.zig");
 const layout = @import("showcase/layout.zig");
+const images = @import("showcase/images.zig");
 const special = @import("showcase/special.zig");
 
 pub const Page = enum {
@@ -19,6 +20,7 @@ pub const Page = enum {
     feedback,
     containers,
     layout,
+    images,
     special,
 
     fn title(p: Page) []const u8 {
@@ -29,6 +31,7 @@ pub const Page = enum {
             .feedback => "Feedback",
             .containers => "Containers",
             .layout => "Layout",
+            .images => "Images",
             .special => "Special",
         };
     }
@@ -41,6 +44,7 @@ pub const Page = enum {
             .feedback => .notifications,
             .containers => .view_agenda,
             .layout => .dashboard,
+            .images => .image,
             .special => .auto_awesome,
         };
     }
@@ -53,7 +57,8 @@ pub const Page = enum {
             .feedback => "Progress, counts, questions and messages",
             .containers => "Grouping, listing and scrolling content",
             .layout => "Arranging, sizing, decorating, pressing and dragging",
-            .special => "QR codes, images, icons, custom painting, animation, 3D and the title bar",
+            .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
+            .special => "QR codes, icons, custom painting, animation, 3D and the title bar",
         };
     }
 };
@@ -76,6 +81,7 @@ pub const Showcase = struct {
         feedback: feedback.State = .{},
         containers: containers.State = .{},
         layout: layout.State = .{},
+        images: images.State = .{},
         special: special.State = .{},
 
         fn selectPage(s: *State, i: usize) void {
@@ -110,6 +116,7 @@ pub const Showcase = struct {
             .feedback => feedback.build(cx, &s.feedback),
             .containers => containers.build(cx, &s.containers),
             .layout => layout.build(cx, &s.layout),
+            .images => images.build(cx, &s.images),
             .special => special.build(cx, &s.special),
         };
 

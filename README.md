@@ -154,6 +154,6 @@ Run any of the included examples from the repository root:
 
 | Command | Source | Description |
 | --- | --- | --- |
-| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, and special widgets (QR codes, images, icons, custom painting, animation, 3D and the title bar) |
+| `zig build run-showcase` | `tools/showcase.zig` | A tour of every widget, a page each for buttons, selection, text, feedback, containers, layout, images (each format, from memory, bytes and URLs), and special widgets (QR codes, icons, custom painting, animation, 3D and the title bar) |
 | `zig build run-info` | `tools/info.zig` | The windowing, buffer, synchronization and rendering backends facet picks on your system |
 
