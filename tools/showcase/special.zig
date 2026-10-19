@@ -1,23 +1,12 @@
-//! Special widgets: QR codes, icons, custom painting, animation, 3D drawn
-//! with Vulkan and OpenGL, and the window's title bar.
+//! Special widgets: QR codes, custom painting, animation, and the window's
+//! title bar.
 
 const std = @import("std");
 const facet = @import("facet");
 const common = @import("common.zig");
-const cube = @import("cube.zig");
-
-const gallery = [_]facet.icons.Icon{
-    .home,    .search, .settings, .person,     .mail,       .notifications, .favorite, .star,
-    .share,   .delete, .edit,     .add,        .check,      .close,         .refresh,  .download,
-    .upload,  .save,   .print,    .lock,       .visibility, .palette,       .brush,    .image,
-    .qr_code, .code,   .bolt,     .light_mode, .dark_mode,  .folder,        .wifi,     .view_in_ar,
-};
 
 pub const State = struct {
     qr: Text = .{},
-    spinning: bool = true,
-    angle: f32 = 0,
-    last_ns: ?u64 = null,
     maximized: bool = false,
     log: common.Log = .{},
     plays: u64 = 0,
@@ -27,10 +16,6 @@ pub const State = struct {
     }
     fn play(s: *State) void {
         s.plays += 1;
-    }
-    fn setSpinning(s: *State, v: bool) void {
-        s.spinning = v;
-        s.last_ns = null;
     }
     fn close(s: *State) void {
         s.log.set("Pressed close", .{});
@@ -58,22 +43,8 @@ const Text = struct {
 
 pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const t = cx.theme();
-    if (s.spinning) {
-        const now = cx.now();
-        if (s.last_ns) |prev| {
-            const dt: f32 = @floatCast(@as(f64, @floatFromInt(now -| prev)) / std.time.ns_per_s);
-            s.angle = @mod(s.angle + dt * 1.2, std.math.tau * 10);
-        }
-        s.last_ns = now;
-        cx.requestFrame();
-    }
 
     const qr_text = if (s.qr.len > 0) s.qr.buf[0..s.qr.len] else "https://github.com/robert-ancell/facet";
-
-    var icons: [gallery.len]facet.Widget = undefined;
-    for (&icons, gallery) |*w, icon| {
-        w.* = cx.make(facet.Tooltip{ .text = @tagName(icon), .child = cx.make(facet.Center{ .child = cx.make(facet.Icon{ .icon = icon, .color = t.on_surface_variant }) }) });
-    }
 
     return common.page(cx, &.{
         common.section(cx, "QR code", "Text encoded as a QR code, made as it is typed", &.{
@@ -86,38 +57,10 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 } }),
             } }),
         }),
-        common.section(cx, "Icons", "Material icons at any size and colour; hover over one for its name", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &.{
-                cx.make(facet.Icon{ .icon = .favorite, .size = 16, .color = t.primary }),
-                cx.make(facet.Icon{ .icon = .favorite, .size = 24, .color = t.primary }),
-                cx.make(facet.Icon{ .icon = .favorite, .size = 36, .color = t.@"error" }),
-                cx.make(facet.Icon{ .icon = .favorite, .size = 48, .color = t.on_surface }),
-            } }),
-            cx.make(facet.Grid{ .cell = .{ .w = 44, .h = 44 }, .spacing = 4, .children = &icons }),
-        }),
         common.section(cx, "Custom painting", "A widget of its own, painting shapes and lines on the canvas each frame", &.{
             cx.make(Lissajous{}),
         }),
         common.section(cx, "Animation", "A widget made afresh each frame from how far through its time it is, eased by a tweening function", animation(cx, s)),
-        common.section(cx, "3D", "A scene drawn on the GPU in a widget, with Vulkan and with OpenGL", &.{
-            cx.make(facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning), .label = "Spin" }),
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.VulkanArea(cube.Scene(.vulkan)){
-                    .scene = .{ .angle = s.angle },
-                    .border = .{ .width = 1, .color = t.outline_variant },
-                    .min_width = 200,
-                    .min_height = 220,
-                    .child = label(cx, "Vulkan"),
-                }) }),
-                cx.make(facet.Expanded{ .child = cx.make(facet.OpenGlArea(cube.Scene(.opengl)){
-                    .scene = .{ .angle = s.angle },
-                    .border = .{ .width = 1, .color = t.outline_variant },
-                    .min_width = 200,
-                    .min_height = 220,
-                    .child = label(cx, "OpenGL"),
-                }) }),
-            } }),
-        }),
         common.section(cx, "Title bar", "The bar the window has when it draws its own decorations, here on its own, and its buttons for other bars", &.{
             cx.make(facet.Decorated{
                 .border = .{ .width = 1, .color = t.outline_variant },
@@ -209,22 +152,6 @@ fn pulse(cx: *facet.Context, t: f32) facet.Widget {
             .radius = .all(14),
         }) }),
     });
-}
-
-fn label(cx: *facet.Context, text: []const u8) facet.Widget {
-    const t = cx.theme();
-    return cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
-        .padding = .all(10),
-        .child = cx.make(facet.Decorated{
-            .color = t.surface_container_highest.withAlpha(0.88),
-            .radius = .all(6),
-            .child = cx.make(facet.Padding{ .padding = .symmetric(10, 4), .child = cx.make(facet.Text{
-                .text = text,
-                .style = .{ .size = 13, .color = t.on_surface },
-                .wrap = false,
-            }) }),
-        }),
-    }) });
 }
 
 /// A custom widget: a Lissajous figure drawn with lines and circles,

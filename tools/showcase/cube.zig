@@ -69,8 +69,10 @@ pub fn Scene(comptime api: Api) type {
         .opengl => facet.OpenGlContext,
     };
     return struct {
-        /// How far round the cube has turned, in radians.
+        /// How far round the cube has turned, and tilted towards the
+        /// viewer, in radians.
         angle: f32 = 0,
+        tilt: f32 = 0.55,
 
         pub const State = struct {
             pipeline: Context.Pipeline = .{},
@@ -110,7 +112,7 @@ pub fn Scene(comptime api: Api) type {
         };
 
         pub fn render(self: *const @This(), s: *State, ctx: *Context) !void {
-            const model = mul(rotY(self.angle), rotX(0.55 + 0.3 * @sin(self.angle * 0.7)));
+            const model = mul(rotX(self.tilt), rotY(self.angle));
             const proj = perspective(std.math.degreesToRadians(40), ctx.aspect(), 1, 12);
             const uniforms: Uniforms = .{ .mvp = mul(proj, mul(translate(0, 0, -7), model)), .model = model };
             ctx.bindPipeline(s.pipeline);

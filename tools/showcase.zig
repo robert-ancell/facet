@@ -1,6 +1,7 @@
 //! A tour of every widget in facet, grouped into pages by what they are
 //! for (`zig build run-showcase`): buttons, selection, text, feedback,
-//! containers, layout, images, and special widgets such as QR codes and 3D.
+//! containers, layout, images, icons, 3D, and special widgets such as QR
+//! codes.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -11,6 +12,8 @@ const feedback = @import("showcase/feedback.zig");
 const containers = @import("showcase/containers.zig");
 const layout = @import("showcase/layout.zig");
 const images = @import("showcase/images.zig");
+const icons = @import("showcase/icons.zig");
+const three_d = @import("showcase/three_d.zig");
 const special = @import("showcase/special.zig");
 
 pub const Page = enum {
@@ -21,6 +24,8 @@ pub const Page = enum {
     containers,
     layout,
     images,
+    icons,
+    three_d,
     special,
 
     fn title(p: Page) []const u8 {
@@ -32,6 +37,8 @@ pub const Page = enum {
             .containers => "Containers",
             .layout => "Layout",
             .images => "Images",
+            .icons => "Icons",
+            .three_d => "3D",
             .special => "Special",
         };
     }
@@ -45,6 +52,8 @@ pub const Page = enum {
             .containers => .view_agenda,
             .layout => .dashboard,
             .images => .image,
+            .icons => .interests,
+            .three_d => .@"3d_rotation",
             .special => .auto_awesome,
         };
     }
@@ -58,7 +67,9 @@ pub const Page = enum {
             .containers => "Grouping, listing and scrolling content",
             .layout => "Arranging, sizing, decorating, pressing and dragging",
             .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
-            .special => "QR codes, icons, custom painting, animation, 3D and the title bar",
+            .icons => "Material's icons, at any size and colour",
+            .three_d => "Scenes drawn on the GPU with Vulkan and OpenGL",
+            .special => "QR codes, custom painting, animation and the title bar",
         };
     }
 };
@@ -82,6 +93,8 @@ pub const Showcase = struct {
         containers: containers.State = .{},
         layout: layout.State = .{},
         images: images.State = .{},
+        icons: icons.State = .{},
+        three_d: three_d.State = .{},
         special: special.State = .{},
 
         fn selectPage(s: *State, i: usize) void {
@@ -117,6 +130,8 @@ pub const Showcase = struct {
             .containers => containers.build(cx, &s.containers),
             .layout => layout.build(cx, &s.layout),
             .images => images.build(cx, &s.images),
+            .icons => icons.build(cx, &s.icons),
+            .three_d => three_d.build(cx, &s.three_d),
             .special => special.build(cx, &s.special),
         };
 
