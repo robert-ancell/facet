@@ -751,7 +751,7 @@ test "images fit the space given, keeping their shape, and text can have its own
         pic: *const gfx.Image,
         width: f32,
         pub fn build(self: *const @This(), cx: *Context) Widget {
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = self.width, .height = 100, .child = cx.make(ui.Center{ .child = cx.make(ui.Image{ .image = self.pic }) }) }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = self.width, .height = 100, .child = cx.make(ui.Center{ .child = cx.make(ui.Image{ .source = .{ .image = self.pic } }) }) }) });
         }
     };
     // Smaller than the space: as big as it is.
@@ -2062,4 +2062,127 @@ test "the baseline schemes are Material's, and say which is dark" {
     try testing.expectEqual(gfx.Color.rgb(0x601410), ui.Theme.dark.on_error);
     try testing.expectEqual(gfx.Color.rgb(0xb3261e), ui.Theme.light.@"error");
     try testing.expectEqual(gfx.Color.rgb(0xffffff), ui.Theme.light.on_error);
+}
+
+/// Frames until no image is loading (or a few seconds have gone).
+fn frameUntilLoaded(u: *ui.Ui, root: anytype) !void {
+    for (0..5000) |i| {
+        u.frame(200, 200, i, root);
+        var any_loading = false;
+        var it = u.images.entries.valueIterator();
+        while (it.next()) |e| any_loading = any_loading or e.*.status == .loading;
+        if (!any_loading) return;
+        const ts: std.os.linux.timespec = .{ .sec = 0, .nsec = std.time.ns_per_ms };
+        _ = std.os.linux.nanosleep(&ts, null);
+    }
+    return error.Timeout;
+}
+
+test "an image loads in the background, showing what it is given meanwhile, or nothing" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    var pixels: [12 * 8]u32 = undefined;
+    for (&pixels, 0..) |*p, i| p.* = 0xff000000 | @as(u32, @intCast(i)) * 0x010203;
+    const png = try gfx.png.encode(testing.allocator, &pixels, 12, 8);
+    defer testing.allocator.free(png);
+    const ImageRoot = struct {
+        source: ui.Image.Source,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            const spinner = struct {
+                fn f(c: *Context) Widget {
+                    return c.make(ui.Spinner{ .size = 30 });
+                }
+            }.f;
+            const broken = struct {
+                fn f(c: *Context) Widget {
+                    return c.make(ui.Text{ .text = "broken" });
+                }
+            }.f;
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .children = &.{
+                cx.make(ui.Image{ .source = self.source, .loading = .func(spinner), .failed = .func(broken) }),
+                cx.make(ui.Image{ .source = self.source }),
+            } }) });
+        }
+    };
+    var root: ImageRoot = .{ .source = .{ .bytes = png } };
+    // While it loads: the spinner, and nothing.
+    u.frame(200, 200, 0, root);
+    if (find(u.root.?, ui.Spinner) == null) return error.NoSpinner;
+    try testing.expect(find(u.root.?, ui.image.Picture) == null);
+    try frameUntilLoaded(u, root);
+    var pictures: std.ArrayList(*Node) = .empty;
+    defer pictures.deinit(testing.allocator);
+    try findAll(u.root.?, ui.image.Picture, &pictures);
+    try testing.expectEqual(@as(usize, 2), pictures.items.len);
+    try testing.expectEqual(ui.Size{ .w = 12, .h = 8 }, pictures.items[0].size);
+    try testing.expect(find(u.root.?, ui.Spinner) == null);
+    const shown = pictures.items[0].widget.as(ui.image.Picture).?.image;
+    try testing.expectEqualSlices(u32, &pixels, shown.pixels);
+
+    // From a file, a file:// URL, and a data: URL.
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    {
+        const f = try tmp.dir.createFile(std.testing.io, "pic.png", .{});
+        defer f.close(std.testing.io);
+        try f.writeStreamingAll(std.testing.io, png);
+    }
+    var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const dir = dir_buf[0..try tmp.dir.realPathFile(std.testing.io, ".", &dir_buf)];
+    const path = try std.fmt.allocPrint(testing.allocator, "{s}/pic.png", .{dir});
+    defer testing.allocator.free(path);
+    const file_url = try std.fmt.allocPrint(testing.allocator, "file://{s}", .{path});
+    defer testing.allocator.free(file_url);
+    const b64 = try testing.allocator.alloc(u8, std.base64.standard.Encoder.calcSize(png.len));
+    defer testing.allocator.free(b64);
+    const data_url = try std.fmt.allocPrint(testing.allocator, "data:image/png;base64,{s}", .{std.base64.standard.Encoder.encode(b64, png)});
+    defer testing.allocator.free(data_url);
+    for ([_]ui.Image.Source{ .{ .file = path }, .{ .url = file_url }, .{ .url = data_url } }) |source| {
+        root = .{ .source = source };
+        try frameUntilLoaded(u, root);
+        pictures.clearRetainingCapacity();
+        try findAll(u.root.?, ui.image.Picture, &pictures);
+        try testing.expectEqual(@as(usize, 2), pictures.items.len);
+        try testing.expectEqualSlices(u32, &pixels, pictures.items[0].widget.as(ui.image.Picture).?.image.pixels);
+    }
+
+    // What cannot be loaded: what `failed` makes, and nothing.
+    for ([_]ui.Image.Source{ .{ .bytes = "not an image" }, .{ .file = "/no/such/file.png" }, .{ .url = "gopher://example.com/a.png" } }) |source| {
+        root = .{ .source = source };
+        try frameUntilLoaded(u, root);
+        try testing.expectEqualStrings("broken", find(u.root.?, ui.Text).?.widget.as(ui.Text).?.text);
+        try testing.expect(find(u.root.?, ui.image.Picture) == null);
+    }
+
+    // Not shown for a while: let go of.
+    const before = u.images.entries.count();
+    root = .{ .source = .{ .image = shown } };
+    u.frame(200, 200, 10 * std.time.ns_per_s, root);
+    try testing.expectEqual(before, u.images.entries.count());
+    u.frame(200, 200, 100 * std.time.ns_per_s, root);
+    try testing.expectEqual(@as(usize, 0), u.images.entries.count());
+}
+
+test "an image too big for the GPU is made smaller to fit" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    const w = 3000;
+    const h = 30;
+    const pixels = try testing.allocator.alloc(u32, w * h);
+    defer testing.allocator.free(pixels);
+    for (pixels, 0..) |*p, i| p.* = if (i % w < w / 2) 0xffff0000 else 0xff0000ff;
+    const png = try gfx.png.encode(testing.allocator, pixels, w, h);
+    defer testing.allocator.free(png);
+    const ImageRoot = struct {
+        png: []const u8,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.Image{ .source = .{ .bytes = self.png } });
+        }
+    };
+    try frameUntilLoaded(u, ImageRoot{ .png = png });
+    const pic = find(u.root.?, ui.image.Picture).?.widget.as(ui.image.Picture).?.image;
+    try testing.expectEqual(@as(u32, gfx.Image.max_size), pic.width);
+    try testing.expectEqual(@as(u32, 20), pic.height);
+    try testing.expectEqual(@as(u32, 0xffff0000), pic.pixels[0]);
+    try testing.expectEqual(@as(u32, 0xff0000ff), pic.pixels[pic.width - 1]);
 }

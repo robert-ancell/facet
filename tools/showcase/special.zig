@@ -33,6 +33,9 @@ const gallery = [_]facet.icons.Icon{
 
 pub const State = struct {
     qr: Text = .{},
+    /// The URL typed, and the one loaded (`default_url` until one is).
+    url_typed: Text = .{},
+    url_loaded: Text = .{},
     picture: facet.gfx.Image = .{ .pixels = &picture_pixels, .width = image_size, .height = image_size, .id = 0x5ca1e },
     spinning: bool = true,
     angle: f32 = 0,
@@ -43,6 +46,12 @@ pub const State = struct {
 
     fn setQr(s: *State, v: []const u8) void {
         s.qr.set(v);
+    }
+    fn setUrl(s: *State, v: []const u8) void {
+        s.url_typed.set(v);
+    }
+    fn loadUrl(s: *State) void {
+        if (s.url_typed.len > 0) s.url_loaded.set(s.url_typed.buf[0..s.url_typed.len]);
     }
     fn play(s: *State) void {
         s.plays += 1;
@@ -62,6 +71,8 @@ pub const State = struct {
         if (s.maximized) s.log.set("Pressed maximize", .{}) else s.log.set("Pressed restore", .{});
     }
 };
+
+const default_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Fronalpstock_big.jpg/500px-Fronalpstock_big.jpg";
 
 const Text = struct {
     buf: [128]u8 = undefined,
@@ -105,13 +116,23 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 } }),
             } }),
         }),
-        common.section(cx, "Images", "Pixels scaled to the space given, opaque or faded", &.{
+        common.section(cx, "Images", "Pixels scaled to the space given, opaque or faded, from memory or loaded in the background", &.{
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .end, .children = &.{
-                cx.make(facet.SizedBox{ .width = 48, .height = 48, .child = cx.make(facet.Image{ .image = &s.picture }) }),
-                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .image = &s.picture }) }),
-                cx.make(facet.SizedBox{ .width = 144, .height = 144, .child = cx.make(facet.Image{ .image = &s.picture }) }),
-                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .image = &s.picture, .opacity = 0.4 }) }),
+                cx.make(facet.SizedBox{ .width = 48, .height = 48, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) }),
+                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) }),
+                cx.make(facet.SizedBox{ .width = 144, .height = 144, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) }),
+                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture }, .opacity = 0.4 }) }),
             } }),
+            cx.make(facet.Text{ .text = "Loaded from a URL (or file path), with a spinner while it loads", .style = .{ .size = 13, .color = t.on_surface_variant } }),
+            cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = &.{
+                cx.make(facet.TextField{ .placeholder = "https://…/picture.jpg", .initial = s.url_typed.buf[0..s.url_typed.len], .max_len = 127, .width = 260, .on_changed = .of(s, State.setUrl), .on_submit = .of(s, State.loadUrl) }),
+                cx.make(facet.TonalButton{ .label = "Load", .on_press = .of(s, State.loadUrl) }),
+            } }),
+            cx.make(facet.Align{ .alignment = .center_left, .child = cx.make(facet.SizedBox{ .width = 240, .height = 160, .child = cx.make(facet.Center{ .child = cx.make(facet.Image{
+                .source = .{ .url = if (s.url_loaded.len > 0) s.url_loaded.buf[0..s.url_loaded.len] else default_url },
+                .loading = .func(loadingImage),
+                .failed = .func(failedImage),
+            }) }) }) }),
         }),
         common.section(cx, "Icons", "Material icons at any size and colour; hover over one for its name", &.{
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &.{
@@ -236,6 +257,18 @@ fn pulse(cx: *facet.Context, t: f32) facet.Widget {
             .radius = .all(14),
         }) }),
     });
+}
+
+fn loadingImage(cx: *facet.Context) facet.Widget {
+    return cx.make(facet.Spinner{ .size = 36 });
+}
+
+fn failedImage(cx: *facet.Context) facet.Widget {
+    const t = cx.theme();
+    return cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = &.{
+        cx.make(facet.Icon{ .icon = .image, .size = 36, .color = t.outline }),
+        cx.make(facet.Text{ .text = "Could not be loaded", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false }),
+    } });
 }
 
 fn label(cx: *facet.Context, text: []const u8) facet.Widget {

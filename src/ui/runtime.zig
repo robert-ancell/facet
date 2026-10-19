@@ -29,6 +29,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 const theme_mod = @import("theme.zig");
+const image_loader = @import("image_loader.zig");
 const Theme = theme_mod.Theme;
 const damage_mod = @import("damage.zig");
 const keymap = @import("keymap.zig");
@@ -123,6 +124,8 @@ pub const Ui = struct {
     /// A keymap of its own (`loadKeymap`), for keys from `keyEvent` that
     /// say nothing of what they type, and the modifiers it keeps.
     loaded_keymap: ?window_mod.xkb.Keymap = null,
+    /// Images loaded in the background (for `Image`).
+    images: image_loader.Cache = .{},
     key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
@@ -283,6 +286,8 @@ pub const Ui = struct {
         ui.endDrag(false);
         if (ui.loaded_keymap) |*km| km.deinit();
         if (ui.title_bar_root) |tb| tb.destroy();
+        if (ui.images.wakeFd()) |fd| if (ui.win) |w| w.watchFd(fd, false);
+        ui.images.deinit();
         if (ui.menu_root) |m| m.destroy();
         if (ui.drag_root) |d| d.destroy();
         if (ui.tooltip_root) |t| t.destroy();
@@ -451,6 +456,7 @@ pub const Ui = struct {
         ui.now_ns = now_ns;
         ui.needs_frame = false;
         ui.checkHold();
+        _ = ui.images.collect();
         const s = @max(ui.scale, 1);
         ui.damage.begin(ui.frame_no, width * s, height * s);
         var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
@@ -510,6 +516,7 @@ pub const Ui = struct {
             ui.syncTextInput(win);
         }
         if (ui.hold != null) ui.needs_frame = true;
+        ui.images.evict(now_ns);
     }
 
     fn buildTitleBar(ui: *Ui) ?*Node {
@@ -1309,6 +1316,8 @@ pub const App = struct {
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
     dirty: bool = true,
+    /// The image loader's fd, once the window wakes for it.
+    watched_fd: ?std.os.linux.fd_t = null,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1388,6 +1397,11 @@ pub const App = struct {
     /// A frame is drawn only once the window has shown the last one, so
     /// that it is drawn for the time it will be shown, not a frame early.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
+        // Woken when an image is loaded, as by the window's events.
+        if (a.watched_fd == null) if (a.ui.images.wakeFd()) |fd| {
+            a.win.watchFd(fd, true);
+            a.watched_fd = fd;
+        };
         if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
@@ -1396,6 +1410,7 @@ pub const App = struct {
             try a.win.poll();
         }
         if (a.win.isClosed() or a.controls.quit) return false;
+        if (a.ui.images.collect()) a.dirty = true;
         if (try a.win.applyConfigure() != null) a.dirty = true;
         const suspended = a.win.isSuspended();
         if (suspended != a.suspended) {

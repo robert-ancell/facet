@@ -1468,6 +1468,20 @@ pub const WaylandWindow = struct {
         w.conn.flush() catch {};
     }
 
+    /// Wakes `wait` when `fd` is readable too (`on`), or no longer (for
+    /// as many fds as `wake_fds` has room for).
+    pub fn watchFd(w: *WaylandWindow, fd: linux.fd_t, on: bool) void {
+        for (&w.wake_fds) |*slot| if (slot.* == fd) {
+            if (!on) slot.* = null;
+            return;
+        };
+        if (!on) return;
+        for (&w.wake_fds) |*slot| if (slot.* == null) {
+            slot.* = fd;
+            return;
+        };
+    }
+
     pub fn wait(w: *WaylandWindow, timeout_ns: u64) !void {
         const now = nowNs();
         const caller_ms: u64 = std.math.divCeil(u64, timeout_ns, std.time.ns_per_ms) catch 0;

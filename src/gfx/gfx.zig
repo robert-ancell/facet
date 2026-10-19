@@ -22,6 +22,7 @@ pub const software = @import("software.zig");
 pub const opengl = @import("opengl.zig");
 pub const vulkan = @import("vulkan.zig");
 pub const png = @import("png.zig");
+pub const jpeg = @import("jpeg.zig");
 
 pub const Canvas = canvas.Canvas;
 pub const Image = canvas.Image;
@@ -56,4 +57,5 @@ test {
     _ = opengl;
     _ = vulkan;
     _ = png;
+    _ = jpeg;
 }

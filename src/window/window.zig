@@ -278,6 +278,7 @@ pub const Window = struct {
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
         layout: *const fn (ptr: *anyopaque) Layout,
+        watch_fd: *const fn (ptr: *anyopaque, fd: std.os.linux.fd_t, on: bool) void,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
@@ -458,6 +459,9 @@ pub const Window = struct {
                 if (@hasDecl(T, "nextPresentationNs")) return self(p).nextPresentationNs(now_ns);
                 return now_ns;
             }
+            fn watchFdFn(p: *anyopaque, fd: std.os.linux.fd_t, on: bool) void {
+                if (@hasDecl(T, "watchFd")) self(p).watchFd(fd, on);
+            }
             fn layoutFn(p: *anyopaque) Layout {
                 if (@hasDecl(T, "layout")) return self(p).layout();
                 return .{};
@@ -559,6 +563,7 @@ pub const Window = struct {
                 .nextPresentationNs = nextPresentationNsFn,
                 .setPresentationTime = setPresentationTimeFn,
                 .layout = layoutFn,
+                .watch_fd = watchFdFn,
                 .refreshNs = refreshNsFn,
                 .applyConfigure = applyConfigureFn,
                 .releaseSpareBuffers = releaseSpareBuffersFn,
@@ -686,6 +691,10 @@ pub const Window = struct {
     }
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
+    }
+    /// Wakes `wait` when `fd` is readable too (`on`), or no longer.
+    pub fn watchFd(w: Window, fd: std.os.linux.fd_t, on: bool) void {
+        w.vtable.watch_fd(w.ptr, fd, on);
     }
     /// The keyboard layout in use.
     pub fn layout(w: Window) Layout {

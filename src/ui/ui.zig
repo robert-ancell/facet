@@ -79,6 +79,7 @@ pub const scroll_view = @import("scroll_view.zig");
 pub const lazy_grid = @import("lazy_grid.zig");
 pub const icon = @import("icon.zig");
 pub const image = @import("image.zig");
+pub const image_loader = @import("image_loader.zig");
 pub const qr_code = @import("qr_code.zig");
 pub const themed = @import("themed.zig");
 pub const animated = @import("animated.zig");
@@ -238,6 +239,7 @@ test {
     _ = lazy_grid;
     _ = icon;
     _ = image;
+    _ = image_loader;
     _ = qr_code;
     _ = themed;
     _ = animated;
