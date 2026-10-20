@@ -145,6 +145,14 @@ const Header = struct {
 };
 
 pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
+    return decodeRegion(gpa, data, null);
+}
+
+/// Decodes part of a VP8 key frame (all of it if `region` is null): its
+/// macroblocks down to the region's last row (and one more, which the
+/// loop filter and chroma upsampling reach into), and only the region
+/// turned to RGB.
+pub fn decodeRegion(gpa: std.mem.Allocator, data: []const u8, region: ?png.Region) Error!Decoded {
     if (data.len < 10) return error.Malformed;
     const tag = @as(u32, data[0]) | @as(u32, data[1]) << 8 | @as(u32, data[2]) << 16;
     if (tag & 1 != 0) return error.Unsupported; // Not a key frame.
@@ -153,7 +161,7 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     const width: u32 = std.mem.readInt(u16, data[6..8], .little) & 0x3fff;
     const height: u32 = std.mem.readInt(u16, data[8..10], .little) & 0x3fff;
     if (width == 0 or height == 0) return error.Malformed;
-    if (@as(u64, width) * height > png.max_pixels) return error.TooBig;
+    const reg = try png.Region.within(region, width, height);
     if (part0 > data.len - 10) return error.Malformed;
     var d = BoolDecoder.init(data[10..][0..part0]);
     var h: Header = .{};
@@ -217,7 +225,7 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     if (h.skip_enabled) h.skip_prob = @intCast(d.uint(8));
 
     const mb_cols = (width + 15) / 16;
-    const mb_rows = (height + 15) / 16;
+    const mb_rows = @min((height + 15) / 16, (reg.y1() + 15) / 16 + 1);
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
     const a = arena.allocator();
@@ -271,9 +279,9 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
         @memset(y_plane.pixels[last + 1 ..][0..4], y_plane.pixels[last]);
     }
     if (h.filter_level > 0) loopFilter(&h, mbs, mb_cols, mb_rows, y_plane, u_plane, v_plane);
-    const out = try gpa.alloc(u32, @as(usize, width) * height);
-    toRgb(out, width, height, y_plane, u_plane, v_plane);
-    return .{ .pixels = out, .width = width, .height = height };
+    const out = try gpa.alloc(u32, @as(usize, reg.w) * reg.h);
+    toRgb(out, reg, width, height, y_plane, u_plane, v_plane);
+    return .{ .pixels = out, .width = reg.w, .height = reg.h };
 }
 
 fn dcQ(q: i32) i32 {
@@ -767,14 +775,15 @@ fn rgb(yv: i32, uv: i32, vv: i32) u32 {
 /// YUV 4:2:0 to pixels, each chroma sample weighted 9:3:3:1 with its
 /// neighbours across and down by how near it is (as libwebp's "fancy"
 /// upsampling).
-fn toRgb(out: []u32, w: u32, h: u32, y: Plane, u: Plane, v: Plane) void {
+/// The pixels of `reg` (of an image `w` by `h`), in `out`.
+fn toRgb(out: []u32, reg: png.Region, w: u32, h: u32, y: Plane, u: Plane, v: Plane) void {
     const cw = (w + 1) / 2;
     const ch = (h + 1) / 2;
-    for (0..h) |py| {
+    for (reg.y..reg.y1()) |py| {
         const cy = py / 2;
         // The other chroma row nearest: above for even rows, below for odd.
         const oy = if (py & 1 == 0) (if (cy > 0) cy - 1 else 0) else @min(cy + 1, ch - 1);
-        for (0..w) |px| {
+        for (reg.x..reg.x1()) |px| {
             const cx = px / 2;
             const ox = if (px & 1 == 0) (if (cx > 0) cx - 1 else 0) else @min(cx + 1, cw - 1);
             const sample = struct {
@@ -788,7 +797,7 @@ fn toRgb(out: []u32, w: u32, h: u32, y: Plane, u: Plane, v: Plane) void {
             }.f;
             const uu = sample(u, cx, cy, ox, oy);
             const vv = sample(v, cx, cy, ox, oy);
-            out[py * w + px] = rgb(y.pixels[y.at(px, py)], uu, vv);
+            out[(py - reg.y) * reg.w + (px - reg.x)] = rgb(y.pixels[y.at(px, py)], uu, vv);
         }
     }
 }

@@ -1,6 +1,6 @@
 //! Images: pixels in memory, and PNG, JPEG, GIF and WebP files loaded in
 //! the background, from bytes or a URL, with what shows while they load
-//! and if they cannot be.
+//! and if they cannot be, and parts of them.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -44,6 +44,16 @@ pub const State = struct {
     /// How many times it was loaded again (each a URL of its own, so it is
     /// not the one kept from before).
     reloads: u32 = 0,
+    /// The part of the photo shown on its own: its top left.
+    part_x: f32 = 96,
+    part_y: f32 = 40,
+
+    fn setPartX(s: *State, v: f32) void {
+        s.part_x = v;
+    }
+    fn setPartY(s: *State, v: f32) void {
+        s.part_y = v;
+    }
 
     fn setUrl(s: *State, v: []const u8) void {
         s.url_typed.set(v);
@@ -87,6 +97,9 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const base = if (s.url_loaded.len > 0) s.url_loaded.buf[0..s.url_loaded.len] else default_url;
     const url = if (s.reloads == 0) base else cx.fmt("{s}{s}again={d}", .{ base, if (std.mem.indexOfScalar(u8, base, '?') != null) "&" else "?", s.reloads });
     const photo = formats[0][2];
+    // The part of the photo on its own: 80 × 60, where the sliders put it.
+    const part_size = [2]f32{ 80, 60 };
+    const part: facet.Image.Region = .{ .x = @intFromFloat(@round(s.part_x)), .y = @intFromFloat(@round(s.part_y)), .w = 80, .h = 60 };
 
     return common.page(cx, &.{
         common.section(cx, "Formats", "PNG, JPEG, GIF and WebP, decoded in the background (here from the bytes of files built in)", &.{
@@ -108,6 +121,28 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             } }),
             // Bigger than the photo: it shows at its size.
             framed(cx, 300, 170, photo),
+        }),
+        common.section(cx, "A part of an image", "Only the part shown is decoded (of a JPEG, only the blocks under it are turned into pixels), so a part of an image too big to load whole can be shown", &.{
+            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
+                cx.make(facet.SizedBox{ .width = 256, .height = 144, .child = cx.make(facet.Overlay{ .children = &.{
+                    cx.make(facet.Image{ .source = .{ .bytes = photo }, .opacity = 0.5 }),
+                    cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
+                        .padding = .{ .left = @round(s.part_x), .top = @round(s.part_y) },
+                        .child = cx.make(facet.Decorated{
+                            .border = .{ .width = 2, .color = t.primary },
+                            .child = cx.make(facet.SizedBox{ .width = part_size[0], .height = part_size[1] }),
+                        }),
+                    }) }),
+                } }) }),
+                cx.make(facet.Image{ .source = .{ .bytes = photo }, .region = part, .loading = .func(loading) }),
+            } }),
+            common.labelled(cx, "Across", &.{
+                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_x, .max = 256 - part_size[0], .on_changed = .of(s, State.setPartX) }) }),
+            }),
+            common.labelled(cx, "Down", &.{
+                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_y, .max = 144 - part_size[1], .on_changed = .of(s, State.setPartY) }) }),
+            }),
+            common.status(cx, cx.fmt("The part {d} × {d} from ({d}, {d}): all that is decoded", .{ part.w, part.h, part.x, part.y })),
         }),
         common.section(cx, "From a URL", "Fetched over HTTP or HTTPS (or file:// and data: URLs), with a spinner until it is ready", &.{
             cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = &.{

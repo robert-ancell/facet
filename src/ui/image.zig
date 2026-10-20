@@ -9,6 +9,13 @@
 //!         .source = .{ .url = "https://example.com/cat.jpg" },
 //!         .loading = .func(spinner),
 //!     })
+//!
+//! It can show part of an image (`region`): of a file, URL or bytes, only
+//! that part is decoded and kept (a JPEG's other blocks are not even
+//! turned into pixels), so a part of an image too big to load whole can
+//! be shown.
+//!
+//!     cx.make(ui.Image{ .source = .{ .file = "/photos/panorama.jpg" }, .region = .{ .x = 4000, .y = 1200, .w = 800, .h = 600 } })
 
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -26,6 +33,9 @@ const Size = geometry.Size;
 
 pub const Image = struct {
     source: Source,
+    /// The part of it shown, in its pixels (as it is shown: after a
+    /// JPEG's EXIF orientation), and as far as it goes; all of it if null.
+    region: ?Region = null,
     /// How opaque it is drawn.
     opacity: f32 = 1,
     /// What shows while it loads; nothing if null.
@@ -34,6 +44,7 @@ pub const Image = struct {
     failed: ?Builder = null,
 
     pub const Source = loader.Source;
+    pub const Region = loader.Region;
 
     /// Makes what shows in its place (in the frame's arena, with
     /// `cx.make`).
@@ -64,7 +75,16 @@ pub const Image = struct {
     };
 
     pub fn build(self: *const Image, cx: *Context) Widget {
-        return switch (cx.ui.images.get(self.source, cx.now())) {
+        // Pixels in memory: the part of them drawn. Otherwise only the part
+        // is loaded.
+        if (self.source == .image) {
+            const img = self.source.image;
+            const part = if (self.region) |r| Region.within(r, img.width, img.height) catch {
+                return if (self.failed) |b| b.f(b.ctx, cx) else cx.make(Empty{});
+            } else null;
+            return cx.make(Picture{ .image = img, .part = part, .opacity = self.opacity });
+        }
+        return switch (cx.ui.images.getRegion(self.source, self.region, cx.now())) {
             .ready => |img| cx.make(Picture{ .image = img, .opacity = self.opacity }),
             .loading => if (self.loading) |b| b.f(b.ctx, cx) else cx.make(Empty{}),
             .failed => if (self.failed) |b| b.f(b.ctx, cx) else cx.make(Empty{}),
@@ -72,20 +92,34 @@ pub const Image = struct {
     }
 };
 
-/// The pixels, once there are some.
+/// The pixels, once there are some (or a part of them).
 pub const Picture = struct {
     image: *const gfx.Image,
+    /// The part drawn (which must be within it); all of it if null.
+    part: ?Image.Region = null,
     opacity: f32 = 1,
 
     pub fn layout(self: *const Picture, _: *Node, c: Constraints) Size {
-        const w: f32 = @floatFromInt(self.image.width);
-        const h: f32 = @floatFromInt(self.image.height);
+        const w: f32 = @floatFromInt(if (self.part) |p| p.w else self.image.width);
+        const h: f32 = @floatFromInt(if (self.part) |p| p.h else self.image.height);
         if (w <= 0 or h <= 0) return c.smallest();
         const scale = @min(1, @min(c.max_w / w, c.max_h / h));
         return c.constrain(.{ .w = @round(w * scale), .h = @round(h * scale) });
     }
 
     pub fn paint(self: *const Picture, n: *Node, p: *Painter) void {
-        p.canvas().drawImage(self.image, .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, self.opacity);
+        const part = self.part orelse return p.canvas().drawImage(self.image, .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, self.opacity);
+        const iw: f32 = @floatFromInt(self.image.width);
+        const ih: f32 = @floatFromInt(self.image.height);
+        const s0 = @as(f32, @floatFromInt(part.x)) / iw;
+        const t0 = @as(f32, @floatFromInt(part.y)) / ih;
+        const s1 = @as(f32, @floatFromInt(part.x1())) / iw;
+        const t1 = @as(f32, @floatFromInt(part.y1())) / ih;
+        const w = n.size.w;
+        const h = n.size.h;
+        p.canvas().drawImageTriangles(self.image, &.{
+            .{ 0, 0, s0, t0 }, .{ w, 0, s1, t0 }, .{ w, h, s1, t1 },
+            .{ 0, 0, s0, t0 }, .{ w, h, s1, t1 }, .{ 0, h, s0, t1 },
+        }, self.opacity);
     }
 };

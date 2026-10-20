@@ -15,6 +15,13 @@ pub fn is(data: []const u8) bool {
 }
 
 pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
+    return decodeRegion(gpa, data, null);
+}
+
+/// Decodes part of a WebP image (all of it if `region` is null): a lossy
+/// one only as far down as the region goes (see `vp8.decodeRegion`); a
+/// lossless or animated one whole, then cut to it.
+pub fn decodeRegion(gpa: std.mem.Allocator, data: []const u8, region: ?png.Region) Error!Decoded {
     if (!is(data)) return error.Malformed;
     var at: usize = 12;
     var canvas: ?[2]u32 = null;
@@ -31,15 +38,22 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
         } else if (std.mem.eql(u8, kind, "ALPH")) {
             alpha = body;
         } else if (std.mem.eql(u8, kind, "VP8L")) {
-            return lossless(gpa, body);
+            return cut(gpa, try lossless(gpa, body), region);
         } else if (std.mem.eql(u8, kind, "VP8 ")) {
-            return lossy(gpa, body, alpha);
+            return lossy(gpa, body, alpha, region);
         } else if (std.mem.eql(u8, kind, "ANMF")) {
             const size = canvas orelse return error.Malformed;
-            return firstFrame(gpa, body, size);
+            return cut(gpa, try firstFrame(gpa, body, size), region);
         }
     }
     return error.Malformed;
+}
+
+/// `img` cut to `region` (as it is if null), freeing it if cut.
+fn cut(gpa: std.mem.Allocator, img: Decoded, region: ?png.Region) Error!Decoded {
+    const r = region orelse return img;
+    defer gpa.free(img.pixels);
+    return png.crop(gpa, img, try png.Region.within(r, img.width, img.height));
 }
 
 fn u24le(b: *const [3]u8) u32 {
@@ -62,7 +76,7 @@ fn firstFrame(gpa: std.mem.Allocator, body: []const u8, canvas: [2]u32) Error!De
         at += 8 + len + (len & 1);
         if (std.mem.eql(u8, kind, "ALPH")) alpha = sub;
         if (std.mem.eql(u8, kind, "VP8L")) break try lossless(gpa, sub);
-        if (std.mem.eql(u8, kind, "VP8 ")) break try lossy(gpa, sub, alpha);
+        if (std.mem.eql(u8, kind, "VP8 ")) break try lossy(gpa, sub, alpha, null);
     } else return error.Malformed;
     defer gpa.free(frame.pixels);
     const pixels = try gpa.alloc(u32, @as(usize, canvas[0]) * canvas[1]);
@@ -77,21 +91,25 @@ fn firstFrame(gpa: std.mem.Allocator, body: []const u8, canvas: [2]u32) Error!De
     return .{ .pixels = pixels, .width = canvas[0], .height = canvas[1] };
 }
 
-/// A lossy image, with its alpha channel if there is one.
-fn lossy(gpa: std.mem.Allocator, body: []const u8, alpha: ?[]const u8) Error!Decoded {
-    const img = try vp8.decode(gpa, body);
+/// A lossy image (or part of one), with its alpha channel if there is one.
+fn lossy(gpa: std.mem.Allocator, body: []const u8, alpha: ?[]const u8, region: ?png.Region) Error!Decoded {
+    const img = try vp8.decodeRegion(gpa, body, region);
     errdefer gpa.free(img.pixels);
-    if (alpha) |a| try applyAlpha(gpa, img, a);
+    if (alpha) |a| {
+        if (body.len < 10) return error.Malformed;
+        const w: u32 = std.mem.readInt(u16, body[6..8], .little) & 0x3fff;
+        const h: u32 = std.mem.readInt(u16, body[8..10], .little) & 0x3fff;
+        try applyAlpha(gpa, img, a, w, h, try png.Region.within(region, w, h));
+    }
     return img;
 }
 
-/// An ALPH chunk's alpha values, put into `img`'s pixels.
-fn applyAlpha(gpa: std.mem.Allocator, img: Decoded, chunk: []const u8) Error!void {
+/// An ALPH chunk's alpha values (for an image `w` by `h`), put into
+/// `img`'s pixels (its part `reg`).
+fn applyAlpha(gpa: std.mem.Allocator, img: Decoded, chunk: []const u8, w: u32, h: u32, reg: png.Region) Error!void {
     if (chunk.len < 1) return error.Malformed;
     const filter = (chunk[0] >> 2) & 3;
     const method = chunk[0] & 3;
-    const w = img.width;
-    const h = img.height;
     const values = try gpa.alloc(u8, @as(usize, w) * h);
     defer gpa.free(values);
     switch (method) {
@@ -124,7 +142,10 @@ fn applyAlpha(gpa: std.mem.Allocator, img: Decoded, chunk: []const u8) Error!voi
         };
         values[i] +%= pred;
     };
-    for (img.pixels, values) |*p, a| p.* = (p.* & 0x00ffffff) | @as(u32, a) << 24;
+    for (0..reg.h) |y| for (0..reg.w) |x| {
+        const p = &img.pixels[y * reg.w + x];
+        p.* = (p.* & 0x00ffffff) | @as(u32, values[(reg.y + y) * w + reg.x + x]) << 24;
+    };
 }
 
 /// A VP8L chunk: its header, then its image stream.
@@ -608,6 +629,22 @@ test "WebPs decode as libwebp does: lossless, lossy, with alpha, and an animatio
         const a: u32 = @intCast(255 - x * 2);
         try testing.expectEqual(a << 24 | r << 16 | g << 8 | b, img.pixels[y * 61 + x]);
     };
+}
+
+test "parts of WebPs decode to those parts" {
+    inline for (.{ "animated.webp", "lossless_noise.webp", "lossy.webp", "lossy_alpha.webp", "lossy_low.webp" }) |name| {
+        const data = @embedFile("testdata/" ++ name);
+        const full = try decode(testing.allocator, data);
+        defer testing.allocator.free(full.pixels);
+        for ([_]png.Region{ .{ .x = 5, .y = 3, .w = 20, .h = 10 }, .{ .x = 0, .y = 17, .w = 61, .h = 3 }, .{ .x = 40, .y = 30, .w = 99, .h = 99 } }) |reg| {
+            const part = try decodeRegion(testing.allocator, data, reg);
+            defer testing.allocator.free(part.pixels);
+            png.expectRegion(full, part, try png.Region.within(reg, full.width, full.height)) catch |err| {
+                std.debug.print("{s} differs\n", .{name});
+                return err;
+            };
+        }
+    }
 }
 
 test "broken WebPs are refused, and none crash" {

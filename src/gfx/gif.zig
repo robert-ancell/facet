@@ -15,6 +15,13 @@ pub fn is(data: []const u8) bool {
 }
 
 pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
+    return decodeRegion(gpa, data, null);
+}
+
+/// Decodes part of a GIF's screen (all of it if `region` is null): the
+/// frame's indexes are decoded only as far down as the region goes (all
+/// of them if it is interlaced), and only the region's pixels kept.
+pub fn decodeRegion(gpa: std.mem.Allocator, data: []const u8, region: ?png.Region) Error!Decoded {
     if (!is(data) or data.len < 13) return error.Malformed;
     var r: Reader = .{ .data = data, .at = 6 };
     const width = try r.u16le();
@@ -22,7 +29,7 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     const flags = try r.byte();
     r.at += 2; // Background and aspect.
     if (width == 0 or height == 0) return error.Malformed;
-    if (@as(u64, width) * height > png.max_pixels) return error.TooBig;
+    const reg = try png.Region.within(region, width, height);
     var global: [256]u32 = @splat(0xff000000);
     if (flags & 0x80 != 0) try r.palette(&global, flags);
     var transparent: ?u8 = null;
@@ -48,30 +55,35 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
             if (transparent) |t| colors[t] = 0;
             const min_size = try r.byte();
             if (min_size < 1 or min_size > 8) return error.Malformed;
-            const indexes = try gpa.alloc(u8, @as(usize, fw) * fh);
+            const interlaced = fflags & 0x40 != 0;
+            // Rows of the frame needed: down to the region's last (all,
+            // interlaced, as the last rows sent are spread through it).
+            const rows: usize = if (interlaced) fh else @min(fh, reg.y1() -| top);
+            const indexes = try gpa.alloc(u8, @as(usize, fw) * rows);
             defer gpa.free(indexes);
             @memset(indexes, transparent orelse 0);
             try lzw(&r, min_size, indexes);
-            const pixels = try gpa.alloc(u32, @as(usize, width) * height);
+            const pixels = try gpa.alloc(u32, @as(usize, reg.w) * reg.h);
             @memset(pixels, 0);
             // The rows, in the order they were sent if interlaced.
             const order = [_][2]usize{ .{ 0, 8 }, .{ 4, 8 }, .{ 2, 4 }, .{ 1, 2 } };
-            const passes: []const [2]usize = if (fflags & 0x40 != 0) &order else &.{.{ 0, 1 }};
+            const passes: []const [2]usize = if (interlaced) &order else &.{.{ 0, 1 }};
             var row: usize = 0;
             for (passes) |pass| {
                 var fy = pass[0];
-                while (fy < fh) : (fy += pass[1]) {
+                while (fy < fh and row < rows) : (fy += pass[1]) {
                     const y = @as(usize, top) + fy;
                     defer row += 1;
-                    if (y >= height) continue;
+                    if (y < reg.y or y >= reg.y1()) continue;
                     for (0..fw) |fx| {
                         const x = @as(usize, left) + fx;
-                        if (x >= width) break;
-                        pixels[y * width + x] = colors[indexes[row * fw + fx]];
+                        if (x < reg.x) continue;
+                        if (x >= reg.x1()) break;
+                        pixels[(y - reg.y) * reg.w + (x - reg.x)] = colors[indexes[row * fw + fx]];
                     }
                 }
             }
-            return .{ .pixels = pixels, .width = width, .height = height };
+            return .{ .pixels = pixels, .width = reg.w, .height = reg.h };
         },
         0x3b => return error.Malformed,
         else => return error.Malformed,
@@ -228,6 +240,22 @@ test "GIFs decode: plain, interlaced, transparent, animated, and a frame smaller
         0, 0, 0xffffff00, 0xff0000ff, 0xff00ff00, 0,
         0, 0, 0,          0,          0,          0,
     }, img.pixels);
+}
+
+test "parts of GIFs decode to those parts" {
+    for ([_][]const u8{
+        @embedFile("testdata/pattern.gif"),
+        @embedFile("testdata/pattern_interlaced.gif"),
+        @embedFile("testdata/offset_frame.gif"),
+    }) |data| {
+        const full = try decode(testing.allocator, data);
+        defer testing.allocator.free(full.pixels);
+        for ([_]png.Region{ .{ .x = 1, .y = 1, .w = 3, .h = 2 }, .{ .x = 2, .y = 0, .w = 50, .h = 3 }, .{ .x = 0, .y = 2, .w = 4, .h = 30 } }) |reg| {
+            const part = try decodeRegion(testing.allocator, data, reg);
+            defer testing.allocator.free(part.pixels);
+            try png.expectRegion(full, part, try png.Region.within(reg, full.width, full.height));
+        }
+    }
 }
 
 test "broken GIFs are refused, and none crash" {

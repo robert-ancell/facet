@@ -32,6 +32,10 @@ pub const Source = union(enum) {
     bytes: []const u8,
 };
 
+/// A part of an image, in its pixels (as it is shown, after a JPEG's
+/// EXIF orientation).
+pub const Region = gfx.png.Region;
+
 /// How loading an image is going.
 pub const Status = union(enum) {
     loading,
@@ -67,9 +71,16 @@ pub const Cache = struct {
 
     /// How loading `source` is going, starting it if it has not been.
     pub fn get(c: *Cache, source: Source, now_ns: u64) Status {
+        return c.getRegion(source, null, now_ns);
+    }
+
+    /// How loading `region` of `source` (all of it if null) is going,
+    /// starting it if it has not been: only that part is decoded (and
+    /// kept). Pixels in memory (`.image`) are as they are, all of them.
+    pub fn getRegion(c: *Cache, source: Source, region: ?Region, now_ns: u64) Status {
         if (source == .image) return .{ .ready = source.image };
-        var key_buf: [64]u8 = undefined;
-        const key = keyOf(source, &key_buf);
+        var key_buf: [std.fs.max_path_bytes + 64]u8 = undefined;
+        const key = keyOf(source, region, &key_buf);
         if (c.entries.get(key)) |e| {
             e.last_used_ns = now_ns;
             return switch (e.status) {
@@ -78,21 +89,33 @@ pub const Cache = struct {
                 .failed => .failed,
             };
         }
-        const e = c.start(source, key, now_ns) catch return .failed;
+        const e = c.start(source, region, key, now_ns) catch return .failed;
         return if (e.status == .failed) .failed else .loading;
     }
 
-    fn keyOf(source: Source, buf: []u8) []const u8 {
-        return switch (source) {
+    fn keyOf(source: Source, region: ?Region, buf: []u8) []const u8 {
+        const base = switch (source) {
             .image => unreachable,
             .file => |p| p,
             .url => |u| u,
             // Not a path or URL: those start "/", or a scheme.
             .bytes => |b| std.fmt.bufPrint(buf, ":bytes:{x}:{d}", .{ @intFromPtr(b.ptr), b.len }) catch unreachable,
         };
+        const r = region orelse return base;
+        // A part: known by what it is of, and where (after a NUL, which
+        // paths and URLs do not have).
+        var tail: [48]u8 = undefined;
+        const where = std.fmt.bufPrint(&tail, "\x00{d},{d},{d},{d}", .{ r.x, r.y, r.w, r.h }) catch unreachable;
+        if (source == .bytes) {
+            const len = base.len;
+            if (len + where.len > buf.len) return base;
+            @memcpy(buf[len..][0..where.len], where);
+            return buf[0 .. len + where.len];
+        }
+        return std.fmt.bufPrint(buf, "{s}{s}", .{ base, where }) catch base;
     }
 
-    fn start(c: *Cache, source: Source, key: []const u8, now_ns: u64) !*Entry {
+    fn start(c: *Cache, source: Source, region: ?Region, key: []const u8, now_ns: u64) !*Entry {
         const e = try alloc.create(Entry);
         errdefer alloc.destroy(e);
         e.* = .{ .key = try alloc.dupe(u8, key), .last_used_ns = now_ns };
@@ -103,6 +126,7 @@ pub const Cache = struct {
         errdefer alloc.destroy(job);
         job.* = .{
             .key = try alloc.dupe(u8, key),
+            .region = region,
             .what = switch (source) {
                 .image => unreachable,
                 .file => |p| .{ .file = try alloc.dupe(u8, p) },
@@ -169,6 +193,8 @@ pub const Cache = struct {
 /// What a load needs, and what it made.
 const Job = struct {
     key: []u8,
+    /// The part of the image wanted (all if null).
+    region: ?Region = null,
     what: union(enum) { file: []u8, url: []u8, bytes: []u8 },
     result: ?Decoded = null,
 
@@ -307,12 +333,12 @@ const Http = struct {
 /// Fetches and decodes a job's image (in a worker).
 fn load(job: *const Job, http: *?*Http) ?Decoded {
     const data: []u8 = switch (job.what) {
-        .bytes => |b| return decodeFit(b),
+        .bytes => |b| return decodeFit(b, job.region),
         .file => |p| readFile(p) orelse return null,
         .url => |u| fetch(u, http) orelse return null,
     };
     defer alloc.free(data);
-    return decodeFit(data);
+    return decodeFit(data, job.region);
 }
 
 fn fetch(url: []const u8, http: *?*Http) ?[]u8 {
@@ -389,17 +415,17 @@ fn readFile(path: []const u8) ?[]u8 {
     return out.toOwnedSlice(alloc) catch null;
 }
 
-/// A PNG, JPEG, GIF or WebP decoded, made smaller if it is bigger than the
-/// GPU takes.
-fn decodeFit(data: []const u8) ?Decoded {
+/// A PNG, JPEG, GIF or WebP decoded (or `region` of it), made smaller if
+/// it is bigger than the GPU takes.
+fn decodeFit(data: []const u8, region: ?Region) ?Decoded {
     const img = (if (gfx.jpeg.is(data))
-        gfx.jpeg.decode(alloc, data)
+        gfx.jpeg.decodeRegion(alloc, data, region)
     else if (gfx.gif.is(data))
-        gfx.gif.decode(alloc, data)
+        gfx.gif.decodeRegion(alloc, data, region)
     else if (gfx.webp.is(data))
-        gfx.webp.decode(alloc, data)
+        gfx.webp.decodeRegion(alloc, data, region)
     else
-        gfx.png.decode(alloc, data)) catch return null;
+        gfx.png.decodeRegion(alloc, data, region)) catch return null;
     const max = gfx.Image.max_size;
     if (img.width <= max and img.height <= max) return img;
     defer alloc.free(img.pixels);

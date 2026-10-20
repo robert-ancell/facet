@@ -16,6 +16,45 @@ pub const Decoded = struct {
 /// The most pixels decoded.
 pub const max_pixels = 32 * 1024 * 1024;
 
+/// The most pixels an image may have when only part of it is decoded (a
+/// `Region` of at most `max_pixels`).
+pub const max_source_pixels = 16 * max_pixels;
+
+/// A part of an image, in pixels: `w` across and `h` down from (`x`, `y`).
+pub const Region = struct {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+
+    /// `r` within an image `width` by `height` (all of it, if null);
+    /// none of it there is malformed, and more than `max_pixels` too big.
+    pub fn within(r: ?Region, width: u32, height: u32) Error!Region {
+        const want = r orelse Region{ .x = 0, .y = 0, .w = width, .h = height };
+        if (want.x >= width or want.y >= height or want.w == 0 or want.h == 0) return error.Malformed;
+        const out: Region = .{ .x = want.x, .y = want.y, .w = @min(want.w, width - want.x), .h = @min(want.h, height - want.y) };
+        if (@as(u64, out.w) * out.h > max_pixels) return error.TooBig;
+        if (r == null and @as(u64, width) * height > max_pixels) return error.TooBig;
+        if (@as(u64, width) * height > max_source_pixels) return error.TooBig;
+        return out;
+    }
+
+    pub fn x1(r: Region) u32 {
+        return r.x + r.w;
+    }
+
+    pub fn y1(r: Region) u32 {
+        return r.y + r.h;
+    }
+};
+
+/// The part `r` of `img` (which must be within it), in new pixels.
+pub fn crop(gpa: std.mem.Allocator, img: Decoded, r: Region) Error!Decoded {
+    const out = try gpa.alloc(u32, @as(usize, r.w) * r.h);
+    for (0..r.h) |y| @memcpy(out[y * r.w ..][0..r.w], img.pixels[(r.y + y) * img.width + r.x ..][0..r.w]);
+    return .{ .pixels = out, .width = r.w, .height = r.h };
+}
+
 /// The PNG of `pixels` (0x__RRGGBB, alpha ignored), `width` by `height`.
 pub fn encode(gpa: std.mem.Allocator, pixels: []const u32, width: u32, height: u32) ![]u8 {
     return encodeChannels(gpa, pixels, width, height, 3);
@@ -79,6 +118,13 @@ fn chunk(gpa: std.mem.Allocator, out: *std.ArrayList(u8), kind: *const [4]u8, bo
 
 /// Decodes a PNG image to 0xAARRGGBB pixels (straight alpha).
 pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
+    return decodeRegion(gpa, data, null);
+}
+
+/// Decodes part of a PNG image (all of it if `region` is null): its rows
+/// are inflated one at a time, keeping only what is in the region, and
+/// (if it is not interlaced) no further than its last.
+pub fn decodeRegion(gpa: std.mem.Allocator, data: []const u8, region: ?Region) Error!Decoded {
     if (!std.mem.startsWith(u8, data, "\x89PNG\r\n\x1a\n")) return error.Malformed;
     var at: usize = 8;
     var width: u32 = 0;
@@ -142,8 +188,8 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     };
     if (!depth_ok) return error.Unsupported;
     if (width == 0 or height == 0) return error.Malformed;
-    if (@as(u64, width) * height > max_pixels) return error.TooBig;
-    const pixels = try gpa.alloc(u32, @as(usize, width) * height);
+    const r = try Region.within(region, width, height);
+    const pixels = try gpa.alloc(u32, @as(usize, r.w) * r.h);
     errdefer gpa.free(pixels);
     const bits = channels * depth;
     // Bytes to the corresponding byte of the pixel before (at least one).
@@ -153,39 +199,40 @@ pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
     const all = [_][4]u8{.{ 0, 0, 1, 1 }};
     const adam7 = [_][4]u8{ .{ 0, 0, 8, 8 }, .{ 4, 0, 8, 8 }, .{ 0, 4, 4, 8 }, .{ 2, 0, 4, 4 }, .{ 0, 2, 2, 4 }, .{ 1, 0, 2, 2 }, .{ 0, 1, 1, 2 } };
     const passes: []const [4]u8 = if (interlaced) &adam7 else &all;
-    var raw_len: usize = 0;
-    for (passes) |pass| {
-        const pw, const ph = passSize(width, height, pass);
-        if (pw > 0 and ph > 0) raw_len += ((pw * bits + 7) / 8 + 1) * ph;
-    }
-    const raw = try gpa.alloc(u8, raw_len);
-    defer gpa.free(raw);
+    // A row and the one before it, as wide as the widest pass's.
+    const widest = (@as(usize, width) * bits + 7) / 8 + 1;
+    const lines = try gpa.alloc(u8, widest * 2);
+    defer gpa.free(lines);
     const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
     defer gpa.free(window);
     var input = std.Io.Reader.fixed(idat.items);
     var z = std.compress.flate.Decompress.init(&input, .zlib, window);
-    z.reader.readSliceAll(raw) catch return error.Malformed;
 
-    var at_raw: usize = 0;
     for (passes) |pass| {
         const pw, const ph = passSize(width, height, pass);
         if (pw == 0 or ph == 0) continue;
         const stride = (pw * bits + 7) / 8;
         var prev: []u8 = &.{};
         for (0..ph) |py| {
-            const line = raw[at_raw..][0 .. stride + 1];
-            at_raw += stride + 1;
+            const y = pass[1] + py * pass[3];
+            // Not interlaced, nothing below the region is needed.
+            if (!interlaced and y >= r.y1()) break;
+            const line = lines[(py % 2) * widest ..][0 .. stride + 1];
+            z.reader.readSliceAll(line) catch return error.Malformed;
             const row = line[1..];
             try unfilter(line[0], row, prev, bpp);
             prev = row;
-            const y = pass[1] + py * pass[3];
-            for (0..pw) |px| {
+            if (y < r.y or y >= r.y1()) continue;
+            // The pass's pixels in the region's columns.
+            var px: usize = if (r.x > pass[0]) (r.x - pass[0] + pass[2] - 1) / pass[2] else 0;
+            while (px < pw) : (px += 1) {
                 const x = pass[0] + px * pass[2];
-                pixels[y * width + x] = pixel(row, px, color, depth, &palette, key);
+                if (x >= r.x1()) break;
+                pixels[(y - r.y) * r.w + (x - r.x)] = pixel(row, px, color, depth, &palette, key);
             }
         }
     }
-    return .{ .pixels = pixels, .width = width, .height = height };
+    return .{ .pixels = pixels, .width = r.w, .height = r.h };
 }
 
 /// How many pixels across and down an Adam7 pass (or all the pixels) has.
@@ -329,4 +376,40 @@ test "interlaced (Adam7) PNGs decode, passes empty or not" {
         const palette = [4]u32{ 0xffff0000, 0x8000ff00, 0xff0000ff, 0xffffffff };
         for (0..6) |y| for (0..11) |x| try testing.expectEqual(palette[(x + y) % 4], img.pixels[y * 11 + x]);
     }
+}
+
+/// `region` of `full` (decoded whole): what decoding just the region gives.
+pub fn expectRegion(full: Decoded, part: Decoded, region: Region) !void {
+    try testing.expectEqual(region.w, part.width);
+    try testing.expectEqual(region.h, part.height);
+    for (0..region.h) |y| try testing.expectEqualSlices(u32, full.pixels[(region.y + y) * full.width + region.x ..][0..region.w], part.pixels[y * region.w ..][0..region.w]);
+}
+
+test "parts of PNGs decode to those parts, interlaced or not" {
+    const gpa = testing.allocator;
+    for ([_][]const u8{
+        @embedFile("testdata/adam7_rgba.png"),
+        @embedFile("testdata/adam7_palette2.png"),
+    }) |data| {
+        const full = try decode(gpa, data);
+        defer gpa.free(full.pixels);
+        for ([_]Region{ .{ .x = 0, .y = 0, .w = 1, .h = 1 }, .{ .x = 3, .y = 2, .w = 5, .h = 3 }, .{ .x = 4, .y = 1, .w = 100, .h = 100 } }) |reg| {
+            const want = try Region.within(reg, full.width, full.height);
+            const part = try decodeRegion(gpa, data, reg);
+            defer gpa.free(part.pixels);
+            try expectRegion(full, part, want);
+        }
+        try testing.expectError(error.Malformed, decodeRegion(gpa, data, .{ .x = 50, .y = 0, .w = 2, .h = 2 }));
+    }
+    // Not interlaced.
+    var px: [40 * 30]u32 = undefined;
+    for (&px, 0..) |*p, i| p.* = 0xff000000 | @as(u32, @intCast(i * 2654435761 % 0xffffff));
+    const png = try encode(gpa, &px, 40, 30);
+    defer gpa.free(png);
+    const full = try decode(gpa, png);
+    defer gpa.free(full.pixels);
+    const reg: Region = .{ .x = 7, .y = 11, .w = 20, .h = 9 };
+    const part = try decodeRegion(gpa, png, reg);
+    defer gpa.free(part.pixels);
+    try expectRegion(full, part, reg);
 }

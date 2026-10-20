@@ -7,6 +7,14 @@
 //! Every scan's coefficients are kept, then turned into pixels once the
 //! last is read, so progressive images are read the same way as baseline
 //! ones.
+//!
+//! Part of an image (`decodeRegion`) is read only as far as it needs: the
+//! blocks under it alone are turned into pixels (by the inverse DCT), each
+//! scan is read no further than its last block there, and where the
+//! image has restart markers, the stretches between them with nothing of
+//! it are skipped unread. A baseline image's coefficients are kept only
+//! for its blocks; a progressive one's for all (a block's later scans
+//! need its earlier ones).
 
 const std = @import("std");
 const png = @import("png.zig");
@@ -21,7 +29,13 @@ pub fn is(data: []const u8) bool {
 
 /// Decodes a JPEG image.
 pub fn decode(gpa: std.mem.Allocator, data: []const u8) Error!Decoded {
-    var d: Decoder = .{ .gpa = gpa, .data = data };
+    return decodeRegion(gpa, data, null);
+}
+
+/// Decodes part of a JPEG image (all of it if `region` is null), the part
+/// as it is shown: after its EXIF orientation.
+pub fn decodeRegion(gpa: std.mem.Allocator, data: []const u8, region: ?png.Region) Error!Decoded {
+    var d: Decoder = .{ .gpa = gpa, .data = data, .region = region };
     defer d.deinit();
     return d.run();
 }
@@ -84,13 +98,35 @@ const Component = struct {
     dc_table: u8 = 0,
     ac_table: u8 = 0,
     dc_pred: i32 = 0,
-    /// Its blocks across and down (whole MCUs' worth), and their
-    /// coefficients, in natural order.
+    /// Its blocks across and down (whole MCUs' worth).
     blocks_w: usize = 0,
     blocks_h: usize = 0,
+    /// The blocks whose coefficients are kept (in natural order): from
+    /// (`kx`, `ky`), `kw` across and `kh` down.
+    kx: usize = 0,
+    ky: usize = 0,
+    kw: usize = 0,
+    kh: usize = 0,
     coefs: []i16 = &.{},
-    /// Pixels, `blocks_w * 8` across.
+    /// The blocks turned into pixels (those under the region): from
+    /// (`px`, `py`), `pw` across and `ph` down, and their pixels, `pw * 8`
+    /// across.
+    px: usize = 0,
+    py: usize = 0,
+    pw: usize = 0,
+    ph: usize = 0,
     pixels: []u8 = &.{},
+
+    /// The coefficients of block (`bx`, `by`), if they are kept.
+    fn kept(c: *Component, bx: usize, by: usize) ?*[64]i16 {
+        if (bx < c.kx or by < c.ky or bx >= c.kx + c.kw or by >= c.ky + c.kh) return null;
+        return c.coefs[((by - c.ky) * c.kw + (bx - c.kx)) * 64 ..][0..64];
+    }
+
+    /// Whether block (`bx`, `by`) is under the region.
+    fn shown(c: *const Component, bx: usize, by: usize) bool {
+        return bx >= c.px and by >= c.py and bx < c.px + c.pw and by < c.py + c.ph;
+    }
 };
 
 const Decoder = struct {
@@ -122,6 +158,12 @@ const Decoder = struct {
     jfif: bool = false,
     /// EXIF's orientation (1 to 8; 1 as it is).
     orientation: u8 = 1,
+    /// The part wanted (as shown), and the part of the image as stored
+    /// that it is.
+    region: ?png.Region = null,
+    stored: png.Region = undefined,
+    /// Where a block not kept is decoded.
+    scratch: [64]i16 = undefined,
 
     fn deinit(d: *Decoder) void {
         for (d.comps[0..d.ncomps]) |c| {
@@ -247,7 +289,11 @@ const Decoder = struct {
         d.width = std.mem.readInt(u16, body[3..5], .big);
         const n: usize = body[5];
         if (d.width == 0 or d.height == 0) return error.Unsupported;
-        if (@as(u64, d.width) * d.height > png.max_pixels) return error.TooBig;
+        // The region as shown (turned on its side by orientations 5 to 8),
+        // and where that is in the image as stored.
+        const sideways = d.orientation >= 5;
+        const shown = try png.Region.within(d.region, if (sideways) d.height else d.width, if (sideways) d.width else d.height);
+        d.stored = storedRegion(shown, d.orientation, d.width, d.height);
         if (n != 1 and n != 3 and n != 4) return error.Unsupported;
         if (body.len < 6 + n * 3) return error.Malformed;
         for (d.comps[0..n], 0..) |*c, i| {
@@ -259,11 +305,32 @@ const Decoder = struct {
         }
         d.mcus_x = std.math.divCeil(usize, d.width, @as(usize, d.hmax) * 8) catch unreachable;
         d.mcus_y = std.math.divCeil(usize, d.height, @as(usize, d.vmax) * 8) catch unreachable;
+        // A progressive image's coefficients, all kept, are its pixels'
+        // worth at most four times over.
+        if (d.progressive and @as(u64, d.width) * d.height > 4 * png.max_pixels) return error.TooBig;
         // Counted as they are made, for `deinit` to free.
         for (d.comps[0..n]) |*c| {
             c.blocks_w = d.mcus_x * c.h;
             c.blocks_h = d.mcus_y * c.v;
-            c.coefs = try d.gpa.alloc(i16, c.blocks_w * c.blocks_h * 64);
+            // The blocks of the component's samples under the region (the
+            // nearest sample to each pixel: x * h / hmax).
+            const r = d.stored;
+            c.px = r.x * c.h / d.hmax / 8;
+            c.py = r.y * c.v / d.vmax / 8;
+            c.pw = (r.x1() - 1) * c.h / d.hmax / 8 + 1 - c.px;
+            c.ph = (r.y1() - 1) * c.v / d.vmax / 8 + 1 - c.py;
+            if (d.progressive) {
+                c.kx = 0;
+                c.ky = 0;
+                c.kw = c.blocks_w;
+                c.kh = c.blocks_h;
+            } else {
+                c.kx = c.px;
+                c.ky = c.py;
+                c.kw = c.pw;
+                c.kh = c.ph;
+            }
+            c.coefs = try d.gpa.alloc(i16, c.kw * c.kh * 64);
             @memset(c.coefs, 0);
             d.ncomps += 1;
         }
@@ -296,47 +363,107 @@ const Decoder = struct {
         d.resetBits();
         for (d.comps[0..d.ncomps]) |*c| c.dc_pred = 0;
         d.eobrun = 0;
-        var todo = d.restart_interval;
-        if (n == 1) {
-            // One component: its own blocks, those of the picture, in order.
-            const c = scan[0];
-            const w = std.math.divCeil(usize, std.math.divCeil(usize, @as(usize, d.width) * c.h, d.hmax) catch unreachable, 8) catch unreachable;
-            const h = std.math.divCeil(usize, std.math.divCeil(usize, @as(usize, d.height) * c.v, d.vmax) catch unreachable, 8) catch unreachable;
-            for (0..h) |by| for (0..w) |bx| {
-                try d.restart(&todo);
-                try d.block(c, by * c.blocks_w + bx, s);
+        // The scan's units: its MCUs, or with one component, its blocks
+        // (those of the picture, in order).
+        const one = n == 1;
+        const c0 = scan[0];
+        const across = if (one) std.math.divCeil(usize, std.math.divCeil(usize, @as(usize, d.width) * c0.h, d.hmax) catch unreachable, 8) catch unreachable else d.mcus_x;
+        const down = if (one) std.math.divCeil(usize, std.math.divCeil(usize, @as(usize, d.height) * c0.v, d.vmax) catch unreachable, 8) catch unreachable else d.mcus_y;
+        const units = across * down;
+        // The last unit with anything under the region: none after it are
+        // read.
+        const last = d.lastShown(scan[0..n], across, down) orelse return d.skipScan();
+        const interval: usize = d.restart_interval;
+        var u: usize = 0;
+        while (u <= last) {
+            if (interval > 0 and u % interval == 0) {
+                if (u > 0) try d.nextRestart();
+                // Nothing under the region until the next restart: skipped.
+                const end = @min(u + interval, units);
+                if (!d.anyShown(scan[0..n], across, u, end)) {
+                    if (end > last) break;
+                    d.resetBits();
+                    d.toMarker();
+                    u = end;
+                    continue;
+                }
+            }
+            const ux = u % across;
+            const uy = u / across;
+            if (one) {
+                try d.block(c0, ux, uy, s);
+            } else for (scan[0..n]) |c| for (0..c.v) |v| for (0..c.h) |hh| {
+                try d.block(c, ux * c.h + hh, uy * c.v + v, s);
             };
-        } else {
-            for (0..d.mcus_y) |my| for (0..d.mcus_x) |mx| {
-                try d.restart(&todo);
-                for (scan[0..n]) |c| for (0..c.v) |v| for (0..c.h) |hh| {
-                    try d.block(c, (my * c.v + v) * c.blocks_w + mx * c.h + hh, s);
-                };
-            };
+            u += 1;
         }
-        // Up to the next marker.
+        // Up to the next marker (the rest of the scan, if it stopped short).
         d.resetBits();
     }
 
-    const Scan = struct { ss: u8, se: u8, ah: u4, al: u4 };
-
-    /// Before each MCU: after `restart_interval` of them, the restart
-    /// marker, and the predictions start over.
-    fn restart(d: *Decoder, todo: *u32) Error!void {
-        if (d.restart_interval == 0) return;
-        if (todo.* == 0) {
-            d.resetBits();
-            const m = try d.marker();
-            if (m < 0xd0 or m > 0xd7) {
-                // Missing: carry on from it.
-                d.at -= 2;
-            }
-            for (d.comps[0..d.ncomps]) |*c| c.dc_pred = 0;
-            d.eobrun = 0;
-            todo.* = d.restart_interval;
-        }
-        todo.* -= 1;
+    /// A scan with nothing under the region: passed over.
+    fn skipScan(d: *Decoder) void {
+        d.resetBits();
     }
+
+    /// The last of a scan's units (`across` by `down`) with a block under
+    /// the region, if any.
+    fn lastShown(d: *const Decoder, scan: []const *Component, across: usize, down: usize) ?usize {
+        _ = d;
+        var last: ?usize = null;
+        for (scan) |c| {
+            if (c.pw == 0 or c.ph == 0) continue;
+            // Its last block under the region, and the unit it is in.
+            const bx = c.px + c.pw - 1;
+            const by = c.py + c.ph - 1;
+            const ux = if (scan.len == 1) bx else bx / c.h;
+            const uy = if (scan.len == 1) by else by / c.v;
+            const unit = @min(uy, down - 1) * across + @min(ux, across - 1);
+            last = if (last) |l| @max(l, unit) else unit;
+        }
+        return last;
+    }
+
+    /// Whether any of units `from` to `to` has a block under the region.
+    fn anyShown(d: *const Decoder, scan: []const *Component, across: usize, from: usize, to: usize) bool {
+        _ = d;
+        for (from..to) |u| {
+            const ux = u % across;
+            const uy = u / across;
+            for (scan) |c| {
+                if (scan.len == 1) {
+                    if (c.shown(ux, uy)) return true;
+                } else for (0..c.v) |v| for (0..c.h) |hh| {
+                    if (c.shown(ux * c.h + hh, uy * c.v + v)) return true;
+                };
+            }
+        }
+        return false;
+    }
+
+    /// Past the restart marker before the next unit: the predictions start
+    /// over.
+    fn nextRestart(d: *Decoder) Error!void {
+        d.resetBits();
+        const m = try d.marker();
+        if (m < 0xd0 or m > 0xd7) {
+            // Missing: carry on from it.
+            d.at -= 2;
+        }
+        for (d.comps[0..d.ncomps]) |*c| c.dc_pred = 0;
+        d.eobrun = 0;
+    }
+
+    /// Ahead to the next marker (unread: at its 0xff), past the entropy-
+    /// coded data before it.
+    fn toMarker(d: *Decoder) void {
+        while (d.at + 1 < d.data.len) : (d.at += 1) {
+            if (d.data[d.at] == 0xff and d.data[d.at + 1] != 0 and d.data[d.at + 1] != 0xff) return;
+        }
+        d.at = d.data.len;
+    }
+
+    const Scan = struct { ss: u8, se: u8, ah: u4, al: u4 };
 
     fn resetBits(d: *Decoder) void {
         d.bits = 0;
@@ -409,8 +536,12 @@ const Decoder = struct {
         return h.symbols[@intCast(index)];
     }
 
-    fn block(d: *Decoder, c: *Component, index: usize, s: Scan) Error!void {
-        const coef = c.coefs[index * 64 ..][0..64];
+    fn block(d: *Decoder, c: *Component, bx: usize, by: usize, s: Scan) Error!void {
+        const coef = c.kept(bx, by) orelse blk: {
+            // Not kept (outside the region): decoded and dropped.
+            @memset(&d.scratch, 0);
+            break :blk &d.scratch;
+        };
         if (!d.progressive) return d.baseline(c, coef);
         if (s.ss == 0) {
             if (s.ah == 0) {
@@ -519,33 +650,35 @@ const Decoder = struct {
 
     fn finish(d: *Decoder) Error!Decoded {
         // Each component's pixels.
+        // Each component's pixels, of the blocks under the region.
         for (d.comps[0..d.ncomps]) |*c| {
-            const stride = c.blocks_w * 8;
-            c.pixels = try d.gpa.alloc(u8, stride * c.blocks_h * 8);
+            const stride = c.pw * 8;
+            c.pixels = try d.gpa.alloc(u8, stride * c.ph * 8);
             const q = &d.quant[c.quant];
-            for (0..c.blocks_h) |by| for (0..c.blocks_w) |bx| {
-                const coef = c.coefs[(by * c.blocks_w + bx) * 64 ..][0..64];
+            for (0..c.ph) |j| for (0..c.pw) |i| {
+                const coef = c.kept(c.px + i, c.py + j) orelse unreachable;
                 var deq: [64]i32 = undefined;
                 for (&deq, coef, q) |*o, v, m| o.* = std.math.clamp(@as(i32, v) * m, -32768, 32767);
-                idct(c.pixels[by * 8 * stride + bx * 8 ..], stride, &deq);
+                idct(c.pixels[j * 8 * stride + i * 8 ..], stride, &deq);
             };
         }
-        const out = try d.gpa.alloc(u32, @as(usize, d.width) * d.height);
+        const reg = d.stored;
+        const out = try d.gpa.alloc(u32, @as(usize, reg.w) * reg.h);
         errdefer d.gpa.free(out);
         // RGB unless the Adobe marker says so; grey; YCbCr; CMYK or YCCK.
         const transform: u8 = d.adobe orelse if (d.ncomps == 3) blk: {
             const ids = [3]u8{ d.comps[0].id, d.comps[1].id, d.comps[2].id };
             break :blk if (!d.jfif and std.mem.eql(u8, &ids, "RGB")) 0 else 1;
         } else 0;
-        for (0..d.height) |y| for (0..d.width) |x| {
+        for (reg.y..reg.y1()) |y| for (reg.x..reg.x1()) |x| {
             var v: [4]u8 = undefined;
             for (d.comps[0..d.ncomps], 0..) |*c, i| {
                 // Nearest of the component's samples to the pixel.
-                const sx = x * c.h / d.hmax;
-                const sy = y * c.v / d.vmax;
-                v[i] = c.pixels[sy * c.blocks_w * 8 + sx];
+                const sx = x * c.h / d.hmax - c.px * 8;
+                const sy = y * c.v / d.vmax - c.py * 8;
+                v[i] = c.pixels[sy * c.pw * 8 + sx];
             }
-            out[y * d.width + x] = switch (d.ncomps) {
+            out[(y - reg.y) * reg.w + (x - reg.x)] = switch (d.ncomps) {
                 1 => argb(v[0], v[0], v[0]),
                 3 => if (transform == 0) argb(v[0], v[1], v[2]) else ycbcr(v[0], v[1], v[2]),
                 else => blk: {
@@ -562,7 +695,7 @@ const Decoder = struct {
                 },
             };
         };
-        const img: Decoded = .{ .pixels = out, .width = d.width, .height = d.height };
+        const img: Decoded = .{ .pixels = out, .width = reg.w, .height = reg.h };
         if (d.orientation == 1) return img;
         defer d.gpa.free(out);
         return orient(d.gpa, img, d.orientation);
@@ -587,6 +720,32 @@ fn exifOrientation(body: []const u8) ?u8 {
         return if (v >= 1 and v <= 8) @intCast(v) else null;
     }
     return null;
+}
+
+/// Where the part `shown` of an image (as shown, after orientation `o`)
+/// is in the image as stored (`w` by `h`).
+fn storedRegion(shown: png.Region, o: u8, w: u32, h: u32) png.Region {
+    const corners = [2][2]u32{ .{ shown.x, shown.y }, .{ shown.x1() - 1, shown.y1() - 1 } };
+    var lo: [2]u32 = .{ std.math.maxInt(u32), std.math.maxInt(u32) };
+    var hi: [2]u32 = .{ 0, 0 };
+    for (corners) |p| {
+        const x = p[0];
+        const y = p[1];
+        // As `orient` takes the pixel shown at (x, y).
+        const s: [2]u32 = switch (o) {
+            2 => .{ w - 1 - x, y },
+            3 => .{ w - 1 - x, h - 1 - y },
+            4 => .{ x, h - 1 - y },
+            5 => .{ y, x },
+            6 => .{ y, h - 1 - x },
+            7 => .{ w - 1 - y, h - 1 - x },
+            8 => .{ w - 1 - y, x },
+            else => .{ x, y },
+        };
+        lo = .{ @min(lo[0], s[0]), @min(lo[1], s[1]) };
+        hi = .{ @max(hi[0], s[0]), @max(hi[1], s[1]) };
+    }
+    return .{ .x = lo[0], .y = lo[1], .w = hi[0] - lo[0] + 1, .h = hi[1] - lo[1] + 1 };
 }
 
 /// `img` turned or flipped as an EXIF orientation says: 2 flipped across,
@@ -819,4 +978,25 @@ test "a JPEG is turned as its EXIF orientation says" {
     try testing.expectEqual(@as(u32, 67), six.height);
     const corner = six.pixels[44];
     try testing.expect((corner >> 16) & 0xff < 16 and (corner >> 8) & 0xff < 16);
+}
+
+test "parts of JPEGs decode to those parts: baseline, progressive, subsampled, with restarts, turned" {
+    inline for (.{ "gradient_420.jpg", "gradient_444.jpg", "gradient_cmyk.jpg", "gradient_grey.jpg", "gradient_progressive.jpg", "gradient_restart.jpg", "gradient_exif3.jpg", "gradient_exif5.jpg", "gradient_exif6.jpg", "gradient_exif8.jpg" }) |name| {
+        const data = @embedFile("testdata/" ++ name);
+        const full = try decode(testing.allocator, data);
+        defer testing.allocator.free(full.pixels);
+        for ([_]png.Region{
+            .{ .x = 0, .y = 0, .w = 1, .h = 1 },
+            .{ .x = 9, .y = 5, .w = 17, .h = 13 },
+            .{ .x = full.width / 2, .y = full.height / 2, .w = 1000, .h = 1000 },
+            .{ .x = full.width - 3, .y = 0, .w = 3, .h = full.height },
+        }) |reg| {
+            const part = try decodeRegion(testing.allocator, data, reg);
+            defer testing.allocator.free(part.pixels);
+            png.expectRegion(full, part, try png.Region.within(reg, full.width, full.height)) catch |err| {
+                std.debug.print("{s} differs in {any}\n", .{ name, reg });
+                return err;
+            };
+        }
+    }
 }

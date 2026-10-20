@@ -2358,3 +2358,44 @@ test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
         try testing.expectEqualSlices(u32, &want, &win.pixels[win.back]);
     }
 }
+
+test "an image shows a part of itself: of pixels in memory, or only that part loaded" {
+    const u = try ui.Ui.create(testing.allocator, null);
+    defer u.destroy();
+    // Red above, blue below, 12 by 8.
+    var pixels: [12 * 8]u32 = undefined;
+    for (&pixels, 0..) |*p, i| p.* = if (i < 12 * 4) 0xffff0000 else 0xff0000ff;
+    const pic = gfx.Image.init(&pixels, 12, 8);
+    const png = try gfx.png.encode(testing.allocator, &pixels, 12, 8);
+    defer testing.allocator.free(png);
+    const PartRoot = struct {
+        source: ui.Image.Source,
+        region: ui.Image.Region,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            const broken = struct {
+                fn f(c: *Context) Widget {
+                    return c.make(ui.SizedBox{ .width = 7, .height = 7 });
+                }
+            }.f;
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Image{ .source = self.source, .region = self.region, .failed = .func(broken) }) });
+        }
+    };
+    for ([_]ui.Image.Source{ .{ .image = &pic }, .{ .bytes = png } }) |source| {
+        // The bottom half, from the third column: as big as it, and blue.
+        const root: PartRoot = .{ .source = source, .region = .{ .x = 2, .y = 4, .w = 6, .h = 10 } };
+        try frameUntilLoaded(u, root);
+        u.frame(200, 200, 9000, root);
+        const node = find(u.root.?, ui.Image).?;
+        try testing.expectEqual(ui.Size{ .w = 6, .h = 4 }, node.children.items[0].size);
+        var img = try Image.init(u, 200, 200);
+        try testing.expectEqual(@as(u32, 0xff0000ff), img.at(0, 0));
+        try testing.expectEqual(@as(u32, 0xff0000ff), img.at(5, 3));
+        try testing.expectEqual(@as(u32, 0xff000000), img.at(6, 0));
+        img.deinit();
+        // A part beyond the picture: what shows when it cannot be loaded.
+        const off: PartRoot = .{ .source = source, .region = .{ .x = 20, .y = 0, .w = 2, .h = 2 } };
+        try frameUntilLoaded(u, off);
+        u.frame(200, 200, 9001, off);
+        try testing.expectEqual(ui.Size{ .w = 7, .h = 7 }, find(u.root.?, ui.Image).?.children.items[0].size);
+    }
+}
