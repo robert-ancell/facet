@@ -661,6 +661,16 @@ pub const Ui = struct {
     }
 
     fn paint(ui: *Ui, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
+        ui.paintOnce(tb, r, drag, menu, tooltip, width, height);
+        // The glyph atlas filled part way through, so some text is missing
+        // glyphs: painted again with it empty, so that the frame is whole.
+        // (Otherwise the text would stay that way in this frame's buffer,
+        // where nothing changed after, while the window's other buffers
+        // show it whole: it would flicker as they take turns.)
+        if (ui.atlas.full) ui.paintOnce(tb, r, drag, menu, tooltip, width, height);
+    }
+
+    fn paintOnce(ui: *Ui, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
         ui.atlas.beginFrame();
         ui.canvases_used = 0;
         ui.segments.clearRetainingCapacity();

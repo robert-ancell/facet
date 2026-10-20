@@ -2289,3 +2289,60 @@ test "a map view is dragged and zoomed" {
     try testing.expectApproxEqAbs(300, after.pos[0], 1e-3);
     try testing.expectApproxEqAbs(100, after.pos[1], 1e-3);
 }
+
+/// A window whose two buffers are drawn in turn, as a compositor gives
+/// them back, keeping what was drawn in each.
+const TwoBufferWin = struct {
+    const w = 900;
+    const h = 800;
+    width: u32 = w,
+    height: u32 = h,
+    pixels: [2][w * h]u32 = .{ @splat(0), @splat(0) },
+    drawn: [2]u64 = .{ 0, 0 },
+    frames: u64 = 0,
+    back: usize = 0,
+
+    pub fn beginFrame(win: *TwoBufferWin) !gfx.software.Image {
+        win.back = @intCast(win.frames % 2);
+        return .{ .pixels = &win.pixels[win.back], .width = w, .height = h };
+    }
+    pub fn bufferAge(win: *const TwoBufferWin) u32 {
+        const d = win.drawn[win.back];
+        return if (d == 0) 0 else @intCast(win.frames + 1 - d);
+    }
+    pub fn showDamaged(win: *TwoBufferWin, _: ?[]const gfx.Viewport) !void {
+        win.frames += 1;
+        win.drawn[win.back] = win.frames;
+    }
+};
+
+test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
+    const fira = try font.Font.init(fira_data);
+    const u = try ui.Ui.create(testing.allocator, &fira);
+    defer u.destroy();
+    u.attachRenderer(u.software_renderer.renderer(), false);
+    var win: TwoBufferWin = .{};
+    u.attachWindow(&win, null);
+    // Lines of letters far apart, one changing size each frame (so the
+    // atlas fills with glyphs of new sizes, now and then part way through
+    // a frame).
+    const Lines = struct {
+        sizes: [3]f32,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            var lines: [3]Widget = undefined;
+            for (&lines, self.sizes) |*l, size| l.* = cx.make(ui.Text{ .text = "abcdefghijklm", .style = .{ .size = size }, .wrap = false });
+            return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 160, .children = cx.arena.dupe(Widget, &lines) catch &.{} });
+        }
+    };
+    var lines: Lines = .{ .sizes = @splat(20) };
+    var want: [TwoBufferWin.w * TwoBufferWin.h]u32 = undefined;
+    for (0..90) |f| {
+        lines.sizes[f % lines.sizes.len] = 24 + @as(f32, @floatFromInt(f * 37 % 71));
+        u.frame(TwoBufferWin.w, TwoBufferWin.h, f, lines);
+        _ = try u.present(&win, 0xff000000);
+        @memset(&want, 0xff000000);
+        var want_img: gfx.software.Image = .{ .pixels = &want, .width = TwoBufferWin.w, .height = TwoBufferWin.h };
+        try u.render(&want_img, null);
+        try testing.expectEqualSlices(u32, &want, &win.pixels[win.back]);
+    }
+}

@@ -264,3 +264,79 @@ fn expectSane(n: *facet.Node) !void {
 test {
     _ = maps;
 }
+
+test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
+    const fira = try facet.font.Font.init(facet.font.default_font_data);
+    const u = try facet.Ui.create(std.testing.allocator, &fira);
+    defer u.destroy();
+    u.attachRenderer(u.software_renderer.renderer(), false);
+    var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
+    defer notes.deinit();
+    var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);
+    defer code.deinit();
+    const root: Showcase = .{ .notes = &notes, .code = &code };
+    const w = 900;
+    const h = 600;
+    // Three buffers, each keeping what was drawn in it, given back in any
+    // order (as a compositor may).
+    const Win = struct {
+        width: u32 = w,
+        height: u32 = h,
+        pixels: [3][]u32,
+        drawn: [3]u64 = @splat(0),
+        frames: u64 = 0,
+        back: usize = 0,
+        rng: std.Random.DefaultPrng = .init(7),
+
+        pub fn beginFrame(win: *@This()) !facet.gfx.software.Image {
+            win.back = win.rng.random().uintLessThan(usize, win.pixels.len);
+            return .{ .pixels = win.pixels[win.back], .width = w, .height = h };
+        }
+        pub fn bufferAge(win: *const @This()) u32 {
+            const d = win.drawn[win.back];
+            return if (d == 0) 0 else @intCast(win.frames + 1 - d);
+        }
+        pub fn showDamaged(win: *@This(), _: ?[]const facet.gfx.Viewport) !void {
+            win.frames += 1;
+            win.drawn[win.back] = win.frames;
+        }
+    };
+    var win: Win = .{ .pixels = undefined };
+    for (&win.pixels) |*p| p.* = try std.testing.allocator.alloc(u32, w * h);
+    defer for (win.pixels) |p| std.testing.allocator.free(p);
+    const want = try std.testing.allocator.alloc(u32, w * h);
+    defer std.testing.allocator.free(want);
+    u.attachWindow(&win, null);
+
+    // Each page for a while, its animations running, with the pointer
+    // moving, clicking and scrolling about.
+    var rng = std.Random.DefaultPrng.init(1);
+    var t: u64 = 0;
+    u.frame(w, h, t, root);
+    for (std.enums.values(Page)) |page| for (0..40) |f| {
+        if (f == 0) u.root.?.state(Showcase.State).page = page;
+        const pos: facet.Point = .{ @floatFromInt(rng.random().uintLessThan(u32, w)), @floatFromInt(rng.random().uintLessThan(u32, h)) };
+        switch (rng.random().uintLessThan(u8, 12)) {
+            0, 1, 2 => u.pointerMotion(pos),
+            // Not on the rail, which would change the page.
+            3 => if (pos[0] > 220) {
+                u.pointerMotion(pos);
+                u.pointerButton(pos, facet.btn_left, true);
+                u.pointerButton(pos, facet.btn_left, false);
+            },
+            4 => u.pointerScroll(pos, 0, 40),
+            5 => u.pointerScroll(pos, 0, -40),
+            else => {},
+        }
+        t += (1 + rng.random().uintLessThan(u64, 3)) * 8 * std.time.ns_per_ms;
+        u.frame(w, h, t, root);
+        if (!try u.present(&win, 0xff000000)) continue;
+        @memset(want, 0xff000000);
+        var img: facet.gfx.software.Image = .{ .pixels = want, .width = w, .height = h };
+        try u.render(&img, null);
+        std.testing.expectEqualSlices(u32, want, win.pixels[win.back]) catch |err| {
+            std.debug.print("on the {s} page, frame {d}\n", .{ @tagName(page), f });
+            return err;
+        };
+    };
+}
