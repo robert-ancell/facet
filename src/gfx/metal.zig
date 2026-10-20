@@ -582,6 +582,15 @@ pub const MetalRenderer = struct {
                 r.screen.tex, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 }, Size{ .width = w, .height = h }, dst, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 },
             });
             msg(void, blit, "endEncoding", .{});
+            if (msg(objc.Bool, layer, "presentsWithTransaction", .{}) != 0) {
+                // Shown in the window's transaction (as it is resized):
+                // once the GPU has it.
+                msg(void, cmd, "commit", .{});
+                msg(void, cmd, "waitUntilScheduled", .{});
+                msg(void, drawable, "present", .{});
+                r.slots[r.slot].cmd = objc.retain(cmd);
+                return;
+            }
             msg(void, cmd, "presentDrawable:", .{drawable});
         }
         msg(void, cmd, "commit", .{});

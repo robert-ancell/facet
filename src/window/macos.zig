@@ -57,6 +57,12 @@ pub const MacWindow = struct {
     /// A frame was shown less than a refresh ago (when the display shows
     /// it), so the next waits; and when it was shown.
     frame_pending: bool = false,
+    /// What draws a frame from inside AppKit's own loops (see
+    /// `window.Window.setRedraw`).
+    redraw: ?window.Redraw = null,
+    /// While it is resized by its edge: what draws a frame at each refresh
+    /// (the pointer held still, there is no resize to draw one at).
+    resize_timer: Id = null,
     presented_ns: u64 = 0,
     /// Events since the last `takeInput`, and those it gave.
     input: std.ArrayList(InputEvent) = .empty,
@@ -161,6 +167,7 @@ pub const MacWindow = struct {
         w.view = msg(Id, msg(Id, viewClass(), "alloc", .{}), "initWithFrame:", .{rect});
         objc.setOwner(w.view, w);
         w.plain_layer = objc.retain(msg(Id, objc.class("CALayer"), "layer", .{}));
+        keepTopLeft(w.plain_layer);
         msg(void, w.view, "setLayer:", .{w.plain_layer});
         msg(void, w.view, "setWantsLayer:", .{objc.yes});
         // Moves, entering and leaving, wherever the pointer is in it.
@@ -194,6 +201,7 @@ pub const MacWindow = struct {
         const pool = objc.push();
         defer objc.pop(pool);
         for (&w.watched) |*slot| if (slot.*) |_| w.unwatch(slot);
+        w.stopResizeTimer();
         msg(void, w.win, "setDelegate:", .{@as(Id, null)});
         msg(void, w.win, "close", .{});
         msg(void, w.delegate, "release", .{});
@@ -326,6 +334,7 @@ pub const MacWindow = struct {
             const cls = objc.class("CAMetalLayer") orelse return null;
             w.metal_layer = objc.retain(msg(Id, cls, "layer", .{}));
             msg(void, w.metal_layer, "setOpaque:", .{objc.yes});
+            keepTopLeft(w.metal_layer);
         }
         if (!w.on_gpu) {
             msg(void, w.view, "setLayer:", .{w.metal_layer});
@@ -336,6 +345,9 @@ pub const MacWindow = struct {
         const ph = w.height * w.scale;
         msg(void, w.metal_layer, "setContentsScale:", .{@as(objc.CGFloat, @floatFromInt(w.scale))});
         msg(void, w.metal_layer, "setDrawableSize:", .{objc.Size{ .width = @floatFromInt(pw), .height = @floatFromInt(ph) }});
+        // While resized by its edge, a frame is shown with the window's new
+        // size (in its transaction), not after it.
+        msg(void, w.metal_layer, "setPresentsWithTransaction:", .{msg(objc.Bool, w.view, "inLiveResize", .{})});
         return .{ .layer = w.metal_layer.?, .width = pw, .height = ph };
     }
 
@@ -428,6 +440,32 @@ pub const MacWindow = struct {
         frame.size.height += dh;
         frame.origin.y -= dh;
         msg(void, w.win, "setFrame:display:", .{ frame, objc.yes });
+    }
+
+    pub fn setRedraw(w: *MacWindow, redraw: ?window.Redraw) void {
+        w.redraw = redraw;
+    }
+
+    fn startResizeTimer(w: *MacWindow) void {
+        if (w.resize_timer != null) return;
+        const seconds = @as(f64, @floatFromInt(w.refresh_ns)) / std.time.ns_per_s;
+        const timer = msg(Id, objc.class("NSTimer"), "timerWithTimeInterval:target:selector:userInfo:repeats:", .{ seconds, w.delegate, objc.sel("resizeTick:"), @as(Id, null), objc.yes }) orelse return;
+        // In AppKit's loop while it tracks the mouse, as in its own.
+        const loop = msg(Id, objc.class("NSRunLoop"), "currentRunLoop", .{});
+        msg(void, loop, "addTimer:forMode:", .{ timer, objc.constant("kCFRunLoopCommonModes") });
+        w.resize_timer = objc.retain(timer);
+    }
+
+    fn stopResizeTimer(w: *MacWindow) void {
+        const timer = w.resize_timer orelse return;
+        msg(void, timer, "invalidate", .{});
+        objc.release(timer);
+        w.resize_timer = null;
+    }
+
+    fn drawNow(w: *MacWindow) void {
+        const r = w.redraw orelse return;
+        r.f(r.ctx);
     }
 
     pub fn setMaximized(w: *MacWindow, on: bool) void {
@@ -609,6 +647,27 @@ pub const MacWindow = struct {
             _ = d;
             postWake();
         }
+        fn resized(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
+            changed(d, sel, n);
+            // Resized by its edge, AppKit keeps the app's loop until the
+            // mouse is let go: a frame at each size is drawn from here,
+            // and from the timer between.
+            const w = objc.owner(MacWindow, d) orelse return;
+            if (msg(objc.Bool, w.view, "inLiveResize", .{}) != 0) w.drawNow();
+        }
+        fn liveResizeStarted(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
+            const w = objc.owner(MacWindow, d) orelse return;
+            if (w.redraw != null) w.startResizeTimer();
+        }
+        fn liveResizeEnded(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
+            const w = objc.owner(MacWindow, d) orelse return;
+            w.stopResizeTimer();
+            changed(d, sel, n);
+        }
+        fn resizeTick(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
+            const w = objc.owner(MacWindow, d) orelse return;
+            w.drawNow();
+        }
     };
 
     fn viewClass() objc.Class {
@@ -641,13 +700,23 @@ pub const MacWindow = struct {
         const b = if (@import("builtin").cpu.arch == .aarch64) "B@:@" else "c@:@";
         return objc.makeClass("FacetWindowDelegate", "NSObject", &.{
             .{ .sel = "windowShouldClose:", .imp = &m.windowShouldClose, .types = b },
-            .{ .sel = "windowDidResize:", .imp = &m.changed, .types = "v@:@" },
+            .{ .sel = "windowDidResize:", .imp = &m.resized, .types = "v@:@" },
+            .{ .sel = "windowWillStartLiveResize:", .imp = &m.liveResizeStarted, .types = "v@:@" },
+            .{ .sel = "windowDidEndLiveResize:", .imp = &m.liveResizeEnded, .types = "v@:@" },
+            .{ .sel = "resizeTick:", .imp = &m.resizeTick, .types = "v@:@" },
             .{ .sel = "windowDidChangeBackingProperties:", .imp = &m.changed, .types = "v@:@" },
             .{ .sel = "windowDidEnterFullScreen:", .imp = &m.changed, .types = "v@:@" },
             .{ .sel = "windowDidExitFullScreen:", .imp = &m.changed, .types = "v@:@" },
         });
     }
 };
+
+/// A frame shown in `layer` stays at its top left corner, as big as it
+/// was drawn, until one is drawn at the layer's new size (rather than
+/// being stretched to it).
+fn keepTopLeft(layer: Id) void {
+    if (objc.constant("kCAGravityTopLeft")) |g| msg(void, layer, "setContentsGravity:", .{g});
+}
 
 /// The windows open (Quit closes them all).
 var windows: std.ArrayList(*MacWindow) = .empty;

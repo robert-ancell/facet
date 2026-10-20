@@ -1516,6 +1516,16 @@ pub const App = struct {
     /// straight on to draw again.
     idle: bool = false,
     suspended: bool = false,
+    /// The root last drawn, kept to draw again when the window asks (see
+    /// `window.Window.setRedraw`), and whether a frame is being drawn.
+    kept_root: ?KeptRoot = null,
+    drawing: bool = false,
+
+    const KeptRoot = struct {
+        ptr: *anyopaque,
+        draw: *const fn (a: *App, ptr: *anyopaque) anyerror!void,
+        free: *const fn (gpa: std.mem.Allocator, ptr: *anyopaque) void,
+    };
 
     pub const Options = struct {
         title: []const u8,
@@ -1570,10 +1580,13 @@ pub const App = struct {
         ui.theme = a.appearance.theme.scheme();
         ui.min_size_floor = options.min_size orelse .{ 0, 0 };
         ui.attachWindow(w, &a.controls);
+        w.setRedraw(.{ .ctx = a, .f = redraw });
         return a;
     }
 
     pub fn close(a: *App) void {
+        a.win.setRedraw(null);
+        if (a.kept_root) |k| k.free(a.gpa, k.ptr);
         a.ui.destroy();
         if (a.owns_window) a.win.close();
         a.gpa.destroy(a);
@@ -1659,13 +1672,25 @@ pub const App = struct {
 
     /// Draws and shows a frame of `root`, if there is one to draw and the
     /// window is ready for it.
+    ///
+    /// `root` is kept until the next `draw`, for the window to have drawn
+    /// again while the app's loop is held by the window system (macOS,
+    /// while the window is resized by its edge); what it points to must
+    /// last as long.
     pub fn draw(a: *App, now_ns: u64, root: anytype) !void {
+        a.keepRoot(root);
         a.idle = true;
         if (!a.wantsFrame()) return;
         if (a.win.isFramePending()) {
             if (try a.ui.presentPopups(a.win)) a.idle = false;
             return;
         }
+        try a.drawFrame(now_ns, root);
+    }
+
+    fn drawFrame(a: *App, now_ns: u64, root: anytype) !void {
+        a.drawing = true;
+        defer a.drawing = false;
         a.dirty = false;
         const size = a.win.size();
         const target_ns = a.win.nextPresentationNs(now_ns);
@@ -1673,5 +1698,42 @@ pub const App = struct {
         a.win.setPresentationTime(target_ns);
         const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
         if (try a.ui.present(a.win, clear)) a.idle = false;
+    }
+
+    fn keepRoot(a: *App, root: anytype) void {
+        const T = @TypeOf(root);
+        const Kept = struct {
+            fn draw(app: *App, p: *anyopaque) anyerror!void {
+                try app.drawFrame(sys.monotonicNs(), @as(*const T, @ptrCast(@alignCast(p))).*);
+            }
+            fn free(gpa: std.mem.Allocator, p: *anyopaque) void {
+                gpa.destroy(@as(*T, @ptrCast(@alignCast(p))));
+            }
+        };
+        if (a.kept_root) |k| {
+            if (k.draw == &Kept.draw) {
+                @as(*T, @ptrCast(@alignCast(k.ptr))).* = root;
+                return;
+            }
+            k.free(a.gpa, k.ptr);
+            a.kept_root = null;
+        }
+        const p = a.gpa.create(T) catch return;
+        p.* = root;
+        a.kept_root = .{ .ptr = p, .draw = &Kept.draw, .free = &Kept.free };
+    }
+
+    /// Draws a frame of the root kept, at the window's size now, if
+    /// there is one to draw (it was resized, or a widget asked for one):
+    /// the window asks, from inside the window system's loop.
+    fn redraw(ctx: *anyopaque) void {
+        const a: *App = @ptrCast(@alignCast(ctx));
+        // Not inside a frame (one can resize the window, to its minimum).
+        if (a.drawing) return;
+        const k = a.kept_root orelse return;
+        if (a.win.applyConfigure() catch return) |_| a.dirty = true;
+        if (!a.wantsFrame()) return;
+        a.ui.syncWindow(a.win);
+        k.draw(a, k.ptr) catch {};
     }
 };

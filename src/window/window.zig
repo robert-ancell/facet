@@ -272,6 +272,7 @@ pub const Window = struct {
         isFramePending: *const fn (ptr: *anyopaque) bool,
         setCursor: *const fn (ptr: *anyopaque, cursor: Cursor) void,
         setMinSize: *const fn (ptr: *anyopaque, width: u32, height: u32) void,
+        setRedraw: *const fn (ptr: *anyopaque, redraw: ?Redraw) void,
         setMaximized: *const fn (ptr: *anyopaque, on: bool) void,
         setMinimized: *const fn (ptr: *anyopaque) void,
         canMaximize: *const fn (ptr: *anyopaque) bool,
@@ -430,6 +431,9 @@ pub const Window = struct {
             fn setMinSizeFn(p: *anyopaque, w: u32, h: u32) void {
                 if (@hasDecl(T, "setMinSize")) self(p).setMinSize(w, h);
             }
+            fn setRedrawFn(p: *anyopaque, r: ?Redraw) void {
+                if (@hasDecl(T, "setRedraw")) self(p).setRedraw(r);
+            }
             fn setMinimizedFn(p: *anyopaque) void {
                 if (@hasDecl(T, "setMinimized")) self(p).setMinimized();
             }
@@ -567,6 +571,7 @@ pub const Window = struct {
                 .isFramePending = isFramePendingFn,
                 .setCursor = setCursorFn,
                 .setMinSize = setMinSizeFn,
+                .setRedraw = setRedrawFn,
                 .setMaximized = setMaximizedFn,
                 .setMinimized = setMinimizedFn,
                 .canMaximize = canMaximizeFn,
@@ -670,6 +675,12 @@ pub const Window = struct {
     }
     pub fn setMinSize(w: Window, width: u32, height: u32) void {
         w.vtable.setMinSize(w.ptr, width, height);
+    }
+    /// What draws a frame now, for windows whose system holds on to the
+    /// app's loop while they change (macOS, while one is resized by its
+    /// edge); null for none. Windows that never do ignore it.
+    pub fn setRedraw(w: Window, redraw: ?Redraw) void {
+        w.vtable.setRedraw(w.ptr, redraw);
     }
     /// Hides the window (to the dock or task bar); the window system
     /// shows it again.
@@ -851,6 +862,13 @@ pub const xkb = @import("xkb.zig");
 /// Dead keys and the Compose key.
 pub const compose = @import("compose.zig");
 pub const dbus = @import("dbus.zig");
+/// Draws a frame of the app's, at the window's size (see
+/// `Window.setRedraw`).
+pub const Redraw = struct {
+    ctx: *anyopaque,
+    f: *const fn (ctx: *anyopaque) void,
+};
+
 pub const sys = @import("sys.zig");
 
 /// The keyboard layout in use: its name ("English (UK)") and XKB code
