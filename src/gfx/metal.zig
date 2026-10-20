@@ -9,6 +9,11 @@
 //! can also draw into an image on the CPU (`record`, as the OpenGL and
 //! Vulkan renderers do), by way of a texture.
 //!
+//! `OffscreenContext` draws 3D scenes (for `MetalArea`): with pipelines of
+//! the scene's own shaders, vertex and index buffers, and uniforms, into
+//! the renderer's frame on the GPU when it shares the renderer's device,
+//! or else into an image on the CPU.
+//!
 //! Metal is loaded at run time (with the Objective-C runtime, `objc.zig`),
 //! so nothing is needed to build it.
 //!
@@ -31,12 +36,16 @@ const Canvas = canvas_mod.Canvas;
 const Viewport = renderer_mod.Viewport;
 const Segment = renderer_mod.Segment;
 const MetalTarget = renderer_mod.MetalTarget;
+const GpuArea = renderer_mod.GpuArea;
+const Color = canvas_mod.Color;
 
 // Metal's constants.
 const format_r8: u64 = 10; // MTLPixelFormatR8Unorm
 const format_bgra8: u64 = 80; // MTLPixelFormatBGRA8Unorm
 const usage_read: u64 = 1; // MTLTextureUsageShaderRead
 const usage_render: u64 = 4; // MTLTextureUsageRenderTarget
+const format_depth: u64 = 252; // MTLPixelFormatDepth32Float
+const storage_private: u64 = 2;
 /// Where textures the CPU reads or writes are kept: in memory both share
 /// on Apple's GPUs; on others, a copy on each (kept in step by Metal).
 const storage_cpu: u64 = if (builtin.cpu.arch == .aarch64) 0 else 1; // Shared, Managed
@@ -50,6 +59,7 @@ const triangles: u64 = 3;
 const Origin = extern struct { x: u64, y: u64, z: u64 = 0 };
 const Size = extern struct { width: u64, height: u64, depth: u64 = 1 };
 const Region = extern struct { origin: Origin, size: Size };
+const ClearColor = extern struct { r: f64, g: f64, b: f64, a: f64 };
 const ScissorRect = extern struct { x: u64, y: u64, width: u64, height: u64 };
 const MtlViewport = extern struct { x: f64, y: f64, width: f64, height: f64, znear: f64, zfar: f64 };
 
@@ -155,6 +165,12 @@ pub const MetalRenderer = struct {
 
     pub fn renderer(r: *MetalRenderer) renderer_mod.Renderer {
         return .of(r);
+    }
+
+    /// The renderer's GPU, for 3D scenes drawn straight into its frames
+    /// (`OffscreenContext.initShared`).
+    pub fn sharedDevice(r: *const MetalRenderer) SharedDevice {
+        return .{ .device = r.device, .queue = r.queue };
     }
 
     fn logError(what: []const u8, err: Id) void {
@@ -531,6 +547,15 @@ pub const MetalRenderer = struct {
             .gpu => |g| {
                 const area = full.intersect(g.area.scissor orelse g.area.viewport) orelse continue;
                 if (!renderer_mod.covers(dmg, area)) continue;
+                if (g.direct) |direct| {
+                    // Drawn into this frame, on this GPU: no copy through
+                    // the CPU.
+                    msg(void, enc, "endEncoding", .{});
+                    const frame: DirectFrame = .{ .device = r.device, .cmd = cmd, .texture = r.screen.tex, .width = t.width, .height = t.height };
+                    const drawn = try direct(g.ctx, .metal, &frame, g.area);
+                    enc = try beginPass(cmd, r.screen.tex, t.width, t.height);
+                    if (drawn) continue;
+                }
                 // Drawn on the CPU: what is under it is finished first, and
                 // what is over it drawn after.
                 msg(void, enc, "endEncoding", .{});
@@ -561,6 +586,394 @@ pub const MetalRenderer = struct {
         }
         msg(void, cmd, "commit", .{});
         r.slots[r.slot].cmd = objc.retain(cmd);
+    }
+};
+
+/// The GPU (and its queue) of a `MetalRenderer`, to draw scenes on.
+pub const SharedDevice = struct {
+    device: Id,
+    queue: Id,
+};
+
+/// A frame the Metal renderer is drawing into a window, given to a 3D
+/// scene's `GpuDraw.direct` (with `.metal`) to draw into on the GPU.
+pub const DirectFrame = struct {
+    device: Id,
+    /// The command buffer the frame is drawn with: what is encoded into it
+    /// is drawn after what is under it, and before what is over it.
+    cmd: Id,
+    /// The frame's texture (BGRA8), `width` by `height`.
+    texture: Id,
+    width: u32,
+    height: u32,
+};
+
+/// Draws 3D scenes with Metal (for `MetalArea`): into a multisampled
+/// colour texture with depth, resolved and copied into the renderer's frame
+/// on the GPU (`renderToFrame`), or into an image on the CPU
+/// (`renderToImage`). A scene makes pipelines of its own shaders in the
+/// Metal Shading Language (`createPipeline`), and buffers, and draws with
+/// them in its `render`:
+///
+///     ctx.bindPipeline(s.pipeline);
+///     ctx.setUniforms(Uniforms, &uniforms);
+///     ctx.bindVertexBuffer(s.vbo);
+///     ctx.bindIndexBuffer16(s.ibo);
+///     ctx.drawIndexed(36);
+pub const OffscreenContext = struct {
+    gpa: std.mem.Allocator,
+    device: Id,
+    queue: Id,
+    /// Whether the device and queue are its own (not the renderer's).
+    owned: bool,
+    depth_on: Id = null,
+    depth_off: Id = null,
+    /// What a scene is drawn in: the multisampled colour (if more than one
+    /// sample) and depth, and the colour resolved; their size and samples.
+    msaa_tex: Id = null,
+    depth_tex: Id = null,
+    resolve: MetalRenderer.Frame = .{},
+    samples: u8 = 0,
+    /// The size of what is being drawn (for `aspect`), and the encoder and
+    /// index buffer being drawn with.
+    width: u32 = 0,
+    height: u32 = 0,
+    enc: Id = null,
+    index_buffer: Id = null,
+
+    pub const Buffer = struct {
+        buf: Id = null,
+    };
+
+    pub const PipelineDesc = struct {
+        /// Metal Shading Language source with the vertex and fragment
+        /// functions. Vertex attributes are read with `[[stage_in]]`
+        /// (`[[attribute(location)]]`), the uniforms are `buffer(1)` (in
+        /// both).
+        source: [:0]const u8,
+        vertex: [:0]const u8 = "vertex_main",
+        fragment: [:0]const u8 = "fragment_main",
+        vertex_stride: u32,
+        /// Each attribute's floats (1 to 4).
+        attributes: []const shaders.Attribute,
+        cull_back: bool = true,
+        front_ccw: bool = true,
+        depth_test: bool = true,
+        blend: bool = false,
+    };
+
+    pub const Pipeline = struct {
+        /// One for each sample count (1, 2, 4, 8) the GPU can draw with.
+        states: [4]Id = @splat(null),
+        cull_back: bool = true,
+        front_ccw: bool = true,
+        depth_test: bool = true,
+    };
+
+    pub const sample_counts = [4]u8{ 1, 2, 4, 8 };
+
+    /// On the system's default GPU, its own.
+    pub fn init(gpa: std.mem.Allocator) !OffscreenContext {
+        if (builtin.os.tag != .macos) return error.Unsupported;
+        try objc.load();
+        const create = objc.symbol(*const fn () callconv(.c) Id, "MTLCreateSystemDefaultDevice") orelse return error.NoMetal;
+        const device = create() orelse return error.NoMetalDevice;
+        const queue = msg(Id, device, "newCommandQueue", .{});
+        if (queue == null) {
+            objc.release(device);
+            return error.NoMetalQueue;
+        }
+        return initWith(gpa, device, queue, true);
+    }
+
+    /// On a renderer's GPU (`MetalRenderer.sharedDevice`), so that scenes
+    /// are drawn straight into its frames.
+    pub fn initShared(gpa: std.mem.Allocator, shared: SharedDevice) !OffscreenContext {
+        if (builtin.os.tag != .macos) return error.Unsupported;
+        return initWith(gpa, shared.device, shared.queue, false);
+    }
+
+    fn initWith(gpa: std.mem.Allocator, device: Id, queue: Id, owned: bool) !OffscreenContext {
+        var self: OffscreenContext = .{ .gpa = gpa, .device = device, .queue = queue, .owned = owned };
+        errdefer self.deinit();
+        self.depth_on = self.depthState(1, true); // Less
+        self.depth_off = self.depthState(7, false); // Always
+        if (self.depth_on == null or self.depth_off == null) return error.MetalDepthFailed;
+        return self;
+    }
+
+    pub fn deinit(self: *OffscreenContext) void {
+        if (self.device == null) return;
+        self.waitIdle();
+        for ([_]Id{ self.depth_on, self.depth_off, self.msaa_tex, self.depth_tex, self.resolve.tex }) |o| objc.release(o);
+        if (self.owned) {
+            objc.release(self.queue);
+            objc.release(self.device);
+        }
+        self.device = null;
+    }
+
+    /// Waits until the GPU has done all it was given on the queue.
+    pub fn waitIdle(self: *OffscreenContext) void {
+        const pool = objc.push();
+        defer objc.pop(pool);
+        const cmd = msg(Id, self.queue, "commandBuffer", .{}) orelse return;
+        msg(void, cmd, "commit", .{});
+        msg(void, cmd, "waitUntilCompleted", .{});
+    }
+
+    pub fn aspect(self: *const OffscreenContext) f32 {
+        if (self.height == 0) return 1;
+        return @as(f32, @floatFromInt(self.width)) / @as(f32, @floatFromInt(self.height));
+    }
+
+    fn depthState(self: *OffscreenContext, compare: u64, write: bool) Id {
+        const desc = objc.new(objc.class("MTLDepthStencilDescriptor"));
+        defer objc.release(desc);
+        msg(void, desc, "setDepthCompareFunction:", .{compare});
+        msg(void, desc, "setDepthWriteEnabled:", .{if (write) objc.yes else objc.no});
+        return msg(Id, self.device, "newDepthStencilStateWithDescriptor:", .{desc});
+    }
+
+    fn supportsSamples(self: *const OffscreenContext, count: u8) bool {
+        return count == 1 or msg(objc.Bool, self.device, "supportsTextureSampleCount:", .{@as(u64, count)}) != 0;
+    }
+
+    /// Compiles the pipeline's shaders, and makes a pipeline of them for
+    /// each sample count the GPU can draw with.
+    pub fn createPipeline(self: *OffscreenContext, desc: PipelineDesc) !Pipeline {
+        const pool = objc.push();
+        defer objc.pop(pool);
+        var err: Id = null;
+        const lib = msg(Id, self.device, "newLibraryWithSource:options:error:", .{ objc.nsString(desc.source), @as(Id, null), &err });
+        if (lib == null) {
+            MetalRenderer.logError("compiling a scene's shaders", err);
+            return error.MetalShaderFailed;
+        }
+        defer objc.release(lib);
+        const vs = msg(Id, lib, "newFunctionWithName:", .{objc.nsString(desc.vertex)});
+        defer objc.release(vs);
+        const fs = msg(Id, lib, "newFunctionWithName:", .{objc.nsString(desc.fragment)});
+        defer objc.release(fs);
+        if (vs == null or fs == null) return error.MetalShaderFailed;
+
+        const vdesc = msg(Id, objc.class("MTLVertexDescriptor"), "vertexDescriptor", .{});
+        const attrs = msg(Id, vdesc, "attributes", .{});
+        for (desc.attributes) |a| {
+            const at = msg(Id, attrs, "objectAtIndexedSubscript:", .{@as(u64, a.location)});
+            // MTLVertexFormatFloat, Float2, Float3, Float4.
+            msg(void, at, "setFormat:", .{@as(u64, 27) + std.math.clamp(a.components, 1, 4)});
+            msg(void, at, "setOffset:", .{@as(u64, a.offset)});
+            msg(void, at, "setBufferIndex:", .{@as(u64, 0)});
+        }
+        const layout0 = msg(Id, msg(Id, vdesc, "layouts", .{}), "objectAtIndexedSubscript:", .{@as(u64, 0)});
+        msg(void, layout0, "setStride:", .{@as(u64, desc.vertex_stride)});
+
+        var p: Pipeline = .{ .cull_back = desc.cull_back, .front_ccw = desc.front_ccw, .depth_test = desc.depth_test };
+        errdefer self.destroyPipeline(p);
+        for (sample_counts, 0..) |count, i| {
+            if (!self.supportsSamples(count)) continue;
+            const pd = objc.new(objc.class("MTLRenderPipelineDescriptor"));
+            defer objc.release(pd);
+            msg(void, pd, "setVertexFunction:", .{vs});
+            msg(void, pd, "setFragmentFunction:", .{fs});
+            msg(void, pd, "setVertexDescriptor:", .{vdesc});
+            msg(void, pd, "setRasterSampleCount:", .{@as(u64, count)});
+            msg(void, pd, "setDepthAttachmentPixelFormat:", .{format_depth});
+            const att = msg(Id, msg(Id, pd, "colorAttachments", .{}), "objectAtIndexedSubscript:", .{@as(u64, 0)});
+            msg(void, att, "setPixelFormat:", .{format_bgra8});
+            if (desc.blend) {
+                msg(void, att, "setBlendingEnabled:", .{objc.yes});
+                msg(void, att, "setSourceRGBBlendFactor:", .{@as(u64, 4)});
+                msg(void, att, "setDestinationRGBBlendFactor:", .{@as(u64, 5)});
+                msg(void, att, "setSourceAlphaBlendFactor:", .{@as(u64, 1)});
+                msg(void, att, "setDestinationAlphaBlendFactor:", .{@as(u64, 5)});
+            }
+            err = null;
+            p.states[i] = msg(Id, self.device, "newRenderPipelineStateWithDescriptor:error:", .{ pd, &err });
+            if (p.states[i] == null) {
+                MetalRenderer.logError("making a scene's pipeline", err);
+                return error.MetalPipelineFailed;
+            }
+        }
+        return p;
+    }
+
+    pub fn destroyPipeline(_: *const OffscreenContext, p: Pipeline) void {
+        for (p.states) |s| objc.release(s);
+    }
+
+    pub fn createVertexBuffer(self: *const OffscreenContext, comptime T: type, items: []const T) !Buffer {
+        return self.createBuffer(std.mem.sliceAsBytes(items));
+    }
+
+    pub fn createIndexBuffer(self: *const OffscreenContext, indices: []const u16) !Buffer {
+        return self.createBuffer(std.mem.sliceAsBytes(indices));
+    }
+
+    fn createBuffer(self: *const OffscreenContext, bytes: []const u8) !Buffer {
+        if (bytes.len == 0) return .{};
+        const buf = msg(Id, self.device, "newBufferWithBytes:length:options:", .{ bytes.ptr, @as(u64, bytes.len), @as(u64, 0) });
+        return .{ .buf = buf orelse return error.MetalBufferFailed };
+    }
+
+    pub fn destroyBuffer(_: *const OffscreenContext, buf: Buffer) void {
+        objc.release(buf.buf);
+    }
+
+    /// Draws with `p` from now on (in `render`).
+    pub fn bindPipeline(self: *OffscreenContext, p: Pipeline) void {
+        const enc = self.enc orelse return;
+        // The pipeline for the samples drawn with (or the most there are
+        // fewer than).
+        var i = sampleIndex(self.samples);
+        while (p.states[i] == null and i > 0) i -= 1;
+        msg(void, enc, "setRenderPipelineState:", .{p.states[i]});
+        msg(void, enc, "setDepthStencilState:", .{if (p.depth_test) self.depth_on else self.depth_off});
+        msg(void, enc, "setCullMode:", .{@as(u64, if (p.cull_back) 2 else 0)});
+        msg(void, enc, "setFrontFacingWinding:", .{@as(u64, if (p.front_ccw) 1 else 0)});
+    }
+
+    /// The uniforms the shaders have as `buffer(1)` (a small struct,
+    /// under 4 KiB).
+    pub fn setUniforms(self: *OffscreenContext, comptime T: type, value: *const T) void {
+        const enc = self.enc orelse return;
+        msg(void, enc, "setVertexBytes:length:atIndex:", .{ @as(*const anyopaque, value), @as(u64, @sizeOf(T)), @as(u64, 1) });
+        msg(void, enc, "setFragmentBytes:length:atIndex:", .{ @as(*const anyopaque, value), @as(u64, @sizeOf(T)), @as(u64, 1) });
+    }
+
+    pub fn bindVertexBuffer(self: *OffscreenContext, buf: Buffer) void {
+        const enc = self.enc orelse return;
+        msg(void, enc, "setVertexBuffer:offset:atIndex:", .{ buf.buf, @as(u64, 0), @as(u64, 0) });
+    }
+
+    pub fn bindIndexBuffer16(self: *OffscreenContext, buf: Buffer) void {
+        self.index_buffer = buf.buf;
+    }
+
+    pub fn draw(self: *OffscreenContext, vertex_count: u32) void {
+        const enc = self.enc orelse return;
+        msg(void, enc, "drawPrimitives:vertexStart:vertexCount:", .{ triangles, @as(u64, 0), @as(u64, vertex_count) });
+    }
+
+    pub fn drawIndexed(self: *OffscreenContext, index_count: u32) void {
+        const enc = self.enc orelse return;
+        const ib = self.index_buffer orelse return;
+        msg(void, enc, "drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:", .{ triangles, @as(u64, index_count), @as(u64, 0), ib, @as(u64, 0) });
+    }
+
+    fn sampleIndex(samples: u8) usize {
+        return switch (samples) {
+            0, 1 => 0,
+            2, 3 => 1,
+            4...7 => 2,
+            else => 3,
+        };
+    }
+
+    /// Makes what a scene is drawn in `width` by `height`, with as many
+    /// samples as asked (or the most the GPU has, fewer).
+    fn ensureTargets(self: *OffscreenContext, width: u32, height: u32, samples: u8) !void {
+        var count = sample_counts[sampleIndex(samples)];
+        while (count > 1 and !self.supportsSamples(count)) count /= 2;
+        if (self.resolve.tex != null and self.resolve.width == width and self.resolve.height == height and self.samples == count) return;
+        for ([_]Id{ self.msaa_tex, self.depth_tex, self.resolve.tex }) |o| objc.release(o);
+        self.msaa_tex = null;
+        self.depth_tex = null;
+        self.resolve = .{};
+        self.samples = count;
+        self.resolve.tex = try self.makeTarget(format_bgra8, width, height, 1, usage_read | usage_render, storage_cpu);
+        self.resolve.width = width;
+        self.resolve.height = height;
+        if (count > 1) self.msaa_tex = try self.makeTarget(format_bgra8, width, height, count, usage_render, storage_private);
+        self.depth_tex = try self.makeTarget(format_depth, width, height, count, usage_render, storage_private);
+    }
+
+    fn makeTarget(self: *OffscreenContext, format: u64, width: u32, height: u32, count: u8, usage: u64, storage: u64) !Id {
+        const desc = objc.new(objc.class("MTLTextureDescriptor"));
+        defer objc.release(desc);
+        msg(void, desc, "setTextureType:", .{@as(u64, if (count > 1) 4 else 2)}); // 2DMultisample, 2D
+        msg(void, desc, "setPixelFormat:", .{format});
+        msg(void, desc, "setWidth:", .{@as(u64, width)});
+        msg(void, desc, "setHeight:", .{@as(u64, height)});
+        msg(void, desc, "setSampleCount:", .{@as(u64, count)});
+        msg(void, desc, "setUsage:", .{usage});
+        msg(void, desc, "setStorageMode:", .{storage});
+        return msg(Id, self.device, "newTextureWithDescriptor:", .{desc}) orelse error.MetalTextureFailed;
+    }
+
+    /// Encodes into `cmd` the scene drawn over `clear_color`, resolved
+    /// into `resolve` (`width` by `height`).
+    fn encodeScene(self: *OffscreenContext, cmd: Id, width: u32, height: u32, clear_color: ?Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !void {
+        try self.ensureTargets(width, height, samples);
+        self.width = width;
+        self.height = height;
+        const pass = msg(Id, objc.class("MTLRenderPassDescriptor"), "renderPassDescriptor", .{});
+        const att = msg(Id, msg(Id, pass, "colorAttachments", .{}), "objectAtIndexedSubscript:", .{@as(u64, 0)});
+        if (self.msaa_tex != null) {
+            msg(void, att, "setTexture:", .{self.msaa_tex});
+            msg(void, att, "setResolveTexture:", .{self.resolve.tex});
+            msg(void, att, "setStoreAction:", .{@as(u64, 2)}); // MultisampleResolve
+        } else {
+            msg(void, att, "setTexture:", .{self.resolve.tex});
+            msg(void, att, "setStoreAction:", .{store_store});
+        }
+        if (clear_color) |c| {
+            msg(void, att, "setLoadAction:", .{@as(u64, 2)}); // Clear
+            msg(void, att, "setClearColor:", .{ClearColor{ .r = c.r, .g = c.g, .b = c.b, .a = c.a }});
+        } else msg(void, att, "setLoadAction:", .{@as(u64, 0)}); // DontCare
+        const depth = msg(Id, pass, "depthAttachment", .{});
+        msg(void, depth, "setTexture:", .{self.depth_tex});
+        msg(void, depth, "setLoadAction:", .{@as(u64, 2)});
+        msg(void, depth, "setClearDepth:", .{@as(f64, 1)});
+        msg(void, depth, "setStoreAction:", .{@as(u64, 0)});
+        const enc = msg(Id, cmd, "renderCommandEncoderWithDescriptor:", .{pass}) orelse return error.MetalEncoderFailed;
+        msg(void, enc, "setViewport:", .{MtlViewport{ .x = 0, .y = 0, .width = @floatFromInt(width), .height = @floatFromInt(height), .znear = 0, .zfar = 1 }});
+        self.enc = enc;
+        self.index_buffer = null;
+        defer {
+            msg(void, enc, "endEncoding", .{});
+            self.enc = null;
+        }
+        try render_fn(user_ctx, self);
+    }
+
+    /// Draws the scene over `area`'s viewport into `frame` on the GPU,
+    /// within its scissor; false if `frame` is on another GPU (draw with
+    /// `renderToImage`).
+    pub fn renderToFrame(self: *OffscreenContext, frame: *const DirectFrame, area: GpuArea, clear_color: ?Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !bool {
+        if (frame.device != self.device) return false;
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return true;
+        const full: Viewport = .{ .width = frame.width, .height = frame.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return true else vp) orelse return true;
+        try self.encodeScene(frame.cmd, vp.width, vp.height, clear_color, samples, user_ctx, render_fn);
+        const blit = msg(Id, frame.cmd, "blitCommandEncoder", .{});
+        msg(void, blit, "copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:", .{
+            self.resolve.tex,                                                 @as(u64, 0),                                    @as(u64, 0),
+            Origin{ .x = @intCast(sc.x - vp.x), .y = @intCast(sc.y - vp.y) }, Size{ .width = sc.width, .height = sc.height }, frame.texture,
+            @as(u64, 0),                                                      @as(u64, 0),                                    Origin{ .x = @intCast(sc.x), .y = @intCast(sc.y) },
+        });
+        msg(void, blit, "endEncoding", .{});
+        return true;
+    }
+
+    /// Draws the scene over `area`'s viewport into `target` on the CPU,
+    /// within its scissor.
+    pub fn renderToImage(self: *OffscreenContext, target: *software.Image, area: GpuArea, clear_color: ?Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !void {
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return;
+        const full: Viewport = .{ .width = target.width, .height = target.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return else vp) orelse return;
+        const pool = objc.push();
+        defer objc.pop(pool);
+        const cmd = msg(Id, self.queue, "commandBuffer", .{}) orelse return error.MetalCommandBufferFailed;
+        try self.encodeScene(cmd, vp.width, vp.height, clear_color, samples, user_ctx, render_fn);
+        MetalRenderer.finishForCpu(cmd, &self.resolve);
+        const stride = target.rowStride();
+        const at = @as(usize, @intCast(sc.y)) * stride + @as(usize, @intCast(sc.x));
+        const local: Viewport = .{ .x = sc.x - vp.x, .y = sc.y - vp.y, .width = sc.width, .height = sc.height };
+        msg(void, self.resolve.tex, "getBytes:bytesPerRow:fromRegion:mipmapLevel:", .{ target.pixels[at..].ptr, @as(u64, stride) * 4, regionOf(local), @as(u64, 0) });
     }
 };
 

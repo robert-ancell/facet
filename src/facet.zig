@@ -138,6 +138,7 @@ pub const AnimatedWidget = ui.AnimatedWidget;
 pub const tween = ui.tween;
 pub const OpenGlArea = ui.OpenGlArea;
 pub const VulkanArea = ui.VulkanArea;
+pub const MetalArea = ui.MetalArea;
 
 pub const RenderBackend = gfx.RenderBackend;
 pub const Renderer = gfx.Renderer;
@@ -145,6 +146,7 @@ pub const SoftwareRenderer = gfx.SoftwareRenderer;
 pub const OpenGlRenderer = gfx.OpenGlRenderer;
 pub const OpenGlContext = gfx.OpenGlContext;
 pub const MetalRenderer = gfx.MetalRenderer;
+pub const MetalContext = gfx.MetalContext;
 pub const VulkanRenderer = gfx.VulkanRenderer;
 pub const VulkanContext = gfx.VulkanContext;
 pub const Platform = window.Platform;

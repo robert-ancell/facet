@@ -1,7 +1,9 @@
-//! 3D: a scene drawn on the GPU in a widget, with Vulkan and with OpenGL,
-//! turned by dragging, and how it is drawn.
+//! 3D: a scene drawn on the GPU in a widget, with the APIs the system has
+//! (Vulkan and OpenGL on Linux, Metal on macOS), turned by dragging, and
+//! how it is drawn.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const facet = @import("facet");
 const common = @import("common.zig");
 const cube = @import("cube.zig");
@@ -37,7 +39,6 @@ pub const State = struct {
 };
 
 pub fn build(cx: *facet.Context, s: *State) facet.Widget {
-    const t = cx.theme();
     if (s.spinning) {
         const now = cx.now();
         if (s.last_ns) |prev| {
@@ -47,37 +48,25 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         s.last_ns = now;
         cx.requestFrame();
     }
-    const scene_vk: cube.Scene(.vulkan) = .{ .angle = s.angle, .tilt = s.tilt };
-    const scene_gl: cube.Scene(.opengl) = .{ .angle = s.angle, .tilt = s.tilt };
     const samples = [_]facet.Select(Samples).Option{
         .{ .value = .one, .label = "None" },
         .{ .value = .two, .label = "2× MSAA" },
         .{ .value = .four, .label = "4× MSAA" },
         .{ .value = .eight, .label = "8× MSAA" },
     };
-    return common.page(cx, &.{
+    const scenes = if (builtin.os.tag == .macos)
+        common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{
+            area(cx, s, facet.MetalArea, .metal, "Metal"),
+        })
+    else
         common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", &.{
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.VulkanArea(cube.Scene(.vulkan)){
-                    .scene = scene_vk,
-                    .samples = @backingInt(s.samples),
-                    .border = .{ .width = 1, .color = t.outline_variant },
-                    .on_drag = .of(s, State.turn),
-                    .min_width = 200,
-                    .min_height = 260,
-                    .child = label(cx, "Vulkan"),
-                }) }),
-                cx.make(facet.Expanded{ .child = cx.make(facet.OpenGlArea(cube.Scene(.opengl)){
-                    .scene = scene_gl,
-                    .samples = @backingInt(s.samples),
-                    .border = .{ .width = 1, .color = t.outline_variant },
-                    .on_drag = .of(s, State.turn),
-                    .min_width = 200,
-                    .min_height = 260,
-                    .child = label(cx, "OpenGL"),
-                }) }),
+                cx.make(facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") }),
+                cx.make(facet.Expanded{ .child = area(cx, s, facet.OpenGlArea, .opengl, "OpenGL") }),
             } }),
-        }),
+        });
+    return common.page(cx, &.{
+        scenes,
         common.section(cx, "Drawing", "How it moves, and how its edges are smoothed", &.{
             common.labelled(cx, "Spin", &.{
                 cx.make(facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning) }),
@@ -90,6 +79,20 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 cx.make(facet.Select(Samples){ .options = &samples, .value = s.samples, .on_changed = .of(s, State.setSamples), .width = 180 }),
             }),
         }),
+    });
+}
+
+/// The cube, drawn with `api` by its widget (`Area`, as `facet.VulkanArea`).
+fn area(cx: *facet.Context, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
+    const t = cx.theme();
+    return cx.make(Area(cube.Scene(api)){
+        .scene = .{ .angle = s.angle, .tilt = s.tilt },
+        .samples = @backingInt(s.samples),
+        .border = .{ .width = 1, .color = t.outline_variant },
+        .on_drag = .of(s, State.turn),
+        .min_width = 200,
+        .min_height = 260,
+        .child = label(cx, name),
     });
 }
 

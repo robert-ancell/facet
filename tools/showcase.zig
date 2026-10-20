@@ -73,7 +73,7 @@ pub const Page = enum {
             .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
             .icons => "Material's icons, at any size and colour",
             .maps => "A slippy map of tiles from a source, zoomed out a globe",
-            .three_d => "Scenes drawn on the GPU with Vulkan and OpenGL",
+            .three_d => if (@import("builtin").os.tag == .macos) "A scene drawn on the GPU with Metal" else "Scenes drawn on the GPU with Vulkan and OpenGL",
             .special => "QR codes, custom painting, accessibility and animation",
         };
     }

@@ -1,6 +1,6 @@
 //! A spinning cube, drawn by the showcase's 3D widgets: `Scene(Api)` is the
-//! scene for `facet.VulkanArea` (`Api = .vulkan`) or `facet.OpenGlArea`
-//! (`Api = .opengl`).
+//! scene for `facet.VulkanArea` (`Api = .vulkan`), `facet.OpenGlArea`
+//! (`Api = .opengl`) or `facet.MetalArea` (`Api = .metal`).
 
 const std = @import("std");
 const facet = @import("facet");
@@ -61,12 +61,13 @@ const indices: [faces.len * 6]u16 = blk: {
     break :blk out;
 };
 
-pub const Api = enum { vulkan, opengl };
+pub const Api = enum { vulkan, opengl, metal };
 
 pub fn Scene(comptime api: Api) type {
     const Context = switch (api) {
         .vulkan => facet.VulkanContext,
         .opengl => facet.OpenGlContext,
+        .metal => facet.MetalContext,
     };
     return struct {
         /// How far round the cube has turned, and tilted towards the
@@ -97,6 +98,12 @@ pub fn Scene(comptime api: Api) type {
                         .attributes = &attributes,
                         .cull_back = false,
                     }),
+                    .metal => ctx.createPipeline(.{
+                        .source = @embedFile("shaders/cube.metal"),
+                        .vertex_stride = @sizeOf(Vertex),
+                        .attributes = &attributes,
+                        .cull_back = false,
+                    }),
                 };
                 s.vbo = try ctx.createVertexBuffer(Vertex, &vertices);
                 s.ibo = try ctx.createIndexBuffer(&indices);
@@ -104,7 +111,11 @@ pub fn Scene(comptime api: Api) type {
             }
 
             pub fn deinit(s: *State, ctx: *Context) void {
-                if (api == .vulkan) _ = ctx.vk.DeviceWaitIdle(ctx.device);
+                switch (api) {
+                    .vulkan => _ = ctx.vk.DeviceWaitIdle(ctx.device),
+                    .metal => ctx.waitIdle(),
+                    .opengl => {},
+                }
                 ctx.destroyBuffer(s.vbo);
                 ctx.destroyBuffer(s.ibo);
                 ctx.destroyPipeline(s.pipeline);
@@ -153,7 +164,8 @@ fn rotY(a: f32) Mat4 {
     return .{ c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1 };
 }
 
-/// Maps depth `[near, far]` to `[0, 1]`, which suits Vulkan and OpenGL.
+/// Maps depth `[near, far]` to `[0, 1]`, which suits Vulkan, OpenGL and
+/// Metal.
 fn perspective(fovy: f32, aspect: f32, near: f32, far: f32) Mat4 {
     const f = 1 / @tan(fovy / 2);
     const nf = 1 / (near - far);

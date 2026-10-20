@@ -56,6 +56,7 @@ pub const OpenGlContext = opengl.OffscreenContext;
 pub const VulkanRenderer = vulkan.VulkanRenderer;
 pub const VulkanContext = vulkan.OffscreenContext;
 pub const MetalRenderer = metal.MetalRenderer;
+pub const MetalContext = metal.OffscreenContext;
 
 test {
     _ = geometry;
