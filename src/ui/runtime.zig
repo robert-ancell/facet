@@ -130,10 +130,20 @@ pub const Ui = struct {
     now_ns: u64 = 0,
     /// Something changed (input, or a widget asked for another frame).
     needs_frame: bool = true,
-    /// The frame's drawing: canvases (kept for reuse) and GPU draws.
+    /// The frame's drawing: canvases (kept for reuse) and GPU draws; and
+    /// those of the frame before, which a presenter may still be drawing
+    /// (they take turns, as the arenas do).
     canvases: std.ArrayList(*gfx.Canvas) = .empty,
     canvases_used: usize = 0,
     segments: std.ArrayList(Segment) = .empty,
+    prev_canvases: std.ArrayList(*gfx.Canvas) = .empty,
+    prev_segments: std.ArrayList(Segment) = .empty,
+    /// For frames made to outlive the next (`gfx.Frame.Owned`): which
+    /// images the presenter has, whether it has the glyph atlas, and the
+    /// layers GPU draws were drawn in, by their keys.
+    sent: gfx.frame.Residency = .{},
+    atlas_sent: bool = false,
+    layers: std.AutoHashMapUnmanaged(u64, Layer) = .empty,
     pointer: ?Point = null,
     /// Event handlers under the pointer, deepest first.
     hovered: std.ArrayList(*Node) = .empty,
@@ -367,12 +377,18 @@ pub const Ui = struct {
         ui.local_clipboard.deinit(ui.gpa);
         ui.hovered.deinit(ui.gpa);
         ui.hover_scratch.deinit(ui.gpa);
-        for (ui.canvases.items) |c| {
-            c.deinit();
-            ui.gpa.destroy(c);
+        ui.presenter.deinit();
+        for ([_]*std.ArrayList(*gfx.Canvas){ &ui.canvases, &ui.prev_canvases }) |list| {
+            for (list.items) |c| {
+                c.deinit();
+                ui.gpa.destroy(c);
+            }
+            list.deinit(ui.gpa);
         }
-        ui.canvases.deinit(ui.gpa);
         ui.segments.deinit(ui.gpa);
+        ui.prev_segments.deinit(ui.gpa);
+        ui.sent.deinit(ui.gpa);
+        ui.layers.deinit(ui.gpa);
         if (ui.owns_renderer) if (ui.renderer) |r| r.deinit();
         ui.atlas.deinit();
         for (&ui.arenas) |*a| a.deinit();
@@ -388,7 +404,14 @@ pub const Ui = struct {
         ui.metal_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
-        ui.presenter = .{ .renderer = r };
+        // A presenter of its own, which has none of what was sent the last.
+        const owned = ui.presenter.owned_frames;
+        ui.presenter.deinit();
+        ui.presenter = .{ .renderer = r, .owned_frames = owned };
+        ui.sent.deinit(ui.gpa);
+        ui.sent = .{};
+        ui.atlas_sent = false;
+        ui.layers.clearRetainingCapacity();
     }
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
@@ -548,7 +571,12 @@ pub const Ui = struct {
     /// filling a `width` by `height` window.
     pub fn frame(ui: *Ui, width: u32, height: u32, now_ns: u64, root: anytype) void {
         ui.frame_no += 1;
+        // The drawing of the frame before last is drawn in again, once its
+        // presenter is done with it.
+        ui.presenter.waitRetired(ui.frame_no -| 2);
         _ = ui.arenas[@intCast(ui.frame_no % 2)].reset(.retain_capacity);
+        std.mem.swap(std.ArrayList(*gfx.Canvas), &ui.canvases, &ui.prev_canvases);
+        std.mem.swap(std.ArrayList(Segment), &ui.segments, &ui.prev_segments);
         ui.now_ns = now_ns;
         ui.needs_frame = false;
         ui.checkHold();
@@ -1014,6 +1042,16 @@ pub const Ui = struct {
     }
 
     fn newCanvasSized(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
+        const c = ui.poolCanvas(size) orelse return null;
+        ui.segments.append(ui.gpa, .{ .canvas = c }) catch {
+            ui.canvases_used -= 1;
+            return null;
+        };
+        return c;
+    }
+
+    /// The next of this frame's canvases, started.
+    fn poolCanvas(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
         if (ui.canvases_used == ui.canvases.items.len) {
             const c = ui.gpa.create(gfx.Canvas) catch return null;
             c.* = .init(ui.gpa);
@@ -1024,7 +1062,6 @@ pub const Ui = struct {
         }
         const c = ui.canvases.items[ui.canvases_used];
         c.beginScaled(size[0], size[1], @max(ui.scale, 1));
-        ui.segments.append(ui.gpa, .{ .canvas = c }) catch return null;
         ui.canvases_used += 1;
         return c;
     }
@@ -1092,6 +1129,7 @@ pub const Ui = struct {
             .segments = ui.segments.items[0..ui.main_segments],
             .clear = clear,
             .damage = damageOf(&ui.damage.frame),
+            .frame_no = ui.frame_no,
         };
         comptime std.debug.assert(damage_mod.Tracker.history_len + 1 <= gfx.Frame.max_ages);
         comptime std.debug.assert(damage_mod.Region.max_rects <= gfx.frame.Damage.max_rects);
@@ -1113,9 +1151,134 @@ pub const Ui = struct {
         const w = window_mod.Window.from(win);
         const popups = try ui.presentPopups(w);
         if (!ui.changed()) return popups;
-        const f = ui.framePacket(clear);
+        var f = ui.framePacket(clear);
+        if (ui.presenter.owned_frames) try ui.ownFrame(&f);
         try ui.presenter.present(w, &f);
         return true;
+    }
+
+    /// Where a GPU draw was drawn (in the frame's pixels), and the image of
+    /// it the presenter has.
+    const Layer = struct { rect: gfx.Viewport, id: u64 };
+
+    /// Makes `f` outlive the next frame (see `gfx.Frame.Owned`): GPU draws
+    /// drawn here into layers, and what the presenter does not have yet of
+    /// the glyph atlas and the images copied.
+    fn ownFrame(ui: *Ui, f: *gfx.Frame) !void {
+        const a = ui.arena();
+        ui.sent.begin(ui.gpa, f.frame_no, ui, forgetLayer);
+        var canvases: std.ArrayList(*gfx.Canvas) = .empty;
+        var segments: std.ArrayList(Segment) = .empty;
+        var new_images: std.ArrayList(gfx.Image) = .empty;
+        errdefer for (new_images.items) |img| ui.gpa.free(img.pixels);
+        for (f.segments) |seg| switch (seg) {
+            .canvas => |c| {
+                try canvases.append(a, c);
+                try segments.append(a, seg);
+            },
+            .gpu => |g| if (try ui.layerOf(g, &new_images)) |c| {
+                try canvases.append(a, c);
+                try segments.append(a, .{ .canvas = c });
+            },
+        };
+        for (canvases.items) |c| for (c.batches.items) |*b| {
+            const img = b.image orelse continue;
+            if (!ui.sent.has(b.image_id)) {
+                const pixels = try ui.gpa.dupe(u32, img.pixels);
+                new_images.append(a, .{ .pixels = pixels, .width = img.width, .height = img.height, .id = b.image_id }) catch |e| {
+                    ui.gpa.free(pixels);
+                    return e;
+                };
+            }
+            try ui.sent.use(ui.gpa, b.image_id);
+        };
+        // The atlas's rows that changed (all of it for a new presenter).
+        const atlas_w = gfx.atlas.width;
+        if (!ui.atlas_sent) ui.atlas.packet_dirty = .{ .x0 = 0, .y0 = 0, .x1 = atlas_w, .y1 = gfx.atlas.height };
+        var rows: ?gfx.frame.AtlasRows = null;
+        if (ui.atlas.packet_dirty) |d| {
+            const y0: usize = d.y0;
+            const y1: usize = @min(d.y1, gfx.atlas.height);
+            if (y1 > y0) rows = .{ .y0 = d.y0, .rows = try a.dupe(u8, ui.atlas.pixels[y0 * atlas_w .. y1 * atlas_w]) };
+        }
+        ui.atlas.packet_dirty = null;
+        ui.atlas_sent = true;
+        f.canvases = canvases.items;
+        f.segments = segments.items;
+        f.owned = .{ .gpa = ui.gpa, .canvases = canvases.items, .atlas_rows = rows, .new_images = new_images.items };
+    }
+
+    /// A GPU draw drawn into a layer of its own (an image, on a canvas over
+    /// what is under it): drawn again only if its key changed (null if it
+    /// is not drawn: a draw for another kind of target, or of nothing).
+    fn layerOf(ui: *Ui, g: gfx.GpuDraw, new_images: *std.ArrayList(gfx.Image)) !?*gfx.Canvas {
+        if (g.target) |t| if (t != gfx.renderer.typeId(gfx.software.Image)) return null;
+        const whole: gfx.Viewport = .{ .width = ui.frame_size[0], .height = ui.frame_size[1] };
+        const shown = if (g.area.scissor) |sc| g.area.viewport.intersect(sc) orelse return null else g.area.viewport;
+        const rect = whole.intersect(shown) orelse return null;
+        const a = ui.arena();
+        const max = gfx.Image.max_size;
+        // In tiles no bigger than an image may be.
+        const across = std.math.divCeil(u32, rect.width, max) catch unreachable;
+        const down = std.math.divCeil(u32, rect.height, max) catch unreachable;
+        const tiles = try a.alloc(gfx.Image, across * down);
+        // The same as last drawn (with the same key), if the presenter has it.
+        const prior: ?Layer = if (g.key) |k| ui.layers.get(k) else null;
+        const cached = if (prior) |l| tiles.len == 1 and std.meta.eql(l.rect, rect) and ui.sent.has(l.id) else false;
+        if (cached) {
+            tiles[0] = .{ .pixels = &.{}, .width = rect.width, .height = rect.height, .id = prior.?.id };
+            try ui.sent.use(ui.gpa, prior.?.id);
+        } else {
+            // Drawn over nothing, where it was in the frame.
+            const pixels = try ui.gpa.alloc(u32, @as(usize, rect.width) * rect.height);
+            defer ui.gpa.free(pixels);
+            @memset(pixels, 0);
+            var target: gfx.software.Image = .{ .pixels = pixels, .width = rect.width, .height = rect.height };
+            var area = g.area;
+            area.viewport.x -= rect.x;
+            area.viewport.y -= rect.y;
+            if (area.scissor) |*sc| {
+                sc.x -= rect.x;
+                sc.y -= rect.y;
+            }
+            try g.f(g.ctx, @ptrCast(&target), area);
+            for (0..down) |ty| for (0..across) |tx| {
+                const x0 = tx * max;
+                const y0 = ty * max;
+                const tw: u32 = @intCast(@min(max, rect.width - x0));
+                const th: u32 = @intCast(@min(max, rect.height - y0));
+                const tile = try ui.gpa.alloc(u32, @as(usize, tw) * th);
+                for (0..th) |row| @memcpy(tile[row * tw ..][0..tw], pixels[(y0 + row) * rect.width + x0 ..][0..tw]);
+                const img: gfx.Image = .init(tile, tw, th);
+                new_images.append(a, img) catch |e| {
+                    ui.gpa.free(tile);
+                    return e;
+                };
+                try ui.sent.use(ui.gpa, img.id);
+                tiles[ty * across + tx] = img;
+            };
+            if (g.key) |k| if (tiles.len == 1) try ui.layers.put(ui.gpa, k, .{ .rect = rect, .id = tiles[0].id });
+        }
+        const s = @max(ui.scale, 1);
+        const sf: f32 = @floatFromInt(s);
+        const c = ui.poolCanvas(ui.logical_size) orelse return error.OutOfMemory;
+        for (tiles, 0..) |*img, i| {
+            const tx: u32 = @intCast(i % across);
+            const ty: u32 = @intCast(i / across);
+            const x: f32 = @floatFromInt(@as(i64, rect.x) + tx * max);
+            const y: f32 = @floatFromInt(@as(i64, rect.y) + ty * max);
+            c.drawImage(img, .{ .x = x / sf, .y = y / sf, .w = @as(f32, @floatFromInt(img.width)) / sf, .h = @as(f32, @floatFromInt(img.height)) / sf }, 1);
+        }
+        return c;
+    }
+
+    /// An image the presenter no longer has: a layer of it is gone too.
+    fn forgetLayer(ui: *Ui, id: u64) void {
+        var it = ui.layers.iterator();
+        while (it.next()) |e| if (e.value_ptr.id == id) {
+            ui.layers.removeByPtr(e.key_ptr);
+            return;
+        };
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).
@@ -1134,7 +1297,8 @@ pub const Ui = struct {
                 },
                 .gpu => {},
             };
-            const f: gfx.Frame = .{ .canvases = canvases[0..n], .segments = segments, .clear = 0 };
+            var f: gfx.Frame = .{ .canvases = canvases[0..n], .segments = segments, .clear = 0, .frame_no = ui.frame_no };
+            if (ui.presenter.owned_frames) try ui.ownFrame(&f);
             if (!try ui.presenter.presentPopup(w, layer.id, &f)) {
                 ui.needs_frame = true;
                 continue;

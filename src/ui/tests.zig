@@ -561,6 +561,66 @@ test "GPU draws are damaged every frame, unless their key stays the same" {
     try testing.expectEqual(ui.Rect{ .x = 10, .y = 10, .w = 20, .h = 20 }, u.damaged()[0]);
 }
 
+/// A GPU draw (filling its box with red) that counts its draws, and a
+/// square beside it that moves.
+const Spot = struct {
+    key: u64,
+    moved: f32 = 0,
+    var draws: u32 = 0;
+    fn draw(_: *const Spot, target: *gfx.software.Image, area: ui.GpuArea) anyerror!void {
+        draws += 1;
+        // Its bounds: 10 to 30 across and down its box.
+        const vp = area.viewport;
+        for (10..30) |y| for (10..30) |x| {
+            const tx = @as(i64, vp.x) + @as(i64, @intCast(x));
+            const ty = @as(i64, vp.y) + @as(i64, @intCast(y));
+            if (tx < 0 or ty < 0 or tx >= target.width or ty >= target.height) continue;
+            target.pixels[@as(usize, @intCast(ty)) * target.rowStride() + @as(usize, @intCast(tx))] = 0xffff0000;
+        };
+    }
+    pub fn paint(self: *const Spot, _: *Node, p: *ui.Painter) void {
+        p.gpuWith(.{ .key = self.key, .bounds = .{ .x = 10, .y = 10, .w = 20, .h = 20 } }, self, draw);
+        p.canvas().fillRect(.{ .x = 50 + self.moved, .y = 50, .w = 5, .h = 5 }, .rgb(0x00ff00));
+    }
+};
+
+test "a GPU draw in an owned frame is drawn into a layer, and again only when its key changes" {
+    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    defer u.destroy();
+    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.presenter.owned_frames = true;
+    const Win = struct {
+        width: u32 = 100,
+        height: u32 = 100,
+        pixels: [100 * 100]u32 = @splat(0),
+        pub fn beginFrame(w: *@This()) !gfx.software.Image {
+            return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+        }
+        pub fn showDamaged(_: *@This(), _: ?[]const gfx.Viewport) !void {}
+    };
+    var win: Win = .{};
+    u.attachWindow(&win, null);
+    Spot.draws = 0;
+    u.frame(100, 100, 0, Spot{ .key = 1 });
+    try testing.expect(try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 1), Spot.draws);
+    try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
+    try testing.expectEqual(@as(u32, 0xff000000), win.pixels[5 * 100 + 5]);
+    // The square moves: the window is drawn whole again, the GPU draw from
+    // its layer, kept.
+    @memset(&win.pixels, 0);
+    u.frame(100, 100, 1, Spot{ .key = 1, .moved = 10 });
+    try testing.expect(try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 1), Spot.draws);
+    try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
+    try testing.expectEqual(@as(u32, 0xff00ff00), win.pixels[52 * 100 + 62]);
+    // Another key: drawn again.
+    u.frame(100, 100, 2, Spot{ .key = 2, .moved = 10 });
+    try testing.expect(try u.present(&win, 0xff000000));
+    try testing.expectEqual(@as(u32, 2), Spot.draws);
+    try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
+}
+
 test "a grid puts as many cells in a row as fit" {
     const u = try ui.Ui.create(testing.allocator, testing.io, null);
     defer u.destroy();

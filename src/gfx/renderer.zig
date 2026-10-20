@@ -75,6 +75,11 @@ pub const GpuDraw = struct {
     /// (`vulkan.DirectFrame` for `.vulkan`), it records its draw into it and
     /// returns true, or returns false to be drawn with `f` instead.
     direct: ?*const fn (ctx: *const anyopaque, backend: RenderBackend, frame: *const anyopaque, area: GpuArea) anyerror!bool = null,
+    /// Identifies what it draws: the same key as the frame before means
+    /// the same picture (none: it changes every frame).
+    key: ?u64 = null,
+    /// The type `f`'s target points to (see `typeId`; null: any).
+    target: ?TypeId = null,
 };
 
 /// A frame's buffer that the GPU can draw into directly (a window's linear

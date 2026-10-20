@@ -147,6 +147,8 @@ pub const Painter = struct {
                 }
             }.call,
             .area = .{ .viewport = vp, .scissor = scissor, .fills = options.fills },
+            .key = options.key,
+            .target = if (TargetPtr == *anyopaque) null else gfx.renderer.typeId(@typeInfo(TargetPtr).pointer.child),
         });
     }
 

@@ -271,10 +271,22 @@ test {
 }
 
 test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
+    try checkRedraws(false);
+}
+
+test "frames made to outlive the next, with copies of the atlas and the images, draw the same" {
+    try checkRedraws(true);
+}
+
+/// Draws every page for a while, presenting each frame (as packets made to
+/// outlive the next if `owned`, as for a render thread), and checks each
+/// against drawing it all.
+fn checkRedraws(owned: bool) !void {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
     const u = try facet.Ui.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.software_renderer.renderer(), false);
+    u.presenter.owned_frames = owned;
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
     var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);
@@ -335,10 +347,13 @@ test "what is drawn again on every page matches drawing it all, in buffers given
         }
         t += (1 + rng.random().uintLessThan(u64, 3)) * 8 * std.time.ns_per_ms;
         u.frame(w, h, t, root);
-        if (!try u.present(&win, 0xff000000)) continue;
+        // What it should be, drawn first (presenting an owned frame points
+        // its canvases at the presenter's copies).
+        if (!u.changed()) continue;
         @memset(want, 0xff000000);
         var img: facet.gfx.software.Image = .{ .pixels = want, .width = w, .height = h };
         try u.render(&img, null);
+        if (!try u.present(&win, 0xff000000)) continue;
         std.testing.expectEqualSlices(u32, want, win.pixels[win.back]) catch |err| {
             std.debug.print("on the {s} page, frame {d}\n", .{ @tagName(page), f });
             return err;

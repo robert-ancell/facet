@@ -3,6 +3,11 @@
 //! layer on macOS) if they can, or else into its buffer on the CPU; only
 //! what the buffer's age says has to be drawn, and then shown (only what
 //! changed). It is done here and now, on the caller's thread.
+//!
+//! Frames made to outlive the UI's next one (`owned_frames`, as a render
+//! thread needs them) are drawn with the presenter's own copies of what
+//! they carry: the glyph atlas, and the images (kept while they are drawn,
+//! by `gfx.frame.Residency`).
 
 const std = @import("std");
 const gfx = @import("gfx");
@@ -17,9 +22,36 @@ pub const Presenter = struct {
     /// The renderer could not draw straight into the window's buffers, so
     /// frames are drawn into them on the CPU.
     no_direct: bool = false,
+    /// The UI makes its frames outlive the next (`gfx.Frame.owned`).
+    owned_frames: bool = false,
+    /// For those: the glyph atlas as they say it is, the images they draw
+    /// (each with its pixels), which those are, and what made them.
+    atlas: ?*gfx.Atlas = null,
+    images: std.AutoHashMapUnmanaged(u64, *gfx.Image) = .empty,
+    residency: gfx.frame.Residency = .{},
+    gpa: ?std.mem.Allocator = null,
+
+    pub fn deinit(p: *Presenter) void {
+        const gpa = p.gpa orelse return;
+        if (p.atlas) |a| {
+            a.deinit();
+            gpa.destroy(a);
+        }
+        var it = p.images.valueIterator();
+        while (it.next()) |img| freeImage(gpa, img.*);
+        p.images.deinit(gpa);
+        p.residency.deinit(gpa);
+        p.* = .{ .renderer = p.renderer, .owned_frames = p.owned_frames };
+    }
+
+    /// Waits until frame `frame_no` (and those before) has been presented,
+    /// so that the UI may draw in what it used again: at once, as frames
+    /// are presented when they are given.
+    pub fn waitRetired(_: *Presenter, _: u64) void {}
 
     /// Draws `frame` into the window's next buffer, and shows it.
     pub fn present(p: *Presenter, win: Window, frame: *const gfx.Frame) !void {
+        try p.adopt(frame);
         const r = p.renderer orelse return error.NoRenderer;
         var uncovered_buf: [2][gfx.renderer.max_uncovered]Viewport = undefined;
         // On the GPU straight into the window's buffer (or Metal layer) if
@@ -58,6 +90,7 @@ pub const Presenter = struct {
     /// Draws `frame` whole into popup `id`'s next buffer, and shows it;
     /// false if the popup has no buffer to draw into yet.
     pub fn presentPopup(p: *Presenter, win: Window, id: u32, frame: *const gfx.Frame) !bool {
+        try p.adopt(frame);
         const r = p.renderer orelse return error.NoRenderer;
         var img = (try win.beginPopupFrame(id)) orelse return false;
         img.clear(frame.clear);
@@ -65,6 +98,61 @@ pub const Presenter = struct {
         try r.render(frame.segments, &img, null);
         try win.showPopup(id);
         return true;
+    }
+
+    /// Takes what an owned frame carries, and points its canvases at the
+    /// presenter's copies of the atlas and the images.
+    fn adopt(p: *Presenter, frame: *const gfx.Frame) !void {
+        const o = frame.owned orelse return;
+        const gpa = o.gpa;
+        p.gpa = gpa;
+        p.residency.begin(gpa, frame.frame_no, p, evict);
+        // Its images are the presenter's, whatever happens next.
+        for (o.new_images, 0..) |img, i| {
+            const kept = gpa.create(gfx.Image) catch |e| {
+                for (o.new_images[i..]) |rest| gpa.free(rest.pixels);
+                return e;
+            };
+            kept.* = img;
+            const old = p.images.fetchPut(gpa, img.id, kept) catch |e| {
+                gpa.destroy(kept);
+                for (o.new_images[i..]) |rest| gpa.free(rest.pixels);
+                return e;
+            };
+            if (old) |kv| freeImage(gpa, kv.value);
+        }
+        if (o.atlas_rows) |rows| {
+            if (p.atlas == null) {
+                const a = try gpa.create(gfx.Atlas);
+                a.* = gfx.Atlas.init(gpa) catch |e| {
+                    gpa.destroy(a);
+                    return e;
+                };
+                p.atlas = a;
+            }
+            const a = p.atlas.?;
+            const w = gfx.atlas.width;
+            @memcpy(a.pixels[rows.y0 * w ..][0..rows.rows.len], rows.rows);
+            const y1: u32 = @intCast(rows.y0 + rows.rows.len / w);
+            a.dirty = gfx.Atlas.unite(a.dirty, .{ .x0 = 0, .y0 = rows.y0, .x1 = w, .y1 = y1 });
+        }
+        for (o.canvases) |c| {
+            if (c.atlas != null) c.atlas = p.atlas;
+            for (c.batches.items) |*b| if (b.image != null) {
+                b.image = p.images.get(b.image_id);
+                try p.residency.use(gpa, b.image_id);
+            };
+        }
+    }
+
+    fn evict(p: *Presenter, id: u64) void {
+        const kv = p.images.fetchRemove(id) orelse return;
+        freeImage(p.gpa.?, kv.value);
+    }
+
+    fn freeImage(gpa: std.mem.Allocator, img: *gfx.Image) void {
+        gpa.free(img.pixels);
+        gpa.destroy(img);
     }
 
     /// The renderer, if it may draw frames straight into the window's
