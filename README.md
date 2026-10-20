@@ -155,6 +155,7 @@ Run any of the included examples from the repository root:
 | `zig build run-canvas` | `examples/canvas_and_qr.zig` | Animated harmonic wave viewer and live QR code generator |
 | `zig build run-opengl` | `examples/opengl.zig` | Interactive 3D Platonic solid viewer rendered with OpenGL |
 | `zig build run-vulkan` | `examples/vulkan.zig` | Interactive 3D Platonic solid viewer rendered with Vulkan |
+| `zig build run-metal` | `examples/metal.zig` | Interactive 3D Platonic solid viewer rendered with Metal (macOS) |
 
 ## Tools
 

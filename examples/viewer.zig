@@ -1,6 +1,6 @@
-//! The Platonic solid viewer shared by `opengl.zig` and `vulkan.zig`: a
-//! spinning solid in a 3D widget, with controls for its shape, shading,
-//! anti-aliasing and speed.
+//! The Platonic solid viewer shared by `opengl.zig`, `vulkan.zig` and
+//! `metal.zig`: a spinning solid in a 3D widget, with controls for its
+//! shape, shading, anti-aliasing and speed.
 
 const std = @import("std");
 const facet = @import("facet");
