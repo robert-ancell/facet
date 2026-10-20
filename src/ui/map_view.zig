@@ -49,6 +49,17 @@ pub const VectorTile = tiles.VectorTile;
 pub const MapStyle = style_mod.MapStyle;
 pub const TilePainter = tile_painter.TilePainter;
 pub const LabelStyle = tile_painter.LabelStyle;
+pub const subsolarPoint = projection.subsolarPoint;
+
+/// How night is shaded on a map.
+pub const Night = struct {
+    /// Where the sun is overhead.
+    sun: LatLon,
+    color: Color = .rgb(0x000814),
+    /// How dark it is where the sun is well below the horizon (and less
+    /// in twilight, as it sets).
+    opacity: f32 = 0.55,
+};
 
 /// The most tiles drawn at once.
 const max_tiles = 512;
@@ -76,8 +87,14 @@ pub const MapView = struct {
     /// flat map does not reach): the style's background, or the theme's
     /// surface container, if null.
     background: ?Color = null,
-    /// The glow around the globe: the theme's primary, faint, if null.
-    atmosphere: ?Color = null,
+    /// Whether the globe has a glow around it (its atmosphere), and its
+    /// colour: the theme's primary, faint, if null.
+    atmosphere: bool = true,
+    atmosphere_color: ?Color = null,
+    /// Night where the sun has set, from where it is overhead
+    /// (`subsolarPoint` gives it for a time), shaded on the globe (fading
+    /// as the globe becomes the flat map); none if null.
+    night: ?Night = null,
     /// Its size, if not told how big to be.
     width: f32 = 480,
     height: f32 = 320,
@@ -345,10 +362,12 @@ pub const MapView = struct {
             c.fillRect(whole, self.space orelse t.surface);
             const centre: gfx.Point = .{ n.size.w / 2, n.size.h / 2 };
             const r: f32 = @floatCast(@min(v.discRadius() / @max(1 - v.flat, 0.01) / @max(1 - v.flat, 0.01), 1e6));
-            const glow = self.atmosphere orelse t.primary.withAlpha(0.35);
-            for (0..6) |i| {
-                const k: f32 = @floatFromInt(i);
-                c.strokeCircle(centre, r + 1 + k * 2.5, 2.5, glow.withAlpha(glow.a * (1 - k / 6) * (1 - k / 6)));
+            if (self.atmosphere) {
+                const glow = self.atmosphere_color orelse t.primary.withAlpha(0.35);
+                for (0..6) |i| {
+                    const k: f32 = @floatFromInt(i);
+                    c.strokeCircle(centre, r + 1 + k * 2.5, 2.5, glow.withAlpha(glow.a * (1 - k / 6) * (1 - k / 6)));
+                }
             }
             c.fillCircle(centre, r, background);
         } else c.fillRect(whole, background);
@@ -387,14 +406,17 @@ pub const MapView = struct {
             } }) catch break;
         }
         // Each layer of the style across all the tiles before the next (so
-        // a tile's fills do not cover the lines of those before it), and
-        // labels last, over everything.
+        // a tile's fills do not cover the lines of those before it), then
+        // night over them, and labels last, over everything.
         const plain = MapStyle.plainLayers(t);
         const layers = if (self.style) |s| s.layers else &plain;
-        for ([_]bool{ false, true }) |label_pass| for (layers) |*l| {
-            if ((l.draw == .label) != label_pass) continue;
-            for (shapes.items) |*sh| MapStyle.drawLayer(l, &sh.tp, sh.tile);
-        };
+        for ([_]bool{ false, true }) |label_pass| {
+            if (label_pass) if (self.night) |night| drawNight(c, &v, night, arena);
+            for (layers) |*l| {
+                if ((l.draw == .label) != label_pass) continue;
+                for (shapes.items) |*sh| MapStyle.drawLayer(l, &sh.tp, sh.tile);
+            }
+        }
 
         if (self.source.attribution.len > 0) if (n.ui.font) |f| {
             const size_px = 11;
@@ -403,6 +425,44 @@ pub const MapView = struct {
             c.fillRoundedRect(box, .{ .tl = 6 }, t.surface.withAlpha(0.8));
             _ = c.drawText(&n.ui.atlas, .{ .font = f, .size = size_px }, box.x + 6, box.y + 14, self.source.attribution, t.on_surface_variant);
         };
+    }
+
+    /// Shades night on the side of the globe that shows: a mesh over it,
+    /// each corner as dark as the sun is below the horizon there (none
+    /// while it is up, darkening through twilight, and as dark as it gets
+    /// 12° below). It fades as the globe becomes the flat map.
+    fn drawNight(c: *gfx.Canvas, v: *const View, night: Night, arena: std.mem.Allocator) void {
+        const fade: f32 = @floatCast(1 - v.flat);
+        if (fade <= 0 or night.opacity <= 0) return;
+        const rings = 24;
+        const sectors = 72;
+        const sun = projection.direction(night.sun);
+        // Rings round the camera's axis, out to just short of the edge.
+        const edge = v.horizonAngle() * 0.999;
+        var verts: [rings + 1][sectors][3]f32 = undefined;
+        for (0..rings + 1) |i| for (0..sectors) |j| {
+            const rho = edge * @as(f64, @floatFromInt(i)) / rings;
+            const az = std.math.tau * @as(f64, @floatFromInt(j)) / sectors;
+            const place = v.placeAt(.{ @sin(rho) * @cos(az), @sin(rho) * @sin(az), @cos(rho) });
+            const p = v.projectLatLon(place).pos;
+            const dir = projection.direction(place);
+            const height = std.math.asin(std.math.clamp(dir[0] * sun[0] + dir[1] * sun[1] + dir[2] * sun[2], -1, 1)) * 180 / std.math.pi;
+            const t: f32 = @floatCast(std.math.clamp((1 - height) / 13, 0, 1));
+            verts[i][j] = .{ @floatCast(p[0]), @floatCast(p[1]), t * t * (3 - 2 * t) * night.opacity * fade };
+        };
+        var tris: std.ArrayList([3]f32) = .empty;
+        tris.ensureTotalCapacity(arena, rings * sectors * 6) catch return;
+        for (0..rings) |i| for (0..sectors) |j| {
+            const k = (j + 1) % sectors;
+            const a = verts[i][j];
+            const b = verts[i][k];
+            const cc = verts[i + 1][k];
+            const d = verts[i + 1][j];
+            // The first ring is the one point in the middle.
+            if (i > 0) tris.appendSliceAssumeCapacity(&.{ a, b, cc });
+            tris.appendSliceAssumeCapacity(&.{ a, cc, d });
+        };
+        c.fillShaded(tris.items, night.color);
     }
 
     /// Draws a picture tile (or the part of one further out that is where

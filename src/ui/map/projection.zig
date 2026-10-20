@@ -80,6 +80,32 @@ pub fn globeUntil(size: [2]f64) f64 {
     return @max(globe_until, math.log2(radius * math.tau / 256));
 }
 
+/// Where the sun is overhead at `unix_seconds` (seconds since 1970 UTC):
+/// on the tropics between them by the season, and moving west through
+/// the day. Within a fraction of a degree (the usual low-precision
+/// formulas: the sun's mean orbit, its centre's equation and sidereal
+/// time).
+pub fn subsolarPoint(unix_seconds: f64) LatLon {
+    // Days since noon on the 1st of January 2000 (J2000).
+    const d = unix_seconds / 86400 - 10957.5;
+    const g = (357.529 + 0.98560028 * d) * deg;
+    const q = 280.459 + 0.98564736 * d;
+    const l = (q + 1.915 * @sin(g) + 0.020 * @sin(2 * g)) * deg;
+    const e = (23.439 - 0.00000036 * d) * deg;
+    const ra = math.atan2(@cos(e) * @sin(l), @cos(l)) / deg;
+    const dec = math.asin(@sin(e) * @sin(l)) / deg;
+    const gmst = 280.46061837 + 360.98564736629 * d;
+    return .{ .lat = dec, .lon = wrapLon(ra - gmst) };
+}
+
+/// Which way `p` is from the centre of the earth (a unit vector: x
+/// towards 90°E, y towards the north pole, z towards 0°, 0°).
+pub fn direction(p: LatLon) [3]f64 {
+    const lat = p.lat * deg;
+    const lon = p.lon * deg;
+    return .{ @cos(lat) * @sin(lon), @sin(lat), @cos(lat) * @cos(lon) };
+}
+
 /// How far a camera at `zoom` (in a view `size` big) is from the globe to
 /// the flat map: 0 on the globe, 1 on the flat map.
 pub fn flatness(zoom: f64, size: [2]f64, projection: Projection) f64 {
@@ -190,6 +216,22 @@ pub const View = struct {
         return .{ .pos = .{ cx + d[0] * r, cy - d[1] * r }, .visible = false };
     }
 
+    /// The place at `q` on the globe in the camera's view (a unit vector:
+    /// see `onGlobe`).
+    pub fn placeAt(v: *const View, q: [3]f64) LatLon {
+        const y = q[1] * v.cos_lat + q[2] * v.sin_lat;
+        const z = -q[1] * v.sin_lat + q[2] * v.cos_lat;
+        return .{
+            .lat = math.asin(math.clamp(y, -1, 1)) / deg,
+            .lon = wrapLon(v.camera.center.lon + math.atan2(q[0], z) / deg),
+        };
+    }
+
+    /// How far round the globe from the camera its edge is (radians).
+    pub fn horizonAngle(v: *const View) f64 {
+        return math.acos(1 / v.dist);
+    }
+
     /// The radius of the globe's outline, around the centre of the view.
     pub fn discRadius(v: *const View) f64 {
         return v.focal / @sqrt(v.dist * v.dist - 1);
@@ -230,13 +272,7 @@ pub const View = struct {
         const disc = b * b - 4 * a * c;
         if (disc < 0) return null;
         const t = (-b - @sqrt(disc)) / (2 * a);
-        const q: [3]f64 = .{ t * d[0], t * d[1], v.dist + t * d[2] };
-        const y = q[1] * v.cos_lat + q[2] * v.sin_lat;
-        const z = -q[1] * v.sin_lat + q[2] * v.cos_lat;
-        return .{
-            .lat = math.asin(math.clamp(y, -1, 1)) / deg,
-            .lon = wrapLon(v.camera.center.lon + math.atan2(q[0], z) / deg),
-        };
+        return v.placeAt(.{ t * d[0], t * d[1], v.dist + t * d[2] });
     }
 };
 
@@ -398,4 +434,16 @@ test "the globe becomes the flat map only once it covers the view, whatever its 
     // A wide view at zoom 5.2 is still a globe.
     try testing.expectEqual(@as(f64, 0), flatness(5.2, .{ 1740, 430 }, .globe));
     try testing.expect(flatness(5.5, .{ 800, 480 }, .globe) > 0);
+}
+
+test "the sun is overhead where it should be" {
+    // The June solstice of 2024 (20 June, 20:51 UTC): over the Tropic of
+    // Cancer, and at 20:51 UTC, about 133°W (where it is noon).
+    const june = subsolarPoint(1718916660);
+    try testing.expectApproxEqAbs(23.44, june.lat, 0.05);
+    try testing.expectApproxEqAbs(-133.0, june.lon, 1.5);
+    // The March equinox of 2024 (20 March, 03:06 UTC): over the equator.
+    const march = subsolarPoint(1710903960);
+    try testing.expectApproxEqAbs(0, march.lat, 0.05);
+    try testing.expectApproxEqAbs(@as(f64, 1), direction(.{ .lat = 90 })[1], 1e-12);
 }

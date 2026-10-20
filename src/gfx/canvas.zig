@@ -371,6 +371,32 @@ pub const Canvas = struct {
         geometry.fillRings(c.gpa, sink.sink(), scaled) catch c.fail();
     }
 
+    /// Fills triangles of one colour, three corners each: where each is
+    /// (`x`, `y`) and how much of the colour it has there (0 to 1), blended
+    /// smoothly between them (a shadow that fades, say). Their edges are
+    /// not smoothed.
+    pub fn fillShaded(c: *Canvas, corners: []const [3]f32, color: Color) void {
+        if (corners.len < 3 or color.a <= 0) return;
+        const s = c.scale;
+        var lo: Point = .{ corners[0][0], corners[0][1] };
+        var hi = lo;
+        for (corners) |k| {
+            lo = .{ @min(lo[0], k[0]), @min(lo[1], k[1]) };
+            hi = .{ @max(hi[0], k[0]), @max(hi[1], k[1]) };
+        }
+        const bounds = c.moved(.{ .x = lo[0], .y = lo[1], .w = hi[0] - lo[0], .h = hi[1] - lo[1] });
+        c.note(.shaded, bounds, .{ c.origin, s, color, std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(corners)) }, "");
+        var sink: SolidSink = .{ .canvas = c, .bounds = bounds, .color = color };
+        var i: usize = 0;
+        while (i + 3 <= corners.len) : (i += 3) {
+            const t = corners[i..][0..3];
+            if (t[0][2] <= 0 and t[1][2] <= 0 and t[2][2] <= 0) continue;
+            var tri: [3]geometry.Vertex = undefined;
+            for (t, &tri) |k, *o| o.* = .{ .x = (k[0] + c.origin[0]) * s, .y = (k[1] + c.origin[1]) * s, .alpha = std.math.clamp(k[2], 0, 1) };
+            SolidSink.triangle(&sink, tri[0], tri[1], tri[2]);
+        }
+    }
+
     fn fail(c: *Canvas) void {
         c.failed = true;
     }
@@ -613,7 +639,7 @@ pub const Canvas = struct {
 
     // --- Recording ----------------------------------------------------------------
 
-    const Op = enum(u8) { rounded_rect, polygon, polyline, path, text, image, image_triangles };
+    const Op = enum(u8) { rounded_rect, polygon, polyline, path, shaded, text, image, image_triangles };
 
     /// Notes a shape in the recorder: what it is (its operation, the
     /// fixed-size `params` and the variable `data`, with the clip) and the

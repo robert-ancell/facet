@@ -581,6 +581,23 @@ test "paths fill around their holes, and images bend to triangles" {
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(36, 36));
 }
 
+test "shaded triangles blend their colour by how much each corner has" {
+    var c = Canvas.init(testing.allocator);
+    defer c.deinit();
+    c.begin(40, 20);
+    // White, none at the left and all at the right.
+    c.fillShaded(&.{
+        .{ 0, 0, 0 }, .{ 40, 0, 1 },  .{ 40, 20, 1 },
+        .{ 0, 0, 0 }, .{ 40, 20, 1 }, .{ 0, 20, 0 },
+    }, Color.rgb(0xffffff));
+    var pixels: [40 * 20]u32 = @splat(0xff000000);
+    const img: Image = .{ .pixels = &pixels, .width = 40, .height = 20 };
+    try render(&c, img);
+    try expectNear(0xff000000, img.at(0, 10), 8);
+    try expectNear(0xff808080, img.at(20, 10), 8);
+    try expectNear(0xffffffff, img.at(39, 10), 8);
+}
+
 test "text matches the font renderer's own drawing" {
     const f = try font.Font.init(font.default_font_data);
     var atlas = try atlas_mod.Atlas.init(testing.allocator);

@@ -22,7 +22,11 @@ pub const State = struct {
     camera: facet.MapCamera = world_view,
     kind: Kind = .vector,
     look: Look = .atlas,
-    projection: facet.MapProjection = .globe,
+    globe: bool = true,
+    atmosphere: bool = true,
+    night: bool = false,
+    /// How many hours from now the sun is shown, for night.
+    hours: f32 = 0,
     vector: VectorTiles = .{},
     images: ImageTiles = .{},
 
@@ -37,8 +41,17 @@ pub const State = struct {
     fn setLook(s: *State, v: Look) void {
         s.look = v;
     }
-    fn setProjection(s: *State, v: facet.MapProjection) void {
-        s.projection = v;
+    fn setGlobe(s: *State, v: bool) void {
+        s.globe = v;
+    }
+    fn setAtmosphere(s: *State, v: bool) void {
+        s.atmosphere = v;
+    }
+    fn setNight(s: *State, v: bool) void {
+        s.night = v;
+    }
+    fn setHours(s: *State, v: f32) void {
+        s.hours = v;
     }
     fn zoomIn(s: *State) void {
         s.camera.zoom = @min(s.camera.zoom + 1, max_zoom);
@@ -50,7 +63,7 @@ pub const State = struct {
         s.camera = world_view;
     }
     fn goNullIsland(s: *State) void {
-        s.camera = .{ .center = .{}, .zoom = 4.5 };
+        s.camera = .{ .center = .{}, .zoom = 8 };
     }
 };
 
@@ -67,10 +80,6 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .night, .label = "Night" },
         .{ .value = .blueprint, .label = "Blueprint" },
     };
-    const projections = [_]facet.Select(facet.MapProjection).Option{
-        .{ .value = .globe, .label = "Globe, then flat" },
-        .{ .value = .flat, .label = "Flat" },
-    };
     const palette = paletteOf(s.look);
     const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.Empty{});
     style.* = styleOf(cx, palette);
@@ -81,6 +90,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .vector => .of(&s.vector, .{ .max_level = max_zoom, .attribution = "Vector tiles made by the showcase" }),
         .images => .of(&s.images, .{ .max_level = max_zoom, .attribution = "Images drawn by the showcase" }),
     };
+    // The sun now (or as many hours from now as chosen).
+    var ts: std.os.linux.timespec = undefined;
+    _ = std.os.linux.clock_gettime(.REALTIME, &ts);
+    const unix = @as(f64, @floatFromInt(ts.sec)) + s.hours * 3600;
+    const night: ?facet.MapNight = if (s.night) .{ .sun = facet.subsolarPoint(unix) } else null;
     const c = s.camera.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
         @abs(c.lat),   if (c.lat >= 0) "N" else "S",
@@ -97,7 +111,9 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                         .source = source,
                         .style = style,
                         .camera = &s.camera,
-                        .projection = s.projection,
+                        .projection = if (s.globe) .globe else .flat,
+                        .atmosphere = s.atmosphere,
+                        .night = night,
                         .max_zoom = max_zoom,
                     }) }),
                 }),
@@ -119,12 +135,21 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             common.labelled(cx, "Style", &.{
                 cx.make(facet.Select(Look){ .options = &looks, .value = s.look, .on_changed = .of(s, State.setLook), .width = 180 }),
             }),
-            common.labelled(cx, "Projection", &.{
-                cx.make(facet.Select(facet.MapProjection){ .options = &projections, .value = s.projection, .on_changed = .of(s, State.setProjection), .width = 180 }),
-            }),
             common.labelled(cx, "Go to", &.{
                 cx.make(facet.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) }),
                 cx.make(facet.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) }),
+            }),
+        }),
+        common.section(cx, "The globe", "Zoomed out, a globe with a glow, and night where the sun has set (fading as it becomes the flat map)", &.{
+            common.labelled(cx, "Globe", &.{
+                cx.make(facet.Switch{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" }),
+                cx.make(facet.Switch{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" }),
+            }),
+            common.labelled(cx, "Night", &.{
+                cx.make(facet.Switch{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" }),
+            }),
+            common.labelled(cx, if (s.hours == 0) "Now" else cx.fmt("{s}{d:.1} hours", .{ if (s.hours > 0) "+" else "", s.hours }), &.{
+                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) }),
             }),
         }),
     });

@@ -2213,7 +2213,7 @@ const MapApp = struct {
             .projection = self.projection,
             .style = self.style,
             .space = .rgb(0x000000),
-            .atmosphere = .rgb(0x000000),
+            .atmosphere = false,
         });
     }
 };
