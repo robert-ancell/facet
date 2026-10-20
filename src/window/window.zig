@@ -290,6 +290,7 @@ pub const Window = struct {
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
         beginFrame: *const fn (ptr: *anyopaque) anyerror!gfx.software.Image,
         beginDmabufFrame: *const fn (ptr: *anyopaque) ?gfx.DmabufTarget,
+        beginMetalFrame: *const fn (ptr: *anyopaque) ?gfx.MetalTarget,
         bufferAge: *const fn (ptr: *anyopaque) u32,
         finishFrame: *const fn (ptr: *anyopaque, repainted: ?[]const gfx.Viewport) void,
         showDamaged: *const fn (ptr: *anyopaque, damage: ?[]const gfx.Viewport) anyerror!void,
@@ -494,6 +495,10 @@ pub const Window = struct {
                 if (@hasDecl(T, "beginDmabufFrame")) return self(p).beginDmabufFrame();
                 return null;
             }
+            fn beginMetalFrameFn(p: *anyopaque) ?gfx.MetalTarget {
+                if (@hasDecl(T, "beginMetalFrame")) return self(p).beginMetalFrame();
+                return null;
+            }
             fn bufferAgeFn(p: *anyopaque) u32 {
                 if (@hasDecl(T, "bufferAge")) return self(p).bufferAge();
                 return 0;
@@ -580,6 +585,7 @@ pub const Window = struct {
                 .releaseSpareBuffers = releaseSpareBuffersFn,
                 .beginFrame = beginFrameFn,
                 .beginDmabufFrame = beginDmabufFrameFn,
+                .beginMetalFrame = beginMetalFrameFn,
                 .bufferAge = bufferAgeFn,
                 .finishFrame = finishFrameFn,
                 .showDamaged = showDamagedFn,
@@ -733,6 +739,11 @@ pub const Window = struct {
     /// draw into directly (instead of `beginFrame`), or null if it is not one.
     pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
         return w.vtable.beginDmabufFrame(w.ptr);
+    }
+    /// The next frame drawn on the GPU into the window's Metal layer
+    /// (instead of `beginFrame`), or null if it has none (not macOS).
+    pub fn beginMetalFrame(w: Window) ?gfx.MetalTarget {
+        return w.vtable.beginMetalFrame(w.ptr);
     }
     /// How many frames ago `beginFrame`'s buffer was last drawn: 1 if in
     /// the frame before, 0 if never.

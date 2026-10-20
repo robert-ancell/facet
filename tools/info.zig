@@ -56,6 +56,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
         .software => "CPU SDF vector & glyph rasterizer",
         .opengl => "OpenGL 3.3+ / 4.6 SPIR-V GPU renderer",
         .vulkan => "Vulkan 1.1+ SPIR-V GPU renderer",
+        .metal => "Metal GPU renderer",
         .custom => "Custom 2D rendering backend",
     };
 
@@ -285,6 +286,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                     cx.make(facet.Chip{ .label = "Software", .selected = info.renderer == .software }),
                     cx.make(facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl }),
                     cx.make(facet.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan }),
+                    cx.make(facet.Chip{ .label = "Metal", .selected = info.renderer == .metal }),
                 },
             }),
             cx.make(facet.Divider{}),

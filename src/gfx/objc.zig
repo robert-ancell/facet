@@ -1,4 +1,4 @@
-//! Calling Objective-C (AppKit and friends) from Zig, on macOS: the
+//! Calling Objective-C (AppKit, Metal and friends) from Zig, on macOS: the
 //! Objective-C runtime, and the frameworks' C functions and constants,
 //! loaded when first used (as facet loads Vulkan and EGL), so no SDK is
 //! needed to build, and nothing to link but the C library.
@@ -31,6 +31,7 @@ const Runtime = struct {
     foundation: ?*anyopaque,
     graphics: ?*anyopaque,
     core: ?*anyopaque,
+    metal: ?*anyopaque,
     msgSend: *const anyopaque,
     msgSend_stret: ?*const anyopaque,
     getClass: *const fn ([*:0]const u8) callconv(.c) Class,
@@ -62,6 +63,7 @@ pub fn load() Error!void {
     const graphics = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW);
     const core = dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", RTLD_NOW);
     _ = dlopen("/System/Library/Frameworks/QuartzCore.framework/QuartzCore", RTLD_NOW);
+    const metal = dlopen("/System/Library/Frameworks/Metal.framework/Metal", RTLD_NOW);
     const sym = struct {
         fn f(comptime T: type, h: ?*anyopaque, name: [*:0]const u8) Error!T {
             return @ptrCast(@alignCast(dlsym(h, name) orelse return error.NoObjcRuntime));
@@ -73,6 +75,7 @@ pub fn load() Error!void {
         .foundation = foundation,
         .graphics = graphics,
         .core = core,
+        .metal = metal,
         .msgSend = try sym(*const anyopaque, objc, "objc_msgSend"),
         .msgSend_stret = if (builtin.cpu.arch == .x86_64) try sym(*const anyopaque, objc, "objc_msgSend_stret") else null,
         .getClass = try sym(@FieldType(Runtime, "getClass"), objc, "objc_getClass"),
@@ -138,6 +141,17 @@ pub fn new(cls: Class) Id {
     return msg(Id, msg(Id, cls, "alloc", .{}), "init", .{});
 }
 
+/// Lets an object go (one we made, or kept with `retain`); nothing for
+/// null.
+pub fn release(obj: Id) void {
+    if (obj != null) msg(void, obj, "release", .{});
+}
+
+/// Keeps an object (until `release`).
+pub fn retain(obj: Id) Id {
+    return if (obj == null) null else msg(Id, obj, "retain", .{});
+}
+
 /// An `NSString` of UTF-8 `s` (autoreleased).
 pub fn nsString(s: []const u8) Id {
     const alloc_str = msg(Id, class("NSString"), "alloc", .{});
@@ -164,7 +178,7 @@ pub fn pop(pool: ?*anyopaque) void {
 /// A symbol of the frameworks (a C function, or a constant's address).
 pub fn symbol(comptime T: type, name: [*:0]const u8) ?T {
     const r = rt();
-    for ([_]?*anyopaque{ r.appkit, r.foundation, r.graphics, r.core, r.objc }) |h| {
+    for ([_]?*anyopaque{ r.appkit, r.foundation, r.graphics, r.core, r.metal, r.objc }) |h| {
         if (dlsym(h, name)) |p| return @ptrCast(@alignCast(p));
     }
     return null;

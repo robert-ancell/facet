@@ -22,6 +22,7 @@
 //!     try ui.preview(image);
 
 const std = @import("std");
+const builtin = @import("builtin");
 const window_mod = @import("window");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -110,6 +111,7 @@ pub const Ui = struct {
     atlas: gfx.Atlas,
     vulkan_renderer: ?gfx.VulkanRenderer = null,
     opengl_renderer: ?gfx.OpenGlRenderer = null,
+    metal_renderer: ?gfx.MetalRenderer = null,
     software_renderer: gfx.SoftwareRenderer = .{},
     renderer: ?gfx.Renderer = null,
     owns_renderer: bool = false,
@@ -266,8 +268,8 @@ pub const Ui = struct {
 
     /// Creates a `Ui` with the given `font` (`null` for no text font; icons
     /// still use the bundled Material Icons font).
-    /// Tries initializing the Vulkan 2D renderer first, then OpenGL, before
-    /// falling back to Software.
+    /// Tries initializing the Metal 2D renderer (on macOS), or the Vulkan
+    /// one first, then OpenGL (elsewhere), before falling back to Software.
     pub fn create(gpa: std.mem.Allocator, f: ?*const font.Font) !*Ui {
         const ui = try gpa.create(Ui);
         errdefer gpa.destroy(ui);
@@ -278,7 +280,15 @@ pub const Ui = struct {
             .atlas = try gfx.Atlas.init(gpa),
             .arenas = .{ .init(gpa), .init(gpa) },
         };
-        if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
+        if (comptime builtin.os.tag == .macos) {
+            if (gfx.MetalRenderer.initDefault(gpa)) |mtl| {
+                ui.metal_renderer = mtl;
+                ui.renderer = ui.metal_renderer.?.renderer();
+                ui.owns_renderer = true;
+            } else |_| {
+                ui.renderer = ui.software_renderer.renderer();
+            }
+        } else if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
             ui.vulkan_renderer = vk;
             ui.renderer = ui.vulkan_renderer.?.renderer();
             ui.owns_renderer = true;
@@ -362,6 +372,7 @@ pub const Ui = struct {
         if (ui.owns_renderer) if (ui.renderer) |old| old.deinit();
         ui.vulkan_renderer = null;
         ui.opengl_renderer = null;
+        ui.metal_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
     }
@@ -1056,18 +1067,32 @@ pub const Ui = struct {
         const main = ui.segments.items[0..ui.main_segments];
         var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
         var uncovered_buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
-        // On the GPU straight into the window's buffer if they can, or else
-        // into the buffer on the CPU.
-        const direct = if (ui.directRenderer()) |r| if (w.beginDmabufFrame()) |target| blk: {
-            const repaint_region = ui.repaint(w.bufferAge());
-            const vps = regionViewports(&repaint_region, &repaint_vps);
-            r.renderDmabuf(ui.canvases.items[0..ui.canvases_used], main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
-                ui.no_direct = true;
-                break :blk false;
+        // On the GPU straight into the window's buffer (or Metal layer) if
+        // they can, or else into the buffer on the CPU.
+        const direct = if (ui.directRenderer()) |r| blk: {
+            const canvases = ui.canvases.items[0..ui.canvases_used];
+            if (r.hasDmabuf()) if (w.beginDmabufFrame()) |target| {
+                const repaint_region = ui.repaint(w.bufferAge());
+                const vps = regionViewports(&repaint_region, &repaint_vps);
+                r.renderDmabuf(canvases, main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
+                    ui.no_direct = true;
+                    break :blk false;
+                };
+                w.finishFrame(vps);
+                break :blk true;
             };
-            w.finishFrame(vps);
-            break :blk true;
-        } else false else false;
+            if (r.hasMetal()) if (w.beginMetalFrame()) |target| {
+                const repaint_region = ui.repaint(w.bufferAge());
+                const vps = regionViewports(&repaint_region, &repaint_vps);
+                r.renderMetal(canvases, main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
+                    ui.no_direct = true;
+                    break :blk false;
+                };
+                w.finishFrame(vps);
+                break :blk true;
+            };
+            break :blk false;
+        } else false;
         if (!direct) {
             var img = try w.beginFrame();
             const repaint_region = ui.repaint(w.bufferAge());
@@ -1082,11 +1107,11 @@ pub const Ui = struct {
     }
 
     /// The renderer, if it may draw frames straight into the window's
-    /// dmabufs (it has not failed to).
+    /// dmabufs or Metal layer (it has not failed to).
     fn directRenderer(ui: *const Ui) ?gfx.Renderer {
         if (ui.no_direct) return null;
         const r = ui.renderer orelse return null;
-        return if (r.hasDmabuf()) r else null;
+        return if (r.hasDmabuf() or r.hasMetal()) r else null;
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).

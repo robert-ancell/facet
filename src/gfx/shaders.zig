@@ -1,6 +1,7 @@
 //! Vertex layouts, SPIR-V shader blobs (compiled at build time from the Zig
-//! shaders in `src/gfx/shaders/*.zig`), and GLSL 330 fallback shader sources
-//! (`src/gfx/shaders/*.vert` and `*.frag`) for Facet's 2D canvas batches:
+//! shaders in `src/gfx/shaders/*.zig`), GLSL 330 fallback shader sources
+//! (`src/gfx/shaders/*.vert` and `*.frag`), and the Metal Shading Language
+//! source (`src/gfx/shaders/canvas.metal`) for Facet's 2D canvas batches:
 //!
 //! * `shape`: anti-aliased rounded rectangles, filled or stroked. Each
 //!   vertex carries the rectangle: the fragment's position relative to its
@@ -102,6 +103,12 @@ pub const glsl_text_vs: [:0]const u8 = @embedFile("shaders/text.vert");
 pub const glsl_text_fs: [:0]const u8 = @embedFile("shaders/text.frag");
 pub const glsl_image_fs: [:0]const u8 = @embedFile("shaders/image.frag");
 
+// --- Metal Shading Language shaders (src/gfx/shaders/canvas.metal) -----------
+
+/// All of them, with the entry points `shape_vs`, `shape_fs`, `solid_vs`,
+/// `solid_fs`, `text_vs`, `text_fs` and `image_fs`.
+pub const msl: [:0]const u8 = @embedFile("shaders/canvas.metal");
+
 test "vertex layouts match float counts and SPIR-V / GLSL shaders are valid" {
     for ([_]Layout{ shape_layout, solid_layout, text_layout }, [_]u32{ shape_floats, solid_floats, text_floats }) |layout, floats| {
         var total: u32 = 0;
@@ -117,5 +124,8 @@ test "vertex layouts match float counts and SPIR-V / GLSL shaders are valid" {
     }
     for ([_][:0]const u8{ glsl_shape_vs, glsl_shape_fs, glsl_solid_vs, glsl_solid_fs, glsl_text_vs, glsl_text_fs, glsl_image_fs }) |src| {
         try std.testing.expect(std.mem.startsWith(u8, src, "#version 330 core\n"));
+    }
+    for ([_][]const u8{ "shape_vs", "shape_fs", "solid_vs", "solid_fs", "text_vs", "text_fs", "image_fs" }) |entry| {
+        try std.testing.expect(std.mem.indexOf(u8, msl, entry) != null);
     }
 }

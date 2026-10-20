@@ -11,12 +11,16 @@
 //! main run loop, so it sleeps until there is something to do.
 //!
 //! Everything AppKit has is loaded when the window is opened (see
-//! `objc.zig`), so facet builds for macOS without its SDK.
+//! `gfx.objc`), so facet builds for macOS without its SDK.
+//!
+//! The GPU draws frames when it can: the Metal renderer asks for the
+//! view's layer as a `CAMetalLayer` (`beginMetalFrame`) and presents
+//! frames in it itself.
 
 const std = @import("std");
 const gfx = @import("gfx");
 const window = @import("window.zig");
-const objc = @import("objc.zig");
+const objc = gfx.objc;
 const sys = @import("sys.zig");
 const clipboard = @import("clipboard.zig");
 
@@ -63,11 +67,18 @@ pub const MacWindow = struct {
     back: usize = 0,
     frames: u64 = 0,
     color_space: ?*anyopaque = null,
+    /// The view's layers: the one the CPU's frames are the contents of, and
+    /// the one the GPU draws in (made when it first does); which it has;
+    /// and the size of the GPU's frames, when last drawn (0 by 0: none
+    /// yet), which keeps them from one to the next.
+    plain_layer: Id = null,
+    metal_layer: Id = null,
+    on_gpu: bool = false,
+    gpu_size: [2]u32 = .{ 0, 0 },
     /// The fds watched through the run loop.
     watched: [4]?Watch = @splat(null),
 
     pub const platform: window.Platform = .macos;
-    pub const buffer_transport: window.BufferTransport = .memory;
     pub const decorations: window.Decorations = .server;
 
     const Buffer = struct {
@@ -149,8 +160,8 @@ pub const MacWindow = struct {
         // A view hosting a layer of its own, whose contents are the frames.
         w.view = msg(Id, msg(Id, viewClass(), "alloc", .{}), "initWithFrame:", .{rect});
         objc.setOwner(w.view, w);
-        const layer = msg(Id, objc.class("CALayer"), "layer", .{});
-        msg(void, w.view, "setLayer:", .{layer});
+        w.plain_layer = objc.retain(msg(Id, objc.class("CALayer"), "layer", .{}));
+        msg(void, w.view, "setLayer:", .{w.plain_layer});
         msg(void, w.view, "setWantsLayer:", .{objc.yes});
         // Moves, entering and leaving, wherever the pointer is in it.
         const tracking = msg(Id, objc.class("NSTrackingArea"), "alloc", .{});
@@ -188,6 +199,8 @@ pub const MacWindow = struct {
         msg(void, w.delegate, "release", .{});
         msg(void, w.view, "release", .{});
         msg(void, w.win, "release", .{});
+        objc.release(w.plain_layer);
+        objc.release(w.metal_layer);
         for (w.buffers) |b| if (b.pixels) |px| px.unref();
         if (w.color_space) |cs| if (objc.symbol(*const fn (?*anyopaque) callconv(.c) void, "CGColorSpaceRelease")) |f| f(cs);
         w.input.deinit(w.gpa);
@@ -291,8 +304,41 @@ pub const MacWindow = struct {
 
     // --- Frames -------------------------------------------------------------------
 
+    /// Frames drawn on the GPU are in the Metal layer's drawables; the
+    /// CPU's in memory.
+    pub fn bufferTransport(w: *const MacWindow) window.BufferTransport {
+        return if (w.on_gpu) .swapchain else .memory;
+    }
+
+    /// The view's layer as a `CAMetalLayer`, its drawables as big as the
+    /// view in pixels, for the GPU to draw the next frame in.
+    pub fn beginMetalFrame(w: *MacWindow) ?gfx.MetalTarget {
+        const pool = objc.push();
+        defer objc.pop(pool);
+        if (w.metal_layer == null) {
+            const cls = objc.class("CAMetalLayer") orelse return null;
+            w.metal_layer = objc.retain(msg(Id, cls, "layer", .{}));
+            msg(void, w.metal_layer, "setOpaque:", .{objc.yes});
+        }
+        if (!w.on_gpu) {
+            msg(void, w.view, "setLayer:", .{w.metal_layer});
+            w.on_gpu = true;
+            w.gpu_size = .{ 0, 0 };
+        }
+        const pw = w.width * w.scale;
+        const ph = w.height * w.scale;
+        msg(void, w.metal_layer, "setContentsScale:", .{@as(objc.CGFloat, @floatFromInt(w.scale))});
+        msg(void, w.metal_layer, "setDrawableSize:", .{objc.Size{ .width = @floatFromInt(pw), .height = @floatFromInt(ph) }});
+        return .{ .layer = w.metal_layer.?, .width = pw, .height = ph };
+    }
+
     /// The next buffer to draw a frame in, as big as the view in pixels.
     pub fn beginFrame(w: *MacWindow) !gfx.software.Image {
+        if (w.on_gpu) {
+            // Back to the CPU (the GPU could not draw).
+            msg(void, w.view, "setLayer:", .{w.plain_layer});
+            w.on_gpu = false;
+        }
         w.back = (w.back + 1) % w.buffers.len;
         const b = &w.buffers[w.back];
         const pw = w.width * w.scale;
@@ -310,6 +356,8 @@ pub const MacWindow = struct {
     /// How many frames ago the buffer `beginFrame` gave was last shown (0:
     /// never).
     pub fn bufferAge(w: *const MacWindow) u32 {
+        // The renderer keeps the GPU's frame, while it is the same size.
+        if (w.on_gpu) return if (w.gpu_size[0] == w.width * w.scale and w.gpu_size[1] == w.height * w.scale) 1 else 0;
         const b = &w.buffers[w.back];
         if (b.drawn == 0) return 0;
         return @intCast(@min(w.frames + 1 - b.drawn, std.math.maxInt(u32)));
@@ -318,6 +366,14 @@ pub const MacWindow = struct {
     /// Shows the buffer drawn: the layer's contents (the whole of it; the
     /// layer is composited by the system).
     pub fn showDamaged(w: *MacWindow, _: ?[]const gfx.Viewport) !void {
+        if (w.on_gpu) {
+            // Presented by the renderer.
+            w.gpu_size = .{ w.width * w.scale, w.height * w.scale };
+            w.frames += 1;
+            w.presented_ns = w.nextPresentationNs(sys.monotonicNs());
+            w.frame_pending = true;
+            return;
+        }
         const pool = objc.push();
         defer objc.pop(pool);
         const b = &w.buffers[w.back];

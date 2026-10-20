@@ -5,7 +5,8 @@
 //!
 //! A `Canvas` records shapes and text into batches on the CPU, independent of
 //! the rendering backend. A `Renderer` draws those batches using one of the
-//! built-in backends (`software`, `opengl`, `vulkan`) or a custom backend
+//! built-in backends (`software`, `opengl`, `vulkan`, and `metal` on macOS)
+//! or a custom backend
 //! implementing `Renderer.of(&my_backend)`.
 //!
 //!     canvas.begin(width, height);
@@ -22,6 +23,10 @@ pub const renderer = @import("renderer.zig");
 pub const software = @import("software.zig");
 pub const opengl = @import("opengl.zig");
 pub const vulkan = @import("vulkan.zig");
+pub const metal = @import("metal.zig");
+/// Objective-C and Apple's frameworks, loaded at run time (for the Metal
+/// renderer, and macOS windows).
+pub const objc = @import("objc.zig");
 pub const png = @import("png.zig");
 pub const jpeg = @import("jpeg.zig");
 pub const gif = @import("gif.zig");
@@ -42,6 +47,7 @@ pub const GpuDraw = renderer.GpuDraw;
 pub const Segment = renderer.Segment;
 pub const DmabufTarget = renderer.DmabufTarget;
 pub const DmabufImage = renderer.DmabufImage;
+pub const MetalTarget = renderer.MetalTarget;
 pub const RenderBackend = renderer.RenderBackend;
 pub const Renderer = renderer.Renderer;
 pub const SoftwareRenderer = software.SoftwareRenderer;
@@ -49,6 +55,7 @@ pub const OpenGlRenderer = opengl.OpenGlRenderer;
 pub const OpenGlContext = opengl.OffscreenContext;
 pub const VulkanRenderer = vulkan.VulkanRenderer;
 pub const VulkanContext = vulkan.OffscreenContext;
+pub const MetalRenderer = metal.MetalRenderer;
 
 test {
     _ = geometry;
@@ -59,6 +66,8 @@ test {
     _ = software;
     _ = opengl;
     _ = vulkan;
+    _ = metal;
+    _ = objc;
     _ = png;
     _ = jpeg;
     _ = gif;

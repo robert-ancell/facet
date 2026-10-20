@@ -4,7 +4,7 @@
 //!   widgets, layout, state, damage tracking, and input handling
 //! * `gfx`: 2D vector canvas (`Canvas`), glyph `Atlas`, `Image`, generic
 //!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,
-//!   and `VulkanRenderer` backends
+//!   `VulkanRenderer` and `MetalRenderer` (macOS) backends
 //! * `window`: generic `Window` interface, `Controls`, `InputEvent`,
 //!   `Clipboard`, and the built-in backends: `WaylandWindow` (Linux) and
 //!   `MacWindow` (macOS), `NativeWindow` being the one built for
@@ -144,6 +144,7 @@ pub const Renderer = gfx.Renderer;
 pub const SoftwareRenderer = gfx.SoftwareRenderer;
 pub const OpenGlRenderer = gfx.OpenGlRenderer;
 pub const OpenGlContext = gfx.OpenGlContext;
+pub const MetalRenderer = gfx.MetalRenderer;
 pub const VulkanRenderer = gfx.VulkanRenderer;
 pub const VulkanContext = gfx.VulkanContext;
 pub const Platform = window.Platform;

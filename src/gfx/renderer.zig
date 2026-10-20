@@ -5,8 +5,9 @@
 //! * `software.SoftwareRenderer` (`gfx.software`)
 //! * `opengl.OpenGlRenderer` (`gfx.opengl`)
 //! * `vulkan.VulkanRenderer` (`gfx.vulkan`)
+//! * `metal.MetalRenderer` (`gfx.metal`, on macOS)
 //!
-//! Any custom backend (e.g., Metal, Direct3D, or WebGPU) can
+//! Any custom backend (e.g., Direct3D, or WebGPU) can
 //! implement `prepare`, `record`, and optional `deinit` and wrap itself via
 //! `Renderer.of(&my_backend)`.
 
@@ -135,6 +136,15 @@ pub const DmabufImage = struct {
     bottom_up: bool = false,
 };
 
+/// A window's Core Animation layer (a `CAMetalLayer`) that the GPU draws
+/// frames into on macOS: see `Renderer.renderMetal`.
+pub const MetalTarget = struct {
+    /// The `CAMetalLayer`, its drawables `width` by `height` pixels.
+    layer: *anyopaque,
+    width: u32,
+    height: u32,
+};
+
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.
 pub const Segment = union(enum) {
     canvas: *Canvas,
@@ -221,6 +231,7 @@ pub const RenderBackend = enum {
     software,
     opengl,
     vulkan,
+    metal,
     custom,
 
     pub fn name(b: RenderBackend) []const u8 {
@@ -228,6 +239,7 @@ pub const RenderBackend = enum {
             .software => "Software",
             .opengl => "OpenGL",
             .vulkan => "Vulkan",
+            .metal => "Metal",
             .custom => "Custom",
         };
     }
@@ -263,6 +275,9 @@ pub const Renderer = struct {
         /// Renders a frame straight into a dmabuf, if the backend can (see
         /// `renderDmabuf`).
         render_dmabuf: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
+        /// Renders a frame into a window's Metal layer, if the backend can
+        /// (see `renderMetal`).
+        render_metal: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const MetalTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
     };
 
     /// Wraps any backend pointer `*T` that implements:
@@ -286,7 +301,12 @@ pub const Renderer = struct {
                     .record = recordFn,
                     .deinit = if (@hasDecl(T, "deinit")) deinitFn else null,
                     .render_dmabuf = if (@hasDecl(T, "renderDmabuf")) renderDmabufFn else null,
+                    .render_metal = if (@hasDecl(T, "renderMetal")) renderMetalFn else null,
                 };
+                fn renderMetalFn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const MetalTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
+                    const self: *T = @ptrCast(@alignCast(ptr));
+                    return self.renderMetal(canvases, segments, target, clear, clear_rects, damage);
+                }
                 fn renderDmabufFn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
                     const self: *T = @ptrCast(@alignCast(ptr));
                     return self.renderDmabuf(canvases, segments, target, clear, clear_rects, damage);
@@ -380,6 +400,21 @@ pub const Renderer = struct {
     /// or this buffer cannot be drawn into).
     pub fn renderDmabuf(r: Renderer, canvases: []const *const Canvas, segments: []const Segment, target: *const DmabufTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
         const f = r.vtable.render_dmabuf orelse return error.Unsupported;
+        return f(r.ptr, canvases, segments, target, clear, clear_rects, damage);
+    }
+
+    /// Whether the backend may render into a window's Metal layer.
+    pub fn hasMetal(r: Renderer) bool {
+        return r.vtable.render_metal != null;
+    }
+
+    /// Renders a frame into `target`'s next drawable on the GPU, and
+    /// presents it: as `renderDmabuf`, `clear_rects` cleared to `clear`,
+    /// then the segments, within `damage` (what is outside it is kept from
+    /// the frame before). An error leaves the frame to be drawn the CPU
+    /// way.
+    pub fn renderMetal(r: Renderer, canvases: []const *const Canvas, segments: []const Segment, target: *const MetalTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
+        const f = r.vtable.render_metal orelse return error.Unsupported;
         return f(r.ptr, canvases, segments, target, clear, clear_rects, damage);
     }
 
