@@ -242,9 +242,9 @@ pub const MacWindow = struct {
     /// Waits up to `timeout_ns` for something (an event, or a watched fd
     /// readable), and handles what has come.
     pub fn wait(w: *MacWindow, timeout_ns: u64) !void {
-        // Not past when the next frame can be drawn.
+        // Not past when the frame drawn is shown, when the next can be.
         var ns = timeout_ns;
-        if (w.frame_pending) ns = @min(ns, w.nextPresentationNs(sys.monotonicNs()) -| sys.monotonicNs());
+        if (w.frame_pending) ns = @min(ns, w.presented_ns -| sys.monotonicNs());
         // Watched fds wake it once each wait (a callback each time one is
         // readable would come again and again until it is read).
         if (cfFunctions()) |cf| for (w.watched) |slot| if (slot) |x| cf.enable(x.ref, 1);
@@ -253,7 +253,9 @@ pub const MacWindow = struct {
     }
 
     fn updatePending(w: *MacWindow) void {
-        if (w.frame_pending and sys.monotonicNs() >= w.presented_ns + w.refresh_ns) w.frame_pending = false;
+        // `presented_ns` is when the frame drawn is shown: the next can be
+        // drawn then, for the refresh after.
+        if (w.frame_pending and sys.monotonicNs() >= w.presented_ns) w.frame_pending = false;
     }
 
     /// When a frame drawn now would be shown: at the display's next
