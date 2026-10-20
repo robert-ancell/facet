@@ -213,9 +213,8 @@ pub const Ui = struct {
     wanted_tooltip: ?window_mod.PopupPlacement = null,
     /// How many of `segments` are the window's (the rest are popups').
     main_segments: usize = 0,
-    /// The renderer could not draw straight into the window's dmabufs, so
-    /// frames are drawn into them on the CPU.
-    no_direct: bool = false,
+    /// What presents its frames in the window (with `renderer`).
+    presenter: window_mod.Presenter = .{},
     /// What is being dragged, if anything (see drag.zig), and the chip
     /// that follows the pointer.
     drag: ?drag_mod.Drag = null,
@@ -313,6 +312,7 @@ pub const Ui = struct {
         } else |_| {
             ui.renderer = ui.software_renderer.renderer();
         }
+        ui.presenter = .{ .renderer = ui.renderer };
         return ui;
     }
 
@@ -382,13 +382,13 @@ pub const Ui = struct {
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
     /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`).
     pub fn attachRenderer(ui: *Ui, r: gfx.Renderer, take_ownership: bool) void {
-        ui.no_direct = false;
         if (ui.owns_renderer) if (ui.renderer) |old| old.deinit();
         ui.vulkan_renderer = null;
         ui.opengl_renderer = null;
         ui.metal_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
+        ui.presenter = .{ .renderer = r };
     }
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
@@ -1083,74 +1083,47 @@ pub const Ui = struct {
         };
     }
 
+    /// The frame last painted, to present over `clear` (ARGB): the window's
+    /// segments, and what changed in it (see `gfx.Frame`). It is good until
+    /// the next `frame`.
+    pub fn framePacket(ui: *const Ui, clear: u32) gfx.Frame {
+        var f: gfx.Frame = .{
+            .canvases = ui.canvases.items[0..ui.canvases_used],
+            .segments = ui.segments.items[0..ui.main_segments],
+            .clear = clear,
+            .damage = damageOf(&ui.damage.frame),
+        };
+        comptime std.debug.assert(damage_mod.Tracker.history_len + 1 <= gfx.Frame.max_ages);
+        comptime std.debug.assert(damage_mod.Region.max_rects <= gfx.frame.Damage.max_rects);
+        f.ages = @intCast(ui.damage.known + 1);
+        for (f.repaints[0 .. @as(usize, f.ages) + 1], 0..) |*r, age| r.* = damageOf(&ui.damage.repaint(@intCast(age)));
+        return f;
+    }
+
+    fn damageOf(region: *const damage_mod.Region) gfx.frame.Damage {
+        var out: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
+        var d: gfx.frame.Damage = .{};
+        for (regionViewports(region, &out)) |v| d.add(v);
+        return d;
+    }
+
     /// If the last `frame` changed anything, renders only the damaged parts
     /// into `win` (a `window.Window`, or a pointer to a window) and presents it.
     pub fn present(ui: *Ui, win: anytype, clear: u32) !bool {
         const w = window_mod.Window.from(win);
         const popups = try ui.presentPopups(w);
         if (!ui.changed()) return popups;
-        const main = ui.segments.items[0..ui.main_segments];
-        var repaint_vps: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
-        var uncovered_buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
-        // On the GPU straight into the window's buffer (or Metal layer) if
-        // they can, or else into the buffer on the CPU.
-        const direct = if (ui.directRenderer()) |r| blk: {
-            const canvases = ui.canvases.items[0..ui.canvases_used];
-            if (r.hasDmabuf()) if (w.beginDmabufFrame()) |target| {
-                const repaint_region = ui.repaint(w.bufferAge());
-                const vps = regionViewports(&repaint_region, &repaint_vps);
-                r.renderDmabuf(canvases, main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
-                    ui.no_direct = true;
-                    break :blk false;
-                };
-                w.finishFrame(vps);
-                break :blk true;
-            };
-            if (r.hasMetal()) if (w.beginMetalFrame()) |target| {
-                const repaint_region = ui.repaint(w.bufferAge());
-                const vps = regionViewports(&repaint_region, &repaint_vps);
-                r.renderMetal(canvases, main, &target, clear, gfx.renderer.uncovered(&uncovered_buf, vps, main), vps) catch {
-                    ui.no_direct = true;
-                    break :blk false;
-                };
-                w.finishFrame(vps);
-                break :blk true;
-            };
-            break :blk false;
-        } else false;
-        if (!direct) {
-            var img = try w.beginFrame();
-            const repaint_region = ui.repaint(w.bufferAge());
-            const vps = regionViewports(&repaint_region, &repaint_vps);
-            img.clearViewports(clear, gfx.renderer.uncovered(&uncovered_buf, vps, main));
-            try ui.render(&img, vps);
-            w.finishFrame(vps);
-        }
-        var damage: [damage_mod.Region.max_rects]gfx.Viewport = undefined;
-        try w.showDamaged(ui.damagedViewports(&damage));
+        const f = ui.framePacket(clear);
+        try ui.presenter.present(w, &f);
         return true;
-    }
-
-    /// The renderer, if it may draw frames straight into the window's
-    /// dmabufs or Metal layer (it has not failed to).
-    fn directRenderer(ui: *const Ui) ?gfx.Renderer {
-        if (ui.no_direct) return null;
-        const r = ui.renderer orelse return null;
-        return if (r.hasDmabuf() or r.hasMetal()) r else null;
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).
     fn presentPopups(ui: *Ui, w: window_mod.Window) !bool {
-        const r = ui.renderer orelse return error.NoRenderer;
         var shown = false;
         for ([_]*?PopupLayer{ &ui.menu_popup, &ui.tooltip_popup }) |slot| {
             const layer = &(slot.* orelse continue);
             if (layer.end <= layer.first or (layer.hash != null and layer.drawn_hash == layer.hash)) continue;
-            var img = (try w.beginPopupFrame(layer.id)) orelse {
-                ui.needs_frame = true;
-                continue;
-            };
-            img.clear(0);
             const segments = ui.segments.items[layer.first..layer.end];
             var canvases: [16]*const gfx.Canvas = undefined;
             var n: usize = 0;
@@ -1161,9 +1134,11 @@ pub const Ui = struct {
                 },
                 .gpu => {},
             };
-            try r.prepare(canvases[0..n]);
-            try r.render(segments, &img, null);
-            try w.showPopup(layer.id);
+            const f: gfx.Frame = .{ .canvases = canvases[0..n], .segments = segments, .clear = 0 };
+            if (!try ui.presenter.presentPopup(w, layer.id, &f)) {
+                ui.needs_frame = true;
+                continue;
+            }
             layer.drawn_hash = layer.hash;
             shown = true;
         }

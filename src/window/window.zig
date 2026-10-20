@@ -16,6 +16,9 @@ const std = @import("std");
 const gfx = @import("gfx");
 
 pub const clipboard = @import("clipboard.zig");
+pub const present = @import("present.zig");
+/// Presents `gfx.Frame`s in a window with a renderer.
+pub const Presenter = present.Presenter;
 pub const wayland = @import("wayland.zig");
 
 pub const Clipboard = clipboard.Clipboard;
@@ -1014,6 +1017,7 @@ test "sources are waited on through io, with a timeout" {
 
 test {
     _ = clipboard;
+    _ = present;
     _ = wayland;
     _ = xkb;
     _ = compose;
