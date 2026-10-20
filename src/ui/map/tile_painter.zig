@@ -34,8 +34,8 @@ pub const LabelStyle = struct {
 pub const Labels = struct {
     placed: std.ArrayList(gfx.Rect) = .empty,
     arena: std.mem.Allocator,
-    /// The view's size: labels must be in it.
-    size: [2]f32,
+    /// Where labels may go: wholly within it (the view).
+    area: gfx.Rect,
     font: ?*const font.Font,
     atlas: *gfx.Atlas,
 
@@ -67,7 +67,8 @@ pub const Labels = struct {
             },
         }
         const r: gfx.Rect = .{ .x = x - gap / 2, .y = y, .w = w + gap, .h = h };
-        if (r.x < 0 or r.y < 0 or r.x + r.w > l.size[0] or r.y + r.h > l.size[1]) return false;
+        const a = l.area;
+        if (r.x < a.x or r.y < a.y or r.x + r.w > a.x + a.w or r.y + r.h > a.y + a.h) return false;
         for (l.placed.items) |p| if (p.intersects(r)) return false;
         l.placed.append(l.arena, r) catch return false;
         const baseline = @round(y + style.size * 0.95);

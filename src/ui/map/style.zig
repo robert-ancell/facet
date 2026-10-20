@@ -120,11 +120,24 @@ pub const MapStyle = struct {
         for (s.layers) |*l| if ((l.draw == .label) == labels) drawLayer(l, tp, tile);
     }
 
+    /// The tiles next to one being drawn as a picture (`paintTile`), for
+    /// their labels that reach into it: `get` gives one (or null).
+    pub const Nearby = struct {
+        ctx: *anyopaque,
+        get: *const fn (ctx: *anyopaque, id: tiles.TileId) ?*const VectorTile,
+    };
+
     /// Draws tile `id`'s shapes on `canvas`, flat, `size` pixels across
     /// with its top left at the origin, background and labels too: a
     /// picture of it (to make picture tiles from shapes, say). `arena` is
     /// for what drawing needs.
-    pub fn paintTile(s: *const MapStyle, canvas: *gfx.Canvas, arena: std.mem.Allocator, atlas: *gfx.Atlas, f: ?*const font.Font, id: tiles.TileId, tile: *const VectorTile, size: f32) void {
+    ///
+    /// A label is drawn whole or not at all, and one that crosses the
+    /// tile's edge is cut there; with the tiles around it (`nearby`),
+    /// theirs that reach into it are drawn too, so that the pictures of
+    /// tiles side by side each have their part of it. (Without, one that
+    /// would cross the edge is left out.)
+    pub fn paintTile(s: *const MapStyle, canvas: *gfx.Canvas, arena: std.mem.Allocator, atlas: *gfx.Atlas, f: ?*const font.Font, id: tiles.TileId, tile: *const VectorTile, size: f32, nearby: ?Nearby) void {
         const n: f64 = @floatFromInt(id.count());
         const corner: [2]f64 = .{ @as(f64, @floatFromInt(id.x)) / n, @as(f64, @floatFromInt(id.y)) / n };
         const zoom = @as(f64, @floatFromInt(id.z)) + std.math.log2(@as(f64, size) / 256);
@@ -132,11 +145,32 @@ pub const MapStyle = struct {
             .center = projection.fromWorld(.{ corner[0] + 0.5 / n, corner[1] + 0.5 / n }),
             .zoom = zoom,
         }, .{ size, size }, .flat);
-        canvas.fillRect(.{ .x = 0, .y = 0, .w = size, .h = size }, s.background);
-        var labels: tile_painter.Labels = .{ .arena = arena, .size = .{ size, size }, .font = f, .atlas = atlas };
+        const whole: gfx.Rect = .{ .x = 0, .y = 0, .w = size, .h = size };
+        canvas.fillRect(whole, s.background);
+        const old_clip = canvas.clip;
+        canvas.setClip(whole);
+        defer canvas.clip = old_clip;
+        // With the tiles around, labels may go anywhere among them: the
+        // same ones are drawn, in the same order (row by row of the
+        // tiles), for each of the tiles they cross.
+        const around: gfx.Rect = .{ .x = -size, .y = -size, .w = 3 * size, .h = 3 * size };
+        var labels: tile_painter.Labels = .{ .arena = arena, .area = if (nearby != null) around else whole, .font = f, .atlas = atlas };
         var tp: TilePainter = .{ .canvas = canvas, .arena = arena, .view = &view, .id = id, .corner = corner, .span = 1 / n, .extent = tile.extent, .zoom = zoom, .labels = &labels };
         s.drawTile(&tp, tile, false);
-        s.drawTile(&tp, tile, true);
+        const near = nearby orelse return s.drawTile(&tp, tile, true);
+        const count: i64 = @intCast(id.count());
+        for ([_]i64{ -1, 0, 1 }) |dy| for ([_]i64{ -1, 0, 1 }) |dx| {
+            const y = @as(i64, id.y) + dy;
+            if (y < 0 or y >= count) continue;
+            const x = @mod(@as(i64, id.x) + dx, count);
+            const other: tiles.TileId = .{ .z = id.z, .x = @intCast(x), .y = @intCast(y) };
+            const vt = if (dx == 0 and dy == 0) tile else near.get(near.ctx, other) orelse continue;
+            var otp = tp;
+            otp.id = other;
+            otp.extent = vt.extent;
+            otp.corner = .{ corner[0] + @as(f64, @floatFromInt(dx)) / n, corner[1] + @as(f64, @floatFromInt(dy)) / n };
+            s.drawTile(&otp, vt, true);
+        };
     }
 
     /// Draws what of `tile` the style's layer `l` draws.
@@ -211,4 +245,58 @@ test "filters pick features by their properties" {
     try std.testing.expect((F{ .has = "kind" }).matches(&f));
     try std.testing.expect(!(F{ .has = "name" }).matches(&f));
     try std.testing.expectEqual(VectorTile.Point{ 5, 0 }, MapStyle.middle(&.{ .{ 0, 0 }, .{ 10, 0 } }));
+}
+
+test "pictures of tiles side by side each have their part of a label across the edge" {
+    const f = try font.Font.init(font.default_font_data);
+    var atlas = try gfx.Atlas.init(std.testing.allocator);
+    defer atlas.deinit();
+    var canvas = gfx.Canvas.init(std.testing.allocator);
+    defer canvas.deinit();
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    // A label on the east edge of the west tile, none in the east one.
+    const point = [_]VectorTile.Point{.{ 4096, 2048 }};
+    const props = [_]VectorTile.Property{.{ .key = "name", .value = .{ .string = "MMMM" } }};
+    const features = [_]Feature{.{ .geometry = .{ .points = &point }, .properties = &props }};
+    const west: VectorTile = .{ .layers = &.{.{ .name = "places", .features = &features }} };
+    const east: VectorTile = .{ .layers = &.{} };
+    const style: MapStyle = .{ .background = .rgb(0x000000), .layers = &.{
+        .{ .draw = .{ .label = .{ .style = .{ .size = 24, .color = .rgb(0xffffff) } } } },
+    } };
+    const Pair = struct {
+        west: *const VectorTile,
+        east: *const VectorTile,
+        fn get(ctx: *anyopaque, id: tiles.TileId) ?*const VectorTile {
+            const p: *const @This() = @ptrCast(@alignCast(ctx));
+            return if (id.x == 0) p.west else p.east;
+        }
+    };
+    var pair: Pair = .{ .west = &west, .east = &east };
+    const near: MapStyle.Nearby = .{ .ctx = &pair, .get = Pair.get };
+    var pixels: [256 * 256]u32 = undefined;
+    const lit = struct {
+        fn count(px: []const u32, x0: usize, x1: usize) usize {
+            var n: usize = 0;
+            for (0..256) |y| for (x0..x1) |x| {
+                n += @intFromBool(px[y * 256 + x] & 0xff > 128);
+            };
+            return n;
+        }
+    }.count;
+    const img: gfx.software.Image = .{ .pixels = &pixels, .width = 256, .height = 256 };
+    for ([_]struct { tiles.TileId, *const VectorTile, ?MapStyle.Nearby, usize, usize, bool }{
+        // Alone, it would cross the edge: left out.
+        .{ .{ .z = 1, .x = 0, .y = 0 }, &west, null, 128, 256, false },
+        // With the tiles around: its west half at the west tile's east edge,
+        .{ .{ .z = 1, .x = 0, .y = 0 }, &west, near, 128, 256, true },
+        // and its east half at the east tile's west edge.
+        .{ .{ .z = 1, .x = 1, .y = 0 }, &east, near, 0, 128, true },
+    }) |case| {
+        canvas.begin(256, 256);
+        @memset(&pixels, 0xff000000);
+        style.paintTile(&canvas, arena.allocator(), &atlas, &f, case[0], case[1], 256, case[2]);
+        try gfx.software.render(&canvas, img);
+        try std.testing.expectEqual(case[5], lit(&pixels, case[3], case[4]) > 20);
+    }
 }

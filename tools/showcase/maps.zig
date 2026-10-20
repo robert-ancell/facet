@@ -514,7 +514,16 @@ const ImageTiles = struct {
         defer arena.deinit();
         const vt = try makeTile(arena.allocator(), id);
         d.canvas.begin(size, size);
-        style.paintTile(&d.canvas, arena.allocator(), &d.atlas, &d.font, id, &vt, size);
+        // The tiles around, made too, for their labels that reach into it.
+        const Around = struct {
+            fn get(ctx: *anyopaque, other: facet.TileId) ?*const VectorTile {
+                const a: *std.heap.ArenaAllocator = @ptrCast(@alignCast(ctx));
+                const t = a.allocator().create(VectorTile) catch return null;
+                t.* = makeTile(a.allocator(), other) catch return null;
+                return t;
+            }
+        };
+        style.paintTile(&d.canvas, arena.allocator(), &d.atlas, &d.font, id, &vt, size, .{ .ctx = &arena, .get = Around.get });
         const e = try gpa.create(Picture);
         errdefer gpa.destroy(e);
         const pixels = try gpa.alloc(u32, size * size);
