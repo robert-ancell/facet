@@ -22,7 +22,6 @@ pub const TextInputState = window_mod.TextInputState;
 pub const Cursor = window_mod.Cursor;
 const xkb = window_mod.xkb;
 const compose = window_mod.compose;
-pub const nowNs = clipboard_mod.nowNs;
 
 const default_size = [2]u32{ 1280, 720 };
 
@@ -315,12 +314,12 @@ pub const Buffer = struct {
 
     /// Waits up to `timeout_ns` for the buffer's explicit release timeline point
     /// to signal, returning true once the buffer is ready for reuse.
-    pub fn waitReady(b: *Buffer, timeout_ns: u64) bool {
+    pub fn waitReady(b: *Buffer, now_ns: u64, timeout_ns: u64) bool {
         if (b.release_point > 0) {
             if (b.drm) |drm| if (drm.SyncobjTimelineWait) |wait_fn| {
                 var handle = b.syncobj_handle;
                 var pt = b.release_point;
-                const deadline: i64 = @intCast(@min(nowNs() +| timeout_ns, @as(u64, std.math.maxInt(i64))));
+                const deadline: i64 = @intCast(@min(now_ns +| timeout_ns, @as(u64, std.math.maxInt(i64))));
                 const flags = drm_syncobj_wait_flags_wait_all | drm_syncobj_wait_flags_wait_for_submit;
                 if (wait_fn(b.drm_fd, &handle, &pt, 1, deadline, flags, null) == 0) {
                     b.release_point = 0;
@@ -624,6 +623,8 @@ pub const WaylandWindow = struct {
     }
 
     gpa: std.mem.Allocator,
+    /// What it does its I/O, and waits, through.
+    io: std.Io,
     conn: *client.Display,
     globals: client.Globals = .{},
     compositor: client.Proxy = .{},
@@ -754,8 +755,10 @@ pub const WaylandWindow = struct {
     compose_tried: bool = false,
     compose_env: compose.Env = .{},
     compose_state: compose.State = .{},
-    wake_fd: ?linux.fd_t = null,
-    wake_fds: [4]?linux.fd_t = @splat(null),
+    /// What `wait` waits on as well as the compositor (see `watch`).
+    watched: [8]?window_mod.Source = @splat(null),
+    /// A read of the connection, through `io`, that failed.
+    read_error: ?wire.Error = null,
     pointer: ?client.Proxy = null,
     keyboard: ?client.Proxy = null,
 
@@ -776,30 +779,32 @@ pub const WaylandWindow = struct {
     };
 
     /// Connects to the compositor named in `environ` (`WAYLAND_DISPLAY`
-    /// under `XDG_RUNTIME_DIR`) and opens a window.
-    pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*WaylandWindow {
+    /// under `XDG_RUNTIME_DIR`) and opens a window, which does its I/O
+    /// (and waits) through `io`.
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*WaylandWindow {
         var path_buf: [256]u8 = undefined;
         const path = try client.environSocketPath(&path_buf, environ);
-        const w = try openPath(gpa, path, options);
+        const w = try openPath(gpa, io, path, options);
         w.compose_env = .from(environ);
         return w;
     }
 
     /// Connects to the compositor listening on `path` and opens a window.
-    pub fn openPath(gpa: std.mem.Allocator, path: []const u8, options: Options) !*WaylandWindow {
-        const conn = try client.Display.connect(gpa, path);
+    pub fn openPath(gpa: std.mem.Allocator, io: std.Io, path: []const u8, options: Options) !*WaylandWindow {
+        const conn = try client.Display.connect(gpa, io, path);
         errdefer conn.disconnect();
         return openOn(gpa, conn, options);
     }
 
-    /// Opens a window on an existing connection, which the window then owns.
-    /// Waits for the first configure.
+    /// Opens a window on an existing connection, which the window then owns
+    /// (and whose `std.Io` it uses). Waits for the first configure.
     pub fn openOn(gpa: std.mem.Allocator, conn: *client.Display, options: Options) !*WaylandWindow {
         const w = try gpa.create(WaylandWindow);
         errdefer gpa.destroy(w);
         const min_size = options.min_size orelse [2]u32{ 0, 0 };
         w.* = .{
             .gpa = gpa,
+            .io = conn.conn.io,
             .conn = conn,
             .clipboard = .{ .gpa = gpa },
             .width = if (options.maximized) options.size[0] else @max(options.size[0], min_size[0]),
@@ -1011,10 +1016,15 @@ pub const WaylandWindow = struct {
         m.string(app_id).end();
     }
 
+    /// Now, on the clock frames and input are timed on.
+    fn now(w: *const WaylandWindow) u64 {
+        return window_mod.nowNs(w.io);
+    }
+
     pub fn poll(w: *WaylandWindow) !void {
         _ = try w.conn.dispatchPending();
         w.clipboard.service();
-        w.serviceRepeat(nowNs());
+        w.serviceRepeat(w.now());
     }
 
     pub fn setFullscreen(w: *WaylandWindow, on: bool) void {
@@ -1468,51 +1478,72 @@ pub const WaylandWindow = struct {
         w.conn.flush() catch {};
     }
 
-    /// Wakes `wait` when `fd` is readable too (`on`), or no longer (for
-    /// as many fds as `wake_fds` has room for).
-    pub fn watchFd(w: *WaylandWindow, fd: linux.fd_t, on: bool) void {
-        for (&w.wake_fds) |*slot| if (slot.* == fd) {
+    /// Waits on `source` too in `wait` (`on`), or no longer (for as many
+    /// as `watched` has room for).
+    pub fn watch(w: *WaylandWindow, source: window_mod.Source, on: bool) void {
+        for (&w.watched) |*slot| if (slot.*) |x| if (x.eql(source)) {
             if (!on) slot.* = null;
             return;
         };
         if (!on) return;
-        for (&w.wake_fds) |*slot| if (slot.* == null) {
-            slot.* = fd;
+        for (&w.watched) |*slot| if (slot.* == null) {
+            slot.* = source;
             return;
         };
     }
 
+    /// Handles what has come, waiting (through `io`, with whatever else
+    /// is waiting on it) up to `timeout_ns` for something: an event, a
+    /// paste's text, a watched source's read, or a key to repeat.
     pub fn wait(w: *WaylandWindow, timeout_ns: u64) !void {
-        const now = nowNs();
-        const caller_ms: u64 = std.math.divCeil(u64, timeout_ns, std.time.ns_per_ms) catch 0;
-        const timeout_ms = @min(caller_ms, w.repeatTimeoutMs(now) orelse caller_ms);
-        const paste_fd = w.clipboard.pasteFd();
-        const has_wake_fds = for (w.wake_fds) |fd| {
-            if (fd != null) break true;
-        } else false;
-        if (paste_fd == null and w.wake_fd == null and !has_wake_fds) {
-            try w.conn.dispatchTimeout(@intCast(@min(timeout_ms, std.math.maxInt(i32))));
-            w.serviceRepeat(nowNs());
-            return;
-        }
         try w.conn.flush();
         if (try w.conn.dispatchPending() == 0) {
-            const ms = @min(timeout_ms, w.clipboard.pasteTimeoutMs() orelse timeout_ms, std.math.maxInt(i32));
-            var fds: [3 + 4]linux.pollfd = undefined;
-            var n: usize = 0;
-            for ([_]?linux.fd_t{ w.conn.conn.fd, paste_fd, w.wake_fd }) |fd| if (fd) |f| {
-                fds[n] = .{ .fd = f, .events = linux.POLL.IN, .revents = 0 };
+            const now_ns = w.now();
+            var ns = timeout_ns;
+            if (w.repeatTimeoutMs(now_ns)) |ms| ns = @min(ns, ms *| std.time.ns_per_ms);
+            if (w.clipboard.pasteTimeoutMs()) |ms| ns = @min(ns, ms *| std.time.ns_per_ms);
+            var sources: [2 + w.watched.len]window_mod.Source = undefined;
+            sources[0] = .{ .ctx = w, .fd = w.conn.conn.fd, .read = connRead, .done = connDone };
+            sources[1] = .{ .ctx = w, .fd = -1, .read = pasteRead, .done = pasteDone };
+            var n: usize = 2;
+            for (w.watched) |slot| if (slot) |x| {
+                sources[n] = x;
                 n += 1;
             };
-            for (w.wake_fds) |fd| if (fd) |f| {
-                fds[n] = .{ .fd = f, .events = linux.POLL.IN, .revents = 0 };
-                n += 1;
-            };
-            _ = linux.poll(&fds, n, @intCast(ms));
+            try window_mod.waitSources(w.io, sources[0..n], ns);
+            if (w.read_error) |e| {
+                w.read_error = null;
+                return e;
+            }
             _ = try w.conn.dispatchPending();
         }
         w.clipboard.service();
-        w.serviceRepeat(nowNs());
+        w.serviceRepeat(w.now());
+    }
+
+    fn connRead(ctx: *anyopaque) ?std.Io.Operation {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ctx));
+        return w.conn.conn.readOperation() catch |e| {
+            w.read_error = e;
+            return null;
+        };
+    }
+
+    fn connDone(ctx: *anyopaque, result: std.Io.Operation.Result) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ctx));
+        _ = w.conn.conn.readDone(result) catch |e| {
+            w.read_error = e;
+        };
+    }
+
+    fn pasteRead(ctx: *anyopaque) ?std.Io.Operation {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ctx));
+        return w.clipboard.readOperation();
+    }
+
+    fn pasteDone(ctx: *anyopaque, result: std.Io.Operation.Result) void {
+        const w: *WaylandWindow = @ptrCast(@alignCast(ctx));
+        w.clipboard.readDone(result);
     }
 
     fn repeatTimeoutMs(w: *const WaylandWindow, now_ns: u64) ?u64 {
@@ -1582,7 +1613,7 @@ pub const WaylandWindow = struct {
         if (w.compose_table) |*t| return t;
         if (w.compose_tried or !compose.starts(sym)) return null;
         w.compose_tried = true;
-        w.compose_table = compose.Table.load(w.gpa, w.compose_env) orelse compose.Table.builtin(w.gpa) catch null;
+        w.compose_table = compose.Table.load(w.gpa, w.io, w.compose_env) orelse compose.Table.builtin(w.gpa) catch null;
         return if (w.compose_table) |*t| t else null;
     }
 
@@ -1862,7 +1893,7 @@ pub const WaylandWindow = struct {
             // (not the one after, if the time is a little late).
             if (w.refresh_ns > 0 and w.presentation_clock_id == p.wp_presentation.clock.monotonic) {
                 const earliest_ns = target_ns -| w.refresh_ns / 2;
-                if (nowNs() < earliest_ns) {
+                if (w.now() < earliest_ns) {
                     const secs = earliest_ns / std.time.ns_per_s;
                     const nsec: u32 = @intCast(earliest_ns % std.time.ns_per_s);
                     m = try timer.request(p.wp_commit_timer_v1.request.set_timestamp);
@@ -1926,7 +1957,7 @@ pub const WaylandWindow = struct {
                 return i;
             }
             if (syncobj_wait_idx) |i| {
-                _ = w.buffers[i].?.waitReady(16 * std.time.ns_per_ms);
+                _ = w.buffers[i].?.waitReady(w.now(), 16 * std.time.ns_per_ms);
                 _ = try w.conn.dispatchPending();
             } else {
                 try w.conn.dispatch();
@@ -2519,7 +2550,7 @@ pub const WaylandWindow = struct {
                     if (!isModifierKey(code) and w.repeat_rate > 0) {
                         w.repeat = .{
                             .code = code,
-                            .next_ns = nowNs() + @as(u64, w.repeat_delay_ms) * std.time.ns_per_ms,
+                            .next_ns = w.now() + @as(u64, w.repeat_delay_ms) * std.time.ns_per_ms,
                         };
                     }
                 } else if (w.repeat) |rep| {
@@ -2665,7 +2696,8 @@ test "held keys repeat after the delay, except modifiers, and stop on release or
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     var disp: client.Display = undefined;
 
@@ -2718,7 +2750,8 @@ test "setMinSize clamps non-maximized window dimensions" {
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
         .width = 400,
         .height = 300,
         .maximized = false,
@@ -2735,7 +2768,8 @@ test "edgesAt detects resize edges only outside the window content and respects 
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
         .width = 400,
         .height = 300,
         .maximized = false,
@@ -2831,7 +2865,8 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     try std.testing.expectEqual(window_mod.BufferTransport.wl_shm, win.bufferTransport());
 
@@ -2879,7 +2914,8 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
         .compositor = .{ .id = 2 },
         .shm = .{ .id = 3 },
         .wm_base = .{ .id = 4 },
@@ -2933,7 +2969,8 @@ test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only whi
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     try std.testing.expectEqual(window_mod.BufferSync.none, win.bufferSync());
     win.vsync = false;
@@ -2947,7 +2984,8 @@ test "xdg_toplevel.wm_capabilities says whether the window can be minimized and 
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     // Until the compositor says otherwise, it can do everything.
     try std.testing.expect(win.canMinimize() and win.canMaximize());
@@ -2967,7 +3005,8 @@ test "a popup's configure places it, input on it is in window coordinates, and p
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
         .surface = .{ .id = 3 },
     };
     win.popups[0] = .{
@@ -2995,17 +3034,66 @@ test "a popup's configure places it, input on it is in window coordinates, and p
     try std.testing.expectEqual(@as(u32, 7), events[0].popup_done);
 }
 
+test "the window waits through io for the compositor and the sources it watches" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var fds: [2]i32 = undefined;
+    try std.testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0, &fds)));
+    defer _ = linux.close(fds[1]);
+    const disp = try client.Display.fromFd(std.testing.allocator, io, fds[0]);
+    defer disp.disconnect();
+    var win: WaylandWindow = .{
+        .gpa = std.testing.allocator,
+        .conn = disp,
+        .io = io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = io },
+    };
+    const Got = struct {
+        var events: u32 = 0;
+        fn handler(_: ?*anyopaque, _: *client.Display, _: u32, _: u16, _: *wire.Reader) void {
+            events += 1;
+        }
+    };
+    try disp.setListener(5, .{ .ptr = null, .handler = Got.handler });
+    var wake = try window_mod.sys.Wake.create();
+    defer wake.deinit();
+    win.watch(.ofWake(&wake), true);
+    const start = window_mod.nowNs(io);
+
+    // Nothing comes: it waits out the time.
+    try win.wait(20 * std.time.ns_per_ms);
+    try std.testing.expect(window_mod.nowNs(io) - start >= 15 * std.time.ns_per_ms);
+    // A watched source is woken: it returns at once, having read it.
+    wake.signal();
+    try win.wait(5 * std.time.ns_per_s);
+    try std.testing.expect(!wake.drain());
+    try std.testing.expectEqual(@as(u32, 0), Got.events);
+    // An event comes: it is read and handled.
+    const event = [_]u32{ 5, (8 << 16) | 0 };
+    try std.testing.expectEqual(@as(usize, 8), linux.write(fds[1], @ptrCast(&event), 8));
+    try win.wait(5 * std.time.ns_per_s);
+    try std.testing.expectEqual(@as(u32, 1), Got.events);
+    try std.testing.expect(window_mod.nowNs(io) - start < std.time.ns_per_s);
+    // No longer watched, a wake does not end the wait.
+    win.watch(.ofWake(&wake), false);
+    wake.signal();
+    const later = window_mod.nowNs(io);
+    try win.wait(20 * std.time.ns_per_ms);
+    try std.testing.expect(window_mod.nowNs(io) - later >= 15 * std.time.ns_per_ms);
+}
+
 test "a popup acks each configure, and commits again for one after it shows" {
     if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     var fds: [2]i32 = undefined;
     try std.testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC | linux.SOCK.NONBLOCK, 0, &fds)));
     defer _ = linux.close(fds[1]);
-    const disp = try client.Display.fromFd(std.testing.allocator, fds[0]);
+    const disp = try client.Display.fromFd(std.testing.allocator, std.testing.io, fds[0]);
     defer disp.disconnect();
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = disp,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     win.popups[0] = .{
         .id = 7,
@@ -3055,7 +3143,8 @@ test "keys type what the keymap says, with the compositor's modifiers at the tim
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     defer win.clipboard.deinit();
     try std.testing.expectEqualStrings("", win.layout().name());
@@ -3100,7 +3189,8 @@ test "dead keys and Compose combine with the keys after them" {
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
-        .clipboard = .{ .gpa = std.testing.allocator },
+        .io = std.testing.io,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     defer win.clipboard.deinit();
     win.keymap = try xkb.Keymap.parse(std.testing.allocator, xkb.testdata.gb_ru);
@@ -3127,7 +3217,7 @@ test "dead keys and Compose combine with the keys after them" {
     // repeats, and then a is à.
     send(&win, &disp, ev.modifiers, &.{ 1, mod5, 0, 0, 0 });
     send(&win, &disp, ev.key, &.{ 2, 0, 43, down });
-    win.serviceRepeat(nowNs() + 10 * std.time.ns_per_s);
+    win.serviceRepeat(window_mod.nowNs(std.testing.io) + 10 * std.time.ns_per_s);
     send(&win, &disp, ev.key, &.{ 3, 0, 43, up });
     send(&win, &disp, ev.modifiers, &.{ 4, 0, 0, 0, 0 });
     send(&win, &disp, ev.key, &.{ 5, 0, 30, down });

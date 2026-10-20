@@ -34,10 +34,8 @@ pub const Sink = struct {
     f: *const fn (ctx: *anyopaque, text: ?[]const u8) void,
 };
 
-pub const nowNs = @import("sys.zig").monotonicNs;
-
-fn nowMs() u64 {
-    return nowNs() / std.time.ns_per_ms;
+fn nowMs(io: std.Io) u64 {
+    return @import("window.zig").nowNs(io) / std.time.ns_per_ms;
 }
 
 pub const DragCallbacks = struct {
@@ -57,6 +55,8 @@ pub const DroppedData = struct {
 
 pub const Clipboard = struct {
     gpa: std.mem.Allocator,
+    /// What it waits and reads through (the connection's, from `attach`).
+    io: std.Io = undefined,
     conn: *client.Display = undefined,
     device: ?client.Proxy = null,
     manager: ?client.Proxy = null,
@@ -118,10 +118,14 @@ pub const Clipboard = struct {
     last_drop_pos: [2]f32 = .{ 0, 0 },
     last_drop_action: u32 = 0,
     has_drop: bool = false,
+    /// What a read of a paste or drop through `io` reads into.
+    read_buf: [4096]u8 = undefined,
+    read_vec: [1][]u8 = undefined,
 
     /// Starts using the data device of `seat`, if the shell has one.
     pub fn attach(c: *Clipboard, conn: *client.Display, manager: ?client.Proxy, seat: ?client.Proxy) !void {
         c.conn = conn;
+        c.io = conn.conn.io;
         c.manager = manager;
         c.seat = seat;
         const m = manager orelse return;
@@ -277,7 +281,7 @@ pub const Clipboard = struct {
         };
         m.string(mime).fd(fds[1]).end();
         c.conn.flush() catch {};
-        c.pending = .{ .fd = fds[0], .sink = sink, .deadline_ms = nowMs() + paste_timeout_ms };
+        c.pending = .{ .fd = fds[0], .sink = sink, .deadline_ms = nowMs(c.io) + paste_timeout_ms };
     }
 
     /// The pipe a paste or drop comes through, for the event loop to wait on.
@@ -287,9 +291,41 @@ pub const Clipboard = struct {
         return null;
     }
 
+    /// The read that waits for more of a paste or drop under way, through
+    /// `io` (null if none is): give `readDone` its result.
+    pub fn readOperation(c: *Clipboard) ?std.Io.Operation {
+        const fd = c.pasteFd() orelse return null;
+        c.read_vec = .{&c.read_buf};
+        return .{ .file_read_streaming = .{ .file = .{ .handle = fd, .flags = .{ .nonblocking = true } }, .data = &c.read_vec } };
+    }
+
+    /// Takes what a `readOperation` read (the rest is read by `service`).
+    pub fn readDone(c: *Clipboard, result: std.Io.Operation.Result) void {
+        const n = result.file_read_streaming catch |e| switch (e) {
+            error.WouldBlock => return,
+            else => {
+                if (c.pending != null) c.finishPaste(false) else c.finishDrop(false);
+                return;
+            },
+        };
+        if (c.pending) |*pd| {
+            c.took(&pd.got, c.read_buf[0..n], finishPaste);
+        } else if (c.pending_drop) |*dd| {
+            c.took(&dd.got, c.read_buf[0..n], finishDrop);
+        }
+    }
+
+    /// Keeps `bytes` of a paste or drop (none: it has all come), finishing
+    /// it if it has all come or is too big.
+    fn took(c: *Clipboard, got: *std.ArrayList(u8), bytes: []const u8, comptime finish: fn (*Clipboard, bool) void) void {
+        if (bytes.len == 0) return finish(c, true);
+        got.appendSlice(c.gpa, bytes[0..@min(bytes.len, max_paste -| got.items.len)]) catch return finish(c, false);
+        if (got.items.len >= max_paste) finish(c, true);
+    }
+
     /// How long until a paste or drop under way gives up (null if none is).
     pub fn pasteTimeoutMs(c: *const Clipboard) ?u64 {
-        const now = nowMs();
+        const now = nowMs(c.io);
         var best: ?u64 = null;
         if (c.pending) |pd| best = pd.deadline_ms -| now;
         if (c.pending_drop) |dd| {
@@ -323,7 +359,7 @@ pub const Clipboard = struct {
                     },
                     .INTR => {},
                     .AGAIN => {
-                        if (nowMs() >= pd.deadline_ms) c.finishPaste(false);
+                        if (nowMs(c.io) >= pd.deadline_ms) c.finishPaste(false);
                         break;
                     },
                     else => {
@@ -354,7 +390,7 @@ pub const Clipboard = struct {
                     },
                     .INTR => {},
                     .AGAIN => {
-                        if (nowMs() >= dd.deadline_ms) c.finishDrop(false);
+                        if (nowMs(c.io) >= dd.deadline_ms) c.finishDrop(false);
                         break;
                     },
                     else => {
@@ -575,7 +611,7 @@ pub const Clipboard = struct {
                     .action = c.drag_negotiated_action,
                     .mime = c.drag_offer_mime,
                     .mime_len = mlen,
-                    .deadline_ms = nowMs() + paste_timeout_ms,
+                    .deadline_ms = nowMs(c.io) + paste_timeout_ms,
                 };
             },
             p.wl_data_device.event.selection => {
@@ -625,7 +661,7 @@ pub const Clipboard = struct {
                 _ = r.string() catch return;
                 const fd = r.fd() catch return;
                 defer _ = linux.close(fd);
-                writeAll(fd, c.text);
+                c.writeAll(fd, c.text);
             },
             p.wl_data_source.event.cancelled => c.dropSource(),
             else => {},
@@ -645,7 +681,7 @@ pub const Clipboard = struct {
                 _ = r.string() catch return;
                 const fd = r.fd() catch return;
                 defer _ = linux.close(fd);
-                writeAll(fd, c.drag_data);
+                c.writeAll(fd, c.drag_data);
             },
             p.wl_data_source.event.dnd_drop_performed => {
                 c.drag_dropped = true;
@@ -665,22 +701,15 @@ pub const Clipboard = struct {
         }
     }
 
-    fn writeAll(fd: linux.fd_t, data: []const u8) void {
+    /// Writes `data` to a client that pasted it (waiting through `io`, for
+    /// up to `paste_timeout_ms`).
+    fn writeAll(c: *Clipboard, fd: linux.fd_t, data: []const u8) void {
+        const deadline = std.Io.Clock.Timestamp.fromNow(c.io, .{ .raw = .fromMilliseconds(paste_timeout_ms), .clock = .awake });
         var at: usize = 0;
-        var waited: i32 = 0;
         while (at < data.len) {
-            const n = linux.write(fd, data[at..].ptr, data.len - at);
-            switch (linux.errno(n)) {
-                .SUCCESS => at += n,
-                .INTR => {},
-                .AGAIN => {
-                    var pfd = [_]linux.pollfd{.{ .fd = fd, .events = linux.POLL.OUT, .revents = 0 }};
-                    _ = linux.poll(&pfd, 1, 50);
-                    waited += 50;
-                    if (waited >= paste_timeout_ms) return;
-                },
-                else => return,
-            }
+            const chunk = [_][]const u8{data[at..]};
+            const result = c.io.operateTimeout(.{ .file_write_streaming = .{ .file = .{ .handle = fd, .flags = .{ .nonblocking = false } }, .data = &chunk } }, .{ .deadline = deadline }) catch return;
+            at += result.file_write_streaming catch return;
         }
     }
 };

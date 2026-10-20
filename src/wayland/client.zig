@@ -2,9 +2,10 @@
 //! dispatching events to listeners registered per object.
 //!
 //! Object IDs are allocated upwards and not reused; a client would need
-//! billions of objects to run out. Everything runs on the caller's thread:
-//! `dispatch` reads and handles events until something arrives, and
-//! `roundtrip` waits until the server has handled every request sent so far.
+//! billions of objects to run out. Everything runs on the caller's task,
+//! waiting through the `std.Io` it is given: `dispatch` reads and handles
+//! events until something arrives, and `roundtrip` waits until the server
+//! has handled every request sent so far.
 
 const std = @import("std");
 const linux = std.os.linux;
@@ -12,6 +13,8 @@ const wire = @import("wire.zig");
 const protocol = @import("protocol.zig");
 
 pub const Error = wire.Error || error{ ConnectFailed, NoRuntimeDir, ServerError, OutOfMemory };
+
+const UnixAddress = std.Io.net.UnixAddress;
 
 /// Called for each event on an object.
 pub const Listener = struct {
@@ -49,29 +52,25 @@ pub const Display = struct {
     }
 
     /// Connects to `path`.
-    pub fn connect(gpa: std.mem.Allocator, path: []const u8) Error!*Display {
-        const fd: linux.fd_t = @intCast(sysCheck(linux.socket(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0)) catch return error.ConnectFailed);
-        var addr: linux.sockaddr.un = .{ .path = @splat(0) };
-        if (path.len >= addr.path.len) return error.ConnectFailed;
-        @memcpy(addr.path[0..path.len], path);
-        if (linux.errno(linux.connect(fd, @ptrCast(&addr), @sizeOf(linux.sockaddr.un))) != .SUCCESS) {
-            _ = linux.close(fd);
-            return error.ConnectFailed;
-        }
-        return fromFd(gpa, fd);
+    pub fn connect(gpa: std.mem.Allocator, io: std.Io, path: []const u8) Error!*Display {
+        const addr = UnixAddress.init(path) catch return error.ConnectFailed;
+        const stream = addr.connect(io) catch return error.ConnectFailed;
+        errdefer stream.close(io);
+        return fromFd(gpa, io, stream.socket.handle);
     }
 
     /// Connects to the compositor named in `environ` ($WAYLAND_DISPLAY in
     /// $XDG_RUNTIME_DIR).
-    pub fn connectEnviron(gpa: std.mem.Allocator, environ: std.process.Environ) Error!*Display {
+    pub fn connectEnviron(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ) Error!*Display {
         var buf: [128]u8 = undefined;
-        return connect(gpa, try environSocketPath(&buf, environ));
+        return connect(gpa, io, try environSocketPath(&buf, environ));
     }
 
-    /// Uses an already connected socket.
-    pub fn fromFd(gpa: std.mem.Allocator, fd: linux.fd_t) Error!*Display {
+    /// Uses an already connected socket (blocking: what would block is
+    /// done through `io`).
+    pub fn fromFd(gpa: std.mem.Allocator, io: std.Io, fd: linux.fd_t) Error!*Display {
         const d = try gpa.create(Display);
-        d.* = .{ .gpa = gpa, .conn = .init(fd) };
+        d.* = .{ .gpa = gpa, .conn = .init(io, fd) };
         try d.listeners.put(gpa, protocol.wl_display.id, .{ .ptr = null, .handler = displayEvent });
         return d;
     }
@@ -124,24 +123,14 @@ pub const Display = struct {
         }
     }
 
-    /// Flushes requests, then handles events, waiting for at least one.
+    /// Flushes requests, then handles events, waiting (through `io`) for
+    /// at least one.
     pub fn dispatch(d: *Display) Error!void {
         try d.flush();
         while (true) {
             if (try d.dispatchPending() > 0) return;
-            var fds = [_]linux.pollfd{.{ .fd = d.conn.fd, .events = linux.POLL.IN, .revents = 0 }};
-            _ = linux.poll(&fds, 1, -1);
+            _ = try d.conn.readWait();
         }
-    }
-
-    /// Flushes requests, then handles events, waiting up to `timeout_ms`
-    /// for one (returning sooner if one arrives).
-    pub fn dispatchTimeout(d: *Display, timeout_ms: i32) Error!void {
-        try d.flush();
-        if (try d.dispatchPending() > 0) return;
-        var fds = [_]linux.pollfd{.{ .fd = d.conn.fd, .events = linux.POLL.IN, .revents = 0 }};
-        _ = linux.poll(&fds, 1, timeout_ms);
-        _ = try d.dispatchPending();
     }
 
     /// Waits until the server has processed every request sent so far.
@@ -177,10 +166,6 @@ pub const Display = struct {
         }
     }
 };
-
-fn sysCheck(rc: usize) !usize {
-    return if (linux.errno(rc) == .SUCCESS) rc else error.SystemError;
-}
 
 /// The socket path for $XDG_RUNTIME_DIR and $WAYLAND_DISPLAY: an absolute
 /// WAYLAND_DISPLAY is used as is, and otherwise it (default "wayland-0")

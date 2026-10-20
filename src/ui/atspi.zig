@@ -11,7 +11,8 @@
 
 const std = @import("std");
 const linux = std.os.linux;
-const dbus = @import("window").dbus;
+const window_mod = @import("window");
+const dbus = window_mod.dbus;
 const a11y = @import("accessibility.zig");
 
 const Tree = a11y.Tree;
@@ -40,15 +41,15 @@ pub const Bridge = struct {
 
     /// Connects to the accessibility bus (`$AT_SPI_BUS_ADDRESS`, or the
     /// one the session bus says) and registers the app with its registry.
-    pub fn connect(gpa: std.mem.Allocator, environ: std.process.Environ, app_name: []const u8) !*Bridge {
-        const address = if (environ.getPosix("AT_SPI_BUS_ADDRESS")) |a| try gpa.dupe(u8, a) else try busAddress(gpa, environ);
+    pub fn connect(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, app_name: []const u8) !*Bridge {
+        const address = if (environ.getPosix("AT_SPI_BUS_ADDRESS")) |a| try gpa.dupe(u8, a) else try busAddress(gpa, io, environ);
         defer gpa.free(address);
-        return connectTo(gpa, address, app_name);
+        return connectTo(gpa, io, address, app_name);
     }
 
     /// Connects to the accessibility bus at `address`, and registers.
-    pub fn connectTo(gpa: std.mem.Allocator, address: []const u8, app_name: []const u8) !*Bridge {
-        const conn = try dbus.Connection.open(gpa, address);
+    pub fn connectTo(gpa: std.mem.Allocator, io: std.Io, address: []const u8, app_name: []const u8) !*Bridge {
+        const conn = try dbus.Connection.open(gpa, io, address);
         errdefer conn.close();
         const b = try gpa.create(Bridge);
         errdefer gpa.destroy(b);
@@ -79,9 +80,17 @@ pub const Bridge = struct {
         b.gpa.destroy(b);
     }
 
-    /// The fd to wait on for calls.
-    pub fn fd(b: *const Bridge) linux.fd_t {
-        return b.conn.fd;
+    /// What to wait on for calls, with the window's events.
+    pub fn source(b: *Bridge) window_mod.Source {
+        const S = struct {
+            fn read(ctx: *anyopaque) ?std.Io.Operation {
+                return @as(*dbus.Connection, @ptrCast(@alignCast(ctx))).readOperation();
+            }
+            fn done(ctx: *anyopaque, result: std.Io.Operation.Result) void {
+                @as(*dbus.Connection, @ptrCast(@alignCast(ctx))).readDone(result);
+            }
+        };
+        return .{ .ctx = b.conn, .fd = b.conn.fd, .read = S.read, .done = S.done };
     }
 
     /// Answers the calls that have come (from `tree`, the last frame's);
@@ -822,9 +831,9 @@ fn pathOf(id: u32, buf: []u8) []const u8 {
 
 /// The accessibility bus's address, as the session bus's `org.a11y.Bus`
 /// says.
-fn busAddress(gpa: std.mem.Allocator, environ: std.process.Environ) ![]u8 {
+fn busAddress(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ) ![]u8 {
     const session = environ.getPosix("DBUS_SESSION_BUS_ADDRESS") orelse return error.ConnectFailed;
-    const conn = try dbus.Connection.open(gpa, session);
+    const conn = try dbus.Connection.open(gpa, io, session);
     defer conn.close();
     const reply = try conn.callWait("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress", "", "", 3000);
     defer gpa.free(reply);
@@ -1192,7 +1201,7 @@ test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
     try testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0, &fds)));
     _ = linux.fcntl(fds[0], linux.F.SETFL, linux.SOCK.NONBLOCK);
     const conn = try gpa.create(dbus.Connection);
-    conn.* = .{ .gpa = gpa, .fd = fds[0], .unique_name = try gpa.dupe(u8, ":1.5") };
+    conn.* = .{ .gpa = gpa, .io = testing.io, .fd = fds[0], .unique_name = try gpa.dupe(u8, ":1.5") };
     const b = try gpa.create(Bridge);
     b.* = .{ .gpa = gpa, .conn = conn, .app_name = try gpa.dupe(u8, "App"), .parent_bus = try gpa.dupe(u8, ":1.0"), .parent_path = try gpa.dupe(u8, root_path) };
     defer b.close();

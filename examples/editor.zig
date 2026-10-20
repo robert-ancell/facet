@@ -128,7 +128,7 @@ pub fn main(init: std.process.Init) !void {
     var doc = try facet.TextDocument.init(init.gpa, sample_code);
     defer doc.deinit();
 
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = "Facet Editor",
         .size = .{ 720, 520 },
     });
@@ -136,6 +136,6 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), EditorView{ .doc = &doc });
+        try app.draw(EditorView{ .doc = &doc });
     }
 }

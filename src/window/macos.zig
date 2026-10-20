@@ -7,8 +7,11 @@
 //! the contents of the view's Core Animation layer. AppKit's events become
 //! facet's `InputEvent`s: macOS key codes become the Linux ones the
 //! toolkit uses, and Command counts as Control (so Command and C copies).
-//! Fds the toolkit waits on (image loads, wakes) are watched through the
-//! main run loop, so it sleeps until there is something to do.
+//! What the toolkit waits on as well (`window.Source`s: image loads,
+//! wakes) is watched through the main run loop, so it sleeps until there
+//! is something to do, and read through the app's `std.Io` once it is
+//! readable. AppKit must be run on the main thread, so the UI's task must
+//! be there (and waits in AppKit, not in the `Io`).
 //!
 //! Everything AppKit has is loaded when the window is opened (see
 //! `gfx.objc`), so facet builds for macOS without its SDK.
@@ -86,8 +89,10 @@ pub const MacWindow = struct {
     metal_layer: Id = null,
     on_gpu: bool = false,
     gpu_size: [2]u32 = .{ 0, 0 },
-    /// The fds watched through the run loop.
-    watched: [4]?Watch = @splat(null),
+    /// What it does its I/O through, and the sources watched through the
+    /// run loop.
+    io: std.Io,
+    watched: [8]?Watch = @splat(null),
 
     pub const platform: window.Platform = .macos;
     pub const decorations: window.Decorations = .server;
@@ -135,7 +140,9 @@ pub const MacWindow = struct {
         }
     };
 
-    const Watch = struct { fd: sys.fd_t, ref: ?*anyopaque, source: ?*anyopaque };
+    /// A source, its CFFileDescriptor and run loop source, and whether its
+    /// fd has been readable since it was last read.
+    const Watch = struct { source: window.Source, ref: ?*anyopaque, cf_source: ?*anyopaque, ready: bool = false };
 
     pub const Options = struct {
         title: []const u8,
@@ -147,7 +154,7 @@ pub const MacWindow = struct {
 
     /// Opens a window (and, the first time, starts the app: its menu,
     /// with Quit, and its place in the Dock).
-    pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*MacWindow {
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*MacWindow {
         _ = environ;
         try objc.load();
         const pool = objc.push();
@@ -156,7 +163,7 @@ pub const MacWindow = struct {
 
         const w = try gpa.create(MacWindow);
         errdefer gpa.destroy(w);
-        w.* = .{ .gpa = gpa, .win = null, .view = null, .delegate = null, .title_buf = try gpa.dupe(u8, options.title), .width = options.size[0], .height = options.size[1] };
+        w.* = .{ .gpa = gpa, .io = io, .win = null, .view = null, .delegate = null, .title_buf = try gpa.dupe(u8, options.title), .width = options.size[0], .height = options.size[1] };
         errdefer gpa.free(w.title_buf);
 
         const rect: objc.Rect = .{ .origin = .{ .x = 0, .y = 0 }, .size = .{ .width = @floatFromInt(options.size[0]), .height = @floatFromInt(options.size[1]) } };
@@ -246,29 +253,46 @@ pub const MacWindow = struct {
 
     // --- Events -------------------------------------------------------------------
 
+    /// Now, on the clock frames and input are timed on.
+    fn now(w: *const MacWindow) u64 {
+        return window.nowNs(w.io);
+    }
+
     /// Handles what has come, without waiting.
     pub fn poll(w: *MacWindow) !void {
         pump(0);
+        try w.readReady();
         w.updatePending();
     }
 
-    /// Waits up to `timeout_ns` for something (an event, or a watched fd
-    /// readable), and handles what has come.
+    /// Waits up to `timeout_ns` for something (an event, or a watched
+    /// source readable), and handles what has come.
     pub fn wait(w: *MacWindow, timeout_ns: u64) !void {
         // Not past when the frame drawn is shown, when the next can be.
         var ns = timeout_ns;
-        if (w.frame_pending) ns = @min(ns, w.presented_ns -| sys.monotonicNs());
+        if (w.frame_pending) ns = @min(ns, w.presented_ns -| w.now());
         // Watched fds wake it once each wait (a callback each time one is
         // readable would come again and again until it is read).
         if (cfFunctions()) |cf| for (w.watched) |slot| if (slot) |x| cf.enable(x.ref, 1);
         pump(@as(f64, @floatFromInt(ns)) / std.time.ns_per_s);
+        try w.readReady();
         w.updatePending();
+    }
+
+    /// Reads, through `io`, the watched sources whose fds were readable.
+    fn readReady(w: *MacWindow) !void {
+        for (&w.watched) |*slot| if (slot.*) |*x| if (x.ready) {
+            x.ready = false;
+            const op = x.source.read(x.source.ctx) orelse continue;
+            const result = try w.io.operate(op);
+            x.source.done(x.source.ctx, result);
+        };
     }
 
     fn updatePending(w: *MacWindow) void {
         // `presented_ns` is when the frame drawn is shown: the next can be
         // drawn then, for the refresh after.
-        if (w.frame_pending and sys.monotonicNs() >= w.presented_ns) w.frame_pending = false;
+        if (w.frame_pending and w.now() >= w.presented_ns) w.frame_pending = false;
     }
 
     /// When a frame drawn now would be shown: at the display's next
@@ -399,7 +423,7 @@ pub const MacWindow = struct {
             // Presented by the renderer.
             w.gpu_size = .{ w.width * w.scale, w.height * w.scale };
             w.frames += 1;
-            w.presented_ns = w.nextPresentationNs(sys.monotonicNs());
+            w.presented_ns = w.nextPresentationNs(w.now());
             w.frame_pending = true;
             return;
         }
@@ -429,7 +453,7 @@ pub const MacWindow = struct {
         msg(void, transaction, "commit", .{});
         w.frames += 1;
         b.drawn = w.frames;
-        w.presented_ns = w.nextPresentationNs(sys.monotonicNs());
+        w.presented_ns = w.nextPresentationNs(w.now());
         w.frame_pending = true;
     }
 
@@ -533,23 +557,25 @@ pub const MacWindow = struct {
         sink.f(sink.ctx, if (str == null) null else objc.utf8(str));
     }
 
-    // --- Watching fds -------------------------------------------------------------------
+    // --- Watching sources -------------------------------------------------------------
 
-    /// Wakes `wait` when `fd` is readable (or stops, if not `on`).
-    pub fn watchFd(w: *MacWindow, fd: sys.fd_t, on: bool) void {
-        for (&w.watched) |*slot| if (slot.*) |x| if (x.fd == fd) {
+    /// Waits on `source` too (or stops, if not `on`): `wait` returns when
+    /// its fd is readable, and has read it through `io`.
+    pub fn watch(w: *MacWindow, source: window.Source, on: bool) void {
+        for (&w.watched) |*slot| if (slot.*) |x| if (x.source.eql(source)) {
             if (!on) w.unwatch(slot);
             return;
         };
         if (!on) return;
         const cf = cfFunctions() orelse return;
         for (&w.watched) |*slot| if (slot.* == null) {
-            var ctx: CFContext = .{ .info = w };
-            const ref = cf.create(null, fd, 0, fdReadable, &ctx) orelse return;
+            // The slot (where it stays) is the callback's.
+            var ctx: CFContext = .{ .info = slot };
+            const ref = cf.create(null, source.fd, 0, fdReadable, &ctx) orelse return;
             cf.enable(ref, 1);
-            const source = cf.source(null, ref, 0);
-            cf.addSource(cf.mainLoop(), source, objc.constant("kCFRunLoopCommonModes"));
-            slot.* = .{ .fd = fd, .ref = ref, .source = source };
+            const cf_source = cf.source(null, ref, 0);
+            cf.addSource(cf.mainLoop(), cf_source, objc.constant("kCFRunLoopCommonModes"));
+            slot.* = .{ .source = source, .ref = ref, .cf_source = cf_source };
             return;
         };
     }
@@ -557,9 +583,9 @@ pub const MacWindow = struct {
     fn unwatch(_: *MacWindow, slot: *?Watch) void {
         const x = slot.* orelse return;
         if (cfFunctions()) |cf| {
-            cf.invalidateSource(x.source);
+            cf.invalidateSource(x.cf_source);
             cf.invalidate(x.ref);
-            cf.release(x.source);
+            cf.release(x.cf_source);
             cf.release(x.ref);
         }
         slot.* = null;
@@ -685,7 +711,7 @@ pub const MacWindow = struct {
         fn holdTick(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
             const w = objc.owner(MacWindow, d) orelse return;
             // Not as well as a frame just drawn, for a resize.
-            if (w.frame_pending and sys.monotonicNs() < w.presented_ns) return;
+            if (w.frame_pending and w.now() < w.presented_ns) return;
             w.drawNow();
         }
     };
@@ -838,9 +864,11 @@ fn cfFunctions() ?CF {
     };
 }
 
-/// A watched fd is readable: `pump` stops waiting (it is watched again
-/// at the next `wait`).
-fn fdReadable(_: ?*anyopaque, _: u64, _: ?*anyopaque) callconv(.c) void {
+/// A watched source's fd is readable: it is read after `pump`, which
+/// stops waiting (it is watched again at the next `wait`).
+fn fdReadable(_: ?*anyopaque, _: u64, info: ?*anyopaque) callconv(.c) void {
+    const slot: *?MacWindow.Watch = @ptrCast(@alignCast(info orelse return));
+    if (slot.*) |*x| x.ready = true;
     postWake();
 }
 

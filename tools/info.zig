@@ -360,7 +360,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
 }
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = "Facet Info",
         .app_id = "facet-info",
         .size = .{ 1000, 720 },
@@ -370,6 +370,6 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(60 * std.time.ns_per_s)) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), Info{});
+        try app.draw(Info{});
     }
 }

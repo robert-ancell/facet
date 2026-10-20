@@ -25,11 +25,12 @@ An application describes its UI as a tree of plain Zig structs rebuilt each fram
 - **Windowing (`facet.window`):**
   - Built-in **Wayland Client Window (`WaylandWindow`)** using `xdg-shell` (with menus and tooltips in `xdg_popup` surfaces), `zxdg_decoration_manager_v1` (automatic client-side title bar & shadows or server-side decorations), `wl_shm` shared-memory buffers, `wp_cursor_shape_v1`, `wl_data_device` clipboard & drag-and-drop, `zwp_text_input_v3` IME support, `wp_presentation`, the compositor's XKB keymap (any layout, with its groups, levels and modifiers, read in pure Zig by `window.xkb`), and dead keys and the Compose key (the user's or locale's Compose file, found as libxkbcommon finds it, by `window.compose`).
   - Built-in **macOS Window (`MacWindow`)**: an AppKit `NSWindow` with the system's own title bar, buttons, resizing and full screen, frames drawn on the GPU into its view's `CAMetalLayer` (or on the CPU, shown as its layer's contents), the system's clipboard, cursors, Retina scaling and light or dark appearance (which the theme follows), and Quit in the app's menu (Command and Q). AppKit and the Objective-C runtime are loaded at run time (`gfx.objc`), so facet builds for macOS without its SDK, from Linux too (`zig build -Dtarget=aarch64-macos`). Command works as Control does elsewhere (Command and C copies).
-  - `facet.NativeWindow` is the backend for the system being built for, chosen at compile time (`MacWindow` on macOS, `WaylandWindow` elsewhere), and the one `App.open` opens. What the toolkit asks of the operating system otherwise (files, clocks, wakes) is in `window.sys`, the same on each.
-  - Generic, platform-neutral **`Window` interface (`facet.Window.of(&my_window)`)** for custom windowing backends (and future Windows support); run an app in one with `facet.App.openIn(gpa, &my_window, options)`.
+  - `facet.NativeWindow` is the backend for the system being built for, chosen at compile time (`MacWindow` on macOS, `WaylandWindow` elsewhere), and the one `App.open` opens.
+  - **`std.Io` throughout:** an app gives facet its `std.Io` (`init.io`, from `std.process.Init`) as it gives its allocator, and facet does its I/O, waits and tells the time through it, with no threads or `Io` of its own: the window's connection, the clipboard's pipes and the accessibility bus, image files and URLs (`std.http.Client` on the app's `Io`), and the theme's settings. What `App.step` waits on is read in one `std.Io.Batch`, so other tasks on the `Io` (a fetch started with `io.async`, say) go on while the UI waits, and `step` returns `error.Canceled` if its task is canceled. Images load in `Io.Group.concurrent` tasks. Work done elsewhere wakes the UI with `Ui.waker()` (from any thread or task: it neither blocks nor allocates). On macOS, AppKit's loop is run on the main thread, and the `Io`'s work wakes it. With Zig 0.17, the threaded `Io` (`std.Io.Threaded`, what `std.process.Init` gives) does all of this; the io_uring one does not yet batch socket reads, which Wayland's connection needs (for the file descriptors that come with them). What `std.Io` has no equivalent of, a wake any thread can signal, is in `window.sys`.
+  - Generic, platform-neutral **`Window` interface (`facet.Window.of(&my_window)`)** for custom windowing backends (and future Windows support); run an app in one with `facet.App.openIn(gpa, io, &my_window, options)`; what the window waits on as well as its own events (`window.Source`s, read through `std.Io`) it is given with `watch`.
 - **Bundled Fonts & Icons (`facet.font`, `facet.icons`):**
   - Pure-Zig OpenType/TrueType parser, shaper, and rasterizer (`kern`/`GPOS`, `liga`/`GSUB`, `COLR`/`CPAL` color emoji).
-  - Includes **Fira Sans** (`font.default_font_data`), **Twemoji Mozilla** (`font.emoji_font_data`), and build-time subsetted **Material Icons** out of the box via `Ui.createDefault(gpa)`, while allowing custom fonts via `Ui.createWithFontData(gpa, ttf_bytes)` (or `App.Options.font_data`), or `Ui.create(gpa, my_font)` (`null` for no text font).
+  - Includes **Fira Sans** (`font.default_font_data`), **Twemoji Mozilla** (`font.emoji_font_data`), and build-time subsetted **Material Icons** out of the box via `Ui.createDefault(gpa, io)`, while allowing custom fonts via `Ui.createWithFontData(gpa, io, ttf_bytes)` (or `App.Options.font_data`), or `Ui.create(gpa, io, my_font)` (`null` for no text font).
 
 ## Getting Started
 
@@ -129,7 +130,7 @@ pub const Counter = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = "Hello Facet",
         .size = .{ 480, 320 },
     });
@@ -137,7 +138,7 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), Counter{});
+        try app.draw(Counter{});
     }
 }
 ```
@@ -153,6 +154,7 @@ Run any of the included examples from the repository root:
 | `zig build run-lists` | `examples/lists_and_drag.zig` | Grid of 500 items that can be dragged and dropped into a pinned list |
 | `zig build run-editor` | `examples/editor.zig` | Multi-line code editor with Zig syntax highlighting |
 | `zig build run-canvas` | `examples/canvas_and_qr.zig` | Animated harmonic wave viewer and live QR code generator |
+| `zig build run-fetch` | `examples/fetch.zig` | An HTTP fetch in the background with `io.async`, on the app's `std.Io`, waking the UI when it is done |
 | `zig build run-opengl` | `examples/opengl.zig` | Interactive 3D Platonic solid viewer rendered with OpenGL |
 | `zig build run-vulkan` | `examples/vulkan.zig` | Interactive 3D Platonic solid viewer rendered with Vulkan |
 | `zig build run-metal` | `examples/metal.zig` | Interactive 3D Platonic solid viewer rendered with Metal (macOS) |

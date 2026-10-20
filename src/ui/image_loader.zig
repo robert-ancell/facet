@@ -3,16 +3,20 @@
 //! JPEG, GIF (its first frame) or WebP, made smaller to fit
 //! `gfx.Image.max_size` if they are bigger.
 //!
-//! Loads are done by up to `max_workers` threads, which wake the UI when
-//! one is done (`wakeFd`), and the UI takes what is done (`collect`). An
-//! image is kept while it shows, and for `keep_ns` after it last did, so
-//! one shown again soon is not loaded again.
+//! Loads are done by up to `max_workers` tasks on the app's `std.Io`
+//! (`Io.Group.concurrent`; done in turn, as they are asked for, if it has
+//! no concurrency), reading files and fetching URLs through it too. They
+//! wake the UI when one is done (`waitSource`), and the UI takes what is done
+//! (`collect`). An image is kept while it shows, and for `keep_ns` after
+//! it last did, so one shown again soon is not loaded again.
 
 const std = @import("std");
-const sys = @import("window").sys;
+const window = @import("window");
+const sys = window.sys;
 const gfx = @import("gfx");
 
-/// Shared with the workers, so thread-safe.
+/// Shared with the workers (which may be on other threads), so
+/// thread-safe.
 const alloc = std.heap.smp_allocator;
 
 pub const max_workers = 4;
@@ -46,6 +50,8 @@ pub const Status = union(enum) {
 pub const Cache = struct {
     entries: std.StringHashMapUnmanaged(*Entry) = .empty,
     shared: ?*Shared = null,
+    /// What loads are done through (none: none can be).
+    io: ?std.Io = null,
 
     const Entry = struct {
         key: []u8,
@@ -134,7 +140,7 @@ pub const Cache = struct {
                 .bytes => |b| .{ .bytes = try alloc.dupe(u8, b) },
             },
         };
-        if (c.shared == null) c.shared = try Shared.create();
+        if (c.shared == null) c.shared = try Shared.create(c.io orelse return error.NoIo);
         c.shared.?.add(job) catch {
             job.deinit();
             e.status = .failed;
@@ -142,10 +148,10 @@ pub const Cache = struct {
         return e;
     }
 
-    /// The fd that is readable when a load is done (to wait on with the
-    /// window's), once any has started.
-    pub fn wakeFd(c: *const Cache) ?sys.fd_t {
-        return if (c.shared) |s| s.wake.fd() else null;
+    /// What is read when a load is done (to wait on with the window's),
+    /// once any has started.
+    pub fn waitSource(c: *const Cache) ?window.Source {
+        return if (c.shared) |s| .ofWake(&s.wake) else null;
     }
 
     /// Takes the loads that are done; true if there were any.
@@ -209,24 +215,25 @@ const Job = struct {
 
 const Decoded = gfx.png.Decoded;
 
-/// The loads waiting and done, shared by the UI and the workers: freed by
-/// whichever lets go of it last.
+/// The loads waiting and done, shared by the UI and the workers (tasks
+/// in `group`), and the HTTP client they share.
 const Shared = struct {
+    io: std.Io,
     mutex: std.atomic.Mutex = .unlocked,
     pending: std.ArrayList(*Job) = .empty,
     done: std.ArrayList(*Job) = .empty,
     workers: u8 = 0,
-    /// The UI and each worker.
-    refs: u32 = 1,
     closed: bool = false,
+    group: std.Io.Group = .init,
+    http: ?*std.http.Client = null,
     /// Readable when a load is done.
     wake: sys.Wake,
 
-    fn create() !*Shared {
+    fn create(io: std.Io) !*Shared {
         const wake = sys.Wake.create() catch return error.SystemResources;
         errdefer wake.deinit();
         const s = try alloc.create(Shared);
-        s.* = .{ .wake = wake };
+        s.* = .{ .io = io, .wake = wake };
         return s;
     }
 
@@ -239,58 +246,50 @@ const Shared = struct {
     }
 
     /// Queues a load, with a worker for it if there are fewer than
-    /// `max_workers`.
+    /// `max_workers` (or loads it now, if the `Io` cannot run one).
     fn add(s: *Shared, job: *Job) !void {
         s.lock();
-        defer s.unlock();
-        try s.pending.append(alloc, job);
-        if (s.workers < max_workers) {
-            s.workers += 1;
-            s.refs += 1;
-            const t = std.Thread.spawn(.{}, work, .{s}) catch {
-                s.workers -= 1;
-                s.refs -= 1;
-                _ = s.pending.pop();
-                return error.SystemResources;
-            };
-            t.detach();
-        }
+        s.pending.append(alloc, job) catch |e| {
+            s.unlock();
+            return e;
+        };
+        const start = s.workers < max_workers;
+        if (start) s.workers += 1;
+        s.unlock();
+        if (!start) return;
+        s.group.concurrent(s.io, work, .{s}) catch work(s);
     }
 
-    /// The UI lets go of it: what is waiting is dropped, and what finishes
-    /// is freed as it does.
+    /// The UI lets go of it: what is waiting is dropped, the workers are
+    /// stopped (waiting for those in the middle of decoding), and it goes.
     fn close(s: *Shared) void {
         s.lock();
         s.closed = true;
         for (s.pending.items) |j| j.deinit();
         s.pending.clearRetainingCapacity();
+        s.unlock();
+        s.group.cancel(s.io);
         for (s.done.items) |j| j.deinit();
-        s.done.clearRetainingCapacity();
-        s.release();
-    }
-
-    /// Lets go of a reference (locked; unlocks, or frees it).
-    fn release(s: *Shared) void {
-        s.refs -= 1;
-        if (s.refs > 0) return s.unlock();
         s.pending.deinit(alloc);
         s.done.deinit(alloc);
+        if (s.http) |h| {
+            h.deinit();
+            alloc.destroy(h);
+        }
         s.wake.deinit();
         alloc.destroy(s);
     }
 
     fn work(s: *Shared) void {
-        var http: ?*Http = null;
-        defer if (http) |h| h.destroy();
         while (true) {
             s.lock();
             if (s.pending.items.len == 0 or s.closed) {
                 s.workers -= 1;
-                return s.release();
+                return s.unlock();
             }
             const job = s.pending.orderedRemove(0);
             s.unlock();
-            job.result = load(job, &http);
+            job.result = load(job, s);
             s.lock();
             if (s.closed) {
                 job.deinit();
@@ -300,58 +299,71 @@ const Shared = struct {
             s.unlock();
         }
     }
-};
 
-/// A worker's HTTP client (made for its first URL).
-const Http = struct {
-    threaded: std.Io.Threaded,
-    client: std.http.Client,
-
-    fn create() ?*Http {
-        const h = alloc.create(Http) catch return null;
-        h.threaded = .init(alloc, .{});
-        h.client = .{ .allocator = alloc, .io = h.threaded.io() };
-        return h;
-    }
-
-    fn destroy(h: *Http) void {
-        h.client.deinit();
-        h.threaded.deinit();
-        alloc.destroy(h);
-    }
-
-    fn get(h: *Http, url: []const u8) ?[]u8 {
-        var body: std.Io.Writer.Allocating = .init(alloc);
-        defer body.deinit();
-        const res = h.client.fetch(.{ .location = .{ .url = url }, .response_writer = &body.writer }) catch return null;
-        if (res.status != .ok) return null;
-        return body.toOwnedSlice() catch null;
+    /// The HTTP client, made for the first URL (on the `Io`).
+    fn httpClient(s: *Shared) ?*std.http.Client {
+        s.lock();
+        defer s.unlock();
+        if (s.http == null) {
+            const h = alloc.create(std.http.Client) catch return null;
+            h.* = .{ .allocator = alloc, .io = s.io };
+            s.http = h;
+        }
+        return s.http;
     }
 };
 
 /// Fetches and decodes a job's image (in a worker).
-fn load(job: *const Job, http: *?*Http) ?Decoded {
+fn load(job: *const Job, s: *Shared) ?Decoded {
     const data: []u8 = switch (job.what) {
         .bytes => |b| return decodeFit(b, job.region),
-        .file => |p| readFile(p) orelse return null,
-        .url => |u| fetch(u, http) orelse return null,
+        .file => |p| readFile(s.io, p) orelse return null,
+        .url => |u| fetch(u, s) orelse return null,
     };
     defer alloc.free(data);
     return decodeFit(data, job.region);
 }
 
-fn fetch(url: []const u8, http: *?*Http) ?[]u8 {
+fn fetch(url: []const u8, s: *Shared) ?[]u8 {
     if (std.mem.startsWith(u8, url, "file://")) {
         const path = percentDecoded(url["file://".len..]) orelse return null;
         defer alloc.free(path);
-        return readFile(path);
+        return readFile(s.io, path);
     }
     if (std.mem.startsWith(u8, url, "data:")) return dataUrl(url);
     if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-        if (http.* == null) http.* = Http.create();
-        return (http.* orelse return null).get(url);
+        return httpGet(s.httpClient() orelse return null, url);
     }
     return null;
+}
+
+/// An `http://` or `https://` URL's body (following redirects), or null:
+/// as `std.http.Client.fetch` does it, but a read of the body that fails
+/// (or is canceled, when the UI goes) is null, where `fetch` (in Zig 0.17)
+/// unwraps an error the TLS reader keeps to itself, and panics.
+fn httpGet(client: *std.http.Client, url: []const u8) ?[]u8 {
+    const uri = std.Uri.parse(url) catch return null;
+    var req = client.request(.GET, uri, .{ .redirect_behavior = .init(3) }) catch return null;
+    defer req.deinit();
+    req.sendBodiless() catch return null;
+    var redirect_buf: [8 * 1024]u8 = undefined;
+    var response = req.receiveHead(&redirect_buf) catch return null;
+    if (response.head.status != .ok) return null;
+    const window_len: usize = switch (response.head.content_encoding) {
+        .identity => 0,
+        .zstd => std.compress.zstd.default_window_len,
+        .deflate, .gzip => std.compress.flate.max_window_len,
+        .compress => return null,
+    };
+    const decompress_buf = alloc.alloc(u8, window_len) catch return null;
+    defer alloc.free(decompress_buf);
+    var transfer_buf: [64]u8 = undefined;
+    var decompress: std.http.Decompress = undefined;
+    const reader = response.readerDecompressing(&transfer_buf, &decompress, decompress_buf);
+    var body: std.Io.Writer.Allocating = .init(alloc);
+    defer body.deinit();
+    _ = reader.streamRemaining(&body.writer) catch return null;
+    return body.toOwnedSlice() catch null;
 }
 
 /// A `data:` URL's bytes: `data:image/png;base64,iVBOR...`.
@@ -390,8 +402,8 @@ fn percentDecoded(s: []const u8) ?[]u8 {
     return alloc.dupe(u8, out[0..n]) catch null;
 }
 
-fn readFile(path: []const u8) ?[]u8 {
-    return sys.readFile(alloc, path, 256 << 20);
+fn readFile(io: std.Io, path: []const u8) ?[]u8 {
+    return std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(256 << 20)) catch null;
 }
 
 /// A PNG, JPEG, GIF or WebP decoded (or `region` of it), made smaller if

@@ -7,7 +7,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 
-pub const Error = error{ ConnectFailed, AuthFailed, Malformed, Closed, Timeout, CallFailed, OutOfMemory };
+pub const Error = error{ ConnectFailed, AuthFailed, Malformed, Closed, Timeout, CallFailed, OutOfMemory, Canceled };
 
 pub const MessageType = enum(u8) { method_call = 1, method_return = 2, @"error" = 3, signal = 4, _ };
 
@@ -378,9 +378,13 @@ pub fn decode(data: []const u8) Error!Message {
 
 // --- Connections ---------------------------------------------------------------
 
-/// A connection to a bus.
+/// A connection to a bus. What would block (connecting, authenticating,
+/// waiting for a reply, or for the socket to take more) is done through
+/// the `std.Io` it is given; `source` is for an event loop to wait on it
+/// with others.
 pub const Connection = struct {
     gpa: std.mem.Allocator,
+    io: std.Io,
     fd: linux.fd_t,
     serial: u32 = 0,
     /// The name the bus gave it.
@@ -389,19 +393,22 @@ pub const Connection = struct {
     in: std.ArrayList(u8) = .empty,
     /// Messages read while waiting for a reply, not yet taken.
     queued: std.ArrayList([]u8) = .empty,
+    /// What a read through `io` reads into.
+    read_buf: [4096]u8 = undefined,
+    read_vec: [1][]u8 = undefined,
 
     /// Connects to the bus at `address` (`unix:path=…` or
     /// `unix:abstract=…`, the first of those listed that it can), and says
     /// hello.
-    pub fn open(gpa: std.mem.Allocator, address: []const u8) Error!*Connection {
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, address: []const u8) Error!*Connection {
         var it = std.mem.splitScalar(u8, address, ';');
         const fd = while (it.next()) |one| {
-            if (connectTo(one)) |fd| break fd;
+            if (connectTo(io, one)) |fd| break fd;
         } else return error.ConnectFailed;
         errdefer _ = linux.close(fd);
-        try authenticate(fd);
+        try authenticate(io, fd);
         const c = try gpa.create(Connection);
-        c.* = .{ .gpa = gpa, .fd = fd };
+        c.* = .{ .gpa = gpa, .io = io, .fd = fd };
         errdefer gpa.destroy(c);
         // From now on, read without waiting (except for replies).
         _ = linux.fcntl(fd, linux.F.SETFL, linux.SOCK.NONBLOCK);
@@ -428,18 +435,37 @@ pub const Connection = struct {
         return c.serial;
     }
 
-    /// Sends a message's bytes (waiting while the socket is full).
+    /// Sends a message's bytes (waiting, through `io`, while the socket is
+    /// full).
     pub fn send(c: *Connection, bytes: []const u8) Error!void {
         var at: usize = 0;
         while (at < bytes.len) {
-            const rc = linux.write(c.fd, bytes[at..].ptr, bytes.len - at);
-            switch (linux.errno(rc)) {
-                .SUCCESS => at += rc,
-                .AGAIN => try waitFd(c.fd, linux.POLL.OUT, 1000),
-                .INTR => {},
-                else => return error.Closed,
-            }
+            const data = [_][]const u8{bytes[at..]};
+            const result = c.io.operateTimeout(.{ .file_write_streaming = .{ .file = c.file(), .data = &data } }, seconds(1)) catch |e| return switch (e) {
+                error.Timeout => error.Timeout,
+                error.Canceled => error.Canceled,
+                else => error.Closed,
+            };
+            at += result.file_write_streaming catch return error.Closed;
         }
+    }
+
+    fn file(c: *const Connection) std.Io.File {
+        return .{ .handle = c.fd, .flags = .{ .nonblocking = true } };
+    }
+
+    /// The read that waits for what comes next, through `io`: for an
+    /// event loop to wait on it with others (see `window.Source`), giving
+    /// `readDone` what it read.
+    pub fn readOperation(c: *Connection) std.Io.Operation {
+        c.read_vec = .{&c.read_buf};
+        return .{ .file_read_streaming = .{ .file = c.file(), .data = &c.read_vec } };
+    }
+
+    /// Keeps what a `readOperation` read (for `next`).
+    pub fn readDone(c: *Connection, result: std.Io.Operation.Result) void {
+        const n = result.file_read_streaming catch return;
+        c.in.appendSlice(c.gpa, c.read_buf[0..n]) catch {};
     }
 
     /// Sends a message with this header (its serial set) and body.
@@ -456,7 +482,7 @@ pub const Connection = struct {
     /// message's bytes, the caller's to free); an error reply fails.
     pub fn callWait(c: *Connection, destination: []const u8, path: []const u8, interface: []const u8, member: []const u8, sig: []const u8, body: []const u8, timeout_ms: i32) Error![]u8 {
         const serial = try c.sendMessage(.{ .type = .method_call, .serial = 0, .destination = destination, .path = path, .interface = interface, .member = member, .signature = sig }, body);
-        var waited: i32 = 0;
+        const deadline = std.Io.Clock.Timestamp.fromNow(c.io, .{ .raw = .fromMilliseconds(timeout_ms), .clock = .awake });
         while (true) {
             // What has come, kept aside unless it is the reply.
             while (try c.readOne()) |bytes| {
@@ -473,9 +499,12 @@ pub const Connection = struct {
                 }
                 c.queued.append(c.gpa, bytes) catch c.gpa.free(bytes);
             }
-            if (waited >= timeout_ms) return error.Timeout;
-            waitFd(c.fd, linux.POLL.IN, 50) catch {};
-            waited += 50;
+            const result = c.io.operateTimeout(c.readOperation(), .{ .deadline = deadline }) catch |e| return switch (e) {
+                error.Timeout => error.Timeout,
+                error.Canceled => error.Canceled,
+                else => error.Closed,
+            };
+            c.readDone(result);
         }
     }
 
@@ -510,16 +539,13 @@ pub const Connection = struct {
     }
 };
 
-fn waitFd(fd: linux.fd_t, events: i16, timeout_ms: i32) Error!void {
-    var p = [1]linux.pollfd{.{ .fd = fd, .events = events, .revents = 0 }};
-    const rc = linux.poll(&p, 1, timeout_ms);
-    if (linux.errno(rc) != .SUCCESS) return error.Closed;
-    if (rc == 0) return error.Timeout;
+fn seconds(n: i64) std.Io.Timeout {
+    return .{ .duration = .{ .raw = .fromSeconds(n), .clock = .awake } };
 }
 
-/// A socket connected to one of an address's (`unix:path=…`, or
-/// `unix:abstract=…`).
-fn connectTo(address: []const u8) ?linux.fd_t {
+/// A socket connected (through `io`) to one of an address's
+/// (`unix:path=…`, or `unix:abstract=…`).
+fn connectTo(io: std.Io, address: []const u8) ?linux.fd_t {
     if (!std.mem.startsWith(u8, address, "unix:")) return null;
     var path_buf: [108]u8 = undefined;
     var path: ?[]const u8 = null;
@@ -534,19 +560,26 @@ fn connectTo(address: []const u8) ?linux.fd_t {
         }
     }
     const p = path orelse return null;
+    if (!abstract) {
+        const addr = std.Io.net.UnixAddress.init(p) catch return null;
+        const stream = addr.connect(io) catch return null;
+        return stream.socket.handle;
+    }
+    // An abstract name (a NUL, then the name, its length the address's),
+    // connected to here: `std.Io`'s addresses add a NUL to the length,
+    // which makes it another name.
     const fd: linux.fd_t = @intCast(blk: {
         const rc = linux.socket(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0);
         if (linux.errno(rc) != .SUCCESS) return null;
         break :blk rc;
     });
     var addr: linux.sockaddr.un = .{ .path = @splat(0) };
-    const off: usize = @intFromBool(abstract);
-    if (p.len + off >= addr.path.len) {
+    if (p.len + 1 >= addr.path.len) {
         _ = linux.close(fd);
         return null;
     }
-    @memcpy(addr.path[off..][0..p.len], p);
-    const len: linux.socklen_t = @intCast(@offsetOf(linux.sockaddr.un, "path") + off + p.len + @intFromBool(!abstract));
+    @memcpy(addr.path[1..][0..p.len], p);
+    const len: linux.socklen_t = @intCast(@offsetOf(linux.sockaddr.un, "path") + 1 + p.len);
     if (linux.errno(linux.connect(fd, @ptrCast(&addr), len)) != .SUCCESS) {
         _ = linux.close(fd);
         return null;
@@ -570,28 +603,38 @@ fn unescape(s: []const u8, buf: []u8) ?[]const u8 {
     return buf[0..n];
 }
 
-/// D-Bus's EXTERNAL authentication, as this user (blocking).
-fn authenticate(fd: linux.fd_t) Error!void {
+/// D-Bus's EXTERNAL authentication, as this user (waiting through `io`,
+/// on the socket as it is when connected: blocking).
+fn authenticate(io: std.Io, fd: linux.fd_t) Error!void {
     var uid_buf: [16]u8 = undefined;
     const uid = std.fmt.bufPrint(&uid_buf, "{d}", .{linux.getuid()}) catch unreachable;
     var line_buf: [64]u8 = undefined;
     var hex_buf: [32]u8 = undefined;
     const hex = std.fmt.bufPrint(&hex_buf, "{x}", .{uid}) catch unreachable;
     const line = std.fmt.bufPrint(&line_buf, "\x00AUTH EXTERNAL {s}\r\n", .{hex}) catch unreachable;
-    if (linux.write(fd, line.ptr, line.len) != line.len) return error.AuthFailed;
+    try writeAll(io, fd, line);
     // "OK <guid>\r\n".
     var reply: [256]u8 = undefined;
     var n: usize = 0;
     while (!std.mem.endsWith(u8, reply[0..n], "\r\n")) {
         if (n == reply.len) return error.AuthFailed;
-        waitFd(fd, linux.POLL.IN, 5000) catch return error.AuthFailed;
-        const rc = linux.read(fd, reply[n..].ptr, reply.len - n);
-        if (linux.errno(rc) != .SUCCESS or rc == 0) return error.AuthFailed;
-        n += rc;
+        var data = [_][]u8{reply[n..]};
+        const result = io.operateTimeout(.{ .net_read = .{ .socket_handle = fd, .data = &data } }, seconds(5)) catch return error.AuthFailed;
+        const got = result.net_read catch return error.AuthFailed;
+        if (got.data_len == 0) return error.AuthFailed;
+        n += got.data_len;
     }
     if (!std.mem.startsWith(u8, reply[0..n], "OK ")) return error.AuthFailed;
-    const begin = "BEGIN\r\n";
-    if (linux.write(fd, begin, begin.len) != begin.len) return error.AuthFailed;
+    try writeAll(io, fd, "BEGIN\r\n");
+}
+
+fn writeAll(io: std.Io, fd: linux.fd_t, bytes: []const u8) Error!void {
+    var at: usize = 0;
+    while (at < bytes.len) {
+        const data = [_][]const u8{bytes[at..]};
+        const result = io.operate(.{ .net_write = .{ .socket_handle = fd, .data = &data } }) catch return error.AuthFailed;
+        at += result.net_write catch return error.AuthFailed;
+    }
 }
 
 // --- Tests -----------------------------------------------------------------------

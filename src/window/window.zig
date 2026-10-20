@@ -6,6 +6,11 @@
 //!
 //! Apps can either use a backend directly or implement custom window
 //! backends (e.g. X11, SDL, GLFW, Windows) via `Window.of(&impl)`.
+//!
+//! Windows do their I/O, and wait, through the app's `std.Io` (given when
+//! they are opened): what they wait on (their connection, and the
+//! `Source`s watched with theirs) is read in one `std.Io.Batch`, so that
+//! other tasks on the `Io` go on while the UI waits.
 
 const std = @import("std");
 const gfx = @import("gfx");
@@ -21,7 +26,80 @@ pub const MacWindow = macos.MacWindow;
 /// The window backend for the system being built for: AppKit's on macOS,
 /// Wayland's elsewhere.
 pub const NativeWindow = if (@import("builtin").os.tag == .macos) MacWindow else WaylandWindow;
-pub const nowNs = sys.monotonicNs;
+
+/// Now, in nanoseconds on the clock frames and input are timed on (the
+/// monotonic one: `std.Io.Clock.awake`).
+pub fn nowNs(io: std.Io) u64 {
+    return @intCast(@max(0, std.Io.Clock.awake.now(io).nanoseconds));
+}
+
+/// Something a window waits on as well as its own events (a `sys.Wake`,
+/// the accessibility bus): its fd, its next read through `std.Io` (into a
+/// buffer of its own, which must last until `done`; null if there is
+/// nothing to read now), and what to do with what that read.
+pub const Source = struct {
+    ctx: *anyopaque,
+    fd: sys.fd_t,
+    read: *const fn (ctx: *anyopaque) ?std.Io.Operation,
+    done: *const fn (ctx: *anyopaque, result: std.Io.Operation.Result) void,
+
+    /// A `sys.Wake`'s: read to take its wakes (which are dropped: the one
+    /// that signals it says what it was for).
+    pub fn ofWake(w: *sys.Wake) Source {
+        const S = struct {
+            fn read(ctx: *anyopaque) ?std.Io.Operation {
+                return @as(*sys.Wake, @ptrCast(@alignCast(ctx))).readOperation();
+            }
+            fn done(_: *anyopaque, _: std.Io.Operation.Result) void {}
+        };
+        return .{ .ctx = w, .fd = w.fd(), .read = S.read, .done = S.done };
+    }
+
+    /// Whether two are the same source.
+    pub fn eql(a: Source, b: Source) bool {
+        return a.ctx == b.ctx and a.fd == b.fd;
+    }
+};
+
+/// The most sources `waitSources` waits on at once.
+pub const max_sources = 16;
+
+/// Waits through `io` until one of `sources` has read something, or for
+/// `timeout_ns` (forever if `maxInt(u64)`), and gives each what it read
+/// (some may have read something even if others were first).
+/// `error.Canceled` if the task is canceled.
+pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
+    const timeout: std.Io.Timeout = if (timeout_ns == std.math.maxInt(u64))
+        .none
+    else
+        .{ .duration = .{ .raw = .fromNanoseconds(timeout_ns), .clock = .awake } };
+    // Which source each read is of.
+    var of: [max_sources]usize = undefined;
+    var ops: [max_sources]std.Io.Operation = undefined;
+    var n: usize = 0;
+    for (sources, 0..) |s, i| {
+        if (n == max_sources) break;
+        ops[n] = s.read(s.ctx) orelse continue;
+        of[n] = i;
+        n += 1;
+    }
+    if (n == 0) return timeout.sleep(io);
+    var storage: [max_sources]std.Io.Operation.Storage = undefined;
+    var batch: std.Io.Batch = .init(storage[0..n]);
+    for (ops[0..n], 0..) |op, i| batch.addAt(@intCast(i), op);
+    const waited = batch.awaitConcurrent(io, timeout);
+    // The reads not done are given up; those done (even while being given
+    // up) are handled.
+    batch.cancel(io);
+    while (batch.next()) |c| {
+        const s = sources[of[c.index]];
+        s.done(s.ctx, c.result);
+    }
+    waited catch |e| switch (e) {
+        error.Timeout => {},
+        else => return e,
+    };
+}
 
 /// The pointer shape the window shows.
 pub const Cursor = enum {
@@ -285,7 +363,7 @@ pub const Window = struct {
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
         layout: *const fn (ptr: *anyopaque) Layout,
-        watch_fd: *const fn (ptr: *anyopaque, fd: sys.fd_t, on: bool) void,
+        watch: *const fn (ptr: *anyopaque, source: Source, on: bool) void,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
@@ -472,8 +550,8 @@ pub const Window = struct {
                 if (@hasDecl(T, "nextPresentationNs")) return self(p).nextPresentationNs(now_ns);
                 return now_ns;
             }
-            fn watchFdFn(p: *anyopaque, fd: sys.fd_t, on: bool) void {
-                if (@hasDecl(T, "watchFd")) self(p).watchFd(fd, on);
+            fn watchFn(p: *anyopaque, source: Source, on: bool) void {
+                if (@hasDecl(T, "watch")) self(p).watch(source, on);
             }
             fn layoutFn(p: *anyopaque) Layout {
                 if (@hasDecl(T, "layout")) return self(p).layout();
@@ -584,7 +662,7 @@ pub const Window = struct {
                 .nextPresentationNs = nextPresentationNsFn,
                 .setPresentationTime = setPresentationTimeFn,
                 .layout = layoutFn,
-                .watch_fd = watchFdFn,
+                .watch = watchFn,
                 .refreshNs = refreshNsFn,
                 .applyConfigure = applyConfigureFn,
                 .releaseSpareBuffers = releaseSpareBuffersFn,
@@ -721,9 +799,10 @@ pub const Window = struct {
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
-    /// Wakes `wait` when `fd` is readable too (`on`), or no longer.
-    pub fn watchFd(w: Window, fd: sys.fd_t, on: bool) void {
-        w.vtable.watch_fd(w.ptr, fd, on);
+    /// Waits on `source` too in `wait` (`on`), or no longer: `wait`
+    /// returns once it has read something, and has given it what it read.
+    pub fn watch(w: Window, source: Source, on: bool) void {
+        w.vtable.watch(w.ptr, source, on);
     }
     /// The keyboard layout in use.
     pub fn layout(w: Window) Layout {
@@ -897,6 +976,41 @@ pub const Layout = struct {
         return l.code_buf[0..l.code_len];
     }
 };
+
+test "sources are waited on through io, with a timeout" {
+    if (!sys.is_linux) return error.SkipZigTest;
+    const io = std.testing.io;
+    var a = try sys.Wake.create();
+    defer a.deinit();
+    var b = try sys.Wake.create();
+    defer b.deinit();
+    const Count = struct {
+        var done: u32 = 0;
+        fn read(ctx: *anyopaque) ?std.Io.Operation {
+            return @as(*sys.Wake, @ptrCast(@alignCast(ctx))).readOperation();
+        }
+        fn finished(_: *anyopaque, result: std.Io.Operation.Result) void {
+            if (result.file_read_streaming) |n| {
+                if (n > 0) done += 1;
+            } else |_| {}
+        }
+    };
+    const sources = [_]Source{
+        .{ .ctx = &a, .fd = a.fd(), .read = Count.read, .done = Count.finished },
+        .{ .ctx = &b, .fd = b.fd(), .read = Count.read, .done = Count.finished },
+    };
+    // Nothing: it waits out the timeout.
+    const before = nowNs(io);
+    try waitSources(io, &sources, 20 * std.time.ns_per_ms);
+    try std.testing.expect(nowNs(io) - before >= 15 * std.time.ns_per_ms);
+    try std.testing.expectEqual(@as(u32, 0), Count.done);
+    // One woken: it is read, at once.
+    b.signal();
+    try waitSources(io, &sources, 5 * std.time.ns_per_s);
+    try std.testing.expectEqual(@as(u32, 1), Count.done);
+    try std.testing.expect(nowNs(io) - before < std.time.ns_per_s);
+    try std.testing.expect(!b.drain());
+}
 
 test {
     _ = clipboard;

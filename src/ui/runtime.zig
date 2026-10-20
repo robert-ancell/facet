@@ -15,7 +15,7 @@
 //! Text is copied and pasted through `clipboard` (the system's, which the
 //! app or window gives), or within the app if there is none.
 //!
-//!     const ui = try Ui.createDefault(gpa);
+//!     const ui = try Ui.createDefault(gpa, io);
 //!     defer ui.destroy();
 //!     // Each frame:
 //!     ui.frame(width, height, now_ns, MyApp{ .title = "Hello" });
@@ -87,19 +87,26 @@ pub const Clipboard = struct {
     }
 };
 
-/// Wakes a `Ui` for a frame from any thread: for work done in the
-/// background (a map tile fetched, say). From `Ui.waker`; good for as
-/// long as the `Ui` is.
+/// Wakes a `Ui` for a frame from any thread or task: for work done in the
+/// background (a fetch started with `io.async`, say), once it has put what
+/// it made where the UI will find it. It neither blocks nor allocates, so
+/// it can be used from anywhere. From `Ui.waker`; good for as long as the
+/// `Ui` is.
 pub const Waker = struct {
     wake_: ?sys.Wake = null,
+    woken: ?*std.atomic.Value(bool) = null,
 
     pub fn wake(w: Waker) void {
+        if (w.woken) |f| f.store(true, .release);
         if (w.wake_) |x| x.signal();
     }
 };
 
 pub const Ui = struct {
     gpa: std.mem.Allocator,
+    /// What it does its I/O (loading images, the accessibility bus) and
+    /// tells the time through: the app's.
+    io: std.Io,
     /// Text is drawn in it; without one, text takes no space.
     font: ?*const font.Font,
     owned_font: ?font.Font = null,
@@ -155,8 +162,10 @@ pub const Ui = struct {
     loaded_keymap: ?window_mod.xkb.Keymap = null,
     /// Images loaded in the background (for `Image`).
     images: image_loader.Cache = .{},
-    /// Readable when a `Waker` has woken it (made by the first `waker`).
+    /// Readable when a `Waker` has woken it (made by the first `waker`),
+    /// and set (as it might be read by the window's wait first).
     wake: ?sys.Wake = null,
+    woken: std.atomic.Value(bool) = .init(false),
     /// What it is to assistive technologies (once `enableAccessibility`
     /// has connected to AT-SPI): the last frame's tree, and the number for
     /// the next object.
@@ -270,11 +279,16 @@ pub const Ui = struct {
     /// still use the bundled Material Icons font).
     /// Tries initializing the Metal 2D renderer (on macOS), or the Vulkan
     /// one first, then OpenGL (elsewhere), before falling back to Software.
-    pub fn create(gpa: std.mem.Allocator, f: ?*const font.Font) !*Ui {
+    ///
+    /// It does its I/O, and tells the time, through `io`: the app's (as
+    /// from `std.process.Init`).
+    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*Ui {
         const ui = try gpa.create(Ui);
         errdefer gpa.destroy(ui);
         ui.* = .{
             .gpa = gpa,
+            .io = io,
+            .images = .{ .io = io },
             .font = f,
             .icon_font = try font.Font.init(@import("icons").font_data),
             .atlas = try gfx.Atlas.init(gpa),
@@ -304,15 +318,15 @@ pub const Ui = struct {
 
     /// Creates a `Ui` using the bundled default Fira Sans and Twemoji Mozilla
     /// fallback fonts.
-    pub fn createDefault(gpa: std.mem.Allocator) !*Ui {
-        return createWithFontData(gpa, font.default_font_data);
+    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*Ui {
+        return createWithFontData(gpa, io, font.default_font_data);
     }
 
     /// Creates a `Ui` drawing text in the OpenType or TrueType font in
     /// `data` (which must outlive it), falling back to the bundled Twemoji
     /// Mozilla font for emoji.
-    pub fn createWithFontData(gpa: std.mem.Allocator, data: []const u8) !*Ui {
-        const ui = try create(gpa, null);
+    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*Ui {
+        const ui = try create(gpa, io, null);
         errdefer ui.destroy();
         ui.owned_font = try font.Font.init(data);
         ui.emoji_font = font.Font.init(font.emoji_font_data) catch null;
@@ -331,14 +345,14 @@ pub const Ui = struct {
         ui.endDrag(false);
         if (ui.loaded_keymap) |*km| km.deinit();
         if (ui.title_bar_root) |tb| tb.destroy();
-        if (ui.images.wakeFd()) |fd| if (ui.win) |w| w.watchFd(fd, false);
+        if (ui.images.waitSource()) |src| if (ui.win) |w| w.watch(src, false);
         ui.images.deinit();
-        if (ui.wake) |x| {
-            if (ui.win) |w| w.watchFd(x.fd(), false);
+        if (ui.wake) |*x| {
+            if (ui.win) |w| w.watch(.ofWake(x), false);
             x.deinit();
         }
         if (has_atspi) if (ui.a11y) |b| {
-            if (ui.win) |w| w.watchFd(b.fd(), false);
+            if (ui.win) |w| w.watch(b.source(), false);
             b.close();
         };
         if (ui.a11y_tree) |t| {
@@ -501,17 +515,28 @@ pub const Ui = struct {
         window_mod.Window.from(win).setTextInput(ui.textInputState());
     }
 
-    /// Something to wake the UI for a frame from another thread (it does
-    /// nothing if there are no fds left).
+    /// Something to wake the UI for a frame from another thread or task
+    /// (it only marks it to be drawn if there are no fds left).
     pub fn waker(ui: *Ui) Waker {
-        if (ui.wake == null) ui.wake = sys.Wake.create() catch return .{};
-        return .{ .wake_ = ui.wake };
+        if (ui.wake == null) ui.wake = sys.Wake.create() catch return .{ .woken = &ui.woken };
+        return .{ .wake_ = ui.wake, .woken = &ui.woken };
+    }
+
+    /// What is read when a `Waker` wakes it (to wait on with the window's),
+    /// once there is a waker.
+    pub fn wakeSource(ui: *Ui) ?window_mod.Source {
+        return if (ui.wake) |*x| .ofWake(x) else null;
     }
 
     /// Takes the wakes since the last time; true if there were any.
     pub fn takeWakes(ui: *Ui) bool {
-        const w = ui.wake orelse return false;
-        return w.drain();
+        const drained = if (ui.wake) |*w| w.drain() else false;
+        return ui.woken.swap(false, .acq_rel) or drained;
+    }
+
+    /// Now, on the clock frames and input are timed on (`window.nowNs`).
+    pub fn clockNs(ui: *const Ui) u64 {
+        return window_mod.nowNs(ui.io);
     }
 
     /// The arena this frame's widgets are made in.
@@ -603,7 +628,7 @@ pub const Ui = struct {
         if (ui.a11y != null) return;
         if (environ.getPosix("NO_AT_BRIDGE")) |v| if (std.mem.eql(u8, v, "1")) return;
         const title = if (ui.win) |w| w.title() else "";
-        ui.a11y = atspi.Bridge.connect(ui.gpa, environ, title) catch null;
+        ui.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
         ui.needs_frame = true;
     }
 
@@ -1225,7 +1250,7 @@ pub const Ui = struct {
     pub const multi_click_slop = 6;
 
     pub fn pointerButton(ui: *Ui, pos: Point, button: u32, pressed: bool) void {
-        ui.pointerButtonAt(pos, button, pressed, window_mod.nowNs());
+        ui.pointerButtonAt(pos, button, pressed, ui.clockNs());
     }
 
     /// `pointerButton`, at a time on the monotonic clock (`window.nowNs`).
@@ -1491,10 +1516,21 @@ pub const Ui = struct {
 };
 
 /// A native toolkit app: a window (the system's own, a `NativeWindow`,
-/// unless given one),
-/// its `Controls`, and a `Ui`.
+/// unless given one), its `Controls`, and a `Ui`. The app runs it in a
+/// loop of its own:
+///
+///     while (try app.step(std.math.maxInt(u64))) {
+///         app.takeInput();
+///         try app.draw(Root{ .state = &state });
+///     }
+///
+/// It does its I/O, waits, and tells the time through the `std.Io` it is
+/// given (the app's, as from `std.process.Init`), so other tasks on it go
+/// on while `step` waits: a fetch started with `io.async`, which wakes
+/// the UI (`Ui.waker`) when it is done.
 pub const App = struct {
     gpa: std.mem.Allocator,
+    io: std.Io,
     win: window_mod.Window,
     /// Whether `close` closes `win` (it was opened by `open`).
     owns_window: bool = false,
@@ -1507,11 +1543,11 @@ pub const App = struct {
     /// that say (macOS): the theme follows it when it changes.
     system_dark: ?bool = null,
     dirty: bool = true,
-    /// The image loader's fd, and the `Waker`s', once the window wakes
-    /// for them.
-    watched_fd: ?sys.fd_t = null,
-    watched_wake_fd: ?sys.fd_t = null,
-    watched_a11y_fd: ?sys.fd_t = null,
+    /// Whether the window waits on the image loader, the `Waker`s, and the
+    /// accessibility bus.
+    watching_images: bool = false,
+    watching_wake: bool = false,
+    watching_a11y: bool = false,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1542,9 +1578,9 @@ pub const App = struct {
 
     /// Opens a window of the system's (connecting to the Wayland compositor
     /// in `environ`, on Linux; AppKit's, on macOS) and makes an app in it
-    /// (see `openIn`).
-    pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*App {
-        const win = try window_mod.NativeWindow.open(gpa, environ, .{
+    /// (see `openIn`), both doing their I/O through `io`.
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*App {
+        const win = try window_mod.NativeWindow.open(gpa, io, environ, .{
             .title = options.title,
             .app_id = options.app_id,
             .size = options.size,
@@ -1552,7 +1588,7 @@ pub const App = struct {
             .maximized = options.maximized,
         });
         errdefer win.close();
-        const a = try openIn(gpa, win, options);
+        const a = try openIn(gpa, io, win, options);
         a.owns_window = true;
         a.ui.enableAccessibility(environ);
         return a;
@@ -1561,21 +1597,23 @@ pub const App = struct {
     /// Makes an app in `win` (a `window.Window`, or a pointer to a window
     /// `Window.of` takes), which stays the caller's to close after the
     /// app. Of `options`, only `min_size`, `font_data` and `clear_color`
-    /// apply: the window is already open.
-    pub fn openIn(gpa: std.mem.Allocator, win: anytype, options: Options) !*App {
+    /// apply: the window is already open. The app does its I/O through
+    /// `io` (the window, through its own).
+    pub fn openIn(gpa: std.mem.Allocator, io: std.Io, win: anytype, options: Options) !*App {
         const w = window_mod.Window.from(win);
-        const ui = if (options.font_data) |data| try Ui.createWithFontData(gpa, data) else try Ui.createDefault(gpa);
+        const ui = if (options.font_data) |data| try Ui.createWithFontData(gpa, io, data) else try Ui.createDefault(gpa, io);
         errdefer ui.destroy();
         const a = try gpa.create(App);
         a.* = .{
             .gpa = gpa,
+            .io = io,
             .win = w,
             .controls = .init(w),
             .ui = ui,
             .clear_color = options.clear_color,
-            .appearance = theme_mod.loadSettings(),
+            .appearance = theme_mod.loadSettings(io),
         };
-        _ = a.theme_watch.changed();
+        _ = a.theme_watch.changed(io);
         _ = a.followSystem();
         ui.theme = a.appearance.theme.scheme();
         ui.min_size_floor = options.min_size orelse .{ 0, 0 };
@@ -1605,7 +1643,7 @@ pub const App = struct {
     pub fn setTheme(a: *App, mode: theme_mod.Mode) void {
         a.appearance.theme = mode;
         a.ui.theme = mode.scheme();
-        _ = a.theme_watch.changed();
+        _ = a.theme_watch.changed(a.io);
         a.dirty = true;
     }
 
@@ -1616,19 +1654,22 @@ pub const App = struct {
     ///
     /// A frame is drawn only once the window has shown the last one, so
     /// that it is drawn for the time it will be shown, not a frame early.
+    ///
+    /// It waits through the app's `std.Io`, so other tasks on it go on
+    /// meanwhile; `error.Canceled` if this task is canceled.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
         // Woken when an image is loaded, as by the window's events.
-        if (a.watched_fd == null) if (a.ui.images.wakeFd()) |fd| {
-            a.win.watchFd(fd, true);
-            a.watched_fd = fd;
+        if (!a.watching_images) if (a.ui.images.waitSource()) |src| {
+            a.win.watch(src, true);
+            a.watching_images = true;
         };
-        if (a.watched_wake_fd == null) if (a.ui.wake) |x| {
-            a.win.watchFd(x.fd(), true);
-            a.watched_wake_fd = x.fd();
+        if (!a.watching_wake) if (a.ui.wakeSource()) |src| {
+            a.win.watch(src, true);
+            a.watching_wake = true;
         };
-        if (has_atspi and a.watched_a11y_fd == null) if (a.ui.a11y) |b| {
-            a.win.watchFd(b.fd(), true);
-            a.watched_a11y_fd = b.fd();
+        if (has_atspi and !a.watching_a11y) if (a.ui.a11y) |b| {
+            a.win.watch(b.source(), true);
+            a.watching_a11y = true;
         };
         if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
@@ -1647,8 +1688,8 @@ pub const App = struct {
             a.suspended = suspended;
             if (suspended) a.win.releaseSpareBuffers() else a.dirty = true;
         }
-        if (a.theme_watch.changed()) {
-            a.appearance = theme_mod.loadSettings();
+        if (a.theme_watch.changed(a.io)) {
+            a.appearance = theme_mod.loadSettings(a.io);
             a.ui.theme = a.appearance.theme.scheme();
             a.dirty = true;
         }
@@ -1670,14 +1711,14 @@ pub const App = struct {
         return !a.suspended and (a.dirty or a.ui.needs_frame);
     }
 
-    /// Draws and shows a frame of `root`, if there is one to draw and the
-    /// window is ready for it.
+    /// Draws and shows a frame of `root` (for now, on the `Io`'s clock), if
+    /// there is one to draw and the window is ready for it.
     ///
     /// `root` is kept until the next `draw`, for the window to have drawn
     /// again while the app's loop is held by the window system (macOS,
     /// while the window is resized by its edge); what it points to must
     /// last as long.
-    pub fn draw(a: *App, now_ns: u64, root: anytype) !void {
+    pub fn draw(a: *App, root: anytype) !void {
         a.keepRoot(root);
         a.idle = true;
         if (!a.wantsFrame()) return;
@@ -1685,7 +1726,7 @@ pub const App = struct {
             if (try a.ui.presentPopups(a.win)) a.idle = false;
             return;
         }
-        try a.drawFrame(now_ns, root);
+        try a.drawFrame(a.ui.clockNs(), root);
     }
 
     fn drawFrame(a: *App, now_ns: u64, root: anytype) !void {
@@ -1704,7 +1745,7 @@ pub const App = struct {
         const T = @TypeOf(root);
         const Kept = struct {
             fn draw(app: *App, p: *anyopaque) anyerror!void {
-                try app.drawFrame(sys.monotonicNs(), @as(*const T, @ptrCast(@alignCast(p))).*);
+                try app.drawFrame(app.ui.clockNs(), @as(*const T, @ptrCast(@alignCast(p))).*);
             }
             fn free(gpa: std.mem.Allocator, p: *anyopaque) void {
                 gpa.destroy(@as(*T, @ptrCast(@alignCast(p))));

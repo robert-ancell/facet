@@ -86,12 +86,16 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     // Images are drawn in the style too (those drawn in another are
     // dropped, and drawn again).
     if (s.kind == .images) s.images.use(palette);
+    // They tell the time on the app's clock.
+    s.vector.io = cx.ui.io;
+    s.images.io = cx.ui.io;
     const source: facet.MapSource = switch (s.kind) {
         .vector => .of(&s.vector, .{ .max_level = max_zoom, .attribution = "Vector tiles made by the showcase" }),
         .images => .of(&s.images, .{ .max_level = max_zoom, .attribution = "Images drawn by the showcase" }),
     };
     // The sun now (or as many hours from now as chosen).
-    const unix = facet.window.sys.wallSeconds() + s.hours * 3600;
+    const wall: f64 = @floatFromInt(std.Io.Clock.real.now(cx.ui.io).nanoseconds);
+    const unix = wall / std.time.ns_per_s + s.hours * 3600;
     const night: ?facet.MapNight = if (s.night) .{ .sun = facet.subsolarPoint(unix) } else null;
     const c = s.camera.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
@@ -406,6 +410,7 @@ fn Cache(comptime Entry: type) type {
 /// The tiles as vector tiles.
 const VectorTiles = struct {
     cache: Cache(Shapes) = .{},
+    io: std.Io = undefined,
 
     const Shapes = struct {
         arena: std.heap.ArenaAllocator,
@@ -419,7 +424,7 @@ const VectorTiles = struct {
     };
 
     pub fn tile(s: *VectorTiles, req: facet.MapSource.Request) facet.MapTile {
-        const now = facet.window.nowNs();
+        const now = facet.window.nowNs(s.io);
         if (s.cache.get(req.id, now)) |e| return .{ .vector = &e.tile };
         const e = gpa.create(Shapes) catch return .none;
         e.* = .{ .arena = .init(gpa), .tile = undefined, .used_ns = now };
@@ -440,6 +445,7 @@ const VectorTiles = struct {
 /// software renderer, for a few milliseconds a frame (the rest wait).
 const ImageTiles = struct {
     cache: Cache(Picture) = .{},
+    io: std.Io = undefined,
     drawing: ?Drawing = null,
     /// The style they are drawn in (its layers `gpa`'s), and its colours.
     style: ?facet.MapStyle = null,
@@ -482,7 +488,7 @@ const ImageTiles = struct {
     }
 
     pub fn tile(p: *ImageTiles, req: facet.MapSource.Request) facet.MapTile {
-        const now = facet.window.nowNs();
+        const now = facet.window.nowNs(p.io);
         if (p.cache.get(req.id, now)) |e| return .{ .image = .{ .image = &e.image } };
         if (now -| p.window_ns > 12 * std.time.ns_per_ms) {
             p.window_ns = now;
@@ -492,7 +498,7 @@ const ImageTiles = struct {
             req.waker.wake();
             return .pending;
         }
-        defer p.spent_ns += facet.window.nowNs() -| now;
+        defer p.spent_ns += facet.window.nowNs(p.io) -| now;
         const e = p.draw(req.id, now) catch return .none;
         p.cache.put(req.id, e, now);
         return .{ .image = .{ .image = &e.image } };

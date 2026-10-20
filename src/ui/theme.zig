@@ -2,7 +2,6 @@
 //! text sizes, and persistent appearance settings.
 
 const std = @import("std");
-const sys = @import("window").sys;
 const gfx = @import("gfx");
 
 const Color = gfx.Color;
@@ -61,40 +60,45 @@ pub const Settings = struct {
     }
 };
 
-pub fn loadSettings() Settings {
-    return loadSettingsFrom(settings_file);
+/// The settings in `settings_file` (read through `io`), or the defaults.
+pub fn loadSettings(io: std.Io) Settings {
+    return loadSettingsFrom(io, settings_file);
 }
 
-pub fn loadSettingsFrom(path: [:0]const u8) Settings {
+pub fn loadSettingsFrom(io: std.Io, path: []const u8) Settings {
     var buf: [128]u8 = undefined;
-    const fd = sys.openRead(path.ptr) orelse return .{};
-    defer sys.close(fd);
-    const n = sys.read(fd, &buf) catch return .{};
-    return Settings.parse(buf[0..n]);
+    const text = std.Io.Dir.cwd().readFile(io, path, &buf) catch return .{};
+    return Settings.parse(text);
 }
 
-pub fn saveSettings(s: Settings) void {
-    sys.mkdir("/data/apps", 0o755);
-    saveSettingsTo(settings_file, s);
+pub fn saveSettings(io: std.Io, s: Settings) void {
+    std.Io.Dir.cwd().createDirPath(io, std.fs.path.dirname(settings_file).?) catch {};
+    saveSettingsTo(io, settings_file, s);
 }
 
-pub fn saveSettingsTo(path: [:0]const u8, s: Settings) void {
+pub fn saveSettingsTo(io: std.Io, path: []const u8, s: Settings) void {
     var buf: [128]u8 = undefined;
     const content = s.formatBuf(&buf);
     if (content.len == 0) return;
-    _ = sys.writeFile(path.ptr, content);
+    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = content }) catch {};
 }
 
 /// Notices `path` (defaulting to `settings_file`) being created, replaced, or
-/// modified.
+/// modified (looked at through `io`).
 pub const Watch = struct {
-    path: [*:0]const u8 = settings_file,
-    stamp: ?[4]u64 = null,
+    path: []const u8 = settings_file,
+    stamp: ?Stamp = null,
     initialized: bool = false,
 
+    /// What tells one version of the file from another.
+    const Stamp = struct { inode: std.Io.File.INode, size: u64, mtime: i96 };
+
     /// Whether `path` changed since the last call (false on the first call).
-    pub fn changed(w: *Watch) bool {
-        const now = sys.fileStamp(w.path);
+    pub fn changed(w: *Watch, io: std.Io) bool {
+        const now: ?Stamp = if (std.Io.Dir.cwd().statFile(io, w.path, .{})) |st|
+            .{ .inode = st.inode, .size = st.size, .mtime = st.mtime.nanoseconds }
+        else |_|
+            null;
         defer {
             w.stamp = now;
             w.initialized = true;
@@ -103,7 +107,7 @@ pub const Watch = struct {
         if (w.stamp == null and now == null) return false;
         const before = w.stamp orelse return true;
         const after = now orelse return true;
-        return !std.mem.eql(u64, &before, &after);
+        return !std.meta.eql(before, after);
     }
 };
 
@@ -243,21 +247,25 @@ test "appearance settings parse, format, save and load" {
     try testing.expectEqual(Mode.dark, Settings.parse("theme dark\n").theme);
     try testing.expectEqual(Mode.dark, Settings.parse("theme invalid\n").theme);
 
-    var path_buf: [64]u8 = undefined;
-    const path = try std.mem.printSentinel(&path_buf, "/tmp/facet-appearance-test-{d}", .{sys.getpid()}, 0);
-    defer sys.unlink(path);
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const root = dir_buf[0..try tmp.dir.realPathFile(io, ".", &dir_buf)];
+    var path_buf: [std.fs.max_path_bytes + 32]u8 = undefined;
+    const path = try std.fmt.bufPrint(&path_buf, "{s}/appearance", .{root});
 
     var watch: Watch = .{ .path = path };
-    try testing.expect(!watch.changed());
-    try testing.expectEqual(Mode.dark, loadSettingsFrom(path).theme);
+    try testing.expect(!watch.changed(io));
+    try testing.expectEqual(Mode.dark, loadSettingsFrom(io, path).theme);
 
-    saveSettingsTo(path, .{ .theme = .light });
-    try testing.expect(watch.changed());
-    try testing.expect(!watch.changed());
-    try testing.expectEqual(Mode.light, loadSettingsFrom(path).theme);
+    saveSettingsTo(io, path, .{ .theme = .light });
+    try testing.expect(watch.changed(io));
+    try testing.expect(!watch.changed(io));
+    try testing.expectEqual(Mode.light, loadSettingsFrom(io, path).theme);
 
-    sys.sleepNs(20 * std.time.ns_per_ms);
-    saveSettingsTo(path, .{ .theme = .dark });
-    try testing.expect(watch.changed());
-    try testing.expectEqual(Mode.dark, loadSettingsFrom(path).theme);
+    try io.sleep(.fromMilliseconds(20), .awake);
+    saveSettingsTo(io, path, .{ .theme = .dark });
+    try testing.expect(watch.changed(io));
+    try testing.expectEqual(Mode.dark, loadSettingsFrom(io, path).theme);
 }

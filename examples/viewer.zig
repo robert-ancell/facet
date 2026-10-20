@@ -364,7 +364,7 @@ pub fn Viewer(comptime Backend: type) type {
 
 /// Runs the viewer in a window titled `title`.
 pub fn run(init: std.process.Init, title: []const u8, root: anytype) !void {
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = title,
         .size = .{ 920, 660 },
     });
@@ -372,6 +372,6 @@ pub fn run(init: std.process.Init, title: []const u8, root: anytype) !void {
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), root);
+        try app.draw(root);
     }
 }

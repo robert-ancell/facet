@@ -827,7 +827,7 @@ test "lines wrap between words, or within one too long" {
 test "typing into a text area, moving up and down, and copying" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     var d = try Document.init(testing.allocator, "first line\nsecond line");

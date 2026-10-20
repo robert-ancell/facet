@@ -185,6 +185,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "lists", .source = "examples/lists_and_drag.zig", .desc = "Run the 500-item grid and drag-and-drop example" },
         .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted code editor example" },
         .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the animated wave viewer and QR code generator example" },
+        .{ .name = "fetch", .source = "examples/fetch.zig", .desc = "Run the example fetching over HTTP in the background on the app's std.Io" },
         .{ .name = "opengl", .source = "examples/opengl.zig", .desc = "Run the OpenGL 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_gl_spv },
         .{ .name = "vulkan", .source = "examples/vulkan.zig", .desc = "Run the Vulkan 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_vk_spv },
         .{ .name = "metal", .source = "examples/metal.zig", .desc = "Run the Metal 3D Platonic solid viewer example (macOS)" },

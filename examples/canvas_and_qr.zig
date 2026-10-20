@@ -151,7 +151,7 @@ pub const CanvasAndQrDemo = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = "Facet Canvas & QR",
         .size = .{ 740, 460 },
     });
@@ -159,6 +159,6 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), CanvasAndQrDemo{});
+        try app.draw(CanvasAndQrDemo{});
     }
 }

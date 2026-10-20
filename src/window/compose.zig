@@ -8,7 +8,6 @@
 //! A sequence that goes nowhere types nothing, as with xkbcommon.
 
 const std = @import("std");
-const sys = @import("sys.zig");
 const xkb = @import("xkb.zig");
 
 pub const multi_key: u32 = 0xff20;
@@ -39,9 +38,10 @@ pub const Table = struct {
     };
 
     /// The user's sequences, from their Compose file or the locale's (see
-    /// `Env`); null if none can be read.
-    pub fn load(gpa: std.mem.Allocator, env: Env) ?Table {
+    /// `Env`, read through `io`); null if none can be read.
+    pub fn load(gpa: std.mem.Allocator, io: std.Io, env: Env) ?Table {
         var b: Builder = .init(gpa, env);
+        b.io = io;
         const user_files = [_]?[]const u8{
             env.xcomposefile,
             if (env.xdg_config_home) |d| b.join(&.{ d, "/XCompose" }) else if (env.home) |h| b.join(&.{ h, "/.config/XCompose" }) else null,
@@ -159,6 +159,8 @@ pub const State = struct {
 const Builder = struct {
     arena: std.heap.ArenaAllocator,
     env: Env,
+    /// What files are read through (none: only text given is parsed).
+    io: ?std.Io = null,
     nodes: std.ArrayList(Table.Node) = .empty,
 
     fn init(gpa: std.mem.Allocator, env: Env) Builder {
@@ -167,6 +169,10 @@ const Builder = struct {
 
     fn a(b: *Builder) std.mem.Allocator {
         return b.arena.allocator();
+    }
+
+    fn readFile(b: *Builder, path: []const u8) ?[]u8 {
+        return readFileWith(b.io, b.a(), path);
     }
 
     fn finish(b: *Builder) !Table {
@@ -180,7 +186,7 @@ const Builder = struct {
 
     /// Reads a Compose file's sequences; false if it cannot be read.
     fn file(b: *Builder, path: []const u8, depth: usize) bool {
-        const data = readFile(b.a(), path) orelse return false;
+        const data = b.readFile(path) orelse return false;
         b.text(data, depth);
         return true;
     }
@@ -286,10 +292,10 @@ const Builder = struct {
     fn localeFile(b: *Builder) ?[]const u8 {
         const dir = b.env.localedir;
         var name = b.env.locale orelse "C";
-        if (b.join(&.{ dir, "/locale.alias" })) |alias_path| if (readFile(b.a(), alias_path)) |aliases| {
+        if (b.join(&.{ dir, "/locale.alias" })) |alias_path| if (b.readFile(alias_path)) |aliases| {
             if (lookup(aliases, name, .second)) |n| name = n;
         };
-        const compose_dir = readFile(b.a(), b.join(&.{ dir, "/compose.dir" }) orelse return null) orelse return null;
+        const compose_dir = b.readFile(b.join(&.{ dir, "/compose.dir" }) orelse return null) orelse return null;
         const rel = lookup(compose_dir, name, .first) orelse return null;
         return b.join(&.{ dir, "/", rel });
     }
@@ -359,8 +365,8 @@ fn quoted(a: std.mem.Allocator, s: []const u8) ?struct { text: []const u8, len: 
     return null;
 }
 
-fn readFile(a: std.mem.Allocator, path: []const u8) ?[]u8 {
-    return sys.readFile(a, path, 8 << 20);
+fn readFileWith(io: ?std.Io, a: std.mem.Allocator, path: []const u8) ?[]u8 {
+    return std.Io.Dir.cwd().readFileAlloc(io orelse return null, path, a, .limited(8 << 20)) catch null;
 }
 
 const testing = std.testing;
@@ -476,13 +482,13 @@ test "the Compose file is found as xkbcommon finds it" {
     defer testing.allocator.free(user);
 
     // The locale's file, by its alias.
-    var t = Table.load(testing.allocator, .{ .locale = "en_US.utf8", .localedir = localedir }).?;
+    var t = Table.load(testing.allocator, testing.io, .{ .locale = "en_US.utf8", .localedir = localedir }).?;
     var s: State = .{};
     _ = s.feed(&t, ks("dead_acute"));
     try testing.expectEqualStrings("é", s.feed(&t, ks("e")).composed.text);
     t.deinit();
     // The user's, which includes the locale's.
-    t = Table.load(testing.allocator, .{ .xcomposefile = user, .locale = "en_US.UTF-8", .localedir = localedir }).?;
+    t = Table.load(testing.allocator, testing.io, .{ .xcomposefile = user, .locale = "en_US.UTF-8", .localedir = localedir }).?;
     _ = s.feed(&t, multi_key);
     _ = s.feed(&t, ks("h"));
     try testing.expectEqualStrings("hi", s.feed(&t, ks("i")).composed.text);
@@ -490,5 +496,5 @@ test "the Compose file is found as xkbcommon finds it" {
     try testing.expectEqualStrings("é", s.feed(&t, ks("e")).composed.text);
     t.deinit();
     // A locale with no Compose file, and no user file: none.
-    try testing.expect(Table.load(testing.allocator, .{ .locale = "xx_XX.UTF-8", .localedir = localedir }) == null);
+    try testing.expect(Table.load(testing.allocator, testing.io, .{ .locale = "xx_XX.UTF-8", .localedir = localedir }) == null);
 }

@@ -156,7 +156,7 @@ test "the title bar's buttons, and dragging it" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         closed: bool = false,
@@ -210,7 +210,7 @@ test "double clicking the title bar toggles maximize, instead of dragging" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         drags: u32 = 0,
@@ -260,7 +260,7 @@ test "a fullscreen window has no title bar" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     var closed = false;
     const Root = struct {
@@ -295,7 +295,7 @@ test "the title bar defaults to the UI's window controls" {
     const Ui = @import("runtime.zig").Ui;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     var controls: Controls = .{ .win = undefined };
     u.controls = &controls;
@@ -319,7 +319,7 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     const window_mod = @import("window");
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
 
     const MockWaylandWin = struct {
@@ -374,7 +374,7 @@ fn findText(n: *Node) ?*Node {
 test "a long title ends in an ellipsis before the buttons, and the bar sets the window's minimum width" {
     const Ui = @import("runtime.zig").Ui;
     const window_mod = @import("window");
-    const u = try Ui.createDefault(testing.allocator);
+    const u = try Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
     const MockWin = struct {
@@ -433,7 +433,7 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
 test "a window that cannot be minimized has no minimize button" {
     const Ui = @import("runtime.zig").Ui;
     const window_mod = @import("window");
-    const u = try Ui.createDefault(testing.allocator);
+    const u = try Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const MockWin = struct {
         pub const platform: window_mod.Platform = .wayland;

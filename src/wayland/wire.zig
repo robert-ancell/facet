@@ -7,12 +7,16 @@
 //! and object IDs. File descriptors travel separately, as SCM_RIGHTS
 //! ancillary data, in the order their messages use them.
 //!
+//! What would block is done through the `std.Io` it is given: sending, and
+//! reading when waiting (`readOperation`, for a `std.Io.Batch`, or
+//! `readWait`). `read` takes what has come without waiting.
+//!
 //! Reference: https://wayland.freedesktop.org/docs/html/ch04.html
 
 const std = @import("std");
 const linux = std.os.linux;
 
-pub const Error = error{ Closed, WouldBlock, ProtocolError, BufferFull, TooManyFds, SystemError };
+pub const Error = error{ Closed, WouldBlock, ProtocolError, BufferFull, TooManyFds, SystemError, Canceled };
 
 pub const max_message_size = 4096;
 const max_fds_per_message = 28;
@@ -26,6 +30,7 @@ pub const Message = struct {
 
 /// A connection's buffered input and output, including file descriptors.
 pub const Connection = struct {
+    io: std.Io,
     fd: linux.fd_t,
     in: [4 * max_message_size]u8 = undefined,
     in_start: usize = 0,
@@ -37,9 +42,12 @@ pub const Connection = struct {
     out_len: usize = 0,
     out_fds: [max_fds_per_message]linux.fd_t = undefined,
     out_fds_len: usize = 0,
+    /// What a read through `io` reads into, besides `in`.
+    in_control: [cmsgSpace(max_fds_per_message)]u8 align(@alignOf(linux.cmsghdr)) = undefined,
+    in_vec: [1][]u8 = undefined,
 
-    pub fn init(fd: linux.fd_t) Connection {
-        return .{ .fd = fd };
+    pub fn init(io: std.Io, fd: linux.fd_t) Connection {
+        return .{ .io = io, .fd = fd };
     }
 
     /// Closes the socket and any file descriptors received but not taken.
@@ -49,10 +57,9 @@ pub const Connection = struct {
         _ = linux.close(c.fd);
     }
 
-    /// Reads what the socket has without blocking. Returns the number of
-    /// bytes read (0 with error.WouldBlock if there was nothing).
-    pub fn read(c: *Connection) Error!usize {
-        // Keep the unprocessed bytes and file descriptors at the front.
+    /// Makes room for what comes next, keeping the unprocessed bytes and
+    /// file descriptors at the front.
+    fn compact(c: *Connection) Error!void {
         if (c.in_start > 0) {
             std.mem.copyForwards(u8, &c.in, c.in[c.in_start..c.in_end]);
             c.in_end -= c.in_start;
@@ -64,6 +71,39 @@ pub const Connection = struct {
             c.in_fds_start = 0;
         }
         if (c.in_end == c.in.len) return error.BufferFull;
+    }
+
+    /// The read to wait for what comes next, through `io` (in a
+    /// `std.Io.Batch`, say): give `readDone` its result.
+    pub fn readOperation(c: *Connection) Error!std.Io.Operation {
+        try c.compact();
+        c.in_vec = .{c.in[c.in_end..]};
+        return .{ .net_read = .{ .socket_handle = c.fd, .data = &c.in_vec, .control = &c.in_control } };
+    }
+
+    /// Takes what a `readOperation` read: the number of bytes.
+    pub fn readDone(c: *Connection, result: std.Io.Operation.Result) Error!usize {
+        const got = result.net_read catch |e| return switch (e) {
+            error.ConnectionResetByPeer, error.SocketUnconnected => error.Closed,
+            else => error.SystemError,
+        };
+        c.takeControl(c.in_control[0..got.control_len]);
+        if (got.data_len == 0) return error.Closed;
+        c.in_end += got.data_len;
+        return got.data_len;
+    }
+
+    /// Waits through `io` for what comes next, and reads it.
+    pub fn readWait(c: *Connection) Error!usize {
+        const op = try c.readOperation();
+        const result = c.io.operate(op) catch return error.Canceled;
+        return c.readDone(result);
+    }
+
+    /// Reads what the socket has without blocking. Returns the number of
+    /// bytes read (0 with error.WouldBlock if there was nothing).
+    pub fn read(c: *Connection) Error!usize {
+        try c.compact();
         var iov = [_]std.posix.iovec{.{ .base = c.in[c.in_end..].ptr, .len = c.in.len - c.in_end }};
         var control: [cmsgSpace(max_fds_per_message)]u8 align(@alignOf(linux.cmsghdr)) = undefined;
         var msg: linux.msghdr = .{
@@ -83,9 +123,16 @@ pub const Connection = struct {
             .CONNRESET, .PIPE => return error.Closed,
             else => return error.SystemError,
         }
-        // File descriptors.
+        c.takeControl(control[0..msg.controllen]);
+        if (rc == 0) return error.Closed;
+        c.in_end += rc;
+        return rc;
+    }
+
+    /// Keeps the file descriptors in received control data.
+    fn takeControl(c: *Connection, control: []align(@alignOf(linux.cmsghdr)) const u8) void {
         var at: usize = 0;
-        while (at + @sizeOf(linux.cmsghdr) <= msg.controllen) {
+        while (at + @sizeOf(linux.cmsghdr) <= control.len) {
             const hdr: *const linux.cmsghdr = @ptrCast(@alignCast(&control[at]));
             if (hdr.len < @sizeOf(linux.cmsghdr)) break;
             if (hdr.level == linux.SOL.SOCKET and hdr.type == linux.SCM.RIGHTS) {
@@ -103,9 +150,6 @@ pub const Connection = struct {
             }
             at += cmsgAlign(hdr.len);
         }
-        if (rc == 0) return error.Closed;
-        c.in_end += rc;
-        return rc;
     }
 
     /// The next complete message, if one has arrived.
@@ -143,10 +187,10 @@ pub const Connection = struct {
         return .{ .c = c, .start = start, .opcode = opcode };
     }
 
-    /// Sends everything buffered, waiting for the socket if it is full.
+    /// Sends everything buffered (through `io`, which waits if the socket
+    /// is full).
     pub fn flush(c: *Connection) Error!void {
         while (c.out_len > 0 or c.out_fds_len > 0) {
-            const iov = [_]std.posix.iovec_const{.{ .base = &c.out, .len = c.out_len }};
             var control: [cmsgSpace(max_fds_per_message)]u8 align(@alignOf(linux.cmsghdr)) = undefined;
             var control_len: usize = 0;
             if (c.out_fds_len > 0) {
@@ -156,27 +200,12 @@ pub const Connection = struct {
                     std.mem.writeInt(i32, control[cmsgAlign(@sizeOf(linux.cmsghdr)) + i * 4 ..][0..4], fd, .little);
                 control_len = cmsgSpace(c.out_fds_len);
             }
-            const msg: linux.msghdr_const = .{
-                .name = null,
-                .namelen = 0,
-                .iov = &iov,
-                .iovlen = 1,
-                .control = if (control_len > 0) &control else null,
-                .controllen = control_len,
-                .flags = 0,
+            const data = [_][]const u8{c.out[0..c.out_len]};
+            const result = c.io.operate(.{ .net_write = .{ .socket_handle = c.fd, .data = &data, .control = control[0..control_len] } }) catch return error.Canceled;
+            const rc = result.net_write catch |e| return switch (e) {
+                error.ConnectionResetByPeer, error.SocketUnconnected => error.Closed,
+                else => error.SystemError,
             };
-            const rc = linux.sendmsg(c.fd, &msg, linux.MSG.NOSIGNAL);
-            switch (linux.errno(rc)) {
-                .SUCCESS => {},
-                .INTR => continue,
-                .AGAIN => {
-                    var fds = [_]linux.pollfd{.{ .fd = c.fd, .events = linux.POLL.OUT, .revents = 0 }};
-                    _ = linux.poll(&fds, 1, 1000);
-                    continue;
-                },
-                .PIPE, .CONNRESET => return error.Closed,
-                else => return error.SystemError,
-            }
             // The kernel has duplicated the descriptors we sent.
             for (c.out_fds[0..c.out_fds_len]) |fd| _ = linux.close(fd);
             c.out_fds_len = 0;
@@ -321,11 +350,11 @@ test "messages and file descriptors round trip" {
     const fds = try socketPair();
     const a = try testing.allocator.create(Connection);
     defer testing.allocator.destroy(a);
-    a.* = .init(fds[0]);
+    a.* = .init(testing.io, fds[0]);
     defer a.deinit();
     const b = try testing.allocator.create(Connection);
     defer testing.allocator.destroy(b);
-    b.* = .init(fds[1]);
+    b.* = .init(testing.io, fds[1]);
     defer b.deinit();
 
     var pipe: [2]linux.fd_t = undefined;
@@ -338,7 +367,8 @@ test "messages and file descriptors round trip" {
     m2.end();
     try a.flush();
 
-    _ = try b.read();
+    // Waited for through `io`, file descriptor and all.
+    _ = try b.readWait();
     const msg = (try b.next()).?;
     try testing.expectEqual(@as(u32, 7), msg.object);
     try testing.expectEqual(@as(u16, 3), msg.opcode);
@@ -367,7 +397,7 @@ test "messages and file descriptors round trip" {
 test "partial messages wait for the rest" {
     if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const fds = try socketPair();
-    var b: Connection = .init(fds[1]);
+    var b: Connection = .init(testing.io, fds[1]);
     defer b.deinit();
     defer _ = linux.close(fds[0]);
     // A 12-byte message sent in two parts.
@@ -384,7 +414,7 @@ test "partial messages wait for the rest" {
 test "bad sizes are protocol errors, and a closed peer is reported" {
     if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const fds = try socketPair();
-    var b: Connection = .init(fds[1]);
+    var b: Connection = .init(testing.io, fds[1]);
     defer b.deinit();
     _ = linux.write(fds[0], &[_]u8{ 1, 0, 0, 0, 0, 0, 6, 0 }, 8);
     _ = try b.read();

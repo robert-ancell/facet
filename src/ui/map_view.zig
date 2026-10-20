@@ -22,7 +22,6 @@ const keymap = @import("keymap.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
-const window_mod = @import("window");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
@@ -204,7 +203,7 @@ pub const MapView = struct {
                     return true;
                 }
                 st.grab = View.init(cam.*, size(n), self.projection).unproject(at);
-                st.trail[0] = .{ .pos = at, .ns = window_mod.nowNs() };
+                st.trail[0] = .{ .pos = at, .ns = n.ui.clockNs() };
                 st.trail_len = 1;
                 n.ui.needs_frame = true;
                 return true;
@@ -217,14 +216,14 @@ pub const MapView = struct {
                     std.mem.copyForwards(@TypeOf(st.trail[0]), st.trail[0 .. st.trail.len - 1], st.trail[1..]);
                     st.trail_len -= 1;
                 }
-                st.trail[st.trail_len] = .{ .pos = at, .ns = window_mod.nowNs() };
+                st.trail[st.trail_len] = .{ .pos = at, .ns = n.ui.clockNs() };
                 st.trail_len += 1;
                 return true;
             },
             .release => {
                 if (st.grab == null) return false;
                 st.grab = null;
-                st.velocity = flingSpeed(st);
+                st.velocity = flingSpeed(st, n.ui.clockNs());
                 st.last_ns = n.ui.now_ns;
                 n.ui.needs_frame = true;
                 return true;
@@ -250,11 +249,10 @@ pub const MapView = struct {
     /// How fast the pointer was going when let go, in pixels a second:
     /// over its last moves, if it was still moving (none if it stopped, or
     /// moved too quickly to tell).
-    fn flingSpeed(st: *const State) [2]f64 {
+    fn flingSpeed(st: *const State, now: u64) [2]f64 {
         if (st.trail_len < 2) return .{ 0, 0 };
         const last = st.trail[st.trail_len - 1];
         const first = st.trail[0];
-        const now = window_mod.nowNs();
         if (now -| last.ns > 80 * std.time.ns_per_ms) return .{ 0, 0 };
         const dt = @as(f64, @floatFromInt(last.ns -| first.ns)) / std.time.ns_per_s;
         if (dt < 0.008) return .{ 0, 0 };

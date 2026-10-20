@@ -698,7 +698,7 @@ const testing = std.testing;
 test "typing into a text field" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     const Sink = struct {
@@ -761,7 +761,7 @@ test "typing into a text field" {
 test "selecting, copying, cutting and pasting, with keys and the menu" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     // The system's clipboard, as the app gives it.
@@ -948,7 +948,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
 
 test "without the system's clipboard, text is copied within the app" {
     const Ui = @import("runtime.zig").Ui;
-    const u = try Ui.create(testing.allocator, null);
+    const u = try Ui.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Got = struct {
         text: [8]u8 = undefined,
@@ -975,7 +975,7 @@ test "without the system's clipboard, text is copied within the app" {
 
 test "a paste for a widget that has gone goes nowhere" {
     const Ui = @import("runtime.zig").Ui;
-    const u = try Ui.create(testing.allocator, null);
+    const u = try Ui.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Never = struct {
         sink: ?@import("runtime.zig").Clipboard.Sink = null,
@@ -1003,7 +1003,7 @@ test "a paste for a widget that has gone goes nowhere" {
 test "a field asked for takes the keyboard by itself, once" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     var text: [64]u8 = undefined;
@@ -1038,7 +1038,7 @@ test "a field asked for takes the keyboard by itself, once" {
 test "a UK keyboard types £ and €, and characters are edited whole" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.gb_ru);
     var text: [64]u8 = undefined;
@@ -1097,7 +1097,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
 test "a password field has a visibility toggle button on the right hand side" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
@@ -1171,7 +1171,7 @@ test "initial text and max_len never split a multi-byte UTF-8 character" {
 test "double click selects current word, triple click selects all, and selection is clipped to field bounds" {
     const Ui = @import("runtime.zig").Ui;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, &f);
+    const u = try Ui.create(testing.allocator, testing.io, &f);
     defer u.destroy();
 
     const App = struct {

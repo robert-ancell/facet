@@ -206,7 +206,7 @@ pub const Showcase = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.minimal.environ, .{
+    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
         .title = "Facet Showcase",
         .app_id = "facet-showcase",
         .size = .{ 1120, 760 },
@@ -221,13 +221,13 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(60 * std.time.ns_per_s)) {
         app.takeInput();
-        try app.draw(facet.window.nowNs(), Showcase{ .notes = &notes, .code = &code });
+        try app.draw(Showcase{ .notes = &notes, .code = &code });
     }
 }
 
 test "every page fits the smallest window and lays out without overflowing, at it and a large size, in both themes" {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.Ui.create(std.testing.allocator, &fira);
+    const u = try facet.Ui.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
@@ -272,7 +272,7 @@ test {
 
 test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.Ui.create(std.testing.allocator, &fira);
+    const u = try facet.Ui.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.software_renderer.renderer(), false);
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
