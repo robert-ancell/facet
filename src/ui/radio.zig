@@ -43,7 +43,7 @@ pub fn Radio(comptime T: type) type {
         };
 
         pub fn accessible(self: *const Self, n: *Node) ?a11y.Info {
-            return .{ .role = .radio, .label = self.label, .checked = .of(std.meta.eql(self.value, self.group_value)), .action = "select", .activate = a11y.callWith(n, T, self.on_changed, self.value), .disabled = self.on_changed == null, .children_presentational = true };
+            return .{ .role = .radio, .label = self.label, .checked = .of(std.meta.eql(self.value, self.group_value)), .activate = a11y.callWith(n, T, self.on_changed, self.value), .disabled = self.on_changed == null };
         }
 
         pub fn build(self: *const Self, cx: *Context, state: *State) Widget {

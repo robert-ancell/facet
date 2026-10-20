@@ -356,11 +356,11 @@ pub const TextField = struct {
             // With no label, named by its placeholder (as browsers do).
             .label = self.placeholder,
             .placeholder = self.placeholder,
-            .secret = self.obscure,
+            // A password field: ARIA has no role of its own for one.
+            .roledescription = if (self.obscure) "password" else "",
             .text = value,
             .caret = std.unicode.utf8CountCodepoints(st.text()[0..@min(st.cursor, st.text().len)]) catch null,
             .disabled = !self.enabled,
-            .children_presentational = true,
         };
     }
 

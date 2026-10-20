@@ -19,9 +19,13 @@
 //!     cx.make(ui.Accessible{ .hidden = true, .child = ... })
 //!
 //! Widgets that say nothing are left out (as role `none` is), their
-//! descendants going in the nearest object above them; those whose
-//! children are presentational (a button: its label is its name) have
-//! none of theirs reported.
+//! descendants going in the nearest object above them; those whose role
+//! ARIA says has presentational children (a button: its label is its
+//! name) have none of theirs reported.
+//!
+//! What is not ARIA's is only what ARIA leaves to the web page: what a
+//! widget holds (its text, and its caret) and what assistive
+//! technologies can do with it (press it, set its value).
 
 const std = @import("std");
 const geometry = @import("geometry.zig");
@@ -32,9 +36,7 @@ const Widget = widget.Widget;
 const Callback = widget.Callback;
 const Rect = geometry.Rect;
 
-/// What an object is: WAI-ARIA 1.2's roles (the concrete ones), and, where
-/// ARIA has none for what a native app has, a few of facet's own (as GTK
-/// has): `label` (text that names or tells, not a paragraph), `window`.
+/// What an object is: WAI-ARIA 1.2's roles (the concrete ones).
 pub const Role = enum {
     alert,
     alertdialog,
@@ -118,9 +120,15 @@ pub const Role = enum {
     tree,
     treegrid,
     treeitem,
-    // Facet's own.
-    label,
-    window,
+
+    /// Whether ARIA says the role's children are presentational: part of
+    /// it (its name comes from them), not objects of their own.
+    pub fn childrenPresentational(r: Role) bool {
+        return switch (r) {
+            .button, .checkbox, .img, .math, .menuitemcheckbox, .menuitemradio, .meter, .option, .progressbar, .radio, .scrollbar, .separator, .slider, .@"switch", .tab => true,
+            else => false,
+        };
+    }
 };
 
 /// ARIA's tristate (`aria-checked`, `aria-pressed`).
@@ -192,25 +200,16 @@ pub const Info = struct {
     valuemin: ?f64 = null,
     valuemax: ?f64 = null,
     valuetext: []const u8 = "",
-    // Facet's own.
-    /// The smallest step its value moves by (as HTML's `step`; 0: any).
-    valuestep: f64 = 0,
-    /// Sets its value (as a slider is moved).
-    set_value: ?ValueSetter = null,
-    /// The text it shows or holds (a label's, a field's), and where its
-    /// caret is in it (in characters).
+
+    // Not ARIA's (on the web, the page gives these):
+    /// The text it shows or holds (a paragraph's, a text box's), and
+    /// where its caret is in it (in characters).
     text: ?[]const u8 = null,
     caret: ?usize = null,
-    /// Its text is hidden as it is typed (a password: HTML's
-    /// `type=password`).
-    secret: bool = false,
-    /// What its action does (pressing it, toggling it), if it has one:
-    /// the action's name ("click", "toggle"), and what it calls.
-    action: []const u8 = "click",
+    /// What pressing it does (its default action), and what setting its
+    /// value does, for assistive technologies that do so.
     activate: ?Callback = null,
-    /// ARIA's "children presentational" (a button's label is its name):
-    /// none of its descendants is reported.
-    children_presentational: bool = false,
+    set_value: ?ValueSetter = null,
 };
 
 /// Describes what is in it to assistive technologies: as an object of its
@@ -244,21 +243,17 @@ pub const Accessible = struct {
     valuemin: ?f64 = null,
     valuemax: ?f64 = null,
     valuetext: ?[]const u8 = null,
-    valuestep: ?f64 = null,
-    set_value: ?ValueSetter = null,
-    text: ?[]const u8 = null,
-    /// What its action does, and its name.
-    on_activate: ?Callback = null,
-    action: ?[]const u8 = null,
-    /// With a role: none of its descendants reported.
-    children_presentational: bool = false,
     /// Not reported, nor anything in it (`aria-hidden`).
     hidden: bool = false,
+    // Not ARIA's (as `Info`'s).
+    text: ?[]const u8 = null,
+    on_activate: ?Callback = null,
+    set_value: ?ValueSetter = null,
     child: ?Widget = null,
 
     pub fn accessible(self: *const Accessible, _: *Node) ?Info {
         const role = self.role orelse return null;
-        var info: Info = .{ .role = role, .children_presentational = self.children_presentational };
+        var info: Info = .{ .role = role };
         self.apply(&info);
         return info;
     }
@@ -266,9 +261,8 @@ pub const Accessible = struct {
     /// Puts what it says in `info`.
     fn apply(self: *const Accessible, info: *Info) void {
         inline for (@typeInfo(Accessible).@"struct".field_names) |name| {
-            if (comptime std.mem.eql(u8, name, "role") or std.mem.eql(u8, name, "children_presentational") or
-                std.mem.eql(u8, name, "hidden") or std.mem.eql(u8, name, "child") or
-                std.mem.eql(u8, name, "on_activate")) continue;
+            if (comptime std.mem.eql(u8, name, "role") or std.mem.eql(u8, name, "hidden") or
+                std.mem.eql(u8, name, "child") or std.mem.eql(u8, name, "on_activate")) continue;
             if (@field(self, name)) |v| @field(info, name) = v;
         }
         if (self.on_activate) |a| info.activate = a;
@@ -389,7 +383,8 @@ pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, ti
     var b: Builder = .{ .arena = a, .next_id = next_id, .focused = focused };
     try b.objects.append(a, .{
         .id = window_id,
-        .info = .{ .role = .window, .label = try a.dupe(u8, title) },
+        // (No ARIA role: it is the platform's window, `window_id`.)
+        .info = .{ .role = .generic, .label = try a.dupe(u8, title) },
         .focusable = true,
         .bounds = .{ .x = 0, .y = 0, .w = size[0], .h = size[1] },
         .parent = null,
@@ -448,10 +443,11 @@ const Builder = struct {
         // What takes the focus (it, or a widget it is made of), and
         // whether it has it: the deepest object the focus is in has.
         const focus = @import("focus.zig");
-        const focusable = focus.first(n) != null and (info.children_presentational or focus.takes(n));
+        const presentational = info.role.childrenPresentational();
+        const focusable = focus.first(n) != null and (presentational or focus.takes(n));
         const has_focus = if (b.focused) |f| focus.within(f, n) else false;
         // Strings kept with the tree.
-        inline for (.{ "label", "description", "roledescription", "placeholder", "keyshortcuts", "valuetext", "action" }) |name| {
+        inline for (.{ "label", "description", "roledescription", "placeholder", "keyshortcuts", "valuetext" }) |name| {
             @field(info, name) = try b.arena.dupe(u8, @field(info, name));
         }
         if (info.text) |tx| info.text = try b.arena.dupe(u8, tx);
@@ -473,7 +469,7 @@ const Builder = struct {
         try b.kids.append(b.arena, .empty);
         try b.kids.items[parent].append(b.arena, index);
         if (has_focus) b.focused_index = index;
-        if (info.children_presentational) return;
+        if (presentational) return;
         for (n.children.items) |ch| try b.walk(ch, index, .{});
     }
 };

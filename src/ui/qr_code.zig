@@ -62,7 +62,7 @@ pub const QrCode = struct {
     };
 
     pub fn accessible(self: *const QrCode, _: *widget.Node) ?a11y.Info {
-        return .{ .role = .img, .label = "QR code", .description = self.text, .children_presentational = true };
+        return .{ .role = .img, .label = "QR code", .description = self.text };
     }
 
     pub fn layout(self: *const QrCode, _: *widget.Node, c: geometry.Constraints) geometry.Size {

@@ -27,7 +27,7 @@ pub const BarButton = struct {
     };
 
     pub fn accessible(self: *const BarButton, n: *Node) ?a11y.Info {
-        return .{ .role = .button, .label = a11y.iconName(n, self.icon), .activate = self.on_press, .children_presentational = true };
+        return .{ .role = .button, .label = a11y.iconName(n, self.icon), .activate = self.on_press };
     }
 
     pub fn build(self: *const BarButton, cx: *Context, state: *State) Widget {

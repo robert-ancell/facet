@@ -173,7 +173,7 @@ pub const MapView = struct {
         // application, called a map.
         const c = self.cameraOf(n.state(State)).*;
         const where = std.fmt.allocPrint(n.ui.arena(), "{d:.4}, {d:.4}, zoom {d:.1}", .{ c.center.lat, c.center.lon, c.zoom }) catch "";
-        return .{ .role = .application, .roledescription = "map", .label = "Map", .description = where, .children_presentational = true };
+        return .{ .role = .application, .roledescription = "map", .label = "Map", .description = where };
     }
 
     pub fn layout(self: *const MapView, _: *Node, c: Constraints) Size {

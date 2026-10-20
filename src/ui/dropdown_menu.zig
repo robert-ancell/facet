@@ -61,7 +61,7 @@ pub const DropdownMenu = struct {
 
     pub fn accessible(self: *const DropdownMenu, _: *Node) ?a11y.Info {
         const shown = if (self.selected) |i| if (i < self.options.len) self.options[i] else "" else self.placeholder;
-        return .{ .role = .combobox, .label = self.label orelse "", .placeholder = self.placeholder, .haspopup = .listbox, .expanded = false, .text = shown, .children_presentational = true };
+        return .{ .role = .combobox, .label = self.label orelse "", .placeholder = self.placeholder, .haspopup = .listbox, .expanded = false, .text = shown };
     }
 
     pub fn build(self: *const DropdownMenu, cx: *Context, state: *State) Widget {

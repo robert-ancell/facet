@@ -42,7 +42,7 @@ pub const IconButton = struct {
     pub fn accessible(self: *const IconButton, n: *Node) ?a11y.Info {
         // Named by its icon, unless an `Accessible` or a tooltip names it;
         // selected, a toggle button that is pressed.
-        return .{ .role = .button, .label = a11y.iconName(n, self.icon), .pressed = if (self.selected) .true else null, .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
+        return .{ .role = .button, .label = a11y.iconName(n, self.icon), .pressed = if (self.selected) .true else null, .activate = self.on_press, .disabled = self.on_press == null };
     }
 
     pub fn build(self: *const IconButton, cx: *Context, state: *State) Widget {

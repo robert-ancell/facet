@@ -2417,7 +2417,7 @@ const A11yApp = struct {
 
     pub fn build(self: *const A11yApp, cx: *Context) Widget {
         return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .children = &.{
-            cx.make(ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .children_presentational = true, .child = cx.make(ui.Text{ .text = "Settings" }) }),
+            cx.make(ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .child = cx.make(ui.Text{ .text = "Settings" }) }),
             cx.make(ui.Text{ .text = "Hello" }),
             cx.make(ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) }),
             cx.make(ui.Checkbox{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
@@ -2446,24 +2446,26 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
         testing.allocator.destroy(tree);
     }
     const objs = tree.objects;
-    try testing.expectEqual(ui.AccessibleRole.window, objs[0].info.role);
+    try testing.expectEqual(ui.accessibility.window_id, objs[0].id);
     try testing.expectEqualStrings("Test", objs[0].info.label);
-    // The window's children, in order: the heading (its text part of it),
-    // the label, the button (its label its name), the check box, the
-    // slider, the two icon buttons (named by what describes them), and the
-    // field; the hidden text not at all.
-    const want = [_]struct { ui.AccessibleRole, []const u8 }{
-        .{ .heading, "Settings" }, .{ .label, "Hello" },  .{ .button, "OK" },
-        .{ .checkbox, "Wi-Fi" },   .{ .slider, "" },      .{ .button, "Zoom in" },
-        .{ .button, "remove" },    .{ .textbox, "Name" },
+    // The window's children, in order: the heading (its text in it), the
+    // paragraph of text, the button (its label its name, its children
+    // presentational, as ARIA has a button's), the check box, the slider,
+    // the two icon buttons (named by what describes them), and the field;
+    // the hidden text not at all.
+    const want = [_]struct { ui.AccessibleRole, []const u8, usize }{
+        .{ .heading, "Settings", 1 }, .{ .paragraph, "", 0 },   .{ .button, "OK", 0 },
+        .{ .checkbox, "Wi-Fi", 0 },   .{ .slider, "", 0 },      .{ .button, "Zoom in", 0 },
+        .{ .button, "remove", 0 },    .{ .textbox, "Name", 0 },
     };
     try testing.expectEqual(want.len, objs[0].children.len);
     for (want, objs[0].children) |w, ci| {
         try testing.expectEqual(w[0], objs[ci].info.role);
         try testing.expectEqualStrings(w[1], objs[ci].info.label);
-        try testing.expectEqual(@as(usize, 0), objs[ci].children.len);
+        try testing.expectEqual(w[2], objs[ci].children.len);
     }
-    try testing.expectEqual(want.len + 1, objs.len);
+    try testing.expectEqualStrings("Hello", objs[objs[0].children[1]].info.text.?);
+    try testing.expectEqual(want.len + 2, objs.len);
     // The tooltip describes the button it names already.
     try testing.expectEqualStrings("Remove it", objs[objs[0].children[6]].info.description);
     // States and values; actions do what pressing does.
@@ -2474,7 +2476,6 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     const slider = &objs[objs[0].children[4]];
     try testing.expectEqual(@as(f64, 3), slider.info.valuenow.?);
     try testing.expectEqual(@as(f64, 10), slider.info.valuemax.?);
-    try testing.expectEqual(@as(f64, 1), slider.info.valuestep);
     slider.info.set_value.?.call(7);
     try testing.expectEqual(@as(f32, 7), level);
     objs[objs[0].children[2]].info.activate.?.call();

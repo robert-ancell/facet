@@ -98,7 +98,7 @@ const TabItem = struct {
     };
 
     pub fn accessible(self: *const TabItem, _: *Node) ?a11y.Info {
-        return .{ .role = .tab, .label = self.tab.label, .selected = self.selected, .action = "switch", .activate = self.on_press, .children_presentational = true };
+        return .{ .role = .tab, .label = self.tab.label, .selected = self.selected, .activate = self.on_press };
     }
 
     pub fn build(self: *const TabItem, cx: *Context, state: *State) Widget {

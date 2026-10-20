@@ -420,7 +420,7 @@ pub const Bridge = struct {
                 .object => |o| {
                     // ARIA's role (as browsers give it), and its properties
                     // that are attributes in AT-SPI.
-                    if (o.id != a11y.window_id and o.info.role != .label) pair(w, "xml-roles", @tagName(o.info.role));
+                    if (o.id != a11y.window_id) pair(w, "xml-roles", @tagName(o.info.role));
                     var level_buf: [4]u8 = undefined;
                     if (o.info.level) |l| pair(w, "level", std.fmt.bufPrint(&level_buf, "{d}", .{l}) catch "");
                     pair(w, "roledescription", o.info.roledescription);
@@ -566,7 +566,7 @@ pub const Bridge = struct {
             const now = o.info.valuenow orelse return false;
             if (eq(u8, name, "MinimumValue")) return out.d(o.info.valuemin orelse 0);
             if (eq(u8, name, "MaximumValue")) return out.d(o.info.valuemax orelse 100);
-            if (eq(u8, name, "MinimumIncrement")) return out.d(o.info.valuestep);
+            if (eq(u8, name, "MinimumIncrement")) return out.d(0);
             if (eq(u8, name, "CurrentValue")) return out.d(now);
             if (eq(u8, name, "Text")) return out.s(o.info.valuetext);
             return false;
@@ -664,7 +664,7 @@ pub const Bridge = struct {
             const arr = w.beginArray(8);
             if (has) {
                 w.beginStruct();
-                w.string(o.info.action);
+                w.string(actionName(o));
                 w.string("");
                 w.string("");
             }
@@ -673,7 +673,7 @@ pub const Bridge = struct {
         }
         if (eq(u8, member, "GetName") or eq(u8, member, "GetLocalizedName")) {
             const i = try r.int32();
-            w.string(if (has and i == 0) o.info.action else "");
+            w.string(if (has and i == 0) actionName(o) else "");
             return "s";
         }
         if (eq(u8, member, "GetDescription") or eq(u8, member, "GetKeyBinding")) {
@@ -992,6 +992,8 @@ pub const AtspiRole = enum(u32) {
 
 /// The AT-SPI role of an object (with ARIA's role and properties).
 pub fn atspiRole(o: *const Object) AtspiRole {
+    // The window, which has no ARIA role: the platform's.
+    if (o.id == a11y.window_id) return .frame;
     const i = &o.info;
     return switch (i.role) {
         .alert => .notification,
@@ -1052,15 +1054,22 @@ pub fn atspiRole(o: *const Object) AtspiRole {
         .tablist => .page_tab_list,
         .tabpanel => .scroll_pane,
         .term => .description_term,
-        .textbox => if (i.secret) .password_text else .entry,
+        .textbox => .entry,
         .timer => .timer,
         .toolbar => .tool_bar,
         .tooltip => .tool_tip,
         .tree => .tree,
         .treegrid => .tree_table,
         .treeitem => .tree_item,
-        .label => .label,
-        .window => .frame,
+    };
+}
+
+/// The name of an object's action (its default action), by its role.
+fn actionName(o: *const Object) []const u8 {
+    return switch (o.info.role) {
+        .checkbox, .@"switch", .menuitemcheckbox => "toggle",
+        .radio, .menuitemradio, .tab, .option, .treeitem => "select",
+        else => "click",
     };
 }
 
@@ -1097,7 +1106,7 @@ pub fn atspiStates(o: *const Object) u64 {
     set(&bits, "sensitive", !i.disabled);
     set(&bits, "focusable", o.focusable);
     set(&bits, "focused", o.focused);
-    set(&bits, "active", i.role == .window);
+    set(&bits, "active", o.id == a11y.window_id);
     if (i.checked) |c| {
         set(&bits, "checkable", true);
         set(&bits, "checked", c == .true);
@@ -1210,7 +1219,7 @@ test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
             const a = t.arena.allocator();
             const kids = try a.dupe(u32, &.{ 1, 2, 3 });
             t.objects = try a.dupe(Object, &.{
-                .{ .id = 1, .info = .{ .role = .window, .label = "Window" }, .bounds = .{ .x = 0, .y = 0, .w = 300, .h = 200 }, .parent = null, .children = kids, .node = null },
+                .{ .id = 1, .info = .{ .role = .generic, .label = "Window" }, .bounds = .{ .x = 0, .y = 0, .w = 300, .h = 200 }, .parent = null, .children = kids, .node = null },
                 .{ .id = 7, .info = .{ .role = .button, .label = "OK", .activate = .of(pressed_ptr, Acts.press) }, .bounds = .{ .x = 10, .y = 10, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
                 .{ .id = 8, .info = .{ .role = .checkbox, .label = "Wi-Fi", .checked = .of(checked) }, .bounds = .{ .x = 10, .y = 60, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
                 .{ .id = 9, .info = .{ .role = .slider, .valuenow = 2, .valuemin = 0, .valuemax = 10, .set_value = .of(level_ptr, Acts.set) }, .bounds = .{ .x = 10, .y = 110, .w = 200, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
@@ -1366,8 +1375,9 @@ test "ARIA's roles and states become AT-SPI's, as Core-AAM has them" {
     try testing.expectEqual(AtspiRole.toggle_button, atspiRole(&obj(.{ .role = .button, .pressed = .false })));
     try testing.expectEqual(AtspiRole.toggle_button, atspiRole(&obj(.{ .role = .@"switch", .checked = .true })));
     try testing.expectEqual(AtspiRole.landmark, atspiRole(&obj(.{ .role = .navigation })));
-    try testing.expectEqual(AtspiRole.password_text, atspiRole(&obj(.{ .role = .textbox, .secret = true })));
-    try testing.expectEqual(AtspiRole.frame, atspiRole(&obj(.{ .role = .window })));
+    var window = obj(.{ .role = .generic });
+    window.id = a11y.window_id;
+    try testing.expectEqual(AtspiRole.frame, atspiRole(&window));
     const mixed = obj(.{ .role = .checkbox, .checked = .mixed });
     try testing.expect(bit(mixed, "checkable") and bit(mixed, "indeterminate") and !bit(mixed, "checked"));
     const collapsed = obj(.{ .role = .combobox, .expanded = false, .haspopup = .listbox });

@@ -50,7 +50,9 @@ pub const Text = struct {
     }
 
     pub fn accessible(self: *const Text, _: *Node) ?a11y.Info {
-        return .{ .role = .label, .label = self.text, .text = self.text };
+        // Text: a paragraph of it (named by nothing; its text is its
+        // content), as text in a page is.
+        return .{ .role = .paragraph, .text = self.text };
     }
 
     pub fn layout(self: *const Text, n: *Node, c: Constraints) Size {

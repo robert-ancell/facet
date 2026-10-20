@@ -90,7 +90,7 @@ const MenuRow = struct {
     };
 
     pub fn accessible(self: *const MenuRow, _: *Node) ?a11y.Info {
-        return .{ .role = .menuitem, .label = self.item.label, .keyshortcuts = self.item.shortcut, .activate = self.item.on_press, .disabled = !self.item.enabled, .children_presentational = true };
+        return .{ .role = .menuitem, .label = self.item.label, .keyshortcuts = self.item.shortcut, .activate = self.item.on_press, .disabled = !self.item.enabled };
     }
 
     pub fn build(self: *const MenuRow, cx: *Context, state: *State) Widget {

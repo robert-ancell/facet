@@ -353,7 +353,6 @@ pub const TextArea = struct {
             .multiline = true,
             .text = doc,
             .caret = std.unicode.utf8CountCodepoints(doc[0..@min(self.doc.cursor, doc.len)]) catch null,
-            .children_presentational = true,
         };
     }
 

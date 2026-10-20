@@ -48,7 +48,7 @@ pub const FilledButton = struct {
     };
 
     pub fn accessible(self: *const FilledButton, _: *Node) ?a11y.Info {
-        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
+        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null };
     }
 
     pub fn build(self: *const FilledButton, cx: *Context, state: *State) Widget {
@@ -75,7 +75,7 @@ pub const TonalButton = struct {
     };
 
     pub fn accessible(self: *const TonalButton, _: *Node) ?a11y.Info {
-        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
+        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null };
     }
 
     pub fn build(self: *const TonalButton, cx: *Context, state: *State) Widget {
@@ -105,7 +105,7 @@ pub const OutlinedButton = struct {
     };
 
     pub fn accessible(self: *const OutlinedButton, _: *Node) ?a11y.Info {
-        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
+        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null };
     }
 
     pub fn build(self: *const OutlinedButton, cx: *Context, state: *State) Widget {
@@ -136,7 +136,7 @@ pub const TextButton = struct {
     };
 
     pub fn accessible(self: *const TextButton, _: *Node) ?a11y.Info {
-        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
+        return .{ .role = .button, .label = self.label, .activate = self.on_press, .disabled = self.on_press == null };
     }
 
     pub fn build(self: *const TextButton, cx: *Context, state: *State) Widget {
