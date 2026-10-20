@@ -101,6 +101,7 @@ pub const Chip = struct {
             parts[count] = cx.make(Pressable{
                 .on_press = on_rem,
                 .interaction = &state.remove_interaction,
+                .focus_radius = 10,
                 .child = cx.make(Decorated{
                     .color = if (rem_hover) t.on_surface.withAlpha(0.12) else null,
                     .radius = .all(10),
@@ -122,6 +123,7 @@ pub const Chip = struct {
         return cx.make(Pressable{
             .on_press = self.on_press,
             .interaction = &state.interaction,
+            .focus_radius = 8,
             .child = cx.make(Decorated{
                 .color = bg,
                 .border = border,

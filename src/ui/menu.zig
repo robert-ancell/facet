@@ -102,6 +102,7 @@ const MenuRow = struct {
         return cx.make(Pressable{
             .on_press = if (enabled) .of(state, State.press) else null,
             .interaction = &state.interaction,
+            .focus_radius = 0,
             .child = cx.make(Decorated{ .color = if (layer > 0) accent.withAlpha(layer) else null, .child = cx.make(SizedBox{
                 .height = item_height,
                 .child = cx.make(Padding{ .padding = .symmetric(12, 0), .child = cx.make(Row{ .spacing = 12, .children = &.{

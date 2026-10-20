@@ -142,6 +142,7 @@ pub const ListItem = struct {
         return cx.make(Pressable{
             .on_press = self.on_press,
             .interaction = &state.interaction,
+            .focus_radius = self.radius,
             .child = body,
         });
     }

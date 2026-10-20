@@ -172,7 +172,7 @@ const Scrim = struct {
 };
 
 /// Stops clicks inside the dialog surface from falling through to the scrim.
-const SurfaceBlocker = struct {
+pub const SurfaceBlocker = struct {
     child: ?Widget = null,
 
     pub fn cursor(_: *const SurfaceBlocker, _: *Node, _: @import("geometry.zig").Point) ?widget.Cursor {

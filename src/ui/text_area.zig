@@ -339,6 +339,13 @@ pub const TextArea = struct {
         };
     }
 
+    /// Tab types a tab: Control and Tab moves the focus on.
+    pub const takes_tab = true;
+
+    pub fn focusable(_: *const TextArea, _: *Node) bool {
+        return true;
+    }
+
     pub fn accessible(self: *const TextArea, _: *Node) ?a11y.Info {
         const doc = self.doc.text();
         return .{

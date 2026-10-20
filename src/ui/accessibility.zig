@@ -440,6 +440,7 @@ pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, ti
     try b.walk(root, 0, .{});
     for (extra_roots) |r| try b.walk(r, 0, .{});
     for (b.objects.items, b.kids.items) |*o, k| o.children = k.items;
+    if (b.focused_index) |i| b.objects.items[i].info.states.focused = true;
     t.objects = b.objects.items;
     for (t.objects, 0..) |o, i| try t.by_id.put(a, o.id, @intCast(i));
     t.focused = b.focused_index;
@@ -479,7 +480,11 @@ const Builder = struct {
             if (info.name.len == 0) info.name = tip else if (info.description.len == 0) info.description = tip;
         }
         if (over.acc) |acc| if (acc != n.widget.as(Accessible)) acc.apply(&info);
-        if (b.focused == n) info.states.focused = true;
+        // What takes the focus (it, or a widget it is made of), and
+        // whether it has it: the deepest object the focus is in has.
+        const focus = @import("focus.zig");
+        if (focus.first(n) != null and (info.leaf or focus.takes(n))) info.states.focusable = true;
+        const has_focus = if (b.focused) |f| focus.within(f, n) else false;
         // Strings kept with the tree.
         info.name = try b.arena.dupe(u8, info.name);
         info.description = try b.arena.dupe(u8, info.description);
@@ -502,7 +507,7 @@ const Builder = struct {
         });
         try b.kids.append(b.arena, .empty);
         try b.kids.items[parent].append(b.arena, index);
-        if (info.states.focused) b.focused_index = index;
+        if (has_focus) b.focused_index = index;
         if (info.leaf) return;
         for (n.children.items) |ch| try b.walk(ch, index, .{});
     }

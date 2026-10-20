@@ -82,6 +82,7 @@ pub const image = @import("image.zig");
 pub const image_loader = @import("image_loader.zig");
 pub const qr_code = @import("qr_code.zig");
 pub const accessibility = @import("accessibility.zig");
+pub const focus = @import("focus.zig");
 pub const atspi = @import("atspi.zig");
 pub const map_view = @import("map_view.zig");
 pub const themed = @import("themed.zig");
@@ -264,6 +265,7 @@ test {
     _ = image_loader;
     _ = qr_code;
     _ = accessibility;
+    _ = focus;
     _ = atspi;
     _ = map_view;
     _ = @import("map/projection.zig");

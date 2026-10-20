@@ -1,6 +1,8 @@
 //! Slider: Material 3's continuous or discrete slider for choosing a number
 //! from a range by pressing or dragging along a track.
 
+const keymap = @import("keymap.zig");
+const focus = @import("focus.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
@@ -35,6 +37,21 @@ pub const Slider = struct {
         hovered: bool = false,
         pressed: bool = false,
     };
+
+    pub fn focusable(self: *const Slider, _: *Node) bool {
+        return self.on_changed != null;
+    }
+
+    pub fn paintOver(_: *const Slider, n: *Node, p: *Painter) void {
+        focus.ring(n, p, null, false);
+    }
+
+    /// How far a key moves it: a division, or a twentieth of the way
+    /// (Page Up and Down: ten times as far).
+    fn keyStep(self: *const Slider) f32 {
+        const d = self.divisions orelse 20;
+        return (self.max - self.min) / @as(f32, @floatFromInt(@max(d, 1)));
+    }
 
     pub fn accessible(self: *const Slider, n: *Node) ?a11y.Info {
         const step: f32 = if (self.divisions) |d| if (d > 0) (self.max - self.min) / @as(f32, @floatFromInt(d)) else 0 else 0;
@@ -143,6 +160,21 @@ pub const Slider = struct {
             .motion => |pos| {
                 if (!st.pressed) return false;
                 if (self.on_changed) |on_changed| on_changed.call(self.valueAt(n.size.w, pos[0]));
+                return true;
+            },
+            .key => |k| {
+                const on_changed = self.on_changed orelse return false;
+                const step = self.keyStep();
+                const v: f32 = switch (k.code) {
+                    keymap.left, keymap.down => self.value - step,
+                    keymap.right, keymap.up => self.value + step,
+                    keymap.page_down => self.value - step * 10,
+                    keymap.page_up => self.value + step * 10,
+                    keymap.home => self.min,
+                    keymap.end => self.max,
+                    else => return false,
+                };
+                if (k.pressed) on_changed.call(std.math.clamp(v, self.min, self.max));
                 return true;
             },
             .release => |rel| {

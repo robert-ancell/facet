@@ -17,6 +17,8 @@
 //! that is (bigger, and blurrier); picture tiles load in the background,
 //! as an `Image`'s do.
 
+const focus = @import("focus.zig");
+const keymap = @import("keymap.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
@@ -134,6 +136,38 @@ pub const MapView = struct {
         if (self.on_move) |f| f.call();
     }
 
+    pub fn focusable(_: *const MapView, _: *Node) bool {
+        return true;
+    }
+
+    /// The keys: arrows move it, plus and minus zoom.
+    fn key(self: *const MapView, n: *Node, k: Event.Key) bool {
+        const cam = self.cameraOf(n.state(State));
+        const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
+        const step = 80;
+        const delta: ?[2]f64 = switch (k.code) {
+            keymap.left => .{ -step, 0 },
+            keymap.right => .{ step, 0 },
+            keymap.up => .{ 0, -step },
+            keymap.down => .{ 0, step },
+            else => null,
+        };
+        if (delta) |d| {
+            if (!k.pressed) return true;
+            const place = View.init(cam.*, size(n), self.projection).unproject(c) orelse return true;
+            // What is that way comes to the middle.
+            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] - d[0], c[1] - d[1] }));
+            return true;
+        }
+        const by: f64 = switch (k.code) {
+            keymap.equal, keymap.keypad_plus => 1,
+            keymap.minus, keymap.keypad_minus => -1,
+            else => return false,
+        };
+        if (k.pressed) self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, c, by, self.min_zoom, self.max_zoom));
+        return true;
+    }
+
     pub fn accessible(self: *const MapView, n: *Node) ?a11y.Info {
         const c = self.cameraOf(n.state(State)).*;
         const where = std.fmt.allocPrint(n.ui.arena(), "{d:.4}, {d:.4}, zoom {d:.1}", .{ c.center.lat, c.center.lon, c.zoom }) catch "";
@@ -193,6 +227,7 @@ pub const MapView = struct {
                 n.ui.needs_frame = true;
                 return true;
             },
+            .key => |k| return self.key(n, k),
             .scroll => |sc| {
                 st.velocity = .{ 0, 0 };
                 if (sc.touch) {
@@ -425,6 +460,7 @@ pub const MapView = struct {
             }
         }
 
+        focus.ring(n, p, 0, true);
         if (self.source.attribution.len > 0) if (n.ui.font) |f| {
             const size_px = 11;
             const w = n.ui.atlas.runs.measure(.{ .font = f, .size = size_px }, self.source.attribution);

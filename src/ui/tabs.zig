@@ -136,6 +136,7 @@ const TabItem = struct {
         return cx.make(Pressable{
             .on_press = self.on_press,
             .interaction = &state.interaction,
+            .focus_radius = 4,
             .child = cx.make(Decorated{
                 .color = if (layer > 0) t.primary.withAlpha(layer) else null,
                 .child = cx.make(SizedBox{

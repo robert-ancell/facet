@@ -1,5 +1,7 @@
 //! Radio: one of a group of Material 3 radio buttons (see control.zig).
 
+const focus = @import("focus.zig");
+const keymap = @import("keymap.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
@@ -47,14 +49,48 @@ pub fn Radio(comptime T: type) type {
         pub fn build(self: *const Self, cx: *Context, state: *State) Widget {
             state.latest.update(self.value, self.on_changed);
             const enabled = self.on_changed != null;
-            return control.control(cx, &state.latest.interaction, if (enabled) .of(state, State.press) else null, cx.make(RadioMark{
+            return cx.make(RadioKeys{ .child = control.control(cx, &state.latest.interaction, if (enabled) .of(state, State.press) else null, cx.make(RadioMark{
                 .selected = std.meta.eql(self.value, self.group_value),
                 .enabled = enabled,
                 .interaction = state.latest.interaction,
-            }), self.label, 4);
+            }), self.label, 4) });
         }
     };
 }
+
+/// Around a radio button: the arrow keys move the focus to the next (or
+/// the one before) of the radio buttons, and select it.
+const RadioKeys = struct {
+    child: ?Widget = null,
+
+    pub fn event(_: *const RadioKeys, n: *Node, e: widget.Event) bool {
+        const k = switch (e) {
+            .key => |k| k,
+            else => return false,
+        };
+        const forward = switch (k.code) {
+            keymap.down, keymap.right => true,
+            keymap.up, keymap.left => false,
+            else => return false,
+        };
+        if (!k.pressed) return true;
+        // The radio buttons in what the focus moves about.
+        const ui = n.ui;
+        const scope = focus.scope(ui) orelse return true;
+        var all: std.ArrayList(*Node) = .empty;
+        defer all.deinit(ui.gpa);
+        focus.collect(scope, &all, ui.gpa);
+        var radios: std.ArrayList(*Node) = .empty;
+        defer radios.deinit(ui.gpa);
+        for (all.items) |f| if (f.parent) |p| if (p.widget.is(RadioKeys)) radios.append(ui.gpa, f) catch return true;
+        const now = std.mem.indexOfScalar(*Node, radios.items, ui.focused orelse return true) orelse return true;
+        const count = radios.items.len;
+        const next = radios.items[if (forward) (now + 1) % count else (now + count - 1) % count];
+        focus.show(ui, next);
+        _ = next.widget.vtable.event.?(next.widget.ptr, next, .{ .key = .{ .code = keymap.space, .pressed = true } });
+        return true;
+    }
+};
 
 /// A radio button's ring and dot, in its touch target.
 pub const RadioMark = struct {

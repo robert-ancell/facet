@@ -627,17 +627,14 @@ pub const Bridge = struct {
             return "d";
         }
         if (eq(u8, member, "GrabFocus")) {
-            // Only what takes the keyboard (text fields) can have it.
-            const n = o.node orelse {
-                w.boolean(false);
-                return "b";
-            };
-            const ok = o.info.states.focusable;
-            if (ok) {
-                n.ui.focus(n);
+            // The first widget in it that takes the focus has it.
+            const focus = @import("focus.zig");
+            const target = if (o.node) |n| focus.first(n) else null;
+            if (target) |f| {
+                focus.show(f.ui, f);
                 acted.* = true;
             }
-            w.boolean(ok);
+            w.boolean(target != null);
             return "b";
         }
         if (eq(u8, member, "ScrollTo") or eq(u8, member, "ScrollToPoint") or eq(u8, member, "SetExtents") or eq(u8, member, "SetPosition") or eq(u8, member, "SetSize")) {

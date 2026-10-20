@@ -2491,3 +2491,208 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     for (objs, again.objects) |a, b| try testing.expectEqual(a.id, b.id);
     try testing.expect(again.objects[again.objects[0].children[3]].info.states.checked);
 }
+
+const FocusApp = struct {
+    pressed: *u32,
+    checked: *bool,
+    level: *f32,
+    choice: *u8,
+    doc: *ui.TextDocument,
+
+    fn press(c: *u32) void {
+        c.* += 1;
+    }
+    fn check(b: *bool, v: bool) void {
+        b.* = v;
+    }
+    fn setLevel(l: *f32, v: f32) void {
+        l.* = v;
+    }
+    fn choose(c: *u8, v: u8) void {
+        c.* = v;
+    }
+
+    pub fn build(self: *const FocusApp, cx: *Context) Widget {
+        return cx.make(ui.Column{
+            .main_axis_size = .min,
+            .cross_axis_alignment = .start,
+            .children = &.{
+                cx.make(ui.FilledButton{ .label = "A", .on_press = .of(self.pressed, press) }),
+                cx.make(ui.TextField{ .placeholder = "Name" }),
+                cx.make(ui.Checkbox{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
+                cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
+                // Disabled: passed over.
+                cx.make(ui.FilledButton{ .label = "Off" }),
+                cx.make(ui.Radio(u8){ .value = 1, .group_value = self.choice.*, .label = "One", .on_changed = .of(self.choice, choose) }),
+                cx.make(ui.Radio(u8){ .value = 2, .group_value = self.choice.*, .label = "Two", .on_changed = .of(self.choice, choose) }),
+                cx.make(ui.SizedBox{ .width = 200, .height = 60, .child = cx.make(ui.TextArea{ .doc = self.doc }) }),
+            },
+        });
+    }
+};
+
+fn pressKey(u: *ui.Ui, root: anytype, code: u32, mods: struct { shift: bool = false, ctrl: bool = false }) void {
+    u.key(.{ .code = code, .pressed = true, .shift = mods.shift, .ctrl = mods.ctrl });
+    u.key(.{ .code = code, .pressed = false, .shift = mods.shift, .ctrl = mods.ctrl });
+    u.frame(400, 600, 0, root);
+}
+
+/// The widget of type `T` the focus is in (it, or one it is in).
+fn focusedIn(u: *ui.Ui, comptime T: type) bool {
+    var at = u.focused;
+    while (at) |n| : (at = n.parent) if (n.widget.is(T)) return true;
+    return false;
+}
+
+test "Tab moves the keyboard's focus through what takes it, and keys use what has it" {
+    const fira = try font.Font.init(fira_data);
+    const u = try ui.Ui.create(testing.allocator, &fira);
+    defer u.destroy();
+    var pressed: u32 = 0;
+    var checked = false;
+    var level: f32 = 3;
+    var choice: u8 = 1;
+    var doc = try ui.TextDocument.init(testing.allocator, "");
+    defer doc.deinit();
+    const app: FocusApp = .{ .pressed = &pressed, .checked = &checked, .level = &level, .choice = &choice, .doc = &doc };
+    u.frame(400, 600, 0, app);
+    try testing.expect(u.focused == null);
+
+    // In order, past the disabled button, round to the start.
+    const order = [_]type{ ui.FilledButton, ui.TextField, ui.Checkbox, ui.Slider, ui.Radio(u8), ui.Radio(u8), ui.TextArea };
+    inline for (order) |T| {
+        pressKey(u, app, ui.keymap.tab, .{});
+        try testing.expect(focusedIn(u, T));
+        try testing.expect(u.focus_visible);
+    }
+    // The text area types a tab (as spaces); Control and Tab moves on.
+    pressKey(u, app, ui.keymap.tab, .{});
+    try testing.expect(doc.text().len > 0 and std.mem.trim(u8, doc.text(), " \t").len == 0);
+    pressKey(u, app, ui.keymap.tab, .{ .ctrl = true });
+    try testing.expect(focusedIn(u, ui.FilledButton));
+    // And back.
+    pressKey(u, app, ui.keymap.tab, .{ .shift = true });
+    try testing.expect(focusedIn(u, ui.TextArea));
+
+    // Space and Enter press what has the focus.
+    pressKey(u, app, ui.keymap.tab, .{ .ctrl = true });
+    pressKey(u, app, ui.keymap.space, .{});
+    pressKey(u, app, ui.keymap.enter, .{});
+    try testing.expectEqual(@as(u32, 2), pressed);
+    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, ui.keymap.space, .{});
+    try testing.expect(checked);
+    // The arrows move the slider, and choose among the radio buttons.
+    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, ui.keymap.right, .{});
+    try testing.expectEqual(@as(f32, 4), level);
+    pressKey(u, app, ui.keymap.end, .{});
+    try testing.expectEqual(@as(f32, 10), level);
+    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, ui.keymap.down, .{});
+    try testing.expectEqual(@as(u8, 2), choice);
+    pressKey(u, app, ui.keymap.down, .{});
+    try testing.expectEqual(@as(u8, 1), choice);
+
+    // The pointer pressed: the ring goes.
+    u.pointerMotion(.{ 399, 599 });
+    u.pointerButton(.{ 399, 599 }, ui.btn_left, true);
+    u.pointerButton(.{ 399, 599 }, ui.btn_left, false);
+    try testing.expect(!u.focus_visible);
+
+    // What assistive technologies are told: the check box takes the
+    // focus, and the radio button has it.
+    // (And clicked off it, it has the focus no more.)
+    try testing.expect(u.focused == null);
+    u.frame(400, 600, 1, app);
+    var next: u32 = 2;
+    pressKey(u, app, ui.keymap.tab, .{ .shift = true });
+    // (From the text area, which takes Tab: Control, Shift and Tab.)
+    pressKey(u, app, ui.keymap.tab, .{ .shift = true, .ctrl = true });
+    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "", .{ 400, 600 }, u.focused, &next);
+    defer {
+        tree.deinit();
+        testing.allocator.destroy(tree);
+    }
+    const objs = tree.objects;
+    try testing.expect(objs[objs[0].children[2]].info.states.focusable);
+    const f = tree.focused.?;
+    try testing.expectEqual(ui.AccessibleRole.radio_button, objs[f].info.role);
+    try testing.expect(objs[f].info.states.focused);
+    try testing.expect(!objs[objs[0].children[2]].info.states.focused);
+}
+
+const DialogApp = struct {
+    dismissed: *u32,
+    fn dismiss(d: *u32) void {
+        d.* += 1;
+    }
+    pub fn build(self: *const DialogApp, cx: *Context) Widget {
+        return cx.make(ui.Dialog{
+            .title = "Delete it?",
+            .confirm_label = "Delete",
+            .on_confirm = .of(self.dismissed, dismiss),
+            .dismiss_label = "Cancel",
+            .on_dismiss = .of(self.dismissed, dismiss),
+            .child = cx.make(ui.Column{ .children = &.{
+                cx.make(ui.FilledButton{ .label = "Behind", .on_press = .of(self.dismissed, dismiss) }),
+            } }),
+        });
+    }
+};
+
+test "an open dialog keeps the focus in it, and Escape dismisses it" {
+    const fira = try font.Font.init(fira_data);
+    const u = try ui.Ui.create(testing.allocator, &fira);
+    defer u.destroy();
+    var dismissed: u32 = 0;
+    const app: DialogApp = .{ .dismissed = &dismissed };
+    u.frame(400, 600, 0, app);
+    const dialog = find(u.root.?, ui.Dialog).?;
+    const behind = find(u.root.?, ui.FilledButton).?;
+    // Round its two buttons, never to the one behind it.
+    var seen: [4]?*Node = @splat(null);
+    for (&seen) |*s| {
+        pressKey(u, app, ui.keymap.tab, .{});
+        try testing.expect(ui.focus.within(u.focused.?, dialog));
+        try testing.expect(!ui.focus.within(u.focused.?, behind));
+        s.* = u.focused;
+    }
+    try testing.expect(seen[0] != seen[1] and seen[0] == seen[2]);
+    pressKey(u, app, ui.keymap.escape, .{});
+    try testing.expectEqual(@as(u32, 1), dismissed);
+}
+
+test "a menu opened from the keyboard has the focus, and gives it back" {
+    const fira = try font.Font.init(fira_data);
+    const u = try ui.Ui.create(testing.allocator, &fira);
+    defer u.destroy();
+    var picked: usize = 0;
+    const MenuApp = struct {
+        picked: *usize,
+        fn pick(p: *usize, i: usize) void {
+            p.* = i;
+        }
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.DropdownMenu{
+                .options = &.{ "Red", "Green", "Blue" },
+                .selected = self.picked.*,
+                .on_selected = .of(self.picked, pick),
+            }) });
+        }
+    };
+    const app: MenuApp = .{ .picked = &picked };
+    u.frame(400, 600, 0, app);
+    pressKey(u, app, ui.keymap.tab, .{});
+    const opener = u.focused.?;
+    pressKey(u, app, ui.keymap.enter, .{});
+    try testing.expect(u.menu != null);
+    try testing.expect(ui.focus.within(u.focused.?, u.menu_root.?));
+    pressKey(u, app, ui.keymap.down, .{});
+    pressKey(u, app, ui.keymap.down, .{});
+    pressKey(u, app, ui.keymap.enter, .{});
+    try testing.expectEqual(@as(usize, 2), picked);
+    try testing.expect(u.menu == null);
+    try testing.expectEqual(opener, u.focused.?);
+}

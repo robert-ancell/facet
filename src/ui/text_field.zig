@@ -344,6 +344,10 @@ pub const TextField = struct {
         return st;
     }
 
+    pub fn focusable(self: *const TextField, _: *Node) bool {
+        return self.enabled;
+    }
+
     pub fn accessible(self: *const TextField, n: *Node) ?a11y.Info {
         const st = n.state(State);
         const value = if (self.isObscured(st)) "" else st.text();

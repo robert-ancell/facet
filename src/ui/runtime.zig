@@ -38,6 +38,7 @@ const drag_mod = @import("drag.zig");
 const tooltip_mod = @import("tooltip.zig");
 const title_bar_mod = @import("title_bar.zig");
 const accessibility = @import("accessibility.zig");
+const focus_mod = @import("focus.zig");
 const atspi = @import("atspi.zig");
 
 const Point = geometry.Point;
@@ -134,6 +135,14 @@ pub const Ui = struct {
     last_press: ?struct { ns: u64, pos: Point, button: u32, clicks: u8 } = null,
     /// The widget keys go to.
     focused: ?*Node = null,
+    /// Whether the focus was moved by the keyboard (so its ring shows),
+    /// not since the pointer was pressed.
+    focus_visible: bool = false,
+    /// What had the focus when a menu was opened from the keyboard (it
+    /// has it again when the menu closes), and that the menu is to be
+    /// given it once it is made.
+    focus_before_menu: ?*Node = null,
+    menu_focus_pending: bool = false,
     /// The keyboard layout in use (from the window, or `loaded_keymap`).
     keyboard: window_mod.Layout = .{},
     /// A keymap of its own (`loadKeymap`), for keys from `keyEvent` that
@@ -571,6 +580,10 @@ pub const Ui = struct {
         }
         if (ui.hold != null) ui.needs_frame = true;
         ui.images.evict(now_ns);
+        if (ui.menu_focus_pending) if (ui.menu_root) |mr| if (focus_mod.first(mr)) |f| {
+            ui.menu_focus_pending = false;
+            focus_mod.show(ui, f);
+        };
         ui.updateAccessibility();
     }
 
@@ -833,6 +846,7 @@ pub const Ui = struct {
 
     pub fn openMenu(ui: *Ui, owner: *Node, at: Point, items: []const menu_mod.Item) void {
         ui.closeMenu();
+        ui.focusMenuWhenMade();
         const copy = ui.gpa.dupe(menu_mod.Item, items) catch return;
         ui.menu = .{ .content = .{ .items = copy }, .at = at, .owner = owner };
         ui.needs_frame = true;
@@ -840,6 +854,7 @@ pub const Ui = struct {
 
     pub fn openPopup(ui: *Ui, owner: *Node, at: Point, popup: PopupBuilder) void {
         ui.closeMenu();
+        ui.focusMenuWhenMade();
         ui.menu = .{ .content = .{ .popup = popup }, .at = at, .owner = owner };
         ui.needs_frame = true;
     }
@@ -852,6 +867,21 @@ pub const Ui = struct {
         }
         ui.menu = null;
         ui.needs_frame = true;
+        ui.menu_focus_pending = false;
+        // The focus back where it was before the menu (if it is in it).
+        if (ui.focus_before_menu) |n| {
+            ui.focus_before_menu = null;
+            const in_menu = if (ui.focused) |f| if (ui.menu_root) |m| focus_mod.within(f, m) else false else true;
+            if (in_menu) ui.focus(n);
+        }
+    }
+
+    /// A menu opened from the keyboard: it has the focus once it is made,
+    /// and gives it back when it closes.
+    fn focusMenuWhenMade(ui: *Ui) void {
+        if (!ui.focus_visible) return;
+        ui.menu_focus_pending = true;
+        ui.focus_before_menu = ui.focused;
     }
 
     // --- Dragging -----------------------------------------------------------------
@@ -1180,6 +1210,8 @@ pub const Ui = struct {
         ui.needs_frame = true;
         defer if (ui.win) |win| ui.syncCursor(win);
         if (pressed) {
+            // The pointer's: the focus ring goes.
+            ui.focus_visible = false;
             if (ui.captured != null) return;
             if (ui.menu != null and !ui.overMenu()) {
                 ui.closeMenu();
@@ -1331,12 +1363,33 @@ pub const Ui = struct {
             },
             else => {},
         }
-        const n = ui.focused orelse return;
+        ui.needs_frame = true;
+        // Tab moves the focus (Control and Tab, from what takes Tab).
+        if (k.code == keymap.tab) {
+            const takes_tab = if (ui.focused) |f| f.widget.vtable.takes_tab else false;
+            if (k.ctrl or !takes_tab) {
+                if (k.pressed) _ = focus_mod.move(ui, !k.shift);
+                return;
+            }
+        }
         var e = k;
         // Control and a key is a shortcut, not typing.
         if (!k.pressed or k.ctrl) e.char = null;
-        _ = send(n, .{ .key = e });
-        ui.needs_frame = true;
+        // To what has the focus, then what that is in, until one takes it.
+        var at = ui.focused;
+        while (at) |n| : (at = n.parent) if (send(n, .{ .key = e })) return;
+        if (!k.pressed) return;
+        switch (k.code) {
+            // Escape dismisses the dialog in front.
+            keymap.escape => if (ui.root) |r| if (focus_mod.topDialog(r)) |d| {
+                if (d.widget.as(@import("dialog.zig").Dialog).?.on_dismiss) |f| f.call();
+            },
+            // Up and down move through a menu.
+            keymap.up, keymap.down => if (ui.menu != null) {
+                _ = focus_mod.move(ui, k.code == keymap.down);
+            },
+            else => {},
+        }
     }
 
     pub fn pointerLeave(ui: *Ui) void {
@@ -1407,6 +1460,7 @@ pub const Ui = struct {
         };
         if (ui.captured == n) ui.captured = null;
         if (ui.focused == n) ui.focused = null;
+        if (ui.focus_before_menu == n) ui.focus_before_menu = null;
         if (std.mem.indexOfScalar(*Node, ui.hovered.items, n)) |i| _ = ui.hovered.orderedRemove(i);
     }
 };

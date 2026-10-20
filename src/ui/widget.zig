@@ -197,6 +197,12 @@ pub const VTable = struct {
     /// What it is to assistive technologies (a screen reader), if anything
     /// (`pub fn accessible(self, n) ?accessibility.Info`).
     accessible: ?*const fn (*const anyopaque, *Node) ?Accessibility.Info,
+    /// Whether it takes the keyboard's focus now (`pub fn focusable(self,
+    /// n) bool`): Tab moves it from one to the next.
+    focusable: ?*const fn (*const anyopaque, *Node) bool,
+    /// Tab is a key it takes (`pub const takes_tab = true`: a text area
+    /// types it), so only Control and Tab moves the focus from it.
+    takes_tab: bool,
     /// Makes its children (instead of `children`), when the tree is built.
     lazy_children: ?*const fn (*const anyopaque, *Context, *Node) []const Widget,
     /// Told, once laid out in a scroll view, what of it shows (relative to
@@ -272,6 +278,9 @@ fn makeVTable(comptime T: type) VTable {
         fn accessible(ptr: *const anyopaque, n: *Node) ?Accessibility.Info {
             return T.accessible(self(ptr), n);
         }
+        fn focusable(ptr: *const anyopaque, n: *Node) bool {
+            return T.focusable(self(ptr), n);
+        }
         fn lazyChildren(ptr: *const anyopaque, cx: *Context, n: *Node) []const Widget {
             return T.lazyChildren(self(ptr), cx, n);
         }
@@ -299,6 +308,8 @@ fn makeVTable(comptime T: type) VTable {
         .cursor = if (@hasDecl(T, "cursor")) S.cursor else null,
         .text_input = if (@hasDecl(T, "textInput")) S.textInput else null,
         .accessible = if (@hasDecl(T, "accessible")) S.accessible else null,
+        .focusable = if (@hasDecl(T, "focusable")) S.focusable else null,
+        .takes_tab = @hasDecl(T, "takes_tab") and T.takes_tab,
         .lazy_children = if (@hasDecl(T, "lazyChildren")) S.lazyChildren else null,
         .realize = if (@hasDecl(T, "realize")) S.realize else null,
         .scrolls = @hasDecl(T, "scrolls") and T.scrolls,
