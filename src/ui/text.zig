@@ -75,7 +75,10 @@ pub const Text = struct {
     pub fn minSize(self: *const Text, n: *Node, c: Constraints) Size {
         const style = self.fontStyle(n) orelse return c.smallest();
         const arena = n.ui.arena();
-        const lines = wrap(arena, &n.ui.atlas.runs, style, self.text, if (self.wrap) c.max_w else geometry.inf) catch return c.smallest();
+        // Wrapped, with no width to fit, it can be as narrow as its widest
+        // word (never a whole paragraph on one line).
+        const wrap_w = if (!self.wrap) geometry.inf else if (c.boundedWidth()) c.max_w else 0;
+        const lines = wrap(arena, &n.ui.atlas.runs, style, self.text, wrap_w) catch return c.smallest();
         var widest: f32 = 0;
         if (self.ellipsis) {
             widest = if (self.text.len > 0) n.ui.atlas.runs.measure(style, ellipsis_text) else 0;

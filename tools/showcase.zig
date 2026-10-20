@@ -225,7 +225,7 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-test "every page lays out without overflowing, at the smallest and a large size, in both themes" {
+test "every page fits the smallest window and lays out without overflowing, at it and a large size, in both themes" {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
     const u = try facet.Ui.create(std.testing.allocator, &fira);
     defer u.destroy();
@@ -245,6 +245,11 @@ test "every page lays out without overflowing, at the smallest and a large size,
                 state.extended_rail = labels;
                 u.frame(size[0], size[1], i, root);
                 try expectSane(u.root.?);
+                // The window can be made as small as the smallest asked for.
+                std.testing.expect(u.min_size[0] <= 800 and u.min_size[1] <= 480) catch |err| {
+                    std.debug.print("{t} needs a window of at least {d} by {d}\n", .{ p, u.min_size[0], u.min_size[1] });
+                    return err;
+                };
             };
         }
     }
