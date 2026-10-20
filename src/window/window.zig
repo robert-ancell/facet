@@ -1,10 +1,11 @@
 //! Window abstraction (`Window` vtable interface), input events (`InputEvent`),
 //! text input state (`TextInputState`), window controls (`Controls`), keyboard
-//! layout (`Layout`) and keymaps (`xkb`), and the built-in Wayland client window backend
-//! (`WaylandWindow`).
+//! layout (`Layout`) and keymaps (`xkb`), and the built-in window backends:
+//! a Wayland client (`WaylandWindow`) and a macOS one (`MacWindow`).
+//! `NativeWindow` is the one for the system being built for.
 //!
-//! Apps can either use `WaylandWindow` directly or implement custom window
-//! backends (e.g. X11, SDL, GLFW, macOS, Windows) via `Window.of(&impl)`.
+//! Apps can either use a backend directly or implement custom window
+//! backends (e.g. X11, SDL, GLFW, Windows) via `Window.of(&impl)`.
 
 const std = @import("std");
 const gfx = @import("gfx");
@@ -15,7 +16,12 @@ pub const wayland = @import("wayland.zig");
 pub const Clipboard = clipboard.Clipboard;
 pub const DroppedData = clipboard.DroppedData;
 pub const WaylandWindow = wayland.WaylandWindow;
-pub const nowNs = clipboard.nowNs;
+pub const macos = @import("macos.zig");
+pub const MacWindow = macos.MacWindow;
+/// The window backend for the system being built for: AppKit's on macOS,
+/// Wayland's elsewhere.
+pub const NativeWindow = if (@import("builtin").os.tag == .macos) MacWindow else WaylandWindow;
+pub const nowNs = sys.monotonicNs;
 
 /// The pointer shape the window shows.
 pub const Cursor = enum {
@@ -278,7 +284,7 @@ pub const Window = struct {
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
         layout: *const fn (ptr: *anyopaque) Layout,
-        watch_fd: *const fn (ptr: *anyopaque, fd: std.os.linux.fd_t, on: bool) void,
+        watch_fd: *const fn (ptr: *anyopaque, fd: sys.fd_t, on: bool) void,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
@@ -296,6 +302,8 @@ pub const Window = struct {
         showPopup: *const fn (ptr: *anyopaque, id: u32) anyerror!void,
         copy: ?*const fn (ptr: *anyopaque, text: []const u8) void = null,
         paste: ?*const fn (ptr: *anyopaque, sink: clipboard.Sink) void = null,
+        /// Whether the system's appearance is dark (null: it does not say).
+        prefersDark: ?*const fn (ptr: *anyopaque) ?bool = null,
     };
 
     /// `win` as a `Window`: either one already, or a pointer to a type
@@ -459,7 +467,7 @@ pub const Window = struct {
                 if (@hasDecl(T, "nextPresentationNs")) return self(p).nextPresentationNs(now_ns);
                 return now_ns;
             }
-            fn watchFdFn(p: *anyopaque, fd: std.os.linux.fd_t, on: bool) void {
+            fn watchFdFn(p: *anyopaque, fd: sys.fd_t, on: bool) void {
                 if (@hasDecl(T, "watchFd")) self(p).watchFd(fd, on);
             }
             fn layoutFn(p: *anyopaque) Layout {
@@ -529,6 +537,9 @@ pub const Window = struct {
                 const s = self(p);
                 if (@hasDecl(T, "paste")) s.paste(sink) else if (@hasField(T, "clipboard")) s.clipboard.paste(sink);
             }
+            fn prefersDarkFn(p: *anyopaque) ?bool {
+                return self(p).prefersDark();
+            }
             const vt = VTable{
                 .platform = platformFn,
                 .bufferTransport = bufferTransportFn,
@@ -581,6 +592,7 @@ pub const Window = struct {
                 .showPopup = showPopupFn,
                 .copy = if (@hasDecl(T, "copy") or @hasField(T, "clipboard")) copyFn else null,
                 .paste = if (@hasDecl(T, "paste") or @hasField(T, "clipboard")) pasteFn else null,
+                .prefersDark = if (@hasDecl(T, "prefersDark")) prefersDarkFn else null,
             };
         };
         return .{ .ptr = @ptrCast(@constCast(impl)), .vtable = &gen.vt };
@@ -693,7 +705,7 @@ pub const Window = struct {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
     /// Wakes `wait` when `fd` is readable too (`on`), or no longer.
-    pub fn watchFd(w: Window, fd: std.os.linux.fd_t, on: bool) void {
+    pub fn watchFd(w: Window, fd: sys.fd_t, on: bool) void {
         w.vtable.watch_fd(w.ptr, fd, on);
     }
     /// The keyboard layout in use.
@@ -777,6 +789,12 @@ pub const Window = struct {
     pub fn paste(w: Window, sink: clipboard.Sink) void {
         if (w.vtable.paste) |f| f(w.ptr, sink) else sink.f(sink.ctx, null);
     }
+    /// Whether the system's appearance is dark (null if the window does not
+    /// say; on Linux it is facet's own setting).
+    pub fn prefersDark(w: Window) ?bool {
+        const f = w.vtable.prefersDark orelse return null;
+        return f(w.ptr);
+    }
 };
 
 /// What an app's title bar does to its window (for the toolkit's TitleBar:
@@ -822,6 +840,7 @@ pub const xkb = @import("xkb.zig");
 /// Dead keys and the Compose key.
 pub const compose = @import("compose.zig");
 pub const dbus = @import("dbus.zig");
+pub const sys = @import("sys.zig");
 
 /// The keyboard layout in use: its name ("English (UK)") and XKB code
 /// ("gb"), from the keymap the compositor gave.
@@ -856,4 +875,6 @@ test {
     _ = xkb;
     _ = compose;
     _ = dbus;
+    _ = sys;
+    _ = macos;
 }

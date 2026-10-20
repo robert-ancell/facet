@@ -6,7 +6,8 @@
 //!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,
 //!   and `VulkanRenderer` backends
 //! * `window`: generic `Window` interface, `Controls`, `InputEvent`,
-//!   `Clipboard`, and the built-in `WaylandWindow` client backend
+//!   `Clipboard`, and the built-in backends: `WaylandWindow` (Linux) and
+//!   `MacWindow` (macOS), `NativeWindow` being the one built for
 //! * `font`: pure-Zig OpenType/TrueType font parser, shaper, and rasterizer,
 //!   including bundled default Fira Sans and Twemoji Mozilla fallback fonts
 //! * `icons`: Material Icons enum (`Icon`) and subsetted icon font
@@ -152,6 +153,8 @@ pub const FrameSync = window.FrameSync;
 pub const Decorations = window.Decorations;
 pub const Window = window.Window;
 pub const WaylandWindow = window.WaylandWindow;
+pub const MacWindow = window.MacWindow;
+pub const NativeWindow = window.NativeWindow;
 pub const Controls = window.Controls;
 
 test {

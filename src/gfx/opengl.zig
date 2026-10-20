@@ -185,16 +185,16 @@ pub const Procs = struct {
             } else {
                 const name: [*:0]const u8 = "gl" ++ field_name;
                 const sym = get_proc(name) orelse return error.MissingGlFunction;
-                @field(p, field_name) = @ptrCast(sym);
+                @field(p, field_name) = @ptrCast(@alignCast(sym));
             }
         }
-        if (get_proc("glGetIntegerv")) |sym| p.GetIntegerv = @ptrCast(sym);
-        if (get_proc("glGetStringi")) |sym| p.GetStringi = @ptrCast(sym);
-        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(sym);
+        if (get_proc("glGetIntegerv")) |sym| p.GetIntegerv = @ptrCast(@alignCast(sym));
+        if (get_proc("glGetStringi")) |sym| p.GetStringi = @ptrCast(@alignCast(sym));
+        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(@alignCast(sym));
         if (get_proc("glSpecializeShader")) |sym| {
-            p.SpecializeShader = @ptrCast(sym);
+            p.SpecializeShader = @ptrCast(@alignCast(sym));
         } else if (get_proc("glSpecializeShaderARB")) |sym| {
-            p.SpecializeShader = @ptrCast(sym);
+            p.SpecializeShader = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -871,7 +871,7 @@ const ExportProcs = struct {
         var x: ExportProcs = undefined;
         inline for (@typeInfo(ExportProcs).@"struct".field_names) |field_name| {
             const sym = egl.GetProcAddress("egl" ++ field_name) orelse return null;
-            @field(x, field_name) = @ptrCast(sym);
+            @field(x, field_name) = @ptrCast(@alignCast(sym));
         }
         return x;
     }
@@ -959,14 +959,14 @@ pub const ContextProcs = struct {
             } else {
                 const name: [*:0]const u8 = "gl" ++ field_name;
                 const sym = get_proc(name) orelse return error.MissingGlFunction;
-                @field(p, field_name) = @ptrCast(sym);
+                @field(p, field_name) = @ptrCast(@alignCast(sym));
             }
         }
-        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(sym);
+        if (get_proc("glShaderBinary")) |sym| p.ShaderBinary = @ptrCast(@alignCast(sym));
         if (get_proc("glSpecializeShader")) |sym| {
-            p.SpecializeShader = @ptrCast(sym);
+            p.SpecializeShader = @ptrCast(@alignCast(sym));
         } else if (get_proc("glSpecializeShaderARB")) |sym| {
-            p.SpecializeShader = @ptrCast(sym);
+            p.SpecializeShader = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -1490,7 +1490,7 @@ pub const OffscreenContext = struct {
     }
 
     fn dropExport(self: *OffscreenContext) void {
-        if (self.exported) |e| _ = std.os.linux.close(e.fd);
+        if (self.exported) |e| _ = std.posix.system.close(e.fd);
         self.exported = null;
         if (self.export_image) |img| if (self.export_procs) |x| {
             _ = x.DestroyImageKHR(self.dpy, img);

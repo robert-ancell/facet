@@ -34,11 +34,7 @@ pub const Sink = struct {
     f: *const fn (ctx: *anyopaque, text: ?[]const u8) void,
 };
 
-pub fn nowNs() u64 {
-    var ts: linux.timespec = undefined;
-    _ = linux.clock_gettime(.MONOTONIC, &ts);
-    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
-}
+pub const nowNs = @import("sys.zig").monotonicNs;
 
 fn nowMs() u64 {
     return nowNs() / std.time.ns_per_ms;

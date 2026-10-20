@@ -193,7 +193,7 @@ pub const DeviceProcs = struct {
         inline for (@typeInfo(DeviceProcs).@"struct".field_names) |field_name| {
             const name: [*:0]const u8 = "vk" ++ field_name;
             const sym = get_proc(device, name) orelse return error.MissingVulkanFunction;
-            @field(p, field_name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -784,7 +784,7 @@ const DmabufProcs = struct {
         inline for (@typeInfo(DmabufProcs).@"struct".field_names) |field_name| {
             const name: [*:0]const u8 = "vk" ++ field_name;
             const sym = get_proc(device, name) orelse return null;
-            @field(p, field_name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -1326,7 +1326,7 @@ const InstanceProcs = struct {
         inline for (@typeInfo(InstanceProcs).@"struct".field_names) |field_name| {
             const name: [*:0]const u8 = "vk" ++ field_name;
             const sym = get_proc(instance, name) orelse return error.MissingVulkanFunction;
-            @field(p, field_name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -1400,7 +1400,7 @@ pub const ContextProcs = struct {
         inline for (@typeInfo(ContextProcs).@"struct".field_names) |field_name| {
             const name: [*:0]const u8 = "vk" ++ field_name;
             const sym = get_proc(device, name) orelse return error.MissingVulkanFunction;
-            @field(p, field_name) = @ptrCast(sym);
+            @field(p, field_name) = @ptrCast(@alignCast(sym));
         }
         return p;
     }
@@ -1531,7 +1531,7 @@ const Owned2DContext = struct {
 
         const get_inst_proc = vk_lib.lookup(GetInstanceProcAddr, "vkGetInstanceProcAddr") orelse return error.MissingVkGetInstanceProcAddr;
         const create_instance: *const fn (*const VkInstanceCreateInfo, ?*const anyopaque, *VkInstance) callconv(.c) VkResult =
-            @ptrCast(get_inst_proc(null, "vkCreateInstance") orelse return error.MissingVkCreateInstance);
+            @ptrCast(@alignCast(get_inst_proc(null, "vkCreateInstance") orelse return error.MissingVkCreateInstance));
 
         const app_info: VkApplicationInfo = .{};
         const inst_info: VkInstanceCreateInfo = .{ .pApplicationInfo = &app_info };
@@ -2287,12 +2287,12 @@ const Owned2DContext = struct {
         errdefer self.vk.DestroyImage(self.device, img, null);
 
         // Vulkan takes the fd it imports: give it a copy.
-        const fd_rc = std.os.linux.dup(t.fd);
-        if (std.os.linux.errno(fd_rc) != .SUCCESS) return error.Unsupported;
+        const fd_rc = std.posix.system.dup(t.fd);
+        if (std.posix.errno(fd_rc) != .SUCCESS) return error.Unsupported;
         const fd: c_int = @intCast(fd_rc);
         var imported = false;
         defer if (!imported) {
-            _ = std.os.linux.close(fd);
+            _ = std.posix.system.close(fd);
         };
         var fd_props: VkMemoryFdPropertiesKHR = .{};
         if (d.GetMemoryFdPropertiesKHR(self.device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fd_props) != .success) return error.Unsupported;
@@ -2482,12 +2482,12 @@ const Owned2DContext = struct {
         if (self.vk.CreateImage(self.device, &img_info, null, &img) != .success) return error.Unsupported;
         errdefer self.vk.DestroyImage(self.device, img, null);
         // Vulkan takes the fd it imports: give it a copy.
-        const fd_rc = std.os.linux.dup(desc.fd);
-        if (std.os.linux.errno(fd_rc) != .SUCCESS) return error.Unsupported;
+        const fd_rc = std.posix.system.dup(desc.fd);
+        if (std.posix.errno(fd_rc) != .SUCCESS) return error.Unsupported;
         const fd: c_int = @intCast(fd_rc);
         var imported = false;
         defer if (!imported) {
-            _ = std.os.linux.close(fd);
+            _ = std.posix.system.close(fd);
         };
         var fd_props: VkMemoryFdPropertiesKHR = .{};
         if (d.GetMemoryFdPropertiesKHR(self.device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, fd, &fd_props) != .success) return error.Unsupported;
@@ -2952,7 +2952,7 @@ pub const OffscreenContext = struct {
 
         const get_inst_proc = vk_lib.lookup(GetInstanceProcAddr, "vkGetInstanceProcAddr") orelse return error.MissingVkGetInstanceProcAddr;
         const create_instance: *const fn (*const VkInstanceCreateInfo, ?*const anyopaque, *VkInstance) callconv(.c) VkResult =
-            @ptrCast(get_inst_proc(null, "vkCreateInstance") orelse return error.MissingVkCreateInstance);
+            @ptrCast(@alignCast(get_inst_proc(null, "vkCreateInstance") orelse return error.MissingVkCreateInstance));
 
         const app_info: VkApplicationInfo = .{};
         const inst_info: VkInstanceCreateInfo = .{ .pApplicationInfo = &app_info };

@@ -2,7 +2,7 @@
 //! text sizes, and persistent appearance settings.
 
 const std = @import("std");
-const linux = std.os.linux;
+const sys = @import("window").sys;
 const gfx = @import("gfx");
 
 const Color = gfx.Color;
@@ -67,17 +67,14 @@ pub fn loadSettings() Settings {
 
 pub fn loadSettingsFrom(path: [:0]const u8) Settings {
     var buf: [128]u8 = undefined;
-    const rc = linux.open(path.ptr, .{ .ACCMODE = .RDONLY, .CLOEXEC = true }, 0);
-    if (linux.errno(rc) != .SUCCESS) return .{};
-    const fd: linux.fd_t = @intCast(rc);
-    defer _ = linux.close(fd);
-    const n = linux.read(fd, &buf, buf.len);
-    if (linux.errno(n) != .SUCCESS) return .{};
+    const fd = sys.openRead(path.ptr) orelse return .{};
+    defer sys.close(fd);
+    const n = sys.read(fd, &buf) catch return .{};
     return Settings.parse(buf[0..n]);
 }
 
 pub fn saveSettings(s: Settings) void {
-    _ = linux.mkdir("/data/apps", 0o755);
+    sys.mkdir("/data/apps", 0o755);
     saveSettingsTo(settings_file, s);
 }
 
@@ -85,29 +82,19 @@ pub fn saveSettingsTo(path: [:0]const u8, s: Settings) void {
     var buf: [128]u8 = undefined;
     const content = s.formatBuf(&buf);
     if (content.len == 0) return;
-    _ = linux.unlink(path.ptr);
-    const rc = linux.open(path.ptr, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true, .CLOEXEC = true }, 0o644);
-    if (linux.errno(rc) != .SUCCESS) return;
-    const fd: linux.fd_t = @intCast(rc);
-    defer _ = linux.close(fd);
-    _ = linux.write(fd, content.ptr, content.len);
+    _ = sys.writeFile(path.ptr, content);
 }
 
 /// Notices `path` (defaulting to `settings_file`) being created, replaced, or
 /// modified.
 pub const Watch = struct {
     path: [*:0]const u8 = settings_file,
-    stamp: ?[5]u64 = null,
+    stamp: ?[4]u64 = null,
     initialized: bool = false,
 
     /// Whether `path` changed since the last call (false on the first call).
     pub fn changed(w: *Watch) bool {
-        var stx: linux.Statx = undefined;
-        const mask: linux.STATX = .{ .INO = true, .MTIME = true };
-        const now: ?[5]u64 = if (linux.errno(linux.statx(linux.AT.FDCWD, w.path, 0, mask, &stx)) == .SUCCESS)
-            .{ stx.dev_major, stx.dev_minor, stx.ino, @bitCast(stx.mtime.sec), stx.mtime.nsec }
-        else
-            null;
+        const now = sys.fileStamp(w.path);
         defer {
             w.stamp = now;
             w.initialized = true;
@@ -257,8 +244,8 @@ test "appearance settings parse, format, save and load" {
     try testing.expectEqual(Mode.dark, Settings.parse("theme invalid\n").theme);
 
     var path_buf: [64]u8 = undefined;
-    const path = try std.mem.printSentinel(&path_buf, "/tmp/facet-appearance-test-{d}", .{linux.getpid()}, 0);
-    defer _ = linux.unlink(path);
+    const path = try std.mem.printSentinel(&path_buf, "/tmp/facet-appearance-test-{d}", .{sys.getpid()}, 0);
+    defer sys.unlink(path);
 
     var watch: Watch = .{ .path = path };
     try testing.expect(!watch.changed());
@@ -269,8 +256,7 @@ test "appearance settings parse, format, save and load" {
     try testing.expect(!watch.changed());
     try testing.expectEqual(Mode.light, loadSettingsFrom(path).theme);
 
-    var ts: linux.timespec = .{ .sec = 0, .nsec = 20 * std.time.ns_per_ms };
-    _ = linux.nanosleep(&ts, null);
+    sys.sleepNs(20 * std.time.ns_per_ms);
     saveSettingsTo(path, .{ .theme = .dark });
     try testing.expect(watch.changed());
     try testing.expectEqual(Mode.dark, loadSettingsFrom(path).theme);

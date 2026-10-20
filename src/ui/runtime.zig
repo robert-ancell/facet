@@ -39,7 +39,12 @@ const tooltip_mod = @import("tooltip.zig");
 const title_bar_mod = @import("title_bar.zig");
 const accessibility = @import("accessibility.zig");
 const focus_mod = @import("focus.zig");
-const atspi = @import("atspi.zig");
+const sys = window_mod.sys;
+/// AT-SPI is Linux's (on other systems, nothing is offered yet).
+const has_atspi = sys.is_linux;
+const atspi = if (has_atspi) @import("atspi.zig") else struct {
+    pub const Bridge = opaque {};
+};
 
 const Point = geometry.Point;
 const Size = geometry.Size;
@@ -85,12 +90,10 @@ pub const Clipboard = struct {
 /// background (a map tile fetched, say). From `Ui.waker`; good for as
 /// long as the `Ui` is.
 pub const Waker = struct {
-    fd: ?std.os.linux.fd_t = null,
+    wake_: ?sys.Wake = null,
 
     pub fn wake(w: Waker) void {
-        const fd = w.fd orelse return;
-        const one: u64 = 1;
-        _ = std.os.linux.write(fd, std.mem.asBytes(&one), 8);
+        if (w.wake_) |x| x.signal();
     }
 };
 
@@ -151,7 +154,7 @@ pub const Ui = struct {
     /// Images loaded in the background (for `Image`).
     images: image_loader.Cache = .{},
     /// Readable when a `Waker` has woken it (made by the first `waker`).
-    wake_fd: ?std.os.linux.fd_t = null,
+    wake: ?sys.Wake = null,
     /// What it is to assistive technologies (once `enableAccessibility`
     /// has connected to AT-SPI): the last frame's tree, and the number for
     /// the next object.
@@ -320,14 +323,14 @@ pub const Ui = struct {
         if (ui.title_bar_root) |tb| tb.destroy();
         if (ui.images.wakeFd()) |fd| if (ui.win) |w| w.watchFd(fd, false);
         ui.images.deinit();
-        if (ui.wake_fd) |fd| {
-            if (ui.win) |w| w.watchFd(fd, false);
-            _ = std.os.linux.close(fd);
+        if (ui.wake) |x| {
+            if (ui.win) |w| w.watchFd(x.fd(), false);
+            x.deinit();
         }
-        if (ui.a11y) |b| {
+        if (has_atspi) if (ui.a11y) |b| {
             if (ui.win) |w| w.watchFd(b.fd(), false);
             b.close();
-        }
+        };
         if (ui.a11y_tree) |t| {
             t.deinit();
             ui.gpa.destroy(t);
@@ -490,20 +493,14 @@ pub const Ui = struct {
     /// Something to wake the UI for a frame from another thread (it does
     /// nothing if there are no fds left).
     pub fn waker(ui: *Ui) Waker {
-        if (ui.wake_fd == null) {
-            const rc = std.os.linux.eventfd(0, std.os.linux.EFD.NONBLOCK | std.os.linux.EFD.CLOEXEC);
-            if (std.os.linux.errno(rc) != .SUCCESS) return .{};
-            ui.wake_fd = @intCast(rc);
-        }
-        return .{ .fd = ui.wake_fd };
+        if (ui.wake == null) ui.wake = sys.Wake.create() catch return .{};
+        return .{ .wake_ = ui.wake };
     }
 
     /// Takes the wakes since the last time; true if there were any.
     pub fn takeWakes(ui: *Ui) bool {
-        const fd = ui.wake_fd orelse return false;
-        var buf: [8]u8 = undefined;
-        const rc = std.os.linux.read(fd, &buf, buf.len);
-        return std.os.linux.errno(rc) == .SUCCESS and rc == 8;
+        const w = ui.wake orelse return false;
+        return w.drain();
     }
 
     /// The arena this frame's widgets are made in.
@@ -591,6 +588,7 @@ pub const Ui = struct {
     /// AT-SPI, if the desktop has its bus (and `NO_AT_BRIDGE` is not set).
     /// Without it, nothing is offered; it can be tried again.
     pub fn enableAccessibility(ui: *Ui, environ: std.process.Environ) void {
+        if (!has_atspi) return;
         if (ui.a11y != null) return;
         if (environ.getPosix("NO_AT_BRIDGE")) |v| if (std.mem.eql(u8, v, "1")) return;
         const title = if (ui.win) |w| w.title() else "";
@@ -601,6 +599,7 @@ pub const Ui = struct {
     /// The tree of the frame just made, offered (and what changed in it
     /// told), if it is offered at all.
     fn updateAccessibility(ui: *Ui) void {
+        if (!has_atspi) return;
         const b = ui.a11y orelse return;
         const root = ui.root orelse return;
         var extra: [3]*Node = undefined;
@@ -624,6 +623,7 @@ pub const Ui = struct {
     /// Answers assistive technologies' calls; true if one did something
     /// (pressed a button), so a frame is needed.
     pub fn dispatchAccessibility(ui: *Ui) bool {
+        if (!has_atspi) return false;
         const b = ui.a11y orelse return false;
         const acted = b.dispatch();
         if (acted) ui.needs_frame = true;
@@ -1465,7 +1465,8 @@ pub const Ui = struct {
     }
 };
 
-/// A native toolkit app: a window (a `WaylandWindow` unless given one),
+/// A native toolkit app: a window (the system's own, a `NativeWindow`,
+/// unless given one),
 /// its `Controls`, and a `Ui`.
 pub const App = struct {
     gpa: std.mem.Allocator,
@@ -1477,12 +1478,15 @@ pub const App = struct {
     clear_color: ?u32 = null,
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
+    /// The system's appearance (dark or not) when last seen, for windows
+    /// that say (macOS): the theme follows it when it changes.
+    system_dark: ?bool = null,
     dirty: bool = true,
     /// The image loader's fd, and the `Waker`s', once the window wakes
     /// for them.
-    watched_fd: ?std.os.linux.fd_t = null,
-    watched_wake_fd: ?std.os.linux.fd_t = null,
-    watched_a11y_fd: ?std.os.linux.fd_t = null,
+    watched_fd: ?sys.fd_t = null,
+    watched_wake_fd: ?sys.fd_t = null,
+    watched_a11y_fd: ?sys.fd_t = null,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1501,10 +1505,11 @@ pub const App = struct {
         clear_color: ?u32 = null,
     };
 
-    /// Connects to the Wayland compositor in `environ`, opens the window,
-    /// and makes an app in it (see `openIn`).
+    /// Opens a window of the system's (connecting to the Wayland compositor
+    /// in `environ`, on Linux; AppKit's, on macOS) and makes an app in it
+    /// (see `openIn`).
     pub fn open(gpa: std.mem.Allocator, environ: std.process.Environ, options: Options) !*App {
-        const win = try window_mod.WaylandWindow.open(gpa, environ, .{
+        const win = try window_mod.NativeWindow.open(gpa, environ, .{
             .title = options.title,
             .app_id = options.app_id,
             .size = options.size,
@@ -1536,6 +1541,7 @@ pub const App = struct {
             .appearance = theme_mod.loadSettings(),
         };
         _ = a.theme_watch.changed();
+        _ = a.followSystem();
         ui.theme = a.appearance.theme.scheme();
         ui.min_size_floor = options.min_size orelse .{ 0, 0 };
         ui.attachWindow(w, &a.controls);
@@ -1546,6 +1552,16 @@ pub const App = struct {
         a.ui.destroy();
         if (a.owns_window) a.win.close();
         a.gpa.destroy(a);
+    }
+
+    /// Takes the system's appearance, if the window says what it is and it
+    /// has changed since last seen; true if it had.
+    fn followSystem(a: *App) bool {
+        const dark = a.win.prefersDark() orelse return false;
+        if (a.system_dark == dark) return false;
+        a.system_dark = dark;
+        a.appearance.theme = if (dark) .dark else .light;
+        return true;
     }
 
     pub fn setTheme(a: *App, mode: theme_mod.Mode) void {
@@ -1568,11 +1584,11 @@ pub const App = struct {
             a.win.watchFd(fd, true);
             a.watched_fd = fd;
         };
-        if (a.watched_wake_fd == null) if (a.ui.wake_fd) |fd| {
-            a.win.watchFd(fd, true);
-            a.watched_wake_fd = fd;
+        if (a.watched_wake_fd == null) if (a.ui.wake) |x| {
+            a.win.watchFd(x.fd(), true);
+            a.watched_wake_fd = x.fd();
         };
-        if (a.watched_a11y_fd == null) if (a.ui.a11y) |b| {
+        if (has_atspi and a.watched_a11y_fd == null) if (a.ui.a11y) |b| {
             a.win.watchFd(b.fd(), true);
             a.watched_a11y_fd = b.fd();
         };
@@ -1595,6 +1611,10 @@ pub const App = struct {
         }
         if (a.theme_watch.changed()) {
             a.appearance = theme_mod.loadSettings();
+            a.ui.theme = a.appearance.theme.scheme();
+            a.dirty = true;
+        }
+        if (a.followSystem()) {
             a.ui.theme = a.appearance.theme.scheme();
             a.dirty = true;
         }

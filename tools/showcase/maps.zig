@@ -91,9 +91,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .images => .of(&s.images, .{ .max_level = max_zoom, .attribution = "Images drawn by the showcase" }),
     };
     // The sun now (or as many hours from now as chosen).
-    var ts: std.os.linux.timespec = undefined;
-    _ = std.os.linux.clock_gettime(.REALTIME, &ts);
-    const unix = @as(f64, @floatFromInt(ts.sec)) + s.hours * 3600;
+    const unix = facet.window.sys.wallSeconds() + s.hours * 3600;
     const night: ?facet.MapNight = if (s.night) .{ .sun = facet.subsolarPoint(unix) } else null;
     const c = s.camera.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{

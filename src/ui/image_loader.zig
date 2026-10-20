@@ -9,7 +9,7 @@
 //! one shown again soon is not loaded again.
 
 const std = @import("std");
-const linux = std.os.linux;
+const sys = @import("window").sys;
 const gfx = @import("gfx");
 
 /// Shared with the workers, so thread-safe.
@@ -144,15 +144,14 @@ pub const Cache = struct {
 
     /// The fd that is readable when a load is done (to wait on with the
     /// window's), once any has started.
-    pub fn wakeFd(c: *const Cache) ?linux.fd_t {
-        return if (c.shared) |s| s.fd else null;
+    pub fn wakeFd(c: *const Cache) ?sys.fd_t {
+        return if (c.shared) |s| s.wake.fd() else null;
     }
 
     /// Takes the loads that are done; true if there were any.
     pub fn collect(c: *Cache) bool {
         const s = c.shared orelse return false;
-        var buf: [8]u8 = undefined;
-        _ = linux.read(s.fd, &buf, buf.len);
+        _ = s.wake.drain();
         var any = false;
         while (true) {
             s.lock();
@@ -220,13 +219,14 @@ const Shared = struct {
     /// The UI and each worker.
     refs: u32 = 1,
     closed: bool = false,
-    fd: linux.fd_t,
+    /// Readable when a load is done.
+    wake: sys.Wake,
 
     fn create() !*Shared {
-        const rc = linux.eventfd(0, linux.EFD.NONBLOCK | linux.EFD.CLOEXEC);
-        if (linux.errno(rc) != .SUCCESS) return error.SystemResources;
+        const wake = sys.Wake.create() catch return error.SystemResources;
+        errdefer wake.deinit();
         const s = try alloc.create(Shared);
-        s.* = .{ .fd = @intCast(rc) };
+        s.* = .{ .wake = wake };
         return s;
     }
 
@@ -275,7 +275,7 @@ const Shared = struct {
         if (s.refs > 0) return s.unlock();
         s.pending.deinit(alloc);
         s.done.deinit(alloc);
-        _ = linux.close(s.fd);
+        s.wake.deinit();
         alloc.destroy(s);
     }
 
@@ -295,8 +295,7 @@ const Shared = struct {
             if (s.closed) {
                 job.deinit();
             } else if (s.done.append(alloc, job)) {
-                const one: u64 = 1;
-                _ = linux.write(s.fd, std.mem.asBytes(&one), 8);
+                s.wake.signal();
             } else |_| job.deinit();
             s.unlock();
         }
@@ -392,27 +391,7 @@ fn percentDecoded(s: []const u8) ?[]u8 {
 }
 
 fn readFile(path: []const u8) ?[]u8 {
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{path}, 0) catch return null;
-    const rc = linux.open(z.ptr, .{ .ACCMODE = .RDONLY, .CLOEXEC = true }, 0);
-    if (linux.errno(rc) != .SUCCESS) return null;
-    const fd: linux.fd_t = @intCast(rc);
-    defer _ = linux.close(fd);
-    var out: std.ArrayList(u8) = .empty;
-    while (out.items.len < 256 << 20) {
-        out.ensureUnusedCapacity(alloc, 256 << 10) catch {
-            out.deinit(alloc);
-            return null;
-        };
-        const n = linux.read(fd, out.unusedCapacitySlice().ptr, out.unusedCapacitySlice().len);
-        if (linux.errno(n) != .SUCCESS) {
-            out.deinit(alloc);
-            return null;
-        }
-        if (n == 0) break;
-        out.items.len += n;
-    }
-    return out.toOwnedSlice(alloc) catch null;
+    return sys.readFile(alloc, path, 256 << 20);
 }
 
 /// A PNG, JPEG, GIF or WebP decoded (or `region` of it), made smaller if
