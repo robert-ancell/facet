@@ -248,7 +248,6 @@ pub const OpenGlRenderer = struct {
         const dpy = egl.GetDisplay(EGL_DEFAULT_DISPLAY);
         if (dpy == EGL_NO_DISPLAY) return error.NoEglDisplay;
         if (egl.Initialize(dpy, null, null) == EGL_FALSE) return error.EglInitFailed;
-        errdefer _ = egl.Terminate(dpy);
 
         if (egl.BindAPI(EGL_OPENGL_API) == EGL_FALSE) return error.EglBindApiFailed;
 
@@ -385,7 +384,8 @@ pub const OpenGlRenderer = struct {
                 _ = egl.MakeCurrent(r.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
                 if (r.ctx != EGL_NO_CONTEXT) _ = egl.DestroyContext(r.dpy, r.ctx);
                 if (r.surf != EGL_NO_SURFACE) _ = egl.DestroySurface(r.dpy, r.surf);
-                _ = egl.Terminate(r.dpy);
+                // Not terminated: the display is shared (see
+                // `OffscreenContext.deinit`).
                 r.dpy = EGL_NO_DISPLAY;
             }
         }
@@ -1046,7 +1046,6 @@ pub const OffscreenContext = struct {
         const dpy = egl.GetDisplay(EGL_DEFAULT_DISPLAY);
         if (dpy == EGL_NO_DISPLAY) return error.NoEglDisplay;
         if (egl.Initialize(dpy, null, null) == EGL_FALSE) return error.EglInitFailed;
-        errdefer _ = egl.Terminate(dpy);
 
         if (egl.BindAPI(EGL_OPENGL_API) == EGL_FALSE) return error.EglBindApiFailed;
 
@@ -1130,7 +1129,9 @@ pub const OffscreenContext = struct {
             _ = self.egl.MakeCurrent(self.dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             if (self.ctx != EGL_NO_CONTEXT) _ = self.egl.DestroyContext(self.dpy, self.ctx);
             if (self.surf != EGL_NO_SURFACE) _ = self.egl.DestroySurface(self.dpy, self.surf);
-            _ = self.egl.Terminate(self.dpy);
+            // Not terminated: the display is the process's, shared with
+            // the renderer and any other context on it, which terminating
+            // it would end too.
             self.dpy = EGL_NO_DISPLAY;
         }
         self.egl_lib.close();
