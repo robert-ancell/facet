@@ -1,6 +1,6 @@
 //! Maps: a slippy map (`MapView`) of tiles made here: lines of latitude
-//! and longitude, labelled, with the tropics and the polar circles, and
-//! each tile's outline. As shapes, drawn in a style chosen here, or as
+//! and longitude, labelled, with the tropics and the polar circles. As
+//! shapes, drawn in a style chosen here, or as
 //! pictures drawn from the same shapes (a little at a time, so they come
 //! in as a tile server's would). Zoomed out, it is a globe.
 
@@ -148,8 +148,6 @@ const Palette = struct {
     circle: Color,
     text: Color,
     halo: Color,
-    tile_line: Color,
-    tile_text: Color,
 };
 
 const atlas_palette: Palette = .{
@@ -161,8 +159,6 @@ const atlas_palette: Palette = .{
     .circle = .rgb(0xd38b2a),
     .text = .rgb(0x2e3d4d),
     .halo = .rgb(0xffffff),
-    .tile_line = .rgb(0xc4d0db),
-    .tile_text = .rgb(0x8796a5),
 };
 
 fn paletteOf(look: Look, t: *const facet.Theme) Palette {
@@ -176,8 +172,6 @@ fn paletteOf(look: Look, t: *const facet.Theme) Palette {
             .circle = t.primary.withAlpha(0.6),
             .text = t.on_surface,
             .halo = t.surface_container,
-            .tile_line = t.outline_variant.withAlpha(0.6),
-            .tile_text = t.on_surface_variant,
         },
         .atlas => atlas_palette,
         .night => .{
@@ -189,8 +183,6 @@ fn paletteOf(look: Look, t: *const facet.Theme) Palette {
             .circle = .rgb(0xe0a040),
             .text = .rgb(0xd4e0ec),
             .halo = .rgb(0x14202c),
-            .tile_line = .rgb(0x26394a),
-            .tile_text = .rgb(0x5f748a),
         },
         .blueprint => .{
             .background = .rgb(0x1d4f91),
@@ -201,8 +193,6 @@ fn paletteOf(look: Look, t: *const facet.Theme) Palette {
             .circle = .rgb(0xffd166),
             .text = .rgb(0xffffff),
             .halo = .rgb(0x1d4f91),
-            .tile_line = Color.rgb(0xffffff).withAlpha(0.15),
-            .tile_text = Color.rgb(0xffffff).withAlpha(0.55),
         },
     };
 }
@@ -213,11 +203,9 @@ fn styleOf(cx: ?*facet.Context, p: Palette) facet.MapStyle {
     const layers = [_]facet.MapStyle.Layer{
         .{ .source_layer = "zones", .filter = kindIs("tropics"), .draw = .{ .fill = p.tropics } },
         .{ .source_layer = "zones", .filter = kindIs("polar"), .draw = .{ .fill = p.polar } },
-        .{ .source_layer = "tiles", .draw = .{ .line = .{ .color = p.tile_line, .width = 1 } } },
         .{ .source_layer = "grid", .filter = .{ .not_equals = .{ .key = "major", .value = .{ .boolean = true } } }, .draw = .{ .line = .{ .color = p.line, .width = 1 } } },
         .{ .source_layer = "grid", .filter = .{ .equals = .{ .key = "major", .value = .{ .boolean = true } } }, .draw = .{ .line = .{ .color = p.major, .width = 1.5 } } },
         .{ .source_layer = "circles", .draw = .{ .line = .{ .color = p.circle, .width = 1.5 } } },
-        .{ .source_layer = "tiles", .draw = .{ .label = .{ .style = .{ .size = 10, .color = p.tile_text, .anchor = .top, .offset = .{ 0, 4 } } } } },
         .{ .source_layer = "circles", .draw = .{ .label = .{ .style = .{ .size = 11, .color = p.circle, .halo = p.halo, .anchor = .bottom, .offset = .{ 0, -2 } } } } },
         .{ .source_layer = "labels", .filter = kindIs("parallel"), .draw = .{ .label = .{ .style = .{ .size = 12, .color = p.text, .halo = p.halo, .anchor = .bottom, .offset = .{ 0, -2 } } } } },
         .{ .source_layer = "labels", .filter = kindIs("meridian"), .draw = .{ .label = .{ .style = .{ .size = 12, .color = p.text, .halo = p.halo, .anchor = .left, .offset = .{ 4, 0 } } } } },
@@ -363,18 +351,8 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         });
     }
 
-    // The tile's outline and name.
-    var name_buf: [32]u8 = undefined;
-    const name = try arena.dupe(u8, std.fmt.bufPrint(&name_buf, "{d}/{d}/{d}", .{ id.z, id.x, id.y }) catch "");
-    const outline = try arena.dupe(Point, &.{ .{ 0, 0 }, .{ extent, 0 }, .{ extent, extent }, .{ 0, extent } });
-    const tile_features = try arena.dupe(VectorTile.Feature, &.{
-        .{ .geometry = .{ .polygon = try arena.dupe([]const Point, &.{outline}) } },
-        .{ .geometry = .{ .points = try arena.dupe(Point, &.{.{ extent / 2, 0 }}) }, .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "name", .value = .{ .string = name } }}) },
-    });
-
     return .{ .extent = extent, .layers = try arena.dupe(VectorTile.Layer, &.{
         .{ .name = "zones", .features = zones.items },
-        .{ .name = "tiles", .features = tile_features },
         .{ .name = "grid", .features = grid.items },
         .{ .name = "circles", .features = circles.items },
         .{ .name = "labels", .features = labels.items },

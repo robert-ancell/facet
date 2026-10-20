@@ -1,8 +1,9 @@
 //! Where places show in a `MapView`: on the flat map (Web Mercator, the
 //! projection map tiles are made in) or, zoomed out, on a globe seen from
 //! above, and part way between the two while zooming from one to the
-//! other. The globe and the flat map agree at the centre of the view
-//! (in where it is, and in scale), so the one turns into the other
+//! other. The globe's size is the zoom's alone (dragging it about does
+//! not change it); as it becomes the flat map, it takes the flat map's
+//! scale at the centre of the view, so the one turns into the other
 //! smoothly.
 
 const std = @import("std");
@@ -18,9 +19,8 @@ pub const LatLon = struct {
 /// What a map view shows: the place at its centre, and how close.
 pub const Camera = struct {
     center: LatLon = .{},
-    /// At zoom z the flat map is 256 × 2^z pixels across. The globe is
-    /// drawn to the same scale at the centre of the view, so it is bigger
-    /// at the same zoom away from the equator (as the flat map is).
+    /// At zoom z the flat map is 256 × 2^z pixels across, and the globe
+    /// as far round its equator.
     zoom: f64 = 2,
 };
 
@@ -93,12 +93,16 @@ pub const View = struct {
         // height of the view at the centre (where the scale is the flat
         // map's).
         const focal = 1.5 * @max(size[1], 1);
-        const radius = world / math.tau / @cos(lat * deg);
+        // The equator as long as the flat map is wide; growing as it
+        // becomes the flat map, to that map's scale at the centre (which
+        // grows away from the equator).
+        const flat = flatness(camera.zoom, projection);
+        const radius = world / math.tau / math.pow(f64, @cos(lat * deg), flat);
         return .{
             .size = size,
             .camera = camera,
             .projection = projection,
-            .flat = flatness(camera.zoom, projection),
+            .flat = flat,
             .world = world,
             .center = toWorld(camera.center),
             .radius = radius,
@@ -164,6 +168,13 @@ pub const View = struct {
         return .{ .pos = .{ cx + d[0] * r, cy - d[1] * r }, .visible = false };
     }
 
+    /// The zoom at which the flat map has the scale there is at the centre
+    /// of the view (on the globe away from the equator, less than the
+    /// camera's): what tiles are drawn at.
+    pub fn detailZoom(v: *const View) f64 {
+        return v.camera.zoom + (1 - v.flat) * math.log2(v.cos_lat);
+    }
+
     /// The radius of the globe's outline, around the centre of the view.
     pub fn discRadius(v: *const View) f64 {
         return v.focal / @sqrt(v.dist * v.dist - 1);
@@ -221,15 +232,10 @@ fn solve2(j: [2][2]f64, e: [2]f64) ?[2]f64 {
     return .{ (e[0] * j[1][1] - e[1] * j[0][1]) / det, (e[1] * j[0][0] - e[0] * j[1][0]) / det };
 }
 
-/// `camera` with its centre at `w` on the flat map. On the globe, the zoom
-/// changes with the latitude so that the globe stays the same size (its
-/// scale is the flat map's, which grows away from the equator).
-fn centered(camera: Camera, flat: f64, w: [2]f64) Camera {
+/// `camera` with its centre at `w` on the flat map (and the same zoom).
+fn centered(camera: Camera, w: [2]f64) Camera {
     const lat_limit = toWorld(.{ .lat = max_lat })[1];
-    const place = fromWorld(.{ w[0], math.clamp(w[1], lat_limit, 1 - lat_limit) });
-    const before = @cos(math.clamp(camera.center.lat, -max_lat, max_lat) * deg);
-    const after = @cos(place.lat * deg);
-    return .{ .center = place, .zoom = camera.zoom + (1 - flat) * math.log2(before / after) };
+    return .{ .center = fromWorld(.{ w[0], math.clamp(w[1], lat_limit, 1 - lat_limit) }), .zoom = camera.zoom };
 }
 
 /// The camera, moved from `camera` (in a view `size` big), that shows
@@ -251,13 +257,13 @@ pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: LatLo
     target[0] -= @round(target[0] - v.center[0]);
     // On the flat map: exactly.
     var w: [2]f64 = .{ target[0] - (at[0] - size[0] / 2) / v.world, target[1] - (at[1] - size[1] / 2) / v.world };
-    if (v.flat >= 1) return centered(camera, 1, w);
+    if (v.flat >= 1) return centered(camera, w);
     // On the globe: by Newton's method, from there.
-    var best = centered(camera, v.flat, w);
+    var best = centered(camera, w);
     var best_err = math.inf(f64);
     const h = 1e-7;
     for (0..12) |_| {
-        const cam = centered(camera, v.flat, w);
+        const cam = centered(camera, w);
         const p = View.init(cam, size, projection).project(target).pos;
         const e: [2]f64 = .{ p[0] - at[0], p[1] - at[1] };
         const err = @abs(e[0]) + @abs(e[1]);
@@ -266,8 +272,8 @@ pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: LatLo
             best_err = err;
         }
         if (err < 1e-3) break;
-        const px = View.init(centered(camera, v.flat, .{ w[0] + h, w[1] }), size, projection).project(target).pos;
-        const py = View.init(centered(camera, v.flat, .{ w[0], w[1] + h }), size, projection).project(target).pos;
+        const px = View.init(centered(camera, .{ w[0] + h, w[1] }), size, projection).project(target).pos;
+        const py = View.init(centered(camera, .{ w[0], w[1] + h }), size, projection).project(target).pos;
         const j = [2][2]f64{ .{ (px[0] - p[0]) / h, (py[0] - p[0]) / h }, .{ (px[1] - p[1]) / h, (py[1] - p[1]) / h } };
         var step = solve2(j, e) orelse break;
         // No more than a tenth of the world at a time.
@@ -335,6 +341,8 @@ test "dragging keeps the place grabbed under the pointer" {
         for (0..10) |_| {
             at = .{ at[0] + 9, at[1] + 4 };
             cam = moveTo(cam, size, proj, place, at);
+            // The zoom stays as it was.
+            try testing.expectEqual(zoom, cam.zoom);
             const p = View.init(cam, size, proj).projectLatLon(place);
             try testing.expectApproxEqAbs(at[0], p.pos[0], 0.05);
             try testing.expectApproxEqAbs(at[1], p.pos[1], 0.05);
@@ -349,7 +357,7 @@ test "zooming about a point keeps the place there" {
         const at: [2]f64 = .{ 500, 300 };
         const place = View.init(cam, size, .globe).unproject(at).?;
         const zoomed = zoomAbout(cam, size, .globe, at, 0.5, 0, 20);
-        try testing.expectApproxEqAbs(zoom + 0.5, zoomed.zoom, 0.2);
+        try testing.expectEqual(zoom + 0.5, zoomed.zoom);
         const p = View.init(zoomed, size, .globe).projectLatLon(place);
         try testing.expectApproxEqAbs(at[0], p.pos[0], 0.05);
         try testing.expectApproxEqAbs(at[1], p.pos[1], 0.05);

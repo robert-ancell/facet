@@ -2288,6 +2288,18 @@ test "a map view is dragged and zoomed" {
     const after = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).projectLatLon(before);
     try testing.expectApproxEqAbs(300, after.pos[0], 1e-3);
     try testing.expectApproxEqAbs(100, after.pos[1], 1e-3);
+
+    // Dragged on the globe, north and east: it turns, and the zoom stays.
+    camera = .{ .center = .{ .lat = 10, .lon = 20 }, .zoom = 2.5 };
+    const globe: MapApp = .{ .tiles = &tiles, .camera = &camera, .projection = .globe };
+    u.frame(400, 300, 2, globe);
+    // (Away from the last press, so it is not a double click.)
+    u.pointerMotion(.{ 220, 130 });
+    u.pointerButton(.{ 220, 130 }, ui.btn_left, true);
+    for (1..6) |i| u.pointerMotion(.{ 220 - 10 * @as(f32, @floatFromInt(i)), 130 + 12 * @as(f32, @floatFromInt(i)) });
+    u.pointerButton(.{ 170, 190 }, ui.btn_left, false);
+    try testing.expect(camera.center.lat > 20 and camera.center.lon > 20);
+    try testing.expectEqual(@as(f64, 2.5), camera.zoom);
 }
 
 /// A window whose two buffers are drawn in turn, as a compositor gives
