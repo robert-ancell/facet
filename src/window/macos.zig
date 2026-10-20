@@ -413,6 +413,19 @@ pub const MacWindow = struct {
 
     pub fn setMinSize(w: *MacWindow, width: u32, height: u32) void {
         msg(void, w.win, "setContentMinSize:", .{objc.Size{ .width = @floatFromInt(width), .height = @floatFromInt(height) }});
+        // AppKit only keeps it from shrinking past the minimum: one already
+        // smaller grows to it, its top left corner where it was. Full
+        // screen, it is the screen's size.
+        if (w.fullscreen) return;
+        const bounds = objc.msgRect(w.view, "bounds");
+        const dw = @max(@as(objc.CGFloat, @floatFromInt(width)) - bounds.size.width, 0);
+        const dh = @max(@as(objc.CGFloat, @floatFromInt(height)) - bounds.size.height, 0);
+        if (dw == 0 and dh == 0) return;
+        var frame = objc.msgRect(w.win, "frame");
+        frame.size.width += dw;
+        frame.size.height += dh;
+        frame.origin.y -= dh;
+        msg(void, w.win, "setFrame:display:", .{ frame, objc.yes });
     }
 
     pub fn setMaximized(w: *MacWindow, on: bool) void {
