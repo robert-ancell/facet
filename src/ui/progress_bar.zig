@@ -2,6 +2,7 @@
 //! `value` is given, from 0 to 1) or indeterminate (when `value` is null,
 //! animating a bar along the track).
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -16,6 +17,11 @@ pub const ProgressBar = struct {
     height: f32 = 6,
     color: ?Color = null,
     track_color: ?Color = null,
+
+    pub fn accessible(self: *const ProgressBar, _: *widget.Node) ?a11y.Info {
+        const v = self.value orelse return .{ .role = .progress_bar, .states = .{ .busy = true } };
+        return .{ .role = .progress_bar, .value = .{ .current = v } };
+    }
 
     pub fn layout(self: *const ProgressBar, _: *widget.Node, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{

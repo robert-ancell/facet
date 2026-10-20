@@ -2,6 +2,7 @@
 //! backdrop with an optional icon, title, description, custom content and
 //! action buttons.
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -38,6 +39,11 @@ pub const Dialog = struct {
     /// Optional underlying content; when given, the dialog overlays it
     /// when `open` is true.
     child: ?Widget = null,
+
+    pub fn accessible(self: *const Dialog, _: *Node) ?a11y.Info {
+        if (!self.open) return null;
+        return .{ .role = .dialog, .name = self.title, .description = self.description, .states = .{ .modal = true } };
+    }
 
     pub fn build(self: *const Dialog, cx: *Context) Widget {
         if (!self.open) return self.child orelse cx.make(Empty{});

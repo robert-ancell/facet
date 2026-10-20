@@ -1,6 +1,7 @@
 //! Text: lines broken at `\n`, and wrapped at spaces to fit the width. A
 //! word wider than the space it has overflows (and is marked).
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -46,6 +47,10 @@ pub const Text = struct {
         const size = self.style.size orelse n.theme().body_size;
         if (!(size > 0) or !std.math.isFinite(size)) return null;
         return .{ .font = f, .size = size };
+    }
+
+    pub fn accessible(self: *const Text, _: *Node) ?a11y.Info {
+        return .{ .role = .label, .name = self.text, .text = self.text };
     }
 
     pub fn layout(self: *const Text, n: *Node, c: Constraints) Size {

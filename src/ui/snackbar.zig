@@ -1,6 +1,7 @@
 //! Snackbar: Material 3's brief notification bar at the bottom of the
 //! window, with a message, an optional action button and a dismiss button.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
@@ -32,6 +33,10 @@ pub const Snackbar = struct {
     child: ?Widget = null,
 
     pub const min_height = 48;
+
+    pub fn accessible(self: *const Snackbar, _: *Node) ?a11y.Info {
+        return .{ .role = .notification, .name = self.message };
+    }
 
     pub fn build(self: *const Snackbar, cx: *Context) Widget {
         if (self.message.len == 0) {

@@ -1,6 +1,8 @@
 //! IconButton: Material 3's circular icon button, in standard, filled,
 //! tonal and outlined variants, with optional toggle (`selected`) state.
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -36,6 +38,11 @@ pub const IconButton = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const IconButton, n: *Node) ?a11y.Info {
+        // Named by its icon, unless an `Accessible` or a tooltip names it.
+        return .{ .role = if (self.selected) .toggle_button else .push_button, .name = a11y.iconName(n, self.icon), .activate = self.on_press, .states = .{ .disabled = self.on_press == null, .checked = self.selected }, .leaf = true };
+    }
 
     pub fn build(self: *const IconButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();

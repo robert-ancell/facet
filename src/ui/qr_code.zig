@@ -1,6 +1,7 @@
 //! QrCode: renders an ISO/IEC 18004 QR Code for `text` (in Byte mode, ECC
 //! Level L, Versions 1–9, up to 230 bytes) inside a rounded light quiet zone.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -59,6 +60,10 @@ pub const QrCode = struct {
         matrix: ?Matrix = null,
         valid: bool = false,
     };
+
+    pub fn accessible(self: *const QrCode, _: *widget.Node) ?a11y.Info {
+        return .{ .role = .image, .name = "QR code", .description = self.text, .leaf = true };
+    }
 
     pub fn layout(self: *const QrCode, _: *widget.Node, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{ .w = self.size, .h = self.size });

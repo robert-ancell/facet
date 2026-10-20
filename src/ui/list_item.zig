@@ -1,6 +1,8 @@
 //! ListItem: Material 3's list row with a leading icon or widget, a
 //! headline, optional supporting text, and a trailing icon, text or widget.
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const std = @import("std");
 const gfx = @import("gfx");
 const icons = @import("icons");
@@ -39,6 +41,10 @@ pub const ListItem = struct {
 
     pub const one_line_height = 52;
     pub const two_line_height = 68;
+
+    pub fn accessible(self: *const ListItem, _: *Node) ?a11y.Info {
+        return .{ .role = .list_item, .name = self.headline, .description = self.supporting_text, .activate = self.on_press, .states = .{ .selectable = self.on_press != null, .selected = self.selected }, .leaf = true };
+    }
 
     pub fn build(self: *const ListItem, cx: *Context, state: *State) Widget {
         const t = cx.theme();

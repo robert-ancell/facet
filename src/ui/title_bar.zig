@@ -9,6 +9,7 @@
 //! compositor provides server-side decorations (`decorations == .server`) or
 //! the window is fullscreen, no client-side `TitleBar` is added.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const Controls = @import("window").Controls;
 const geometry = @import("geometry.zig");
@@ -52,6 +53,10 @@ pub const TitleBar = struct {
     const margin = 8;
     /// How much of the title still shows in the narrowest window.
     const min_title_width = 120;
+
+    pub fn accessible(self: *const TitleBar, _: *Node) ?a11y.Info {
+        return .{ .role = .title_bar, .name = self.title };
+    }
 
     pub fn build(self: *const TitleBar, cx: *Context) Widget {
         // A fullscreen window has none.

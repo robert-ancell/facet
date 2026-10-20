@@ -1,6 +1,7 @@
 //! BarButton: a round button with an icon, as in a title bar (see
 //! title_bar.zig).
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const geometry = @import("geometry.zig");
@@ -24,6 +25,10 @@ pub const BarButton = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const BarButton, n: *Node) ?a11y.Info {
+        return .{ .role = .push_button, .name = a11y.iconName(n, self.icon), .activate = self.on_press, .leaf = true };
+    }
 
     pub fn build(self: *const BarButton, cx: *Context, state: *State) Widget {
         return cx.make(Pressable{ .on_press = self.on_press, .interaction = &state.interaction, .child = cx.make(Mark{

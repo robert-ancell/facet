@@ -10,6 +10,7 @@
 //! menu with the same (`Ui.openMenu`). An obscured field's text cannot be
 //! cut or copied.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -341,6 +342,19 @@ pub const TextField = struct {
         }
         st.on_changed = self.on_changed;
         return st;
+    }
+
+    pub fn accessible(self: *const TextField, n: *Node) ?a11y.Info {
+        const st = n.state(State);
+        const value = if (self.isObscured(st)) "" else st.text();
+        return .{
+            .role = if (self.obscure) .password_text else .entry,
+            .name = self.placeholder,
+            .text = value,
+            .caret = std.unicode.utf8CountCodepoints(st.text()[0..@min(st.cursor, st.text().len)]) catch null,
+            .states = .{ .focusable = self.enabled, .editable = self.enabled, .disabled = !self.enabled },
+            .leaf = true,
+        };
     }
 
     pub fn layout(self: *const TextField, n: *Node, c: Constraints) Size {

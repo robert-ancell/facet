@@ -1,5 +1,6 @@
 //! Checkbox: Material 3's checkbox, on or off (see control.zig).
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const geometry = @import("geometry.zig");
@@ -30,6 +31,10 @@ pub const Checkbox = struct {
             if (s.latest.on_changed) |f| f.call(!(s.latest.value orelse false));
         }
     };
+
+    pub fn accessible(self: *const Checkbox, n: *Node) ?a11y.Info {
+        return .{ .role = .check_box, .name = self.label, .action = "toggle", .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .states = .{ .checkable = true, .checked = self.value, .disabled = self.on_changed == null }, .leaf = true };
+    }
 
     pub fn build(self: *const Checkbox, cx: *Context, state: *State) Widget {
         state.latest.update(self.value, self.on_changed);

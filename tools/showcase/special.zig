@@ -45,7 +45,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             } }),
         }),
         common.section(cx, "Custom painting", "A widget of its own, painting shapes and lines on the canvas each frame", &.{
-            cx.make(Lissajous{}),
+            // Described to screen readers as what it is.
+            cx.make(facet.Accessible{ .role = .animation, .label = "A Lissajous figure", .description = "Lines and circles tracing a figure that turns", .child = cx.make(Lissajous{}) }),
+        }),
+        common.section(cx, "Accessibility", "What the widgets are, offered to screen readers (and other assistive technologies) over AT-SPI; widgets of the app's own are described with Accessible", &.{
+            common.status(cx, if (cx.ui.a11y != null) "Offered over AT-SPI: try Orca, or Accerciser to look at the tree" else "Not offered: there is no AT-SPI bus (or NO_AT_BRIDGE is set)"),
         }),
         common.section(cx, "Animation", "A widget made afresh each frame from how far through its time it is, eased by a tweening function", animation(cx, s)),
     });

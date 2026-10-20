@@ -17,6 +17,7 @@
 //! that is (bigger, and blurrier); picture tiles load in the background,
 //! as an `Image`'s do.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const window_mod = @import("window");
@@ -131,6 +132,12 @@ pub const MapView = struct {
         };
         n.ui.needs_frame = true;
         if (self.on_move) |f| f.call();
+    }
+
+    pub fn accessible(self: *const MapView, n: *Node) ?a11y.Info {
+        const c = self.cameraOf(n.state(State)).*;
+        const where = std.fmt.allocPrint(n.ui.arena(), "{d:.4}, {d:.4}, zoom {d:.1}", .{ c.center.lat, c.center.lon, c.zoom }) catch "";
+        return .{ .role = .canvas, .name = "Map", .description = where, .leaf = true };
     }
 
     pub fn layout(self: *const MapView, _: *Node, c: Constraints) Size {

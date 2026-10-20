@@ -5,6 +5,8 @@
 //! right of the point, or up or to the left where there is no room, and
 //! stays in the window (`place`).
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
@@ -82,6 +84,10 @@ const MenuRow = struct {
             if (s.action) |a| a.call();
         }
     };
+
+    pub fn accessible(self: *const MenuRow, _: *Node) ?a11y.Info {
+        return .{ .role = .menu_item, .name = self.item.label, .activate = self.item.on_press, .states = .{ .disabled = !self.item.enabled }, .leaf = true };
+    }
 
     pub fn build(self: *const MenuRow, cx: *Context, state: *State) Widget {
         const t = cx.theme();

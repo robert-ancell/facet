@@ -1,6 +1,7 @@
 //! PillBar and PillButton: a segmented pill bar of connected buttons,
 //! for choosing between options.
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -57,6 +58,10 @@ pub const PillButton = struct {
     };
 
     pub const height = 36;
+
+    pub fn accessible(self: *const PillButton, _: *Node) ?a11y.Info {
+        return .{ .role = .toggle_button, .name = self.label, .activate = self.on_press, .states = .{ .checkable = true, .checked = self.selected, .disabled = self.on_press == null }, .leaf = true };
+    }
 
     pub fn build(self: *const PillButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();

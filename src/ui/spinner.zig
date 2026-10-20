@@ -1,5 +1,6 @@
 //! Spinner: Material 3's indeterminate circular progress indicator.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
@@ -16,6 +17,10 @@ pub const Spinner = struct {
     size: f32 = 48,
     /// The theme's primary colour if not given.
     color: ?Color = null,
+
+    pub fn accessible(_: *const Spinner, _: *widget.Node) ?a11y.Info {
+        return .{ .role = .progress_bar, .name = "Busy", .states = .{ .busy = true } };
+    }
 
     pub fn layout(self: *const Spinner, _: *widget.Node, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{ .w = self.size, .h = self.size });

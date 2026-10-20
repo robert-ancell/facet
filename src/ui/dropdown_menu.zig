@@ -2,6 +2,7 @@
 //! chosen option in an `OutlinedButton` with a trailing arrow and opening
 //! a `Menu` below it when pressed.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -57,6 +58,11 @@ pub const DropdownMenu = struct {
             n.ui.openMenu(n, .{ pos[0], pos[1] + n.size.h }, items[0..st.len]);
         }
     };
+
+    pub fn accessible(self: *const DropdownMenu, _: *Node) ?a11y.Info {
+        const shown = if (self.selected) |i| if (i < self.options.len) self.options[i] else "" else self.placeholder;
+        return .{ .role = .combo_box, .name = self.label orelse "", .text = shown, .states = .{ .expandable = true }, .leaf = true };
+    }
 
     pub fn build(self: *const DropdownMenu, cx: *Context, state: *State) Widget {
         const enabled = self.on_selected != null and self.options.len > 0;

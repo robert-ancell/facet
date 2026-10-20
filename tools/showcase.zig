@@ -74,7 +74,7 @@ pub const Page = enum {
             .icons => "Material's icons, at any size and colour",
             .maps => "A slippy map of tiles from a source, zoomed out a globe",
             .three_d => "Scenes drawn on the GPU with Vulkan and OpenGL",
-            .special => "QR codes, custom painting and animation",
+            .special => "QR codes, custom painting, accessibility and animation",
         };
     }
 };

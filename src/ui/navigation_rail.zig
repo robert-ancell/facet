@@ -1,6 +1,8 @@
 //! NavigationRail: Material 3's vertical navigation sidebar (compact icon +
 //! label pills or extended horizontal rows), with optional badges.
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -97,6 +99,10 @@ const RailDestination = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const RailDestination, _: *Node) ?a11y.Info {
+        return .{ .role = .page_tab, .name = self.item.label, .action = "switch", .activate = self.on_press, .states = .{ .selectable = true, .selected = self.selected }, .leaf = true };
+    }
 
     pub fn build(self: *const RailDestination, cx: *Context, state: *State) Widget {
         const t = cx.theme();

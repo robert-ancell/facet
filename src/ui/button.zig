@@ -3,6 +3,8 @@
 //! and `TextButton` (low emphasis). Each is a pill with a label, an icon or
 //! both, and differs from the others only in its colours.
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const Center = @import("center.zig").Center;
@@ -45,6 +47,10 @@ pub const FilledButton = struct {
         interaction: Interaction = .{},
     };
 
+    pub fn accessible(self: *const FilledButton, _: *Node) ?a11y.Info {
+        return .{ .role = .push_button, .name = self.label, .activate = self.on_press, .states = .{ .disabled = self.on_press == null }, .leaf = true };
+    }
+
     pub fn build(self: *const FilledButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();
         const layer = stateLayer(self.on_press, state.interaction, 0.12);
@@ -67,6 +73,10 @@ pub const TonalButton = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const TonalButton, _: *Node) ?a11y.Info {
+        return .{ .role = .push_button, .name = self.label, .activate = self.on_press, .states = .{ .disabled = self.on_press == null }, .leaf = true };
+    }
 
     pub fn build(self: *const TonalButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();
@@ -94,6 +104,10 @@ pub const OutlinedButton = struct {
         interaction: Interaction = .{},
     };
 
+    pub fn accessible(self: *const OutlinedButton, _: *Node) ?a11y.Info {
+        return .{ .role = .push_button, .name = self.label, .activate = self.on_press, .states = .{ .disabled = self.on_press == null }, .leaf = true };
+    }
+
     pub fn build(self: *const OutlinedButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();
         const enabled = self.on_press != null;
@@ -120,6 +134,10 @@ pub const TextButton = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const TextButton, _: *Node) ?a11y.Info {
+        return .{ .role = .push_button, .name = self.label, .activate = self.on_press, .states = .{ .disabled = self.on_press == null }, .leaf = true };
+    }
 
     pub fn build(self: *const TextButton, cx: *Context, state: *State) Widget {
         const t = cx.theme();

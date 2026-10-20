@@ -1,6 +1,7 @@
 //! Slider: Material 3's continuous or discrete slider for choosing a number
 //! from a range by pressing or dragging along a track.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -34,6 +35,11 @@ pub const Slider = struct {
         hovered: bool = false,
         pressed: bool = false,
     };
+
+    pub fn accessible(self: *const Slider, n: *Node) ?a11y.Info {
+        const step: f32 = if (self.divisions) |d| if (d > 0) (self.max - self.min) / @as(f32, @floatFromInt(d)) else 0 else 0;
+        return .{ .role = .slider, .value = .{ .current = self.value, .min = self.min, .max = self.max, .step = step }, .set_value = a11y.setterOf(n, self.on_changed, self.min, self.max), .states = .{ .disabled = self.on_changed == null }, .leaf = true };
+    }
 
     pub fn layout(_: *const Slider, _: *Node, c: Constraints) Size {
         return c.constrain(.{

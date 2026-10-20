@@ -25,6 +25,7 @@
 //! matched to the nodes of the last (by position and type, or by key), so
 //! state and layout carry over; nodes that no longer match are freed.
 
+const Accessibility = @import("accessibility.zig");
 const std = @import("std");
 const Theme = @import("theme.zig").Theme;
 const gfx = @import("gfx");
@@ -193,6 +194,9 @@ pub const VTable = struct {
     hit_test: ?*const fn (*const anyopaque, *Node, Point) bool,
     cursor: ?*const fn (*const anyopaque, *Node, Point) ?Cursor,
     text_input: ?*const fn (*const anyopaque, *Node) ?TextInputInfo,
+    /// What it is to assistive technologies (a screen reader), if anything
+    /// (`pub fn accessible(self, n) ?accessibility.Info`).
+    accessible: ?*const fn (*const anyopaque, *Node) ?Accessibility.Info,
     /// Makes its children (instead of `children`), when the tree is built.
     lazy_children: ?*const fn (*const anyopaque, *Context, *Node) []const Widget,
     /// Told, once laid out in a scroll view, what of it shows (relative to
@@ -265,6 +269,9 @@ fn makeVTable(comptime T: type) VTable {
         fn textInput(ptr: *const anyopaque, n: *Node) ?TextInputInfo {
             return T.textInput(self(ptr), n);
         }
+        fn accessible(ptr: *const anyopaque, n: *Node) ?Accessibility.Info {
+            return T.accessible(self(ptr), n);
+        }
         fn lazyChildren(ptr: *const anyopaque, cx: *Context, n: *Node) []const Widget {
             return T.lazyChildren(self(ptr), cx, n);
         }
@@ -291,6 +298,7 @@ fn makeVTable(comptime T: type) VTable {
         .hit_test = if (@hasDecl(T, "hitTest")) S.hitTest else null,
         .cursor = if (@hasDecl(T, "cursor")) S.cursor else null,
         .text_input = if (@hasDecl(T, "textInput")) S.textInput else null,
+        .accessible = if (@hasDecl(T, "accessible")) S.accessible else null,
         .lazy_children = if (@hasDecl(T, "lazyChildren")) S.lazyChildren else null,
         .realize = if (@hasDecl(T, "realize")) S.realize else null,
         .scrolls = @hasDecl(T, "scrolls") and T.scrolls,
@@ -445,6 +453,8 @@ pub const Node = struct {
     /// The theme it is in, if not the app's: its parent's, or one a
     /// `Themed` gives (set as it is built; see `theme`).
     theme_ptr: ?*const Theme = null,
+    /// Its object's number for assistive technologies, once it has one.
+    a11y_id: u32 = 0,
 
     /// The theme the widget is in: the app's, or that of the nearest
     /// `Themed` above it (for `layout`, `paint` and `event` functions).

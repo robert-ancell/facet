@@ -1,5 +1,6 @@
 //! Radio: one of a group of Material 3 radio buttons (see control.zig).
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
@@ -38,6 +39,10 @@ pub fn Radio(comptime T: type) type {
                 if (s.latest.on_changed) |f| if (s.latest.value) |v| f.call(v);
             }
         };
+
+        pub fn accessible(self: *const Self, n: *Node) ?a11y.Info {
+            return .{ .role = .radio_button, .name = self.label, .action = "select", .activate = a11y.callWith(n, T, self.on_changed, self.value), .states = .{ .checkable = true, .checked = std.meta.eql(self.value, self.group_value), .disabled = self.on_changed == null }, .leaf = true };
+        }
 
         pub fn build(self: *const Self, cx: *Context, state: *State) Widget {
             state.latest.update(self.value, self.on_changed);

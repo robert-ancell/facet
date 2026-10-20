@@ -14,6 +14,7 @@
 //! is (a keyword, a string, ...), and each is drawn in the theme's colour
 //! for it.
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -335,6 +336,17 @@ pub const TextArea = struct {
             .password = false,
             .multiline = true,
             .change_cause_other = st.last_change_other,
+        };
+    }
+
+    pub fn accessible(self: *const TextArea, _: *Node) ?a11y.Info {
+        const doc = self.doc.text();
+        return .{
+            .role = .text,
+            .text = doc,
+            .caret = std.unicode.utf8CountCodepoints(doc[0..@min(self.doc.cursor, doc.len)]) catch null,
+            .states = .{ .focusable = true, .editable = true, .multi_line = true },
+            .leaf = true,
         };
     }
 

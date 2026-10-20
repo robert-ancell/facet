@@ -2399,3 +2399,95 @@ test "an image shows a part of itself: of pixels in memory, or only that part lo
         try testing.expectEqual(ui.Size{ .w = 7, .h = 7 }, find(u.root.?, ui.Image).?.children.items[0].size);
     }
 }
+
+const A11yApp = struct {
+    pressed: *u32,
+    checked: *bool,
+    level: *f32,
+
+    fn press(c: *u32) void {
+        c.* += 1;
+    }
+    fn check(b: *bool, v: bool) void {
+        b.* = v;
+    }
+    fn setLevel(l: *f32, v: f32) void {
+        l.* = v;
+    }
+
+    pub fn build(self: *const A11yApp, cx: *Context) Widget {
+        return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .children = &.{
+            cx.make(ui.Accessible{ .role = .heading, .label = "Settings", .leaf = true, .child = cx.make(ui.Text{ .text = "Settings" }) }),
+            cx.make(ui.Text{ .text = "Hello" }),
+            cx.make(ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) }),
+            cx.make(ui.Checkbox{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
+            cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
+            cx.make(ui.Accessible{ .label = "Zoom in", .child = cx.make(ui.IconButton{ .icon = .add, .on_press = .of(self.pressed, press) }) }),
+            cx.make(ui.Tooltip{ .text = "Remove it", .child = cx.make(ui.IconButton{ .icon = .remove, .on_press = .of(self.pressed, press) }) }),
+            cx.make(ui.Accessible{ .hidden = true, .child = cx.make(ui.Text{ .text = "decoration" }) }),
+            cx.make(ui.TextField{ .placeholder = "Name", .initial = "Ada" }),
+        } });
+    }
+};
+
+test "the accessibility tree: roles, names, states and values of the widgets, and what describes them" {
+    const fira = try font.Font.init(fira_data);
+    const u = try ui.Ui.create(testing.allocator, &fira);
+    defer u.destroy();
+    var pressed: u32 = 0;
+    var checked = false;
+    var level: f32 = 3;
+    const app: A11yApp = .{ .pressed = &pressed, .checked = &checked, .level = &level };
+    u.frame(400, 600, 0, app);
+    var next: u32 = 2;
+    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, &next);
+    defer {
+        tree.deinit();
+        testing.allocator.destroy(tree);
+    }
+    const objs = tree.objects;
+    try testing.expectEqual(ui.AccessibleRole.frame, objs[0].info.role);
+    try testing.expectEqualStrings("Test", objs[0].info.name);
+    // The window's children, in order: the heading (its text part of it),
+    // the label, the button (its label its name), the check box, the
+    // slider, the two icon buttons (named by what describes them), and the
+    // field; the hidden text not at all.
+    const want = [_]struct { ui.AccessibleRole, []const u8 }{
+        .{ .heading, "Settings" },   .{ .label, "Hello" }, .{ .push_button, "OK" },
+        .{ .check_box, "Wi-Fi" },    .{ .slider, "" },     .{ .push_button, "Zoom in" },
+        .{ .push_button, "remove" }, .{ .entry, "Name" },
+    };
+    try testing.expectEqual(want.len, objs[0].children.len);
+    for (want, objs[0].children) |w, ci| {
+        try testing.expectEqual(w[0], objs[ci].info.role);
+        try testing.expectEqualStrings(w[1], objs[ci].info.name);
+        try testing.expectEqual(@as(usize, 0), objs[ci].children.len);
+    }
+    try testing.expectEqual(want.len + 1, objs.len);
+    // The tooltip describes the button it names already.
+    try testing.expectEqualStrings("Remove it", objs[objs[0].children[6]].info.description);
+    // States and values; actions do what pressing does.
+    const check_box = &objs[objs[0].children[3]];
+    try testing.expect(check_box.info.states.checkable and !check_box.info.states.checked);
+    check_box.info.activate.?.call();
+    try testing.expect(checked);
+    const slider = &objs[objs[0].children[4]];
+    try testing.expectEqual(@as(f64, 3), slider.info.value.?.current);
+    try testing.expectEqual(@as(f64, 1), slider.info.value.?.step);
+    slider.info.set_value.?.call(7);
+    try testing.expectEqual(@as(f32, 7), level);
+    objs[objs[0].children[2]].info.activate.?.call();
+    try testing.expectEqual(@as(u32, 1), pressed);
+    const field = &objs[objs[0].children[7]];
+    try testing.expectEqualStrings("Ada", field.info.text.?);
+    try testing.expect(field.info.states.editable);
+    // Ids last from frame to frame.
+    u.frame(400, 600, 1, app);
+    const again = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, &next);
+    defer {
+        again.deinit();
+        testing.allocator.destroy(again);
+    }
+    for (objs, again.objects) |a, b| try testing.expectEqual(a.id, b.id);
+    try testing.expect(again.objects[again.objects[0].children[3]].info.states.checked);
+}

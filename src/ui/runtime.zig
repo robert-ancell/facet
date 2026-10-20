@@ -37,6 +37,8 @@ const menu_mod = @import("menu.zig");
 const drag_mod = @import("drag.zig");
 const tooltip_mod = @import("tooltip.zig");
 const title_bar_mod = @import("title_bar.zig");
+const accessibility = @import("accessibility.zig");
+const atspi = @import("atspi.zig");
 
 const Point = geometry.Point;
 const Size = geometry.Size;
@@ -141,6 +143,12 @@ pub const Ui = struct {
     images: image_loader.Cache = .{},
     /// Readable when a `Waker` has woken it (made by the first `waker`).
     wake_fd: ?std.os.linux.fd_t = null,
+    /// What it is to assistive technologies (once `enableAccessibility`
+    /// has connected to AT-SPI): the last frame's tree, and the number for
+    /// the next object.
+    a11y: ?*atspi.Bridge = null,
+    a11y_tree: ?*accessibility.Tree = null,
+    a11y_next_id: u32 = accessibility.window_id + 1,
     key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
@@ -306,6 +314,14 @@ pub const Ui = struct {
         if (ui.wake_fd) |fd| {
             if (ui.win) |w| w.watchFd(fd, false);
             _ = std.os.linux.close(fd);
+        }
+        if (ui.a11y) |b| {
+            if (ui.win) |w| w.watchFd(b.fd(), false);
+            b.close();
+        }
+        if (ui.a11y_tree) |t| {
+            t.deinit();
+            ui.gpa.destroy(t);
         }
         if (ui.menu_root) |m| m.destroy();
         if (ui.drag_root) |d| d.destroy();
@@ -555,6 +571,50 @@ pub const Ui = struct {
         }
         if (ui.hold != null) ui.needs_frame = true;
         ui.images.evict(now_ns);
+        ui.updateAccessibility();
+    }
+
+    /// Offers the UI to assistive technologies (screen readers) over
+    /// AT-SPI, if the desktop has its bus (and `NO_AT_BRIDGE` is not set).
+    /// Without it, nothing is offered; it can be tried again.
+    pub fn enableAccessibility(ui: *Ui, environ: std.process.Environ) void {
+        if (ui.a11y != null) return;
+        if (environ.getPosix("NO_AT_BRIDGE")) |v| if (std.mem.eql(u8, v, "1")) return;
+        const title = if (ui.win) |w| w.title() else "";
+        ui.a11y = atspi.Bridge.connect(ui.gpa, environ, title) catch null;
+        ui.needs_frame = true;
+    }
+
+    /// The tree of the frame just made, offered (and what changed in it
+    /// told), if it is offered at all.
+    fn updateAccessibility(ui: *Ui) void {
+        const b = ui.a11y orelse return;
+        const root = ui.root orelse return;
+        var extra: [3]*Node = undefined;
+        var n: usize = 0;
+        for ([_]?*Node{ ui.menu_root, ui.tooltip_root, ui.drag_root }) |r| if (r) |x| {
+            extra[n] = x;
+            n += 1;
+        };
+        const title = if (ui.win) |w| w.title() else "";
+        const size: [2]f32 = .{ @floatFromInt(ui.logical_size[0]), @floatFromInt(ui.logical_size[1]) };
+        const tree = accessibility.build(ui.gpa, root, extra[0..n], title, size, ui.focused, &ui.a11y_next_id) catch return;
+        const old = ui.a11y_tree;
+        b.update(old, tree);
+        ui.a11y_tree = tree;
+        if (old) |t| {
+            t.deinit();
+            ui.gpa.destroy(t);
+        }
+    }
+
+    /// Answers assistive technologies' calls; true if one did something
+    /// (pressed a button), so a frame is needed.
+    pub fn dispatchAccessibility(ui: *Ui) bool {
+        const b = ui.a11y orelse return false;
+        const acted = b.dispatch();
+        if (acted) ui.needs_frame = true;
+        return acted;
     }
 
     fn buildTitleBar(ui: *Ui) ?*Node {
@@ -1368,6 +1428,7 @@ pub const App = struct {
     /// for them.
     watched_fd: ?std.os.linux.fd_t = null,
     watched_wake_fd: ?std.os.linux.fd_t = null,
+    watched_a11y_fd: ?std.os.linux.fd_t = null,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1399,6 +1460,7 @@ pub const App = struct {
         errdefer win.close();
         const a = try openIn(gpa, win, options);
         a.owns_window = true;
+        a.ui.enableAccessibility(environ);
         return a;
     }
 
@@ -1456,6 +1518,10 @@ pub const App = struct {
             a.win.watchFd(fd, true);
             a.watched_wake_fd = fd;
         };
+        if (a.watched_a11y_fd == null) if (a.ui.a11y) |b| {
+            a.win.watchFd(b.fd(), true);
+            a.watched_a11y_fd = b.fd();
+        };
         if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
@@ -1466,6 +1532,7 @@ pub const App = struct {
         if (a.win.isClosed() or a.controls.quit) return false;
         if (a.ui.images.collect()) a.dirty = true;
         if (a.ui.takeWakes()) a.dirty = true;
+        if (a.ui.dispatchAccessibility()) a.dirty = true;
         if (try a.win.applyConfigure() != null) a.dirty = true;
         const suspended = a.win.isSuspended();
         if (suspended != a.suspended) {

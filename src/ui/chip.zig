@@ -2,6 +2,8 @@
 //! and quick actions, with optional leading icon, `selected` check state
 //! and trailing remove button (`on_remove`).
 
+const a11y = @import("accessibility.zig");
+const Node = @import("widget.zig").Node;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -36,6 +38,10 @@ pub const Chip = struct {
         interaction: Interaction = .{},
         remove_interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const Chip, _: *Node) ?a11y.Info {
+        return .{ .role = .toggle_button, .name = self.label, .activate = self.on_press, .states = .{ .checkable = true, .checked = self.selected, .disabled = self.on_press == null }, .leaf = true };
+    }
 
     pub fn build(self: *const Chip, cx: *Context, state: *State) Widget {
         const t = cx.theme();

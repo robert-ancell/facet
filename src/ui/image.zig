@@ -17,6 +17,7 @@
 //!
 //!     cx.make(ui.Image{ .source = .{ .file = "/photos/panorama.jpg" }, .region = .{ .x = 4000, .y = 1200, .w = 800, .h = 600 } })
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
@@ -73,6 +74,10 @@ pub const Image = struct {
 
         const none: u8 = 0;
     };
+
+    pub fn accessible(_: *const Image, _: *Node) ?a11y.Info {
+        return .{ .role = .image, .leaf = true };
+    }
 
     pub fn build(self: *const Image, cx: *Context) Widget {
         // Pixels in memory: the part of them drawn. Otherwise only the part

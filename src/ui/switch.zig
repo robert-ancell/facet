@@ -1,6 +1,7 @@
 //! Switch: Material 3's switch, its handle sliding between off and on
 //! (see control.zig).
 
+const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
@@ -40,6 +41,10 @@ pub const Switch = struct {
             if (s.latest.on_changed) |f| f.call(!(s.latest.value orelse false));
         }
     };
+
+    pub fn accessible(self: *const Switch, n: *Node) ?a11y.Info {
+        return .{ .role = .toggle_button, .name = self.label, .action = "toggle", .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .states = .{ .checkable = true, .checked = self.value, .disabled = self.on_changed == null }, .leaf = true };
+    }
 
     pub fn build(self: *const Switch, cx: *Context, state: *State) Widget {
         state.latest.update(self.value, self.on_changed);

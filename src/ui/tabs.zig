@@ -1,6 +1,7 @@
 //! TabBar: Material 3's horizontal tab bar with an active indicator bar and
 //! bottom divider.
 
+const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
@@ -91,6 +92,10 @@ const TabItem = struct {
     pub const State = struct {
         interaction: Interaction = .{},
     };
+
+    pub fn accessible(self: *const TabItem, _: *Node) ?a11y.Info {
+        return .{ .role = .page_tab, .name = self.tab.label, .action = "switch", .activate = self.on_press, .states = .{ .selectable = true, .selected = self.selected }, .leaf = true };
+    }
 
     pub fn build(self: *const TabItem, cx: *Context, state: *State) Widget {
         const t = cx.theme();
