@@ -550,6 +550,9 @@ pub const max_popups = 4;
 
 pub const WaylandWindow = struct {
     pub const platform: window_mod.Platform = .wayland;
+    /// Frames are presented on the UI's thread: nothing here holds it, or
+    /// blocks to show a frame, so a render thread would gain nothing.
+    pub const wants_render_thread = false;
 
     pub fn usingDmabuf(w: *const WaylandWindow) bool {
         return w.dmabuf != null and w.dmabuf_dev != null and (w.dmabuf_argb8888 or w.dmabuf_xrgb8888);

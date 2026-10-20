@@ -23,6 +23,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const window_mod = @import("window");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -323,6 +324,7 @@ pub const Ui = struct {
             ui.renderer = ui.software_renderer.renderer();
         }
         ui.presenter = .{ .renderer = ui.renderer };
+        if (build_options.render_thread) ui.useRenderThread() catch {};
         return ui;
     }
 
@@ -406,8 +408,10 @@ pub const Ui = struct {
         ui.owns_renderer = take_ownership;
         // A presenter of its own, which has none of what was sent the last.
         const owned = ui.presenter.owned_frames;
+        const threaded = ui.presenter.thread != null;
         ui.presenter.deinit();
         ui.presenter = .{ .renderer = r, .owned_frames = owned };
+        if (threaded) ui.useRenderThread() catch {};
         ui.sent.deinit(ui.gpa);
         ui.sent = .{};
         ui.atlas_sent = false;
@@ -1108,7 +1112,42 @@ pub const Ui = struct {
     /// for the software renderer); another type is `error.WrongTarget`.
     pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
         const r = ui.renderer orelse return error.NoRenderer;
-        try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items[0..ui.main_segments], target, damage);
+        if (gfx.renderer.typeId(@typeInfo(@TypeOf(target)).pointer.child) != r.vtable.target) return error.WrongTarget;
+        // The renderer's work where it is used (on the render thread, if
+        // there is one); GPU draws (widgets' code) here.
+        const canvases = ui.canvases.items[0..ui.canvases_used];
+        const segments = ui.segments.items[0..ui.main_segments];
+        const Draw = struct {
+            r: gfx.Renderer,
+            canvases: []const *const gfx.Canvas,
+            canvas: ?*const gfx.Canvas = null,
+            target: @TypeOf(target),
+            damage: ?[]const gfx.Viewport,
+            fn f(ctx: *anyopaque) anyerror!void {
+                const d: *@This() = @ptrCast(@alignCast(ctx));
+                if (d.canvas) |c| try d.r.record(c, d.target, d.damage) else try d.r.prepare(d.canvases);
+            }
+        };
+        var draw: Draw = .{ .r = r, .canvases = canvases, .target = target, .damage = damage };
+        try ui.presenter.call(&draw, Draw.f);
+        var buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
+        for (segments, 0..) |seg, i| switch (seg) {
+            .canvas => |c| {
+                draw.canvas = c;
+                draw.damage = if (damage) |list| gfx.renderer.uncovered(&buf, list, segments[i + 1 ..]) else null;
+                try ui.presenter.call(&draw, Draw.f);
+            },
+            .gpu => |g| if (gfx.renderer.covers(damage, g.area.scissor orelse g.area.viewport)) try g.f(g.ctx, @ptrCast(@constCast(target)), g.area),
+        };
+    }
+
+    /// Presents frames from a render thread of facet's own from now on
+    /// (for the window's system: its windows may hold the UI's thread, or
+    /// block while frames are shown). Nothing else changes for the app:
+    /// the thread draws only what the UI made, and runs none of its code.
+    pub fn useRenderThread(ui: *Ui) !void {
+        if (ui.presenter.thread != null) return;
+        try ui.presenter.startThread(ui.gpa, ui.io);
     }
 
     /// Draws the last painted frame into `img` on the CPU using `gfx.software`.
@@ -1687,6 +1726,7 @@ pub const App = struct {
     watching_images: bool = false,
     watching_wake: bool = false,
     watching_a11y: bool = false,
+    watching_presenter: bool = false,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1713,6 +1753,10 @@ pub const App = struct {
         /// null.
         font_data: ?[]const u8 = null,
         clear_color: ?u32 = null,
+        /// Whether frames are presented from a render thread (null: as
+        /// the system's windows need, or as `FACET_RENDER_THREAD` (1 or 0)
+        /// says). Nothing else changes for the app.
+        render_thread: ?bool = null,
     };
 
     /// Opens a window of the system's (connecting to the Wayland compositor
@@ -1730,6 +1774,9 @@ pub const App = struct {
         const a = try openIn(gpa, io, win, options);
         a.owns_window = true;
         a.ui.enableAccessibility(environ);
+        const env = environ.getPosix("FACET_RENDER_THREAD");
+        const threaded = options.render_thread orelse if (env) |v| std.mem.eql(u8, v, "1") else window_mod.NativeWindow.wants_render_thread;
+        if (threaded) a.ui.useRenderThread() catch {};
         return a;
     }
 
@@ -1806,11 +1853,15 @@ pub const App = struct {
             a.win.watch(src, true);
             a.watching_wake = true;
         };
+        if (!a.watching_presenter) if (a.ui.presenter.source()) |src| {
+            a.win.watch(src, true);
+            a.watching_presenter = true;
+        };
         if (has_atspi and !a.watching_a11y) if (a.ui.a11y) |b| {
             a.win.watch(b.source(), true);
             a.watching_a11y = true;
         };
-        if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
+        if (!a.wantsFrame() or a.idle or a.win.isFramePending() or a.ui.presenter.busy()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
             try a.win.wait(if (a.wantsFrame()) frame_ns else idle_timeout_ns);
@@ -1818,6 +1869,8 @@ pub const App = struct {
             try a.win.poll();
         }
         if (a.win.isClosed() or a.controls.quit) return false;
+        // A frame the render thread has drawn is shown.
+        if (try a.ui.presenter.collect()) a.idle = false;
         if (a.ui.images.collect()) a.dirty = true;
         if (a.ui.takeWakes()) a.dirty = true;
         if (a.ui.dispatchAccessibility()) a.dirty = true;
@@ -1861,6 +1914,8 @@ pub const App = struct {
         a.keepRoot(root);
         a.idle = true;
         if (!a.wantsFrame()) return;
+        // The render thread is drawing the last: drawn once it is shown.
+        if (a.ui.presenter.busy()) return;
         if (a.win.isFramePending()) {
             if (try a.ui.presentPopups(a.win)) a.idle = false;
             return;
@@ -1913,6 +1968,8 @@ pub const App = struct {
         const k = a.kept_root orelse return;
         if (a.win.applyConfigure() catch return) |_| a.dirty = true;
         if (!a.wantsFrame()) return;
+        // Not while the render thread draws the last (shown first).
+        a.ui.presenter.flush() catch {};
         a.ui.syncWindow(a.win);
         k.draw(a, k.ptr) catch {};
     }

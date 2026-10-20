@@ -95,6 +95,9 @@ pub const MacWindow = struct {
     watched: [8]?Watch = @splat(null),
 
     pub const platform: window.Platform = .macos;
+    /// Whether frames are presented from a render thread (not yet: see
+    /// `Presenter.startThread`).
+    pub const wants_render_thread = false;
     pub const decorations: window.Decorations = .server;
 
     const Buffer = struct {

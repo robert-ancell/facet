@@ -1,8 +1,10 @@
 //! What the toolkit asks of the operating system that `std.Io` has no
 //! equivalent of: a `Wake`, an fd that any thread (or a signal handler,
 //! or a task on another `Io`) makes readable without blocking or
-//! allocating, to wake the UI's event loop. Everything else (files,
-//! sockets, clocks, waiting) is done through the app's `std.Io`.
+//! allocating, to wake the UI's event loop; and, for the render thread
+//! (which runs outside the app's `Io`), waiting for one (`waitReadable`).
+//! Everything else (files, sockets, clocks, waiting) is done through the
+//! app's `std.Io`.
 //!
 //! On Linux by its system calls (no C library needed); elsewhere (macOS)
 //! by the C library.
@@ -20,6 +22,18 @@ pub const Error = error{Failed};
 
 fn close(fd: fd_t) void {
     _ = if (is_linux) linux.close(fd) else c.close(fd);
+}
+
+/// Waits (on a thread of facet's own, outside the app's `Io`) up to
+/// `timeout_ms` (-1: as long as it takes) for `fd` to be readable; whether
+/// it is.
+pub fn waitReadable(fd: fd_t, timeout_ms: i32) bool {
+    if (is_linux) {
+        var p = [1]linux.pollfd{.{ .fd = fd, .events = linux.POLL.IN, .revents = 0 }};
+        return linux.poll(&p, 1, timeout_ms) == 1;
+    }
+    var p = [1]c.pollfd{.{ .fd = fd, .events = c.POLL.IN, .revents = 0 }};
+    return c.poll(&p, 1, timeout_ms) == 1;
 }
 
 /// An fd that one thread makes readable (`signal`) to wake another that
