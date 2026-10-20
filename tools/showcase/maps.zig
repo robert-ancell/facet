@@ -1,8 +1,8 @@
 //! Maps: a slippy map (`MapView`) of tiles made here: lines of latitude
 //! and longitude, labelled, with the tropics and the polar circles. As
-//! shapes, drawn in a style chosen here, or as
-//! pictures drawn from the same shapes (a little at a time, so they come
-//! in as a tile server's would). Zoomed out, it is a globe.
+//! vector tiles, drawn in a style chosen here, or as images drawn from
+//! them in that style (a little at a time, so they come in as a tile
+//! server's would). Zoomed out, it is a globe.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -13,22 +13,22 @@ const Color = facet.Color;
 const VectorTile = facet.VectorTile;
 const Point = VectorTile.Point;
 
-pub const Kind = enum { shapes, pictures };
+pub const Kind = enum { vector, images };
 pub const Look = enum { theme, atlas, night, blueprint };
 
 const world_view: facet.MapCamera = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
 
 pub const State = struct {
     camera: facet.MapCamera = world_view,
-    kind: Kind = .shapes,
+    kind: Kind = .vector,
     look: Look = .theme,
     projection: facet.MapProjection = .globe,
-    shapes: ShapeTiles = .{},
-    pictures: PictureTiles = .{},
+    vector: VectorTiles = .{},
+    images: ImageTiles = .{},
 
     pub fn deinit(s: *State) void {
-        s.shapes.deinit();
-        s.pictures.deinit();
+        s.vector.deinit();
+        s.images.deinit();
     }
 
     fn setKind(s: *State, v: Kind) void {
@@ -49,12 +49,6 @@ pub const State = struct {
     fn goWorld(s: *State) void {
         s.camera = world_view;
     }
-    fn goLondon(s: *State) void {
-        s.camera = .{ .center = .{ .lat = 51.5074, .lon = -0.1278 }, .zoom = 9 };
-    }
-    fn goTokyo(s: *State) void {
-        s.camera = .{ .center = .{ .lat = 35.6764, .lon = 139.65 }, .zoom = 6.5 };
-    }
     fn goNullIsland(s: *State) void {
         s.camera = .{ .center = .{}, .zoom = 4.5 };
     }
@@ -65,8 +59,8 @@ const max_zoom = 18;
 pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const t = cx.theme();
     const kinds = [_]facet.Select(Kind).Option{
-        .{ .value = .shapes, .label = "Shapes" },
-        .{ .value = .pictures, .label = "Pictures" },
+        .{ .value = .vector, .label = "Vector" },
+        .{ .value = .images, .label = "Images" },
     };
     const looks = [_]facet.Select(Look).Option{
         .{ .value = .theme, .label = "The theme's" },
@@ -78,11 +72,15 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .globe, .label = "Globe, then flat" },
         .{ .value = .flat, .label = "Flat" },
     };
+    const palette = paletteOf(s.look, t);
     const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.Empty{});
-    style.* = styleOf(cx, paletteOf(s.look, t));
+    style.* = styleOf(cx, palette);
+    // Images are drawn in the style too (those drawn in another are
+    // dropped, and drawn again).
+    if (s.kind == .images) s.images.use(palette);
     const source: facet.MapSource = switch (s.kind) {
-        .shapes => .of(&s.shapes, .{ .max_level = max_zoom, .attribution = "Lines drawn by the showcase" }),
-        .pictures => .of(&s.pictures, .{ .max_level = max_zoom, .attribution = "Pictures drawn by the showcase" }),
+        .vector => .of(&s.vector, .{ .max_level = max_zoom, .attribution = "Vector tiles made by the showcase" }),
+        .images => .of(&s.images, .{ .max_level = max_zoom, .attribution = "Images drawn by the showcase" }),
     };
     const c = s.camera.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
@@ -115,7 +113,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             } }) }),
             common.status(cx, where),
         }),
-        common.section(cx, "Tiles", "Made here, as shapes in a style, or as pictures of those shapes (one style only)", &.{
+        common.section(cx, "Tiles", "Made here: vector tiles drawn in a style, or images drawn from them in the same style", &.{
             common.labelled(cx, "Tiles", &.{
                 cx.make(facet.Select(Kind){ .options = &kinds, .value = s.kind, .on_changed = .of(s, State.setKind), .width = 180 }),
             }),
@@ -127,10 +125,6 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             }),
             common.labelled(cx, "Go to", &.{
                 cx.make(facet.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) }),
-                cx.make(facet.TextButton{ .label = "London", .on_press = .of(s, State.goLondon) }),
-                cx.make(facet.TextButton{ .label = "Tokyo", .on_press = .of(s, State.goTokyo) }),
-            }),
-            common.labelled(cx, "", &.{
                 cx.make(facet.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) }),
             }),
         }),
@@ -397,8 +391,8 @@ fn Cache(comptime Entry: type) type {
     };
 }
 
-/// The tiles as shapes.
-const ShapeTiles = struct {
+/// The tiles as vector tiles.
+const VectorTiles = struct {
     cache: Cache(Shapes) = .{},
 
     const Shapes = struct {
@@ -412,7 +406,7 @@ const ShapeTiles = struct {
         }
     };
 
-    pub fn tile(s: *ShapeTiles, req: facet.MapSource.Request) facet.MapTile {
+    pub fn tile(s: *VectorTiles, req: facet.MapSource.Request) facet.MapTile {
         const now = facet.window.nowNs();
         if (s.cache.get(req.id, now)) |e| return .{ .vector = &e.tile };
         const e = gpa.create(Shapes) catch return .none;
@@ -425,16 +419,19 @@ const ShapeTiles = struct {
         return .{ .vector = &e.tile };
     }
 
-    fn deinit(s: *ShapeTiles) void {
+    fn deinit(s: *VectorTiles) void {
         s.cache.deinit();
     }
 };
 
-/// The tiles as pictures: the shapes drawn in the atlas style, by the
+/// The tiles as images: the vector tiles drawn in a style, by the
 /// software renderer, for a few milliseconds a frame (the rest wait).
-const PictureTiles = struct {
+const ImageTiles = struct {
     cache: Cache(Picture) = .{},
     drawing: ?Drawing = null,
+    /// The style they are drawn in (its layers `gpa`'s), and its colours.
+    style: ?facet.MapStyle = null,
+    palette: ?Palette = null,
     /// When this frame's drawing started, and how long it has taken.
     window_ns: u64 = 0,
     spent_ns: u64 = 0,
@@ -458,10 +455,21 @@ const PictureTiles = struct {
         font: facet.font.Font,
         atlas: facet.gfx.Atlas,
         canvas: facet.gfx.Canvas,
-        style: facet.MapStyle,
     };
 
-    pub fn tile(p: *PictureTiles, req: facet.MapSource.Request) facet.MapTile {
+    /// Draws them in a style of these colours from now on: those drawn
+    /// in another go (before the frame's tiles are asked for, so none is
+    /// in use).
+    fn use(p: *ImageTiles, palette: Palette) void {
+        if (p.palette) |old| if (std.meta.eql(old, palette)) return;
+        p.cache.deinit();
+        p.cache = .{};
+        if (p.style) |st| gpa.free(st.layers);
+        p.style = styleOf(null, palette);
+        p.palette = palette;
+    }
+
+    pub fn tile(p: *ImageTiles, req: facet.MapSource.Request) facet.MapTile {
         const now = facet.window.nowNs();
         if (p.cache.get(req.id, now)) |e| return .{ .image = .{ .image = &e.image } };
         if (now -| p.window_ns > 12 * std.time.ns_per_ms) {
@@ -478,21 +486,21 @@ const PictureTiles = struct {
         return .{ .image = .{ .image = &e.image } };
     }
 
-    fn draw(p: *PictureTiles, id: facet.TileId, now: u64) !*Picture {
+    fn draw(p: *ImageTiles, id: facet.TileId, now: u64) !*Picture {
+        const style = &(p.style orelse return error.NoStyle);
         if (p.drawing == null) {
             p.drawing = .{
                 .font = try facet.font.Font.init(facet.font.default_font_data),
                 .atlas = try facet.gfx.Atlas.init(gpa),
                 .canvas = facet.gfx.Canvas.init(gpa),
-                .style = styleOf(null, atlas_palette),
             };
         }
         const d = &p.drawing.?;
         var arena: std.heap.ArenaAllocator = .init(gpa);
         defer arena.deinit();
-        const shapes = try makeTile(arena.allocator(), id);
+        const vt = try makeTile(arena.allocator(), id);
         d.canvas.begin(size, size);
-        d.style.paintTile(&d.canvas, arena.allocator(), &d.atlas, &d.font, id, &shapes, size);
+        style.paintTile(&d.canvas, arena.allocator(), &d.atlas, &d.font, id, &vt, size);
         const e = try gpa.create(Picture);
         errdefer gpa.destroy(e);
         const pixels = try gpa.alloc(u32, size * size);
@@ -503,13 +511,13 @@ const PictureTiles = struct {
         return e;
     }
 
-    fn deinit(p: *PictureTiles) void {
+    fn deinit(p: *ImageTiles) void {
         p.cache.deinit();
         if (p.drawing) |*d| {
             d.canvas.deinit();
             d.atlas.deinit();
-            gpa.free(d.style.layers);
         }
+        if (p.style) |st| gpa.free(st.layers);
     }
 };
 

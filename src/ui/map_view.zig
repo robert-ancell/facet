@@ -235,7 +235,8 @@ pub const MapView = struct {
         what: union(enum) { image: *const gfx.Image, vector: *const VectorTile },
     };
 
-    /// The tiles' level for the detail at a zoom (`View.detailZoom`).
+    /// The tiles' level at a zoom: the same wherever the camera looks, so
+    /// the tiles stay the same size as the globe turns.
     fn level(self: *const MapView, zoom: f64) u8 {
         const z = zoom - std.math.log2(@as(f64, @max(self.source.tile_size, 1)) / 256);
         const l: u8 = @intFromFloat(std.math.clamp(@round(z), 0, 30));
@@ -353,7 +354,7 @@ pub const MapView = struct {
         } else c.fillRect(whole, background);
 
         var shown: std.ArrayList(Shown) = .empty;
-        shownTiles(&v, self.level(v.detailZoom()), &shown, arena);
+        shownTiles(&v, self.level(cam.zoom), &shown, arena);
         var drawn: std.ArrayList(Drawn) = .empty;
         for (shown.items) |s| if (self.resolve(n, s)) |d| drawn.append(arena, d) catch break;
 

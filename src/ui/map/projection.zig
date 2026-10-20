@@ -190,13 +190,6 @@ pub const View = struct {
         return .{ .pos = .{ cx + d[0] * r, cy - d[1] * r }, .visible = false };
     }
 
-    /// The zoom at which the flat map has the scale there is at the centre
-    /// of the view (on the globe away from the equator, less than the
-    /// camera's): what tiles are drawn at.
-    pub fn detailZoom(v: *const View) f64 {
-        return v.camera.zoom + (1 - v.flat) * math.log2(v.cos_lat);
-    }
-
     /// The radius of the globe's outline, around the centre of the view.
     pub fn discRadius(v: *const View) f64 {
         return v.focal / @sqrt(v.dist * v.dist - 1);
