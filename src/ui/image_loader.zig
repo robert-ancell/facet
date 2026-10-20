@@ -340,7 +340,9 @@ fn fetch(url: []const u8, s: *Shared) ?[]u8 {
 /// An `http://` or `https://` URL's body (following redirects), or null:
 /// as `std.http.Client.fetch` does it, but a read of the body that fails
 /// (or is canceled, when the UI goes) is null, where `fetch` (in Zig 0.17)
-/// unwraps an error the TLS reader keeps to itself, and panics.
+/// unwraps an error the TLS reader keeps to itself, and panics (until
+/// https://codeberg.org/ziglang/zig/issues/36296 is fixed, by
+/// https://codeberg.org/ziglang/zig/pulls/36299).
 fn httpGet(client: *std.http.Client, url: []const u8) ?[]u8 {
     const uri = std.Uri.parse(url) catch return null;
     var req = client.request(.GET, uri, .{ .redirect_behavior = .init(3) }) catch return null;

@@ -567,7 +567,9 @@ fn connectTo(io: std.Io, address: []const u8) ?linux.fd_t {
     }
     // An abstract name (a NUL, then the name, its length the address's),
     // connected to here: `std.Io`'s addresses add a NUL to the length,
-    // which makes it another name.
+    // which makes it another name (in Zig 0.17: until
+    // https://codeberg.org/ziglang/zig/issues/35919 is fixed, by
+    // https://codeberg.org/ziglang/zig/pulls/35920).
     const fd: linux.fd_t = @intCast(blk: {
         const rc = linux.socket(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0);
         if (linux.errno(rc) != .SUCCESS) return null;
