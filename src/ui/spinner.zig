@@ -19,7 +19,7 @@ pub const Spinner = struct {
     color: ?Color = null,
 
     pub fn accessible(_: *const Spinner, _: *widget.Node) ?a11y.Info {
-        return .{ .role = .progress_bar, .name = "Busy", .states = .{ .busy = true } };
+        return .{ .role = .progressbar, .label = "Busy", .busy = true };
     }
 
     pub fn layout(self: *const Spinner, _: *widget.Node, c: geometry.Constraints) geometry.Size {

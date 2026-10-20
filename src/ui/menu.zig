@@ -47,6 +47,10 @@ pub const padding = 8;
 pub const Menu = struct {
     items: []const Item,
 
+    pub fn accessible(_: *const Menu, _: *Node) ?a11y.Info {
+        return .{ .role = .menu, .orientation = .vertical };
+    }
+
     pub fn build(self: *const Menu, cx: *Context) Widget {
         const t = cx.theme();
         const rows = cx.ui.arena().alloc(Widget, self.items.len) catch return cx.make(@import("empty.zig").Empty{});
@@ -86,7 +90,7 @@ const MenuRow = struct {
     };
 
     pub fn accessible(self: *const MenuRow, _: *Node) ?a11y.Info {
-        return .{ .role = .menu_item, .name = self.item.label, .activate = self.item.on_press, .states = .{ .disabled = !self.item.enabled }, .leaf = true };
+        return .{ .role = .menuitem, .label = self.item.label, .keyshortcuts = self.item.shortcut, .activate = self.item.on_press, .disabled = !self.item.enabled, .children_presentational = true };
     }
 
     pub fn build(self: *const MenuRow, cx: *Context, state: *State) Widget {

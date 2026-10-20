@@ -55,7 +55,8 @@ pub const TitleBar = struct {
     const min_title_width = 120;
 
     pub fn accessible(self: *const TitleBar, _: *Node) ?a11y.Info {
-        return .{ .role = .title_bar, .name = self.title };
+        // Its title, and the window's buttons.
+        return .{ .role = .toolbar, .label = self.title };
     }
 
     pub fn build(self: *const TitleBar, cx: *Context) Widget {

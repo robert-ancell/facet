@@ -55,6 +55,10 @@ pub const NavigationRail = struct {
         picks: [max_items]Pick = undefined,
     };
 
+    pub fn accessible(_: *const NavigationRail, _: *Node) ?a11y.Info {
+        return .{ .role = .tablist, .orientation = .vertical };
+    }
+
     pub fn build(self: *const NavigationRail, cx: *Context, state: *State) Widget {
         const t = cx.theme();
         state.on_select = self.on_select;
@@ -101,7 +105,7 @@ const RailDestination = struct {
     };
 
     pub fn accessible(self: *const RailDestination, _: *Node) ?a11y.Info {
-        return .{ .role = .page_tab, .name = self.item.label, .action = "switch", .activate = self.on_press, .states = .{ .selectable = true, .selected = self.selected }, .leaf = true };
+        return .{ .role = .tab, .label = self.item.label, .selected = self.selected, .action = "switch", .activate = self.on_press, .children_presentational = true };
     }
 
     pub fn build(self: *const RailDestination, cx: *Context, state: *State) Widget {

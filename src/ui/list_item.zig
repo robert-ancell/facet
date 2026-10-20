@@ -43,7 +43,7 @@ pub const ListItem = struct {
     pub const two_line_height = 68;
 
     pub fn accessible(self: *const ListItem, _: *Node) ?a11y.Info {
-        return .{ .role = .list_item, .name = self.headline, .description = self.supporting_text, .activate = self.on_press, .states = .{ .selectable = self.on_press != null, .selected = self.selected }, .leaf = true };
+        return .{ .role = .listitem, .label = self.headline, .description = self.supporting_text, .selected = if (self.on_press != null) self.selected else null, .activate = self.on_press, .children_presentational = true };
     }
 
     pub fn build(self: *const ListItem, cx: *Context, state: *State) Widget {

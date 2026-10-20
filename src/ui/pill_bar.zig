@@ -60,7 +60,7 @@ pub const PillButton = struct {
     pub const height = 36;
 
     pub fn accessible(self: *const PillButton, _: *Node) ?a11y.Info {
-        return .{ .role = .toggle_button, .name = self.label, .activate = self.on_press, .states = .{ .checkable = true, .checked = self.selected, .disabled = self.on_press == null }, .leaf = true };
+        return .{ .role = .button, .label = self.label, .pressed = .of(self.selected), .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
     }
 
     pub fn build(self: *const PillButton, cx: *Context, state: *State) Widget {

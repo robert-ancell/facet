@@ -19,8 +19,9 @@ pub const ProgressBar = struct {
     track_color: ?Color = null,
 
     pub fn accessible(self: *const ProgressBar, _: *widget.Node) ?a11y.Info {
-        const v = self.value orelse return .{ .role = .progress_bar, .states = .{ .busy = true } };
-        return .{ .role = .progress_bar, .value = .{ .current = v } };
+        // Without a value, indeterminate: busy.
+        const v = self.value orelse return .{ .role = .progressbar, .busy = true };
+        return .{ .role = .progressbar, .valuenow = v, .valuemin = 0, .valuemax = 1 };
     }
 
     pub fn layout(self: *const ProgressBar, _: *widget.Node, c: geometry.Constraints) geometry.Size {

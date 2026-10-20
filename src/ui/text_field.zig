@@ -352,12 +352,15 @@ pub const TextField = struct {
         const st = n.state(State);
         const value = if (self.isObscured(st)) "" else st.text();
         return .{
-            .role = if (self.obscure) .password_text else .entry,
-            .name = self.placeholder,
+            .role = .textbox,
+            // With no label, named by its placeholder (as browsers do).
+            .label = self.placeholder,
+            .placeholder = self.placeholder,
+            .secret = self.obscure,
             .text = value,
             .caret = std.unicode.utf8CountCodepoints(st.text()[0..@min(st.cursor, st.text().len)]) catch null,
-            .states = .{ .focusable = self.enabled, .editable = self.enabled, .disabled = !self.enabled },
-            .leaf = true,
+            .disabled = !self.enabled,
+            .children_presentational = true,
         };
     }
 

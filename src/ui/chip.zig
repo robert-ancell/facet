@@ -40,7 +40,7 @@ pub const Chip = struct {
     };
 
     pub fn accessible(self: *const Chip, _: *Node) ?a11y.Info {
-        return .{ .role = .toggle_button, .name = self.label, .activate = self.on_press, .states = .{ .checkable = true, .checked = self.selected, .disabled = self.on_press == null }, .leaf = true };
+        return .{ .role = .button, .label = self.label, .pressed = .of(self.selected), .activate = self.on_press, .disabled = self.on_press == null, .children_presentational = true };
     }
 
     pub fn build(self: *const Chip, cx: *Context, state: *State) Widget {

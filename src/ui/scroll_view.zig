@@ -10,7 +10,6 @@
 //! widget in it (one given that key) when it changes: to show the item
 //! picked, say.
 
-const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -71,10 +70,6 @@ pub const ScrollView = struct {
         if (s.maxOffset() <= 0 or s.viewport <= 0) return null;
         const h = @min(@max(s.viewport * s.viewport / s.content, self.bar_width * 3), s.viewport);
         return .{ .y = (s.viewport - h) * s.offset / s.maxOffset(), .h = h };
-    }
-
-    pub fn accessible(_: *const ScrollView, _: *Node) ?a11y.Info {
-        return .{ .role = .scroll_pane };
     }
 
     pub fn layout(self: *const ScrollView, n: *Node, c: Constraints) Size {

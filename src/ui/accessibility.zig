@@ -1,22 +1,27 @@
 //! What the UI is to assistive technologies (screen readers, switch
-//! access, magnifiers): a tree of objects, each with a role (a button, a
-//! check box, a label…), a name, states (checked, focused…), a value,
-//! text, and an action, made from the widgets after each frame. On Linux
-//! it is offered to them over AT-SPI (`atspi.zig`).
+//! access, magnifiers): a tree of objects described in WAI-ARIA's terms
+//! (ARIA 1.2, the W3C's vocabulary for accessible widgets, which WCAG's
+//! guidance is written in): each has a role (`button`, `checkbox`,
+//! `slider`…) and ARIA's states and properties (`label`, `checked`,
+//! `expanded`, `valuenow`…), named as ARIA names them without "aria-".
+//! It is made from the widgets after each frame and given to the
+//! platform's accessibility API as the W3C's Core Accessibility API
+//! Mappings say: on Linux, AT-SPI (`atspi.zig`).
 //!
 //! Facet's widgets say what they are (`pub fn accessible(self, n) ?Info`).
 //! Others, and the app's own, are described with `Accessible`:
 //!
-//!     // A name for a button that only has an icon.
+//!     // A name for a button that only has an icon (aria-label).
 //!     cx.make(ui.Accessible{ .label = "Zoom in", .child = cx.make(ui.IconButton{ .icon = .add, ... }) })
 //!     // A widget of the app's own, as what it is.
-//!     cx.make(ui.Accessible{ .role = .slider, .label = "Volume", .value = .{ .current = 0.8 }, .child = ... })
-//!     // Not there at all (decoration).
+//!     cx.make(ui.Accessible{ .role = .slider, .label = "Volume", .valuenow = 0.8, .valuemin = 0, .valuemax = 1, .child = ... })
+//!     // Not there at all (aria-hidden), as decoration.
 //!     cx.make(ui.Accessible{ .hidden = true, .child = ... })
 //!
-//! Widgets that say nothing are left out, their descendants going in the
-//! nearest object above them; those whose `Info` is a `leaf` (a button)
-//! have none of theirs reported (their label is their name).
+//! Widgets that say nothing are left out (as role `none` is), their
+//! descendants going in the nearest object above them; those whose
+//! children are presentational (a button: its label is its name) have
+//! none of theirs reported.
 
 const std = @import("std");
 const geometry = @import("geometry.zig");
@@ -27,215 +32,112 @@ const Widget = widget.Widget;
 const Callback = widget.Callback;
 const Rect = geometry.Rect;
 
-/// What an object is (AT-SPI's roles, by its numbers).
-pub const Role = enum(u32) {
-    invalid = 0,
-    accelerator_label = 1,
-    alert = 2,
-    animation = 3,
-    arrow = 4,
-    calendar = 5,
-    canvas = 6,
-    check_box = 7,
-    check_menu_item = 8,
-    color_chooser = 9,
-    column_header = 10,
-    combo_box = 11,
-    date_editor = 12,
-    desktop_icon = 13,
-    desktop_frame = 14,
-    dial = 15,
-    dialog = 16,
-    directory_pane = 17,
-    drawing_area = 18,
-    file_chooser = 19,
-    filler = 20,
-    focus_traversable = 21,
-    font_chooser = 22,
-    frame = 23,
-    glass_pane = 24,
-    html_container = 25,
-    icon = 26,
-    image = 27,
-    internal_frame = 28,
-    label = 29,
-    layered_pane = 30,
-    list = 31,
-    list_item = 32,
-    menu = 33,
-    menu_bar = 34,
-    menu_item = 35,
-    option_pane = 36,
-    page_tab = 37,
-    page_tab_list = 38,
-    panel = 39,
-    password_text = 40,
-    popup_menu = 41,
-    progress_bar = 42,
-    push_button = 43,
-    radio_button = 44,
-    radio_menu_item = 45,
-    root_pane = 46,
-    row_header = 47,
-    scroll_bar = 48,
-    scroll_pane = 49,
-    separator = 50,
-    slider = 51,
-    spin_button = 52,
-    split_pane = 53,
-    status_bar = 54,
-    table = 55,
-    table_cell = 56,
-    table_column_header = 57,
-    table_row_header = 58,
-    tearoff_menu_item = 59,
-    terminal = 60,
-    text = 61,
-    toggle_button = 62,
-    tool_bar = 63,
-    tool_tip = 64,
-    tree = 65,
-    tree_table = 66,
-    unknown = 67,
-    viewport = 68,
-    window = 69,
-    extended = 70,
-    header = 71,
-    footer = 72,
-    paragraph = 73,
-    ruler = 74,
-    application = 75,
-    autocomplete = 76,
-    editbar = 77,
-    embedded = 78,
-    entry = 79,
-    chart = 80,
-    caption = 81,
-    document_frame = 82,
-    heading = 83,
-    page = 84,
-    section = 85,
-    redundant_object = 86,
-    form = 87,
-    link = 88,
-    input_method_window = 89,
-    table_row = 90,
-    tree_item = 91,
-    document_spreadsheet = 92,
-    document_presentation = 93,
-    document_text = 94,
-    document_web = 95,
-    document_email = 96,
-    comment = 97,
-    list_box = 98,
-    grouping = 99,
-    image_map = 100,
-    notification = 101,
-    info_bar = 102,
-    level_bar = 103,
-    title_bar = 104,
-    block_quote = 105,
-    audio = 106,
-    video = 107,
-    definition = 108,
-    article = 109,
-    landmark = 110,
-    log = 111,
-    marquee = 112,
-    math = 113,
-    rating = 114,
-    timer = 115,
-    static = 116,
-    math_fraction = 117,
-    math_root = 118,
-    subscript = 119,
-    superscript = 120,
-    description_list = 121,
-    description_term = 122,
-    description_value = 123,
-    footnote = 124,
-    content_deletion = 125,
-    content_insertion = 126,
-    mark = 127,
-    suggestion = 128,
-    push_button_menu = 129,
+/// What an object is: WAI-ARIA 1.2's roles (the concrete ones), and, where
+/// ARIA has none for what a native app has, a few of facet's own (as GTK
+/// has): `label` (text that names or tells, not a paragraph), `window`.
+pub const Role = enum {
+    alert,
+    alertdialog,
+    application,
+    article,
+    banner,
+    blockquote,
+    button,
+    caption,
+    cell,
+    checkbox,
+    code,
+    columnheader,
+    combobox,
+    complementary,
+    contentinfo,
+    definition,
+    deletion,
+    dialog,
+    document,
+    emphasis,
+    feed,
+    figure,
+    form,
+    generic,
+    grid,
+    gridcell,
+    group,
+    heading,
+    img,
+    insertion,
+    link,
+    list,
+    listbox,
+    listitem,
+    log,
+    main,
+    marquee,
+    math,
+    menu,
+    menubar,
+    menuitem,
+    menuitemcheckbox,
+    menuitemradio,
+    meter,
+    navigation,
+    /// Not an object at all (`presentation` too): what is in it goes in
+    /// the object above.
+    none,
+    note,
+    option,
+    paragraph,
+    progressbar,
+    radio,
+    radiogroup,
+    region,
+    row,
+    rowgroup,
+    rowheader,
+    scrollbar,
+    search,
+    searchbox,
+    separator,
+    slider,
+    spinbutton,
+    status,
+    strong,
+    subscript,
+    superscript,
+    @"switch",
+    tab,
+    table,
+    tablist,
+    tabpanel,
+    term,
+    textbox,
+    time,
+    timer,
+    toolbar,
+    tooltip,
+    tree,
+    treegrid,
+    treeitem,
+    // Facet's own.
+    label,
+    window,
+};
 
-    /// Its name, as AT-SPI gives it ("push button").
-    pub fn name(r: Role, buf: []u8) []const u8 {
-        const tag = @tagName(r);
-        const n = @min(tag.len, buf.len);
-        for (tag[0..n], buf[0..n]) |c, *o| o.* = if (c == '_') ' ' else c;
-        return buf[0..n];
+/// ARIA's tristate (`aria-checked`, `aria-pressed`).
+pub const Tristate = enum {
+    false,
+    true,
+    mixed,
+
+    pub fn of(v: bool) Tristate {
+        return if (v) .true else .false;
     }
 };
 
-/// What is so of an object (the AT-SPI states it reports; it is also
-/// visible, showing, and, unless `disabled`, enabled and sensitive).
-pub const States = packed struct(u16) {
-    focusable: bool = false,
-    focused: bool = false,
-    checkable: bool = false,
-    checked: bool = false,
-    /// Neither checked nor not (a check box for some of several).
-    indeterminate: bool = false,
-    pressed: bool = false,
-    selectable: bool = false,
-    selected: bool = false,
-    expandable: bool = false,
-    expanded: bool = false,
-    editable: bool = false,
-    multi_line: bool = false,
-    read_only: bool = false,
-    busy: bool = false,
-    disabled: bool = false,
-    modal: bool = false,
+/// What a popup it opens is (`aria-haspopup`).
+pub const Popup = enum { menu, listbox, tree, grid, dialog };
 
-    /// AT-SPI's state numbers (bits of `GetState`'s two words), and the
-    /// names its events give them.
-    pub const atspi = [_]struct { []const u8, u6, []const u8 }{
-        .{ "focusable", 11, "focusable" },
-        .{ "focused", 12, "focused" },
-        .{ "checkable", 41, "checkable" },
-        .{ "checked", 4, "checked" },
-        .{ "indeterminate", 32, "indeterminate" },
-        .{ "pressed", 20, "pressed" },
-        .{ "selectable", 22, "selectable" },
-        .{ "selected", 23, "selected" },
-        .{ "expandable", 9, "expandable" },
-        .{ "expanded", 10, "expanded" },
-        .{ "editable", 7, "editable" },
-        .{ "multi_line", 17, "multi-line" },
-        .{ "read_only", 43, "read-only" },
-        .{ "busy", 3, "busy" },
-        .{ "modal", 16, "modal" },
-    };
-
-    /// AT-SPI's state set: its two words.
-    pub fn bits(s: States) [2]u32 {
-        var out: u64 = 0;
-        inline for (atspi) |a| if (@field(s, a[0])) {
-            out |= @as(u64, 1) << a[1];
-        };
-        // Visible and showing; enabled and sensitive unless disabled.
-        out |= @as(u64, 1) << 30 | @as(u64, 1) << 25;
-        if (!s.disabled) out |= @as(u64, 1) << 8 | @as(u64, 1) << 24;
-        if (s.editable or s.multi_line) {
-            out |= @as(u64, 1) << (if (s.multi_line) 17 else 26);
-        }
-        return .{ @truncate(out), @truncate(out >> 32) };
-    }
-};
-
-/// A value it shows or sets (a slider's, a progress bar's).
-pub const Value = struct {
-    current: f64,
-    min: f64 = 0,
-    max: f64 = 1,
-    /// The smallest step it moves by (0: any).
-    step: f64 = 0,
-    /// How it is read out, if not as the number ("40%").
-    text: []const u8 = "",
-};
+pub const Orientation = enum { horizontal, vertical };
 
 /// Sets an object's value (for assistive technologies that move a slider).
 pub const ValueSetter = struct {
@@ -256,67 +158,120 @@ pub const ValueSetter = struct {
     }
 };
 
-/// What a widget is to assistive technologies.
+/// What a widget is to assistive technologies: its ARIA role, states and
+/// properties (named as ARIA's, without "aria-"; null where it has none),
+/// and what facet adds (its text, its action).
 pub const Info = struct {
     role: Role,
-    name: []const u8 = "",
+    // Its name and description.
+    label: []const u8 = "",
     description: []const u8 = "",
-    states: States = .{},
-    value: ?Value = null,
+    /// What to call its role, if not the role's own name ("map").
+    roledescription: []const u8 = "",
+    placeholder: []const u8 = "",
+    keyshortcuts: []const u8 = "",
+    // States.
+    checked: ?Tristate = null,
+    /// A toggle button's (a `button` with it is one).
+    pressed: ?Tristate = null,
+    selected: ?bool = null,
+    expanded: ?bool = null,
+    haspopup: ?Popup = null,
+    disabled: bool = false,
+    readonly: bool = false,
+    required: bool = false,
+    invalid: bool = false,
+    busy: bool = false,
+    modal: bool = false,
+    multiline: bool = false,
+    orientation: ?Orientation = null,
+    /// A heading's level (1 to 6), or a tree item's.
+    level: ?u8 = null,
+    // A range's value.
+    valuenow: ?f64 = null,
+    valuemin: ?f64 = null,
+    valuemax: ?f64 = null,
+    valuetext: []const u8 = "",
+    // Facet's own.
+    /// The smallest step its value moves by (as HTML's `step`; 0: any).
+    valuestep: f64 = 0,
+    /// Sets its value (as a slider is moved).
     set_value: ?ValueSetter = null,
     /// The text it shows or holds (a label's, a field's), and where its
     /// caret is in it (in characters).
     text: ?[]const u8 = null,
     caret: ?usize = null,
+    /// Its text is hidden as it is typed (a password: HTML's
+    /// `type=password`).
+    secret: bool = false,
     /// What its action does (pressing it, toggling it), if it has one:
-    /// its name ("click", "toggle"), and what it calls.
+    /// the action's name ("click", "toggle"), and what it calls.
     action: []const u8 = "click",
     activate: ?Callback = null,
-    /// Its descendants are part of it (a button's label is its name):
-    /// none of them is reported.
-    leaf: bool = false,
+    /// ARIA's "children presentational" (a button's label is its name):
+    /// none of its descendants is reported.
+    children_presentational: bool = false,
 };
 
 /// Describes what is in it to assistive technologies: as an object of its
-/// own (with a `role`), or (without) the objects of the widgets in it, with
-/// this name, description and so on instead of theirs; or not at all
-/// (`hidden`).
+/// own (with a `role`), or (without) the objects of the widgets in it,
+/// with these properties instead of theirs; or not at all (`hidden`).
+/// Its fields are ARIA's states and properties (each one set replaces the
+/// widgets'), and facet's own (as `Info`'s).
 pub const Accessible = struct {
     /// What it is; null to describe the widgets in it instead.
     role: ?Role = null,
-    /// Its name (what a screen reader says it is).
     label: ?[]const u8 = null,
     description: ?[]const u8 = null,
-    value: ?Value = null,
+    roledescription: ?[]const u8 = null,
+    placeholder: ?[]const u8 = null,
+    keyshortcuts: ?[]const u8 = null,
+    checked: ?Tristate = null,
+    pressed: ?Tristate = null,
+    selected: ?bool = null,
+    expanded: ?bool = null,
+    haspopup: ?Popup = null,
+    disabled: ?bool = null,
+    readonly: ?bool = null,
+    required: ?bool = null,
+    invalid: ?bool = null,
+    busy: ?bool = null,
+    modal: ?bool = null,
+    multiline: ?bool = null,
+    orientation: ?Orientation = null,
+    level: ?u8 = null,
+    valuenow: ?f64 = null,
+    valuemin: ?f64 = null,
+    valuemax: ?f64 = null,
+    valuetext: ?[]const u8 = null,
+    valuestep: ?f64 = null,
     set_value: ?ValueSetter = null,
-    states: ?States = null,
     text: ?[]const u8 = null,
     /// What its action does, and its name.
     on_activate: ?Callback = null,
     action: ?[]const u8 = null,
-    /// Its descendants are part of it (with a role): none reported.
-    leaf: bool = false,
-    /// Not reported, nor anything in it.
+    /// With a role: none of its descendants reported.
+    children_presentational: bool = false,
+    /// Not reported, nor anything in it (`aria-hidden`).
     hidden: bool = false,
     child: ?Widget = null,
 
     pub fn accessible(self: *const Accessible, _: *Node) ?Info {
         const role = self.role orelse return null;
-        var info: Info = .{ .role = role, .leaf = self.leaf };
+        var info: Info = .{ .role = role, .children_presentational = self.children_presentational };
         self.apply(&info);
         return info;
     }
 
     /// Puts what it says in `info`.
     fn apply(self: *const Accessible, info: *Info) void {
-        if (self.label) |l| info.name = l;
-        if (self.description) |d| info.description = d;
-        if (self.value) |v| info.value = v;
-        if (self.set_value) |v| info.set_value = v;
-        if (self.states) |s| info.states = s;
-        if (self.text) |t| info.text = t;
+        inline for (@typeInfo(Accessible).@"struct".field_names) |name| {
+            if (comptime std.mem.eql(u8, name, "role") or std.mem.eql(u8, name, "children_presentational") or
+                std.mem.eql(u8, name, "hidden") or std.mem.eql(u8, name, "child") or
+                std.mem.eql(u8, name, "on_activate")) continue;
+            if (@field(self, name)) |v| @field(info, name) = v;
+        }
         if (self.on_activate) |a| info.activate = a;
-        if (self.action) |a| info.action = a;
     }
 };
 
@@ -377,6 +332,10 @@ pub const Object = struct {
     /// Its widget's node (none for the window): there until the next
     /// frame.
     node: ?*Node,
+    /// Whether it (or a widget it is made of) takes the keyboard's focus,
+    /// and whether it has it.
+    focusable: bool = false,
+    focused: bool = false,
 };
 
 pub const window_id = 1;
@@ -430,7 +389,8 @@ pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, ti
     var b: Builder = .{ .arena = a, .next_id = next_id, .focused = focused };
     try b.objects.append(a, .{
         .id = window_id,
-        .info = .{ .role = .frame, .name = try a.dupe(u8, title), .states = .{ .focusable = true } },
+        .info = .{ .role = .window, .label = try a.dupe(u8, title) },
+        .focusable = true,
         .bounds = .{ .x = 0, .y = 0, .w = size[0], .h = size[1] },
         .parent = null,
         .children = &.{},
@@ -440,7 +400,7 @@ pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, ti
     try b.walk(root, 0, .{});
     for (extra_roots) |r| try b.walk(r, 0, .{});
     for (b.objects.items, b.kids.items) |*o, k| o.children = k.items;
-    if (b.focused_index) |i| b.objects.items[i].info.states.focused = true;
+    if (b.focused_index) |i| b.objects.items[i].focused = true;
     t.objects = b.objects.items;
     for (t.objects, 0..) |o, i| try t.by_id.put(a, o.id, @intCast(i));
     t.focused = b.focused_index;
@@ -477,20 +437,24 @@ const Builder = struct {
             return;
         };
         if (over.tip) |tip| {
-            if (info.name.len == 0) info.name = tip else if (info.description.len == 0) info.description = tip;
+            if (info.label.len == 0) info.label = tip else if (info.description.len == 0) info.description = tip;
         }
         if (over.acc) |acc| if (acc != n.widget.as(Accessible)) acc.apply(&info);
+        // Role none: no object, what is in it in the one above.
+        if (info.role == .none) {
+            for (n.children.items) |ch| try b.walk(ch, parent, .{});
+            return;
+        }
         // What takes the focus (it, or a widget it is made of), and
         // whether it has it: the deepest object the focus is in has.
         const focus = @import("focus.zig");
-        if (focus.first(n) != null and (info.leaf or focus.takes(n))) info.states.focusable = true;
+        const focusable = focus.first(n) != null and (info.children_presentational or focus.takes(n));
         const has_focus = if (b.focused) |f| focus.within(f, n) else false;
         // Strings kept with the tree.
-        info.name = try b.arena.dupe(u8, info.name);
-        info.description = try b.arena.dupe(u8, info.description);
-        info.action = try b.arena.dupe(u8, info.action);
+        inline for (.{ "label", "description", "roledescription", "placeholder", "keyshortcuts", "valuetext", "action" }) |name| {
+            @field(info, name) = try b.arena.dupe(u8, @field(info, name));
+        }
         if (info.text) |tx| info.text = try b.arena.dupe(u8, tx);
-        if (info.value) |*v| v.text = try b.arena.dupe(u8, v.text);
         if (n.a11y_id == 0) {
             n.a11y_id = b.next_id.*;
             b.next_id.* += 1;
@@ -504,11 +468,12 @@ const Builder = struct {
             .parent = parent,
             .children = &.{},
             .node = n,
+            .focusable = focusable,
         });
         try b.kids.append(b.arena, .empty);
         try b.kids.items[parent].append(b.arena, index);
         if (has_focus) b.focused_index = index;
-        if (info.leaf) return;
+        if (info.children_presentational) return;
         for (n.children.items) |ch| try b.walk(ch, index, .{});
     }
 };

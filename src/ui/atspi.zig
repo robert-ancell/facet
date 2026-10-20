@@ -106,37 +106,35 @@ pub const Bridge = struct {
         b.tree = new;
         if (!b.activated) {
             b.activated = true;
-            b.event(a11y.window_id, "org.a11y.atspi.Event.Window", "Activate", "", 0, .{ .string = new.objects[0].info.name });
+            b.event(a11y.window_id, "org.a11y.atspi.Event.Window", "Activate", "", 0, .{ .string = new.objects[0].info.label });
             b.event(a11y.window_id, "org.a11y.atspi.Event.Object", "StateChanged", "active", 1, .none);
         }
         const prev = old orelse return;
         for (new.objects) |*o| {
             const was = prev.find(o.id) orelse continue;
             // Names, descriptions, values.
-            if (!std.mem.eql(u8, was.info.name, o.info.name)) b.event(o.id, "org.a11y.atspi.Event.Object", "PropertyChange", "accessible-name", 0, .{ .string = o.info.name });
+            if (!std.mem.eql(u8, was.info.label, o.info.label)) b.event(o.id, "org.a11y.atspi.Event.Object", "PropertyChange", "accessible-name", 0, .{ .string = o.info.label });
             if (!std.mem.eql(u8, was.info.description, o.info.description)) b.event(o.id, "org.a11y.atspi.Event.Object", "PropertyChange", "accessible-description", 0, .{ .string = o.info.description });
-            const v0 = if (was.info.value) |v| v.current else 0;
-            const v1 = if (o.info.value) |v| v.current else 0;
+            const v0 = was.info.valuenow orelse 0;
+            const v1 = o.info.valuenow orelse 0;
             if (v0 != v1) b.event(o.id, "org.a11y.atspi.Event.Object", "PropertyChange", "accessible-value", 0, .{ .double = v1 });
             if (was.info.text != null and o.info.text != null and !std.mem.eql(u8, was.info.text.?, o.info.text.?)) {
                 b.event(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "delete", 0, .{ .string = was.info.text.? });
                 b.event(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "insert", 0, .{ .string = o.info.text.? });
             }
-            // States.
-            const s0: u16 = @bitCast(was.info.states);
-            const s1: u16 = @bitCast(o.info.states);
-            if (s0 != s1) inline for (a11y.States.atspi) |st| {
-                const before = @field(was.info.states, st[0]);
-                const after = @field(o.info.states, st[0]);
-                if (before != after) {
-                    b.event(o.id, "org.a11y.atspi.Event.Object", "StateChanged", st[2], @intFromBool(after), .none);
-                    if (std.mem.eql(u8, st[0], "focused") and after) b.event(o.id, "org.a11y.atspi.Event.Focus", "Focus", "", 0, .none);
+            // States: each AT-SPI state that changed.
+            const s0 = atspiStates(was);
+            const s1 = atspiStates(o);
+            if (s0 != s1) inline for (atspi_state_names, 0..) |name, bit| {
+                const mask = @as(u64, 1) << bit;
+                if ((s0 ^ s1) & mask != 0) {
+                    const on = s1 & mask != 0;
+                    b.event(o.id, "org.a11y.atspi.Event.Object", "StateChanged", name, @intFromBool(on), .none);
+                    if (comptime std.mem.eql(u8, name, "focused")) {
+                        if (on) b.event(o.id, "org.a11y.atspi.Event.Focus", "Focus", "", 0, .none);
+                    }
                 }
             };
-            if (was.info.states.disabled != o.info.states.disabled) {
-                b.event(o.id, "org.a11y.atspi.Event.Object", "StateChanged", "enabled", @intFromBool(!o.info.states.disabled), .none);
-                b.event(o.id, "org.a11y.atspi.Event.Object", "StateChanged", "sensitive", @intFromBool(!o.info.states.disabled), .none);
-            }
             // Children gone, and come.
             for (was.children, 0..) |ci, i| {
                 const child = prev.objects[ci];
@@ -396,15 +394,11 @@ pub const Bridge = struct {
             return "s";
         }
         if (eq(u8, member, "GetState")) {
-            const bits: [2]u32 = switch (target) {
-                .app => .{ 0, 0 },
-                .object => |o| blk: {
-                    var bits = o.info.states.bits();
-                    // The window: active.
-                    if (o.id == a11y.window_id) bits[0] |= 1 << 1;
-                    break :blk bits;
-                },
+            const all: u64 = switch (target) {
+                .app => 0,
+                .object => |o| atspiStates(o),
             };
+            const bits: [2]u32 = .{ @truncate(all), @truncate(all >> 32) };
             const arr = w.beginArray(4);
             w.uint32(bits[0]);
             w.uint32(bits[1]);
@@ -413,10 +407,28 @@ pub const Bridge = struct {
         }
         if (eq(u8, member, "GetAttributes")) {
             const arr = w.beginArray(8);
-            if (target == .app) {
-                w.beginStruct();
-                w.string("toolkit");
-                w.string("facet");
+            const pair = struct {
+                fn f(wr: *Writer, k: []const u8, v: []const u8) void {
+                    if (v.len == 0) return;
+                    wr.beginStruct();
+                    wr.string(k);
+                    wr.string(v);
+                }
+            }.f;
+            switch (target) {
+                .app => pair(w, "toolkit", "facet"),
+                .object => |o| {
+                    // ARIA's role (as browsers give it), and its properties
+                    // that are attributes in AT-SPI.
+                    if (o.id != a11y.window_id and o.info.role != .label) pair(w, "xml-roles", @tagName(o.info.role));
+                    var level_buf: [4]u8 = undefined;
+                    if (o.info.level) |l| pair(w, "level", std.fmt.bufPrint(&level_buf, "{d}", .{l}) catch "");
+                    pair(w, "roledescription", o.info.roledescription);
+                    pair(w, "placeholder-text", o.info.placeholder);
+                    pair(w, "keyshortcuts", o.info.keyshortcuts);
+                    pair(w, "valuetext", o.info.valuetext);
+                    if (o.info.haspopup) |h| pair(w, "haspopup", @tagName(h));
+                },
             }
             w.endArray(arr);
             return "a{ss}";
@@ -434,10 +446,10 @@ pub const Bridge = struct {
         return null;
     }
 
-    fn roleOf(target: Target) a11y.Role {
+    fn roleOf(target: Target) AtspiRole {
         return switch (target) {
             .app => .application,
-            .object => |o| o.info.role,
+            .object => |o| atspiRole(o),
         };
     }
 
@@ -453,7 +465,7 @@ pub const Bridge = struct {
         const val = "org.a11y.atspi.Value";
         const txt = "org.a11y.atspi.Text";
         const has_action = o.info.activate != null;
-        const has_value = o.info.value != null;
+        const has_value = o.info.valuenow != null;
         const has_text = o.info.text != null;
         // Every mix of the three.
         return switch (@as(u3, @intFromBool(has_action)) | @as(u3, @intFromBool(has_value)) << 1 | @as(u3, @intFromBool(has_text)) << 2) {
@@ -511,7 +523,7 @@ pub const Bridge = struct {
         if (eq(u8, iface, "org.a11y.atspi.Accessible")) {
             if (eq(u8, name, "Name")) return out.s(switch (target) {
                 .app => b.app_name,
-                .object => |o| o.info.name,
+                .object => |o| o.info.label,
             });
             if (eq(u8, name, "Description")) return out.s(switch (target) {
                 .app => "",
@@ -550,12 +562,13 @@ pub const Bridge = struct {
             .app => return false,
         };
         if (eq(u8, iface, "org.a11y.atspi.Value")) {
-            const v = o.info.value orelse return false;
-            if (eq(u8, name, "MinimumValue")) return out.d(v.min);
-            if (eq(u8, name, "MaximumValue")) return out.d(v.max);
-            if (eq(u8, name, "MinimumIncrement")) return out.d(v.step);
-            if (eq(u8, name, "CurrentValue")) return out.d(v.current);
-            if (eq(u8, name, "Text")) return out.s(v.text);
+            // ARIA's defaults: 0 to 100.
+            const now = o.info.valuenow orelse return false;
+            if (eq(u8, name, "MinimumValue")) return out.d(o.info.valuemin orelse 0);
+            if (eq(u8, name, "MaximumValue")) return out.d(o.info.valuemax orelse 100);
+            if (eq(u8, name, "MinimumIncrement")) return out.d(o.info.valuestep);
+            if (eq(u8, name, "CurrentValue")) return out.d(now);
+            if (eq(u8, name, "Text")) return out.s(o.info.valuetext);
             return false;
         }
         if (eq(u8, iface, "org.a11y.atspi.Text")) {
@@ -831,6 +844,298 @@ const introspection =
     \\</node>
 ;
 
+// --- ARIA to AT-SPI -------------------------------------------------------------
+//
+// As the W3C's Core Accessibility API Mappings 1.2 has it for AT-SPI.
+
+/// AT-SPI's roles, by their numbers.
+pub const AtspiRole = enum(u32) {
+    invalid = 0,
+    accelerator_label = 1,
+    alert = 2,
+    animation = 3,
+    arrow = 4,
+    calendar = 5,
+    canvas = 6,
+    check_box = 7,
+    check_menu_item = 8,
+    color_chooser = 9,
+    column_header = 10,
+    combo_box = 11,
+    date_editor = 12,
+    desktop_icon = 13,
+    desktop_frame = 14,
+    dial = 15,
+    dialog = 16,
+    directory_pane = 17,
+    drawing_area = 18,
+    file_chooser = 19,
+    filler = 20,
+    focus_traversable = 21,
+    font_chooser = 22,
+    frame = 23,
+    glass_pane = 24,
+    html_container = 25,
+    icon = 26,
+    image = 27,
+    internal_frame = 28,
+    label = 29,
+    layered_pane = 30,
+    list = 31,
+    list_item = 32,
+    menu = 33,
+    menu_bar = 34,
+    menu_item = 35,
+    option_pane = 36,
+    page_tab = 37,
+    page_tab_list = 38,
+    panel = 39,
+    password_text = 40,
+    popup_menu = 41,
+    progress_bar = 42,
+    push_button = 43,
+    radio_button = 44,
+    radio_menu_item = 45,
+    root_pane = 46,
+    row_header = 47,
+    scroll_bar = 48,
+    scroll_pane = 49,
+    separator = 50,
+    slider = 51,
+    spin_button = 52,
+    split_pane = 53,
+    status_bar = 54,
+    table = 55,
+    table_cell = 56,
+    table_column_header = 57,
+    table_row_header = 58,
+    tearoff_menu_item = 59,
+    terminal = 60,
+    text = 61,
+    toggle_button = 62,
+    tool_bar = 63,
+    tool_tip = 64,
+    tree = 65,
+    tree_table = 66,
+    unknown = 67,
+    viewport = 68,
+    window = 69,
+    extended = 70,
+    header = 71,
+    footer = 72,
+    paragraph = 73,
+    ruler = 74,
+    application = 75,
+    autocomplete = 76,
+    editbar = 77,
+    embedded = 78,
+    entry = 79,
+    chart = 80,
+    caption = 81,
+    document_frame = 82,
+    heading = 83,
+    page = 84,
+    section = 85,
+    redundant_object = 86,
+    form = 87,
+    link = 88,
+    input_method_window = 89,
+    table_row = 90,
+    tree_item = 91,
+    document_spreadsheet = 92,
+    document_presentation = 93,
+    document_text = 94,
+    document_web = 95,
+    document_email = 96,
+    comment = 97,
+    list_box = 98,
+    grouping = 99,
+    image_map = 100,
+    notification = 101,
+    info_bar = 102,
+    level_bar = 103,
+    title_bar = 104,
+    block_quote = 105,
+    audio = 106,
+    video = 107,
+    definition = 108,
+    article = 109,
+    landmark = 110,
+    log = 111,
+    marquee = 112,
+    math = 113,
+    rating = 114,
+    timer = 115,
+    static = 116,
+    math_fraction = 117,
+    math_root = 118,
+    subscript = 119,
+    superscript = 120,
+    description_list = 121,
+    description_term = 122,
+    description_value = 123,
+    footnote = 124,
+    content_deletion = 125,
+    content_insertion = 126,
+    mark = 127,
+    suggestion = 128,
+    push_button_menu = 129,
+
+    /// Its name, as AT-SPI gives it ("push button").
+    pub fn name(r: AtspiRole, buf: []u8) []const u8 {
+        const tag = @tagName(r);
+        const n = @min(tag.len, buf.len);
+        for (tag[0..n], buf[0..n]) |c, *o| o.* = if (c == '_') ' ' else c;
+        return buf[0..n];
+    }
+};
+
+/// The AT-SPI role of an object (with ARIA's role and properties).
+pub fn atspiRole(o: *const Object) AtspiRole {
+    const i = &o.info;
+    return switch (i.role) {
+        .alert => .notification,
+        .alertdialog => .alert,
+        .application => .embedded,
+        .article => .article,
+        .banner, .complementary, .contentinfo, .main, .navigation, .region, .search => .landmark,
+        .blockquote => .block_quote,
+        // With aria-pressed, a toggle button; with a popup, a menu button.
+        .button => if (i.pressed != null) .toggle_button else if (i.haspopup != null) .push_button_menu else .push_button,
+        .caption => .caption,
+        .cell, .gridcell => .table_cell,
+        .checkbox => .check_box,
+        .code, .emphasis, .strong, .time => .static,
+        .columnheader => .column_header,
+        .combobox => .combo_box,
+        .definition => .description_value,
+        .deletion => .content_deletion,
+        .dialog => .dialog,
+        .document => .document_frame,
+        .feed, .figure, .group, .radiogroup, .rowgroup => .panel,
+        .form => .form,
+        .generic => .section,
+        .grid, .table => .table,
+        .heading => .heading,
+        .img => .image,
+        .insertion => .content_insertion,
+        .link => .link,
+        .list => .list,
+        .listbox => .list_box,
+        .listitem, .option => .list_item,
+        .log => .log,
+        .marquee => .marquee,
+        .math => .math,
+        .menu => .menu,
+        .menubar => .menu_bar,
+        .menuitem => .menu_item,
+        .menuitemcheckbox => .check_menu_item,
+        .menuitemradio => .radio_menu_item,
+        .meter => .level_bar,
+        .none => .invalid,
+        .note => .comment,
+        .paragraph => .paragraph,
+        .progressbar => .progress_bar,
+        .radio => .radio_button,
+        .row => .table_row,
+        .rowheader => .row_header,
+        .scrollbar => .scroll_bar,
+        .searchbox => .entry,
+        .separator => .separator,
+        .slider => .slider,
+        .spinbutton => .spin_button,
+        .status => .status_bar,
+        .subscript => .subscript,
+        .superscript => .superscript,
+        .@"switch" => .toggle_button,
+        .tab => .page_tab,
+        .tablist => .page_tab_list,
+        .tabpanel => .scroll_pane,
+        .term => .description_term,
+        .textbox => if (i.secret) .password_text else .entry,
+        .timer => .timer,
+        .toolbar => .tool_bar,
+        .tooltip => .tool_tip,
+        .tree => .tree,
+        .treegrid => .tree_table,
+        .treeitem => .tree_item,
+        .label => .label,
+        .window => .frame,
+    };
+}
+
+/// AT-SPI's states, by their numbers (bits of `GetState`'s two words),
+/// and their names (in events).
+const atspi_state_names = [_][]const u8{
+    "invalid",    "active",        "armed",                   "busy",                "checked",         "collapsed",   "defunct",
+    "editable",   "enabled",       "expandable",              "expanded",            "focusable",       "focused",     "has-tooltip",
+    "horizontal", "iconified",     "modal",                   "multi-line",          "multiselectable", "opaque",      "pressed",
+    "resizable",  "selectable",    "selected",                "sensitive",           "showing",         "single-line", "stale",
+    "transient",  "vertical",      "visible",                 "manages-descendants", "indeterminate",   "required",    "truncated",
+    "animated",   "invalid-entry", "supports-autocompletion", "selectable-text",     "is-default",      "visited",     "checkable",
+    "has-popup",  "read-only",
+};
+
+fn stateBit(comptime name: []const u8) u6 {
+    inline for (atspi_state_names, 0..) |s, i| if (comptime std.mem.eql(u8, s, name)) return i;
+    @compileError("no such state: " ++ name);
+}
+
+/// An object's AT-SPI state set (its ARIA states, its focus, and that it
+/// shows).
+pub fn atspiStates(o: *const Object) u64 {
+    const i = &o.info;
+    var bits: u64 = 0;
+    const set = struct {
+        fn f(b: *u64, comptime name: []const u8, on: bool) void {
+            if (on) b.* |= @as(u64, 1) << stateBit(name);
+        }
+    }.f;
+    set(&bits, "visible", true);
+    set(&bits, "showing", true);
+    set(&bits, "enabled", !i.disabled);
+    set(&bits, "sensitive", !i.disabled);
+    set(&bits, "focusable", o.focusable);
+    set(&bits, "focused", o.focused);
+    set(&bits, "active", i.role == .window);
+    if (i.checked) |c| {
+        set(&bits, "checkable", true);
+        set(&bits, "checked", c == .true);
+        set(&bits, "indeterminate", c == .mixed);
+    }
+    if (i.pressed) |p| {
+        set(&bits, "checkable", true);
+        set(&bits, "pressed", p == .true);
+        set(&bits, "indeterminate", p == .mixed);
+    }
+    if (i.selected) |sel| {
+        set(&bits, "selectable", true);
+        set(&bits, "selected", sel);
+    }
+    if (i.expanded) |e| {
+        set(&bits, "expandable", true);
+        set(&bits, "expanded", e);
+        set(&bits, "collapsed", !e);
+    }
+    set(&bits, "has-popup", i.haspopup != null);
+    set(&bits, "read-only", i.readonly);
+    set(&bits, "required", i.required);
+    set(&bits, "invalid-entry", i.invalid);
+    set(&bits, "busy", i.busy);
+    set(&bits, "modal", i.modal);
+    if (i.orientation) |or_| {
+        set(&bits, "horizontal", or_ == .horizontal);
+        set(&bits, "vertical", or_ == .vertical);
+    }
+    const editable = (i.role == .textbox or i.role == .searchbox) and !i.readonly and !i.disabled;
+    set(&bits, "editable", editable);
+    if (i.role == .textbox or i.role == .searchbox) {
+        set(&bits, "multi-line", i.multiline);
+        set(&bits, "single-line", !i.multiline);
+    }
+    return bits;
+}
+
 const testing = std.testing;
 
 test "text is cut by characters, and words found" {
@@ -905,10 +1210,10 @@ test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
             const a = t.arena.allocator();
             const kids = try a.dupe(u32, &.{ 1, 2, 3 });
             t.objects = try a.dupe(Object, &.{
-                .{ .id = 1, .info = .{ .role = .frame, .name = "Window" }, .bounds = .{ .x = 0, .y = 0, .w = 300, .h = 200 }, .parent = null, .children = kids, .node = null },
-                .{ .id = 7, .info = .{ .role = .push_button, .name = "OK", .activate = .of(pressed_ptr, Acts.press) }, .bounds = .{ .x = 10, .y = 10, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
-                .{ .id = 8, .info = .{ .role = .check_box, .name = "Wi-Fi", .states = .{ .checkable = true, .checked = checked } }, .bounds = .{ .x = 10, .y = 60, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
-                .{ .id = 9, .info = .{ .role = .slider, .value = .{ .current = 2, .max = 10 }, .set_value = .of(level_ptr, Acts.set) }, .bounds = .{ .x = 10, .y = 110, .w = 200, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
+                .{ .id = 1, .info = .{ .role = .window, .label = "Window" }, .bounds = .{ .x = 0, .y = 0, .w = 300, .h = 200 }, .parent = null, .children = kids, .node = null },
+                .{ .id = 7, .info = .{ .role = .button, .label = "OK", .activate = .of(pressed_ptr, Acts.press) }, .bounds = .{ .x = 10, .y = 10, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
+                .{ .id = 8, .info = .{ .role = .checkbox, .label = "Wi-Fi", .checked = .of(checked) }, .bounds = .{ .x = 10, .y = 60, .w = 80, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
+                .{ .id = 9, .info = .{ .role = .slider, .valuenow = 2, .valuemin = 0, .valuemax = 10, .set_value = .of(level_ptr, Acts.set) }, .bounds = .{ .x = 10, .y = 110, .w = 200, .h = 40 }, .parent = 0, .children = &.{}, .node = null },
             });
             for (t.objects, 0..) |o, i| try t.by_id.put(a, o.id, @intCast(i));
             return t;
@@ -1044,4 +1349,31 @@ test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
     var rd = m.reader();
     try testing.expectEqualStrings("checked", try rd.string());
     try testing.expectEqual(@as(i32, 1), try rd.int32());
+}
+
+test "ARIA's roles and states become AT-SPI's, as Core-AAM has them" {
+    const obj = struct {
+        fn f(info: a11y.Info) Object {
+            return .{ .id = 5, .info = info, .bounds = .{ .x = 0, .y = 0, .w = 1, .h = 1 }, .parent = 0, .children = &.{}, .node = null };
+        }
+    }.f;
+    const bit = struct {
+        fn f(o: Object, comptime name: []const u8) bool {
+            return atspiStates(&o) & (@as(u64, 1) << stateBit(name)) != 0;
+        }
+    }.f;
+    try testing.expectEqual(AtspiRole.push_button, atspiRole(&obj(.{ .role = .button })));
+    try testing.expectEqual(AtspiRole.toggle_button, atspiRole(&obj(.{ .role = .button, .pressed = .false })));
+    try testing.expectEqual(AtspiRole.toggle_button, atspiRole(&obj(.{ .role = .@"switch", .checked = .true })));
+    try testing.expectEqual(AtspiRole.landmark, atspiRole(&obj(.{ .role = .navigation })));
+    try testing.expectEqual(AtspiRole.password_text, atspiRole(&obj(.{ .role = .textbox, .secret = true })));
+    try testing.expectEqual(AtspiRole.frame, atspiRole(&obj(.{ .role = .window })));
+    const mixed = obj(.{ .role = .checkbox, .checked = .mixed });
+    try testing.expect(bit(mixed, "checkable") and bit(mixed, "indeterminate") and !bit(mixed, "checked"));
+    const collapsed = obj(.{ .role = .combobox, .expanded = false, .haspopup = .listbox });
+    try testing.expect(bit(collapsed, "expandable") and bit(collapsed, "collapsed") and bit(collapsed, "has-popup"));
+    const field = obj(.{ .role = .textbox, .required = true });
+    try testing.expect(bit(field, "editable") and bit(field, "single-line") and bit(field, "required"));
+    try testing.expect(!bit(obj(.{ .role = .textbox, .readonly = true }), "editable"));
+    try testing.expect(!bit(obj(.{ .role = .button, .disabled = true }), "enabled"));
 }

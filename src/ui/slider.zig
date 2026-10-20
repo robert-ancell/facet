@@ -55,7 +55,7 @@ pub const Slider = struct {
 
     pub fn accessible(self: *const Slider, n: *Node) ?a11y.Info {
         const step: f32 = if (self.divisions) |d| if (d > 0) (self.max - self.min) / @as(f32, @floatFromInt(d)) else 0 else 0;
-        return .{ .role = .slider, .value = .{ .current = self.value, .min = self.min, .max = self.max, .step = step }, .set_value = a11y.setterOf(n, self.on_changed, self.min, self.max), .states = .{ .disabled = self.on_changed == null }, .leaf = true };
+        return .{ .role = .slider, .orientation = .horizontal, .valuenow = self.value, .valuemin = self.min, .valuemax = self.max, .valuestep = step, .set_value = a11y.setterOf(n, self.on_changed, self.min, self.max), .disabled = self.on_changed == null, .children_presentational = true };
     }
 
     pub fn layout(_: *const Slider, _: *Node, c: Constraints) Size {

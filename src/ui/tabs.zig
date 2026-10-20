@@ -57,6 +57,10 @@ pub const TabBar = struct {
         picks: [max_tabs]Pick = undefined,
     };
 
+    pub fn accessible(_: *const TabBar, _: *Node) ?a11y.Info {
+        return .{ .role = .tablist, .orientation = .horizontal };
+    }
+
     pub fn build(self: *const TabBar, cx: *Context, state: *State) Widget {
         state.on_select = self.on_select;
         const count = @min(self.tabs.len, max_tabs);
@@ -94,7 +98,7 @@ const TabItem = struct {
     };
 
     pub fn accessible(self: *const TabItem, _: *Node) ?a11y.Info {
-        return .{ .role = .page_tab, .name = self.tab.label, .action = "switch", .activate = self.on_press, .states = .{ .selectable = true, .selected = self.selected }, .leaf = true };
+        return .{ .role = .tab, .label = self.tab.label, .selected = self.selected, .action = "switch", .activate = self.on_press, .children_presentational = true };
     }
 
     pub fn build(self: *const TabItem, cx: *Context, state: *State) Widget {

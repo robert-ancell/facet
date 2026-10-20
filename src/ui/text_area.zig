@@ -349,11 +349,11 @@ pub const TextArea = struct {
     pub fn accessible(self: *const TextArea, _: *Node) ?a11y.Info {
         const doc = self.doc.text();
         return .{
-            .role = .text,
+            .role = .textbox,
+            .multiline = true,
             .text = doc,
             .caret = std.unicode.utf8CountCodepoints(doc[0..@min(self.doc.cursor, doc.len)]) catch null,
-            .states = .{ .focusable = true, .editable = true, .multi_line = true },
-            .leaf = true,
+            .children_presentational = true,
         };
     }
 

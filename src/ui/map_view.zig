@@ -169,9 +169,11 @@ pub const MapView = struct {
     }
 
     pub fn accessible(self: *const MapView, n: *Node) ?a11y.Info {
+        // An interactive widget of its own kind (its keys move it): an
+        // application, called a map.
         const c = self.cameraOf(n.state(State)).*;
         const where = std.fmt.allocPrint(n.ui.arena(), "{d:.4}, {d:.4}, zoom {d:.1}", .{ c.center.lat, c.center.lon, c.zoom }) catch "";
-        return .{ .role = .canvas, .name = "Map", .description = where, .leaf = true };
+        return .{ .role = .application, .roledescription = "map", .label = "Map", .description = where, .children_presentational = true };
     }
 
     pub fn layout(self: *const MapView, _: *Node, c: Constraints) Size {

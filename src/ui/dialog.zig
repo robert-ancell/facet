@@ -42,7 +42,7 @@ pub const Dialog = struct {
 
     pub fn accessible(self: *const Dialog, _: *Node) ?a11y.Info {
         if (!self.open) return null;
-        return .{ .role = .dialog, .name = self.title, .description = self.description, .states = .{ .modal = true } };
+        return .{ .role = .dialog, .label = self.title, .description = self.description, .modal = true };
     }
 
     pub fn build(self: *const Dialog, cx: *Context) Widget {

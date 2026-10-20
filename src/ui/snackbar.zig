@@ -35,7 +35,9 @@ pub const Snackbar = struct {
     pub const min_height = 48;
 
     pub fn accessible(self: *const Snackbar, _: *Node) ?a11y.Info {
-        return .{ .role = .notification, .name = self.message };
+        // A message that is not urgent: a status (an alert is for those
+        // that are).
+        return .{ .role = .status, .label = self.message };
     }
 
     pub fn build(self: *const Snackbar, cx: *Context) Widget {

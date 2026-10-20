@@ -33,7 +33,7 @@ pub const Checkbox = struct {
     };
 
     pub fn accessible(self: *const Checkbox, n: *Node) ?a11y.Info {
-        return .{ .role = .check_box, .name = self.label, .action = "toggle", .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .states = .{ .checkable = true, .checked = self.value, .disabled = self.on_changed == null }, .leaf = true };
+        return .{ .role = .checkbox, .label = self.label, .checked = .of(self.value), .action = "toggle", .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null, .children_presentational = true };
     }
 
     pub fn build(self: *const Checkbox, cx: *Context, state: *State) Widget {

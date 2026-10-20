@@ -76,7 +76,7 @@ pub const Image = struct {
     };
 
     pub fn accessible(_: *const Image, _: *Node) ?a11y.Info {
-        return .{ .role = .image, .leaf = true };
+        return .{ .role = .img, .children_presentational = true };
     }
 
     pub fn build(self: *const Image, cx: *Context) Widget {
