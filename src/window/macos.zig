@@ -207,6 +207,11 @@ pub const MacWindow = struct {
         w.taken.deinit(w.gpa);
         w.gpa.free(w.title_buf);
         if (std.mem.indexOfScalar(*MacWindow, windows.items, w)) |i| _ = windows.swapRemove(i);
+        // The last to close frees the list, for the next to open to start anew.
+        if (windows.items.len == 0) {
+            windows.deinit(w.gpa);
+            windows = .empty;
+        }
         w.gpa.destroy(w);
     }
 

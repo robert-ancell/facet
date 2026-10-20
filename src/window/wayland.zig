@@ -2996,6 +2996,7 @@ test "a popup's configure places it, input on it is in window coordinates, and p
 }
 
 test "a popup acks each configure, and commits again for one after it shows" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     var fds: [2]i32 = undefined;
     try std.testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC | linux.SOCK.NONBLOCK, 0, &fds)));
     defer _ = linux.close(fds[1]);

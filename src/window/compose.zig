@@ -8,7 +8,7 @@
 //! A sequence that goes nowhere types nothing, as with xkbcommon.
 
 const std = @import("std");
-const linux = std.os.linux;
+const sys = @import("sys.zig");
 const xkb = @import("xkb.zig");
 
 pub const multi_key: u32 = 0xff20;
@@ -360,21 +360,7 @@ fn quoted(a: std.mem.Allocator, s: []const u8) ?struct { text: []const u8, len: 
 }
 
 fn readFile(a: std.mem.Allocator, path: []const u8) ?[]u8 {
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{path}, 0) catch return null;
-    const rc = linux.open(z.ptr, .{ .ACCMODE = .RDONLY, .CLOEXEC = true }, 0);
-    if (linux.errno(rc) != .SUCCESS) return null;
-    const fd: linux.fd_t = @intCast(rc);
-    defer _ = linux.close(fd);
-    var out: std.ArrayList(u8) = .empty;
-    while (out.items.len < 8 << 20) {
-        out.ensureUnusedCapacity(a, 64 << 10) catch return null;
-        const n = linux.read(fd, out.unusedCapacitySlice().ptr, out.unusedCapacitySlice().len);
-        if (linux.errno(n) != .SUCCESS) return null;
-        if (n == 0) break;
-        out.items.len += n;
-    }
-    return out.items;
+    return sys.readFile(a, path, 8 << 20);
 }
 
 const testing = std.testing;

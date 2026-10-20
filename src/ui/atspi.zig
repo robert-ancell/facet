@@ -1186,6 +1186,7 @@ const TestPeer = struct {
 };
 
 test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const gpa = testing.allocator;
     var fds: [2]i32 = undefined;
     try testing.expectEqual(linux.E.SUCCESS, linux.errno(linux.socketpair(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0, &fds)));

@@ -317,6 +317,7 @@ fn socketPair() ![2]linux.fd_t {
 }
 
 test "messages and file descriptors round trip" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const fds = try socketPair();
     const a = try testing.allocator.create(Connection);
     defer testing.allocator.destroy(a);
@@ -364,6 +365,7 @@ test "messages and file descriptors round trip" {
 }
 
 test "partial messages wait for the rest" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const fds = try socketPair();
     var b: Connection = .init(fds[1]);
     defer b.deinit();
@@ -380,6 +382,7 @@ test "partial messages wait for the rest" {
 }
 
 test "bad sizes are protocol errors, and a closed peer is reported" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
     const fds = try socketPair();
     var b: Connection = .init(fds[1]);
     defer b.deinit();

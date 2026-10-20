@@ -1478,7 +1478,9 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     const u = try ui.Ui.createDefault(testing.allocator);
     defer u.destroy();
 
-    const expected_renderer: gfx.RenderBackend = if (u.vulkan_renderer != null)
+    const expected_renderer: gfx.RenderBackend = if (u.metal_renderer != null)
+        .metal
+    else if (u.vulkan_renderer != null)
         .vulkan
     else if (u.opengl_renderer != null)
         .opengl
@@ -2072,8 +2074,7 @@ fn frameUntilLoaded(u: *ui.Ui, root: anytype) !void {
         var it = u.images.entries.valueIterator();
         while (it.next()) |e| any_loading = any_loading or e.*.status == .loading;
         if (!any_loading) return;
-        const ts: std.os.linux.timespec = .{ .sec = 0, .nsec = std.time.ns_per_ms };
-        _ = std.os.linux.nanosleep(&ts, null);
+        window.sys.sleepNs(std.time.ns_per_ms);
     }
     return error.Timeout;
 }
