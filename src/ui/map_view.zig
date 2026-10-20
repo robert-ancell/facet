@@ -441,9 +441,11 @@ pub const MapView = struct {
                 .{ s0 + step * @as(f32, @floatFromInt(i)), t0 + step * @as(f32, @floatFromInt(j + 1)) },
             };
             for ([2][3]usize{ .{ 0, 1, 2 }, .{ 0, 2, 3 } }) |tri| {
-                // Triangles with a corner on the side that shows (any on
-                // the far side brought to the globe's edge).
-                if (!grid[k[tri[0]]].visible and !grid[k[tri[1]]].visible and !grid[k[tri[2]]].visible) continue;
+                // On the globe, triangles with a corner on the side that
+                // shows (any on the far side brought to the globe's edge);
+                // part way to the flat map, only those all on it.
+                const shown = @as(u8, @intFromBool(grid[k[tri[0]]].visible)) + @intFromBool(grid[k[tri[1]]].visible) + @intFromBool(grid[k[tri[2]]].visible);
+                if (shown == 0 or (v.flat > 0 and shown < 3)) continue;
                 for (tri) |q| {
                     const pos = grid[k[q]].pos;
                     corners.appendAssumeCapacity(.{ @floatCast(pos[0]), @floatCast(pos[1]), uvs[q][0], uvs[q][1] });

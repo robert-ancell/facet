@@ -25,15 +25,23 @@ pub const Camera = struct {
 };
 
 pub const Projection = enum {
-    /// A globe zoomed out (up to `globe_until`), becoming the flat map
-    /// zoomed in (from `flat_from`).
+    /// A globe zoomed out (up to `globe_until`, or further in if the
+    /// globe does not cover the view by then), becoming the flat map over
+    /// the next zoom level.
     globe,
     /// The flat map at every zoom.
     flat,
 };
 
+/// The zoom the globe starts becoming the flat map at, at the earliest.
 pub const globe_until = 5.0;
-pub const flat_from = 6.0;
+
+/// The camera's focal length in a view `size` big, in pixels: looking down
+/// from as high as a 37° view up and down sees the view's height at the
+/// centre.
+fn focalOf(size: [2]f64) f64 {
+    return 1.5 * @max(size[1], 1);
+}
 
 /// How far north and south the flat map goes: where it is as tall as it
 /// is wide.
@@ -58,11 +66,25 @@ pub fn wrapLon(lon: f64) f64 {
     return @mod(lon + 180, 360) - 180;
 }
 
-/// How far a camera at `zoom` is from the globe to the flat map: 0 on the
-/// globe, 1 on the flat map.
-pub fn flatness(zoom: f64, projection: Projection) f64 {
+/// The zoom the globe starts becoming the flat map at in a view `size`
+/// big: `globe_until`, or once the globe covers the view (its corners
+/// too), if that is further in. Before then, what is turning onto the
+/// globe's far side would show (in a wide view, say).
+pub fn globeUntil(size: [2]f64) f64 {
+    const focal = focalOf(size);
+    const corner = @sqrt(size[0] * size[0] + size[1] * size[1]) / 2;
+    // The outline's radius is focal / √(d² − 1), with the camera d radii
+    // from the globe's centre (d = 1 + focal / radius): at least
+    // `corner` (and a tenth more) for a radius at least this.
+    const radius = 1.1 * focal / (@sqrt(1 + focal * focal / @max(corner * corner, 1)) - 1);
+    return @max(globe_until, math.log2(radius * math.tau / 256));
+}
+
+/// How far a camera at `zoom` (in a view `size` big) is from the globe to
+/// the flat map: 0 on the globe, 1 on the flat map.
+pub fn flatness(zoom: f64, size: [2]f64, projection: Projection) f64 {
     if (projection == .flat) return 1;
-    const t = math.clamp((zoom - globe_until) / (flat_from - globe_until), 0, 1);
+    const t = math.clamp(zoom - globeUntil(size), 0, 1);
     return t * t * (3 - 2 * t);
 }
 
@@ -89,14 +111,11 @@ pub const View = struct {
     pub fn init(camera: Camera, size: [2]f64, projection: Projection) View {
         const lat = math.clamp(camera.center.lat, -max_lat, max_lat);
         const world = 256 * math.exp2(camera.zoom);
-        // Looking down from as high as a 37° view up and down sees the
-        // height of the view at the centre (where the scale is the flat
-        // map's).
-        const focal = 1.5 * @max(size[1], 1);
+        const focal = focalOf(size);
         // The equator as long as the flat map is wide; growing as it
         // becomes the flat map, to that map's scale at the centre (which
         // grows away from the equator).
-        const flat = flatness(camera.zoom, projection);
+        const flat = flatness(camera.zoom, size, projection);
         const radius = world / math.tau / math.pow(f64, @cos(lat * deg), flat);
         return .{
             .size = size,
@@ -114,8 +133,8 @@ pub const View = struct {
     }
 
     /// Where something shows, and whether it is on the side of the globe
-    /// facing the camera (if not, `pos` is on the globe's edge, in its
-    /// direction).
+    /// facing the camera (if not, on the globe, `pos` is on its edge, in
+    /// its direction; part way to the flat map, it is to be left out).
     pub const Projected = struct { pos: [2]f64, visible: bool };
 
     /// Where the point `w` on the flat map shows (`w[0]` may be beyond 0
@@ -129,7 +148,10 @@ pub const View = struct {
         if (v.flat >= 1) return .{ .pos = flat_pos, .visible = true };
         const g = v.globe(w);
         if (v.flat <= 0) return g;
-        return .{ .pos = .{ g.pos[0] + (flat_pos[0] - g.pos[0]) * v.flat, g.pos[1] + (flat_pos[1] - g.pos[1]) * v.flat }, .visible = true };
+        // Part way: from where it is on the globe to where it is on the
+        // flat map. What is on the globe's far side still is not shown (it
+        // would sweep across the view, from the globe's edge).
+        return .{ .pos = .{ g.pos[0] + (flat_pos[0] - g.pos[0]) * v.flat, g.pos[1] + (flat_pos[1] - g.pos[1]) * v.flat }, .visible = g.visible };
     }
 
     /// Where `p` shows (the copy of it nearest the centre, on the flat
@@ -362,4 +384,25 @@ test "zooming about a point keeps the place there" {
         try testing.expectApproxEqAbs(at[0], p.pos[0], 0.05);
         try testing.expectApproxEqAbs(at[1], p.pos[1], 0.05);
     }
+}
+
+test "the globe becomes the flat map only once it covers the view, whatever its shape" {
+    for ([_][2]f64{ .{ 800, 480 }, .{ 1740, 430 }, .{ 300, 900 }, .{ 2560, 200 } }) |size| {
+        const z = globeUntil(size);
+        try testing.expect(z >= globe_until);
+        const v = View.init(.{ .center = .{ .lat = 30 }, .zoom = z }, size, .globe);
+        try testing.expectEqual(@as(f64, 0), v.flat);
+        try testing.expect(v.discRadius() >= @sqrt(size[0] * size[0] + size[1] * size[1]) / 2);
+        // Past it, part way, nothing on the far side shows in the view.
+        const part = View.init(.{ .center = .{ .lat = 30 }, .zoom = z + 0.5 }, size, .globe);
+        try testing.expect(part.flat > 0 and part.flat < 1);
+        for (0..9) |j| for (0..9) |i| {
+            const at: [2]f64 = .{ size[0] * @as(f64, @floatFromInt(i)) / 8, size[1] * @as(f64, @floatFromInt(j)) / 8 };
+            const p = part.unproject(at) orelse return error.TestUnexpectedResult;
+            try testing.expect(part.projectLatLon(p).visible);
+        };
+    }
+    // A wide view at zoom 5.2 is still a globe.
+    try testing.expectEqual(@as(f64, 0), flatness(5.2, .{ 1740, 430 }, .globe));
+    try testing.expect(flatness(5.5, .{ 800, 480 }, .globe) > 0);
 }

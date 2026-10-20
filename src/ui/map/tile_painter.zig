@@ -166,12 +166,18 @@ pub const TilePainter = struct {
         for (rings, out) |r, *o| {
             const proj = tp.projectAll(r, true);
             const pts = tp.arena.alloc([2]f32, proj.len) catch return;
-            for (proj, pts) |q, *p| {
-                p.* = q.pos;
+            // Part way to the flat map, what is on the globe's far side is
+            // left out (on the globe it is at its edge).
+            const keep_hidden = tp.view.flat <= 0;
+            var n: usize = 0;
+            for (proj) |q| {
                 any = any or q.visible;
+                if (!q.visible and !keep_hidden) continue;
+                pts[n] = q.pos;
+                n += 1;
             }
-            all_pts.appendSlice(tp.arena, pts) catch {};
-            o.* = pts;
+            all_pts.appendSlice(tp.arena, pts[0..n]) catch {};
+            o.* = pts[0..n];
         }
         if (!any or !tp.inView(all_pts.items, 1)) return;
         tp.canvas.fillPath(out, color);
@@ -188,14 +194,16 @@ pub const TilePainter = struct {
             if (!q.visible) break false;
         } else true;
         if (all_visible) return strokeRun(tp.canvas, pts, closed and tp.view.flat >= 1, width, color);
-        // In runs of what shows, each from (and to) the globe's edge.
+        // In runs of what shows, each from (and to) the globe's edge (but
+        // part way to the flat map, the far side's points are not there).
+        const edge: usize = if (tp.view.flat <= 0) 1 else 0;
         var i: usize = 0;
         while (i < proj.len) {
             while (i < proj.len and !proj[i].visible) i += 1;
             if (i == proj.len) break;
-            const start = i -| 1;
+            const start = i -| edge;
             while (i < proj.len and proj[i].visible) i += 1;
-            const end = @min(i + 1, proj.len);
+            const end = @min(i + edge, proj.len);
             strokeRun(tp.canvas, pts[start..end], false, width, color);
         }
     }
