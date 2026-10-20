@@ -60,9 +60,14 @@ pub const MacWindow = struct {
     /// What draws a frame from inside AppKit's own loops (see
     /// `window.Window.setRedraw`).
     redraw: ?window.Redraw = null,
-    /// While it is resized by its edge: what draws a frame at each refresh
-    /// (the pointer held still, there is no resize to draw one at).
-    resize_timer: Id = null,
+    /// What draws a frame at each refresh while AppKit holds on to the
+    /// app's loop (`pump` waiting longer than it was asked to: while the
+    /// window is resized by its edge, goes to or from full screen, or is
+    /// held by its title bar). It fires only then.
+    hold_timer: Id = null,
+    /// Whether `maximized` is still what AppKit says (asking it, isZoomed,
+    /// can take a long time, so only when it may have changed).
+    zoom_known: bool = false,
     presented_ns: u64 = 0,
     /// Events since the last `takeInput`, and those it gave.
     input: std.ArrayList(InputEvent) = .empty,
@@ -201,7 +206,7 @@ pub const MacWindow = struct {
         const pool = objc.push();
         defer objc.pop(pool);
         for (&w.watched) |*slot| if (slot.*) |_| w.unwatch(slot);
-        w.stopResizeTimer();
+        w.setRedraw(null);
         msg(void, w.win, "setDelegate:", .{@as(Id, null)});
         msg(void, w.win, "close", .{});
         msg(void, w.delegate, "release", .{});
@@ -294,8 +299,13 @@ pub const MacWindow = struct {
         const nh: u32 = @intFromFloat(@max(@round(bounds.size.height), 1));
         const old_scale = w.scale;
         w.updateScale();
-        w.maximized = msg(objc.Bool, w.win, "isZoomed", .{}) != 0;
         w.fullscreen = msg(u64, w.win, "styleMask", .{}) & (1 << 14) != 0;
+        if (w.fullscreen) {
+            w.maximized = false;
+        } else if (!w.zoom_known) {
+            w.maximized = msg(objc.Bool, w.win, "isZoomed", .{}) != 0;
+            w.zoom_known = true;
+        }
         if (nw == w.width and nh == w.height and old_scale == w.scale) return null;
         w.width = nw;
         w.height = nh;
@@ -444,23 +454,33 @@ pub const MacWindow = struct {
 
     pub fn setRedraw(w: *MacWindow, redraw: ?window.Redraw) void {
         w.redraw = redraw;
-    }
-
-    fn startResizeTimer(w: *MacWindow) void {
-        if (w.resize_timer != null) return;
+        if (redraw == null) {
+            if (w.hold_timer) |timer| {
+                msg(void, timer, "invalidate", .{});
+                objc.release(timer);
+                w.hold_timer = null;
+            }
+            return;
+        }
+        if (w.hold_timer != null) return;
         const seconds = @as(f64, @floatFromInt(w.refresh_ns)) / std.time.ns_per_s;
-        const timer = msg(Id, objc.class("NSTimer"), "timerWithTimeInterval:target:selector:userInfo:repeats:", .{ seconds, w.delegate, objc.sel("resizeTick:"), @as(Id, null), objc.yes }) orelse return;
-        // In AppKit's loop while it tracks the mouse, as in its own.
+        const timer = msg(Id, objc.class("NSTimer"), "timerWithTimeInterval:target:selector:userInfo:repeats:", .{ seconds, w.delegate, objc.sel("holdTick:"), @as(Id, null), objc.yes }) orelse return;
+        msg(void, timer, "setFireDate:", .{msg(Id, objc.class("NSDate"), "distantFuture", .{})});
+        // In AppKit's own loops (as while it tracks the mouse), as in ours.
         const loop = msg(Id, objc.class("NSRunLoop"), "currentRunLoop", .{});
         msg(void, loop, "addTimer:forMode:", .{ timer, objc.constant("kCFRunLoopCommonModes") });
-        w.resize_timer = objc.retain(timer);
+        w.hold_timer = objc.retain(timer);
     }
 
-    fn stopResizeTimer(w: *MacWindow) void {
-        const timer = w.resize_timer orelse return;
-        msg(void, timer, "invalidate", .{});
-        objc.release(timer);
-        w.resize_timer = null;
+    /// Sets the hold timer to fire a frame after `pump` should be done
+    /// waiting `seconds` (null: not to).
+    fn armHoldTimer(w: *MacWindow, seconds: ?f64) void {
+        const timer = w.hold_timer orelse return;
+        const date = if (seconds) |s|
+            msg(Id, objc.class("NSDate"), "dateWithTimeIntervalSinceNow:", .{s + @as(f64, @floatFromInt(w.refresh_ns)) / std.time.ns_per_s})
+        else
+            msg(Id, objc.class("NSDate"), "distantFuture", .{});
+        msg(void, timer, "setFireDate:", .{date});
     }
 
     fn drawNow(w: *MacWindow) void {
@@ -649,23 +669,23 @@ pub const MacWindow = struct {
         }
         fn resized(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
             changed(d, sel, n);
+            const w = objc.owner(MacWindow, d) orelse return;
             // Resized by its edge, AppKit keeps the app's loop until the
-            // mouse is let go: a frame at each size is drawn from here,
-            // and from the timer between.
-            const w = objc.owner(MacWindow, d) orelse return;
-            if (msg(objc.Bool, w.view, "inLiveResize", .{}) != 0) w.drawNow();
+            // mouse is let go: a frame at each size is drawn from here
+            // (and from the hold timer between). It is not zoomed until
+            // let go.
+            if (msg(objc.Bool, w.view, "inLiveResize", .{}) != 0) return w.drawNow();
+            w.zoom_known = false;
         }
-        fn liveResizeStarted(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
-            const w = objc.owner(MacWindow, d) orelse return;
-            if (w.redraw != null) w.startResizeTimer();
-        }
-        fn liveResizeEnded(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
-            const w = objc.owner(MacWindow, d) orelse return;
-            w.stopResizeTimer();
+        fn modeChanged(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
+            // Out of a live resize, or to or from full screen.
+            if (objc.owner(MacWindow, d)) |w| w.zoom_known = false;
             changed(d, sel, n);
         }
-        fn resizeTick(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
+        fn holdTick(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
             const w = objc.owner(MacWindow, d) orelse return;
+            // Not as well as a frame just drawn, for a resize.
+            if (w.frame_pending and sys.monotonicNs() < w.presented_ns) return;
             w.drawNow();
         }
     };
@@ -701,12 +721,11 @@ pub const MacWindow = struct {
         return objc.makeClass("FacetWindowDelegate", "NSObject", &.{
             .{ .sel = "windowShouldClose:", .imp = &m.windowShouldClose, .types = b },
             .{ .sel = "windowDidResize:", .imp = &m.resized, .types = "v@:@" },
-            .{ .sel = "windowWillStartLiveResize:", .imp = &m.liveResizeStarted, .types = "v@:@" },
-            .{ .sel = "windowDidEndLiveResize:", .imp = &m.liveResizeEnded, .types = "v@:@" },
-            .{ .sel = "resizeTick:", .imp = &m.resizeTick, .types = "v@:@" },
+            .{ .sel = "windowDidEndLiveResize:", .imp = &m.modeChanged, .types = "v@:@" },
+            .{ .sel = "holdTick:", .imp = &m.holdTick, .types = "v@:@" },
             .{ .sel = "windowDidChangeBackingProperties:", .imp = &m.changed, .types = "v@:@" },
-            .{ .sel = "windowDidEnterFullScreen:", .imp = &m.changed, .types = "v@:@" },
-            .{ .sel = "windowDidExitFullScreen:", .imp = &m.changed, .types = "v@:@" },
+            .{ .sel = "windowDidEnterFullScreen:", .imp = &m.modeChanged, .types = "v@:@" },
+            .{ .sel = "windowDidExitFullScreen:", .imp = &m.modeChanged, .types = "v@:@" },
         });
     }
 };
@@ -761,6 +780,9 @@ fn pump(seconds: f64) void {
     defer objc.pop(pool);
     const app = msg(Id, objc.class("NSApplication"), "sharedApplication", .{});
     const mode = objc.constant("NSDefaultRunLoopMode");
+    // Should AppKit hold on to it for longer, frames are drawn meanwhile.
+    for (windows.items) |w| w.armHoldTimer(seconds);
+    defer for (windows.items) |w| w.armHoldTimer(null);
     var wait_for = seconds;
     while (true) {
         const until = msg(Id, objc.class("NSDate"), "dateWithTimeIntervalSinceNow:", .{wait_for});
