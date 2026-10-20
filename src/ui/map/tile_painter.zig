@@ -160,6 +160,73 @@ pub const TilePainter = struct {
 
     /// Fills what is inside an odd number of `rings`.
     pub fn fill(tp: *TilePainter, rings: []const []const Point, color: Color) void {
+        // On the globe, a tile further out than level 4 is cut into cells
+        // a sixteenth of the world across (or less), each filled on its
+        // own: those out of sight are left out, and those across the
+        // globe's edge come to it a little short or long. (Filled whole,
+        // what is out of sight would be brought to the edge, and fill
+        // much of the globe's face.)
+        if (tp.view.flat < 1 and tp.id.z < 4) {
+            const cells: u32 = @as(u32, 1) << @intCast(4 - tp.id.z);
+            const size = tp.extent / @as(f32, @floatFromInt(cells));
+            var lo: Point = .{ std.math.inf(f32), std.math.inf(f32) };
+            var hi: Point = .{ -std.math.inf(f32), -std.math.inf(f32) };
+            for (rings) |r| for (r) |p| {
+                lo = .{ @min(lo[0], p[0]), @min(lo[1], p[1]) };
+                hi = .{ @max(hi[0], p[0]), @max(hi[1], p[1]) };
+            };
+            if (!(lo[0] <= hi[0])) return;
+            const c0 = cellOf(lo, size, cells);
+            const c1 = cellOf(hi, size, cells);
+            var cy = c0[1];
+            while (cy <= c1[1]) : (cy += 1) {
+                var cx = c0[0];
+                while (cx <= c1[0]) : (cx += 1) {
+                    const x0 = @as(f32, @floatFromInt(cx)) * size;
+                    const y0 = @as(f32, @floatFromInt(cy)) * size;
+                    // Cells at the tile's edges take in what is beyond it.
+                    const box: [4]f32 = .{
+                        if (cx == 0) -std.math.inf(f32) else x0,
+                        if (cy == 0) -std.math.inf(f32) else y0,
+                        if (cx + 1 == cells) std.math.inf(f32) else x0 + size,
+                        if (cy + 1 == cells) std.math.inf(f32) else y0 + size,
+                    };
+                    if (!tp.cellShows(x0, y0, size)) continue;
+                    const parts = tp.arena.alloc([]const Point, rings.len) catch return;
+                    var n: usize = 0;
+                    for (rings) |r| {
+                        const part = clipRing(tp.arena, r, box);
+                        if (part.len < 3) continue;
+                        parts[n] = part;
+                        n += 1;
+                    }
+                    if (n > 0) tp.fillPart(parts[0..n], color);
+                }
+            }
+            return;
+        }
+        tp.fillPart(rings, color);
+    }
+
+    /// The cell `p` is in (clamped to the tile's).
+    fn cellOf(p: Point, size: f32, cells: u32) [2]u32 {
+        const top: f32 = @floatFromInt(cells - 1);
+        return .{
+            @intFromFloat(std.math.clamp(@floor(p[0] / size), 0, top)),
+            @intFromFloat(std.math.clamp(@floor(p[1] / size), 0, top)),
+        };
+    }
+
+    /// Whether any of a cell is on the side of the globe that shows (as
+    /// far as its corners and middle tell).
+    fn cellShows(tp: *const TilePainter, x0: f32, y0: f32, size: f32) bool {
+        for ([_]Point{ .{ 0, 0 }, .{ 1, 0 }, .{ 0, 1 }, .{ 1, 1 }, .{ 0.5, 0.5 } }) |k| {
+            if (tp.project(.{ x0 + k[0] * size, y0 + k[1] * size }).visible) return true;
+        }
+        return false;
+    }
+
+    fn fillPart(tp: *TilePainter, rings: []const []const Point, color: Color) void {
         const out = tp.arena.alloc([]const [2]f32, rings.len) catch return;
         var any = false;
         var all_pts: std.ArrayList([2]f32) = .empty;
@@ -244,3 +311,49 @@ pub const TilePainter = struct {
         _ = tp.labels.place(tp.canvas, .{ @floatCast(q.pos[0]), @floatCast(q.pos[1]) }, text, style);
     }
 };
+
+/// The part of `ring` within `box` (x0, y0, x1, y1), by cutting it at
+/// each side in turn (Sutherland and Hodgman's way). Each ring of a
+/// polygon cut so gives the polygon's part in the box, what is inside
+/// an odd number of them.
+fn clipRing(arena: std.mem.Allocator, ring: []const Point, box: [4]f32) []const Point {
+    var cur: []const Point = ring;
+    for (0..4) |side| {
+        if (cur.len == 0) break;
+        const axis = side % 2;
+        const limit = box[side];
+        const keep_more = side < 2;
+        if (std.math.isInf(limit)) continue;
+        var out: std.ArrayList(Point) = .empty;
+        out.ensureTotalCapacity(arena, cur.len * 2) catch return &.{};
+        for (cur, 0..) |a, i| {
+            const b = cur[(i + 1) % cur.len];
+            const a_in = if (keep_more) a[axis] >= limit else a[axis] <= limit;
+            const b_in = if (keep_more) b[axis] >= limit else b[axis] <= limit;
+            if (a_in) out.appendAssumeCapacity(a);
+            if (a_in != b_in) {
+                const t = (limit - a[axis]) / (b[axis] - a[axis]);
+                var p: Point = .{ a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t };
+                p[axis] = limit;
+                out.appendAssumeCapacity(p);
+            }
+        }
+        cur = out.items;
+    }
+    return cur;
+}
+
+test "rings are cut to a box" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // A square over the box's corner: the quarter in it.
+    const part = clipRing(a, &.{ .{ 0, 0 }, .{ 10, 0 }, .{ 10, 10 }, .{ 0, 10 } }, .{ 5, 5, 20, 20 });
+    try std.testing.expectEqual(@as(f32, 50), @abs(gfx.geometry.signedArea2(part)));
+    // Wholly inside: as it is; wholly outside: nothing.
+    try std.testing.expectEqual(@as(usize, 4), clipRing(a, &.{ .{ 6, 6 }, .{ 8, 6 }, .{ 8, 8 }, .{ 6, 8 } }, .{ 5, 5, 20, 20 }).len);
+    try std.testing.expectEqual(@as(usize, 0), clipRing(a, &.{ .{ 0, 0 }, .{ 1, 0 }, .{ 1, 1 } }, .{ 5, 5, 20, 20 }).len);
+    // An open side does not cut.
+    const inf = std.math.inf(f32);
+    try std.testing.expectEqual(@as(usize, 4), clipRing(a, &.{ .{ 0, 0 }, .{ 10, 0 }, .{ 10, 10 }, .{ 0, 10 } }, .{ -inf, -inf, inf, inf }).len);
+}

@@ -359,34 +359,42 @@ pub const MapView = struct {
         for (shown.items) |s| if (self.resolve(n, s)) |d| drawn.append(arena, d) catch break;
 
         // Pictures first, then shapes (each tile once, though it may be
-        // drawn for several further in), then labels over everything.
+        // drawn for several further in).
         for (drawn.items) |d| if (d.what == .image) drawImageTile(c, &v, d, arena);
         var labels: tile_painter.Labels = .{ .arena = arena, .size = .{ n.size.w, n.size.h }, .font = n.ui.font, .atlas = &n.ui.atlas };
-        for ([_]bool{ false, true }) |label_pass| {
-            for (drawn.items, 0..) |d, i| {
-                const vt = switch (d.what) {
-                    .vector => |vt| vt,
-                    .image => continue,
-                };
-                const dup = for (drawn.items[0..i]) |e| {
-                    if (std.meta.eql(e.from, d.from) and e.shown.copy == d.shown.copy and e.what == .vector) break true;
-                } else false;
-                if (dup) continue;
-                const span = 1 / @as(f64, @floatFromInt(d.from.count()));
-                var tp: TilePainter = .{
-                    .canvas = c,
-                    .arena = arena,
-                    .view = &v,
-                    .id = d.from,
-                    .corner = .{ @as(f64, @floatFromInt(d.from.x)) * span + d.shown.copy, @as(f64, @floatFromInt(d.from.y)) * span },
-                    .span = span,
-                    .extent = vt.extent,
-                    .zoom = cam.zoom,
-                    .labels = &labels,
-                };
-                if (self.style) |s| s.drawTile(&tp, vt, label_pass) else MapStyle.drawPlain(t, &tp, vt, label_pass);
-            }
+        const Shapes = struct { tp: TilePainter, tile: *const VectorTile };
+        var shapes: std.ArrayList(Shapes) = .empty;
+        for (drawn.items, 0..) |d, i| {
+            const vt = switch (d.what) {
+                .vector => |vt| vt,
+                .image => continue,
+            };
+            const dup = for (drawn.items[0..i]) |e| {
+                if (std.meta.eql(e.from, d.from) and e.shown.copy == d.shown.copy and e.what == .vector) break true;
+            } else false;
+            if (dup) continue;
+            const span = 1 / @as(f64, @floatFromInt(d.from.count()));
+            shapes.append(arena, .{ .tile = vt, .tp = .{
+                .canvas = c,
+                .arena = arena,
+                .view = &v,
+                .id = d.from,
+                .corner = .{ @as(f64, @floatFromInt(d.from.x)) * span + d.shown.copy, @as(f64, @floatFromInt(d.from.y)) * span },
+                .span = span,
+                .extent = vt.extent,
+                .zoom = cam.zoom,
+                .labels = &labels,
+            } }) catch break;
         }
+        // Each layer of the style across all the tiles before the next (so
+        // a tile's fills do not cover the lines of those before it), and
+        // labels last, over everything.
+        const plain = MapStyle.plainLayers(t);
+        const layers = if (self.style) |s| s.layers else &plain;
+        for ([_]bool{ false, true }) |label_pass| for (layers) |*l| {
+            if ((l.draw == .label) != label_pass) continue;
+            for (shapes.items) |*sh| MapStyle.drawLayer(l, &sh.tp, sh.tile);
+        };
 
         if (self.source.attribution.len > 0) if (n.ui.font) |f| {
             const size_px = 11;

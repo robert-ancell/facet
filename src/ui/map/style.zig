@@ -100,24 +100,24 @@ pub const MapStyle = struct {
         f: *const fn (ctx: ?*const anyopaque, tp: *TilePainter, feature: *const Feature) void,
     };
 
-    /// The plain style, in the theme's colours, for a view with none: for
-    /// any tiles, every layer's polygons filled, lines and dots drawn, and
-    /// features named.
-    const plain_layers = struct {
-        fn of(t: *const Theme) [4]Layer {
-            return .{
-                .{ .draw = .{ .fill = t.surface_container_highest } },
-                .{ .draw = .{ .line = .{ .color = t.outline, .width = 1 } } },
-                .{ .draw = .{ .circle = .{ .color = t.primary, .radius = 3 } } },
-                .{ .draw = .{ .label = .{ .style = .{ .size = 12, .color = t.on_surface, .halo = t.surface_container } } } },
-            };
-        }
-    };
+    /// The plain style's layers, in the theme's colours, for a view with
+    /// no style: for any tiles, every layer's polygons filled, lines and
+    /// dots drawn, and features named.
+    pub fn plainLayers(t: *const Theme) [4]Layer {
+        return .{
+            .{ .draw = .{ .fill = t.surface_container_highest } },
+            .{ .draw = .{ .line = .{ .color = t.outline, .width = 1 } } },
+            .{ .draw = .{ .circle = .{ .color = t.primary, .radius = 3 } } },
+            .{ .draw = .{ .label = .{ .style = .{ .size = 12, .color = t.on_surface, .halo = t.surface_container } } } },
+        };
+    }
 
     /// Draws `tile`'s shapes, all but labels (`labels` false) or only
-    /// those (true).
+    /// those (true). (A view of many tiles draws each layer of the style
+    /// across all of them before the next, with `drawLayer`, so that one
+    /// tile's fills do not cover the lines of those drawn before it.)
     pub fn drawTile(s: *const MapStyle, tp: *TilePainter, tile: *const VectorTile, labels: bool) void {
-        for (s.layers) |*l| drawLayer(l, tp, tile, labels);
+        for (s.layers) |*l| if ((l.draw == .label) == labels) drawLayer(l, tp, tile);
     }
 
     /// Draws tile `id`'s shapes on `canvas`, flat, `size` pixels across
@@ -139,14 +139,8 @@ pub const MapStyle = struct {
         s.drawTile(&tp, tile, true);
     }
 
-    /// As `drawTile`, in the plain style (for a view with no style).
-    pub fn drawPlain(t: *const Theme, tp: *TilePainter, tile: *const VectorTile, labels: bool) void {
-        const layers = plain_layers.of(t);
-        for (&layers) |*l| drawLayer(l, tp, tile, labels);
-    }
-
-    fn drawLayer(l: *const Layer, tp: *TilePainter, tile: *const VectorTile, labels: bool) void {
-        if ((l.draw == .label) != labels) return;
+    /// Draws what of `tile` the style's layer `l` draws.
+    pub fn drawLayer(l: *const Layer, tp: *TilePainter, tile: *const VectorTile) void {
         const zoom: f32 = @floatCast(tp.zoom);
         if (zoom < l.min_zoom or zoom > l.max_zoom) return;
         for (tile.layers) |*tl| {

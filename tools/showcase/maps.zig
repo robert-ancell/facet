@@ -14,14 +14,14 @@ const VectorTile = facet.VectorTile;
 const Point = VectorTile.Point;
 
 pub const Kind = enum { vector, images };
-pub const Look = enum { theme, atlas, night, blueprint };
+pub const Look = enum { atlas, night, blueprint };
 
 const world_view: facet.MapCamera = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
 
 pub const State = struct {
     camera: facet.MapCamera = world_view,
     kind: Kind = .vector,
-    look: Look = .theme,
+    look: Look = .atlas,
     projection: facet.MapProjection = .globe,
     vector: VectorTiles = .{},
     images: ImageTiles = .{},
@@ -63,7 +63,6 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .images, .label = "Images" },
     };
     const looks = [_]facet.Select(Look).Option{
-        .{ .value = .theme, .label = "The theme's" },
         .{ .value = .atlas, .label = "Atlas" },
         .{ .value = .night, .label = "Night" },
         .{ .value = .blueprint, .label = "Blueprint" },
@@ -72,7 +71,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .globe, .label = "Globe, then flat" },
         .{ .value = .flat, .label = "Flat" },
     };
-    const palette = paletteOf(s.look, t);
+    const palette = paletteOf(s.look);
     const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.Empty{});
     style.* = styleOf(cx, palette);
     // Images are drawn in the style too (those drawn in another are
@@ -155,18 +154,8 @@ const atlas_palette: Palette = .{
     .halo = .rgb(0xffffff),
 };
 
-fn paletteOf(look: Look, t: *const facet.Theme) Palette {
+fn paletteOf(look: Look) Palette {
     return switch (look) {
-        .theme => .{
-            .background = t.surface_container,
-            .tropics = t.secondary_container,
-            .polar = t.surface_container_highest,
-            .line = t.outline,
-            .major = t.primary,
-            .circle = t.primary.withAlpha(0.6),
-            .text = t.on_surface,
-            .halo = t.surface_container,
-        },
         .atlas => atlas_palette,
         .night => .{
             .background = .rgb(0x14202c),
