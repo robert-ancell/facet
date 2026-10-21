@@ -1291,9 +1291,9 @@ pub const WaylandWindow = struct {
         m = try positioner.request(pos_p.request.set_anchor_rect);
         m.int(pos.anchor_rect[0]).int(pos.anchor_rect[1]).int(pos.anchor_rect[2]).int(pos.anchor_rect[3]).end();
         m = try positioner.request(pos_p.request.set_anchor);
-        m.uint(@intFromEnum(pos.anchor)).end();
+        m.uint(@backingInt(pos.anchor)).end();
         m = try positioner.request(pos_p.request.set_gravity);
-        m.uint(@intFromEnum(pos.gravity)).end();
+        m.uint(@backingInt(pos.gravity)).end();
         m = try positioner.request(pos_p.request.set_constraint_adjustment);
         m.uint(@bitCast(pos.adjust)).end();
         m = try positioner.request(pos_p.request.set_offset);

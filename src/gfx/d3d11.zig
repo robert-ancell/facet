@@ -901,9 +901,9 @@ pub const D3D11Renderer = struct {
 
     fn usePipeline(r: *D3D11Renderer, layout: Layout, pixel: Pixel, blend: bool) void {
         const c = r.context;
-        Context.iaSetInputLayout(c, r.layouts[@intFromEnum(layout)]);
-        Context.vsSetShader(c, r.vs[@intFromEnum(layout)]);
-        Context.psSetShader(c, r.ps[@intFromEnum(pixel)]);
+        Context.iaSetInputLayout(c, r.layouts[@backingInt(layout)]);
+        Context.vsSetShader(c, r.vs[@backingInt(layout)]);
+        Context.psSetShader(c, r.ps[@backingInt(pixel)]);
         Context.omSetBlendState(c, if (blend) r.blend else null);
     }
 

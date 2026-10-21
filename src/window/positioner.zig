@@ -207,9 +207,9 @@ test "bounds need not start at the origin" {
 
 test "the numbers are xdg_positioner's" {
     const p = @import("wayland").protocol.xdg_positioner;
-    try testing.expectEqual(@as(u32, p.anchor.top_left), @intFromEnum(Edge.top_left));
-    try testing.expectEqual(@as(u32, p.anchor.bottom_right), @intFromEnum(Edge.bottom_right));
-    try testing.expectEqual(@as(u32, p.anchor.top), @intFromEnum(Edge.top));
+    try testing.expectEqual(@as(u32, p.anchor.top_left), @backingInt(Edge.top_left));
+    try testing.expectEqual(@as(u32, p.anchor.bottom_right), @backingInt(Edge.bottom_right));
+    try testing.expectEqual(@as(u32, p.anchor.top), @backingInt(Edge.top));
     const a = p.constraint_adjustment;
     try testing.expectEqual(@as(u32, a.slide_x | a.flip_y), @as(u32, @bitCast(Adjust{ .slide_x = true, .flip_y = true })));
 }

@@ -370,7 +370,7 @@ pub const Context = struct {
         return out;
     }
 
-        /// Text formatted into the frame's arena.
+    /// Text formatted into the frame's arena.
     pub fn fmt(cx: *Context, comptime f: []const u8, args: anytype) []const u8 {
         return cx.arena.print(f, args) catch "…";
     }

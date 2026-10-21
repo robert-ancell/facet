@@ -60,7 +60,6 @@ pub fn main(init: std.process.Init) !void {
     try z.writeStreamingAll(init.io, zig.items);
 }
 
-
 fn be16(b: []const u8, at: usize) u16 {
     return std.mem.readInt(u16, b[at..][0..2], .big);
 }
