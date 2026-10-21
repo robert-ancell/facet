@@ -86,6 +86,10 @@ pub const MacWindow = struct {
     /// and the size of the GPU's frames, when last drawn (0 by 0: none
     /// yet), which keeps them from one to the next.
     plain_layer: Id = null,
+    /// The view's display link (macOS 14 and later), which says when each
+    /// frame shown is on the screen (and pauses while none is waiting to
+    /// be); without one, that is reckoned from the display's refresh rate.
+    display_link: Id = null,
     metal_layer: Id = null,
     on_gpu: bool = false,
     gpu_size: [2]u32 = .{ 0, 0 },
@@ -205,6 +209,13 @@ pub const MacWindow = struct {
             const fps = msg(isize, screen, "maximumFramesPerSecond", .{});
             if (fps > 0) w.refresh_ns = std.time.ns_per_s / @as(u64, @intCast(fps));
         }
+        if (msg(objc.Bool, w.view, "respondsToSelector:", .{objc.sel("displayLinkWithTarget:selector:")}) != 0) {
+            if (msg(Id, w.view, "displayLinkWithTarget:selector:", .{ w.delegate, objc.sel("displayTick:") })) |link| {
+                msg(void, link, "setPaused:", .{objc.yes});
+                msg(void, link, "addToRunLoop:forMode:", .{ msg(Id, objc.class("NSRunLoop"), "mainRunLoop", .{}), objc.constant("NSRunLoopCommonModes") });
+                w.display_link = objc.retain(link);
+            }
+        }
         windows.append(gpa, w) catch {};
         return w;
     }
@@ -220,6 +231,10 @@ pub const MacWindow = struct {
         msg(void, w.view, "release", .{});
         msg(void, w.win, "release", .{});
         objc.release(w.plain_layer);
+        if (w.display_link) |link| {
+            msg(void, link, "invalidate", .{});
+            objc.release(link);
+        }
         objc.release(w.metal_layer);
         for (w.buffers) |b| if (b.pixels) |px| px.unref();
         if (w.color_space) |cs| if (objc.symbol(*const fn (?*anyopaque) callconv(.c) void, "CGColorSpaceRelease")) |f| f(cs);
@@ -270,7 +285,7 @@ pub const MacWindow = struct {
     pub fn wait(w: *MacWindow, timeout_ns: u64) !void {
         // Not past when the frame drawn is shown, when the next can be.
         var ns = timeout_ns;
-        if (w.frame_pending) ns = @min(ns, w.presented_ns -| w.now());
+        if (w.frame_pending) ns = @min(ns, (w.presented_ns + w.pendingGrace()) -| w.now());
         // Watched fds wake it once each wait (a callback each time one is
         // readable would come again and again until it is read).
         if (cfFunctions()) |cf| for (w.watched) |slot| if (slot) |x| cf.enable(x.ref, 1);
@@ -292,7 +307,7 @@ pub const MacWindow = struct {
     fn updatePending(w: *MacWindow) void {
         // `presented_ns` is when the frame drawn is shown: the next can be
         // drawn then, for the refresh after.
-        if (w.frame_pending and w.now() >= w.presented_ns) w.frame_pending = false;
+        if (w.frame_pending and w.now() >= w.presented_ns + w.pendingGrace()) w.frame_pending = false;
     }
 
     /// When a frame drawn now would be shown: at the display's next
@@ -423,8 +438,7 @@ pub const MacWindow = struct {
             // Presented by the renderer.
             w.gpu_size = .{ w.width * w.scale, w.height * w.scale };
             w.frames += 1;
-            w.presented_ns = w.nextPresentationNs(w.now());
-            w.frame_pending = true;
+            w.shown();
             return;
         }
         const pool = objc.push();
@@ -453,8 +467,22 @@ pub const MacWindow = struct {
         msg(void, transaction, "commit", .{});
         w.frames += 1;
         b.drawn = w.frames;
+        w.shown();
+    }
+
+    /// A frame has been given to be shown: when it will be (the display
+    /// link says, if there is one; reckoned meanwhile), the next waits.
+    fn shown(w: *MacWindow) void {
         w.presented_ns = w.nextPresentationNs(w.now());
         w.frame_pending = true;
+        if (w.display_link) |link| msg(void, link, "setPaused:", .{objc.no});
+    }
+
+    /// How long past when a frame shown is reckoned to be on the screen it
+    /// is waited for: a refresh, with a display link to say (which may be
+    /// late), none without.
+    fn pendingGrace(w: *const MacWindow) u64 {
+        return if (w.display_link != null) w.refresh_ns else 0;
     }
 
     // --- The window ------------------------------------------------------------------
@@ -708,6 +736,21 @@ pub const MacWindow = struct {
             if (objc.owner(MacWindow, d)) |w| w.zoom_known = false;
             changed(d, sel, n);
         }
+        /// A refresh of the display (from the display link): the frame
+        /// shown is on the screen, so the next can be drawn.
+        fn displayTick(d: Id, _: objc.Sel, link: Id) callconv(.c) void {
+            const w = objc.owner(MacWindow, d) orelse return;
+            const media_now = objc.symbol(*const fn () callconv(.c) f64, "CACurrentMediaTime") orelse return;
+            const refreshed = msg(f64, link, "timestamp", .{});
+            const next = msg(f64, link, "targetTimestamp", .{});
+            // On the window's clock (whatever Core Animation's is).
+            const ago: u64 = @intFromFloat(@max(media_now() - refreshed, 0) * std.time.ns_per_s);
+            if (next > refreshed) w.refresh_ns = @intFromFloat((next - refreshed) * std.time.ns_per_s);
+            w.presented_ns = w.now() -| ago;
+            w.frame_pending = false;
+            msg(void, link, "setPaused:", .{objc.yes});
+            postWake();
+        }
         fn holdTick(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
             const w = objc.owner(MacWindow, d) orelse return;
             // Not as well as a frame just drawn, for a resize.
@@ -749,6 +792,7 @@ pub const MacWindow = struct {
             .{ .sel = "windowDidResize:", .imp = &m.resized, .types = "v@:@" },
             .{ .sel = "windowDidEndLiveResize:", .imp = &m.modeChanged, .types = "v@:@" },
             .{ .sel = "holdTick:", .imp = &m.holdTick, .types = "v@:@" },
+            .{ .sel = "displayTick:", .imp = &m.displayTick, .types = "v@:@" },
             .{ .sel = "windowDidChangeBackingProperties:", .imp = &m.changed, .types = "v@:@" },
             .{ .sel = "windowDidEnterFullScreen:", .imp = &m.modeChanged, .types = "v@:@" },
             .{ .sel = "windowDidExitFullScreen:", .imp = &m.modeChanged, .types = "v@:@" },
