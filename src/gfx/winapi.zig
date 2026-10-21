@@ -383,7 +383,24 @@ pub const User32 = struct {
     GetClipboardData: *const fn (UINT) callconv(cc) ?HANDLE,
     ValidateRect: *const fn (HWND, ?*const RECT) callconv(cc) BOOL,
     GetQueueStatus: *const fn (UINT) callconv(cc) DWORD,
+    ClientToScreen: *const fn (HWND, *POINT) callconv(cc) BOOL,
+    MonitorFromPoint: *const fn (POINT, DWORD) callconv(cc) ?HMONITOR,
+    GetCursorPos: *const fn (*POINT) callconv(cc) BOOL,
+    WindowFromPoint: *const fn (POINT) callconv(cc) ?HWND,
+    UpdateLayeredWindow: *const fn (HWND, ?HDC, ?*const POINT, ?*const SIZE, ?HDC, ?*const POINT, DWORD, ?*const BLENDFUNCTION, DWORD) callconv(cc) BOOL,
+    IsWindowVisible: *const fn (HWND) callconv(cc) BOOL,
 };
+
+pub const SIZE = extern struct { cx: LONG, cy: LONG };
+
+pub const BLENDFUNCTION = extern struct {
+    BlendOp: u8 = 0, // AC_SRC_OVER
+    BlendFlags: u8 = 0,
+    SourceConstantAlpha: u8 = 255,
+    AlphaFormat: u8 = 1, // AC_SRC_ALPHA: premultiplied per pixel
+};
+
+pub const ULW_ALPHA: DWORD = 2;
 
 pub fn user32() ?*const User32 {
     return procs(User32, "user32.dll");
@@ -391,6 +408,11 @@ pub fn user32() ?*const User32 {
 
 pub const Gdi32 = struct {
     SetDIBitsToDevice: *const fn (HDC, c_int, c_int, DWORD, DWORD, c_int, c_int, UINT, UINT, *const anyopaque, *const BITMAPINFOHEADER, UINT) callconv(cc) c_int,
+    CreateCompatibleDC: *const fn (?HDC) callconv(cc) ?HDC,
+    DeleteDC: *const fn (HDC) callconv(cc) BOOL,
+    CreateDIBSection: *const fn (?HDC, *const BITMAPINFOHEADER, UINT, *?*anyopaque, ?HANDLE, DWORD) callconv(cc) ?HANDLE,
+    SelectObject: *const fn (HDC, HANDLE) callconv(cc) ?HANDLE,
+    DeleteObject: *const fn (HANDLE) callconv(cc) BOOL,
 };
 
 pub fn gdi32() ?*const Gdi32 {

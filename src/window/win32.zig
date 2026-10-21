@@ -86,6 +86,16 @@ const WM_EXITMENULOOP = 0x0212;
 const WM_ENTERSIZEMOVE = 0x0231;
 const WM_EXITSIZEMOVE = 0x0232;
 const WM_CAPTURECHANGED = 0x0215;
+const WM_ACTIVATE = 0x0006;
+const WM_MOUSEACTIVATE = 0x0021;
+const WM_NCLBUTTONDOWN = 0x00a1;
+const MA_NOACTIVATE = 3;
+const WS_EX_LAYERED: w32.DWORD = 0x00080000;
+const WS_EX_NOACTIVATE: w32.DWORD = 0x08000000;
+const WS_EX_TOOLWINDOW: w32.DWORD = 0x00000080;
+const WS_EX_TRANSPARENT: w32.DWORD = 0x00000020;
+const SW_SHOWNOACTIVATE = 4;
+const max_popups = 4;
 const WM_MOUSELEAVE = 0x02a3;
 const WM_DPICHANGED = 0x02e0;
 /// Posted to itself while a modal loop runs: draw the next frame.
@@ -197,6 +207,31 @@ pub const Win32Window = struct {
     timer: ?w32.HANDLE = null,
     /// The pending high surrogate of a character `WM_CHAR` gives in two.
     high_surrogate: u16 = 0,
+    /// Its popups (menus and tooltips, each a window of its own: see
+    /// `openPopup`), and the next one's id.
+    popups: [max_popups]?Popup = @splat(null),
+    next_popup_id: u32 = 1,
+
+    /// A popup: a layered window over the window (owned by it), which never
+    /// takes the keyboard, its pointer input the window's (in its
+    /// coordinates), and what it shows.
+    const Popup = struct {
+        id: u32,
+        placement: window.PopupPlacement,
+        hwnd: HWND,
+        /// Where its top left is: in the window's coordinates (logical
+        /// pixels), and on the screen (pixels); its size in pixels.
+        position: [2]i32,
+        screen_at: w32.POINT,
+        pixel_size: [2]u32,
+        /// What is drawn in it (straight alpha, as facet draws), and the
+        /// DIB section it is shown from (premultiplied), in a memory DC.
+        pixels: []u32 = &.{},
+        dc: ?w32.HDC = null,
+        bitmap: ?w32.HANDLE = null,
+        bits: ?[*]u32 = null,
+        shown: bool = false,
+    };
 
     pub const platform: window.Platform = .windows;
     pub const decorations: window.Decorations = .server;
@@ -210,6 +245,7 @@ pub const Win32Window = struct {
     };
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetWindow");
+    const popup_class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetPopup");
 
     pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*Win32Window {
         _ = environ;
@@ -262,9 +298,20 @@ pub const Win32Window = struct {
             .lpszClassName = class_name,
         };
         _ = u.RegisterClassExW(&wc);
+        const popup_wc: w32.WNDCLASSEXW = .{
+            .lpfnWndProc = popupProc,
+            .hInstance = instance,
+            .hCursor = u.LoadCursorW(null, 32512),
+            .lpszClassName = popup_class_name,
+        };
+        _ = u.RegisterClassExW(&popup_wc);
     }
 
     pub fn close(w: *Win32Window) void {
+        for (&w.popups) |*slot| if (slot.*) |*pop| {
+            w.destroyPopup(pop);
+            slot.* = null;
+        };
         if (w32.user32()) |u| {
             _ = u.KillTimer(w.hwnd, frame_timer_id);
             _ = u.SetWindowLongPtrW(w.hwnd, GWLP_USERDATA, 0);
@@ -440,7 +487,21 @@ pub const Win32Window = struct {
                 return 1;
             },
             WM_ENTERSIZEMOVE, WM_ENTERMENULOOP => {
+                // Moved or resized: its popups are done (a tooltip comes
+                // back where it now goes); the system menu ends its menus.
+                w.endPopups(message == WM_ENTERSIZEMOVE);
                 w.enterModal(u);
+                return null;
+            },
+            WM_ACTIVATE => {
+                // Another app, or another window, took the keyboard: its
+                // menus are done, as a compositor ends a popup whose grab
+                // broke.
+                if (wparam & 0xffff == 0) w.endPopups(false);
+                return null;
+            },
+            WM_NCLBUTTONDOWN => {
+                w.endPopups(false);
                 return null;
             },
             WM_EXITSIZEMOVE, WM_EXITMENULOOP => {
@@ -479,16 +540,13 @@ pub const Win32Window = struct {
             },
             WM_MOUSELEAVE => {
                 w.pointer_in = false;
-                w.push(.leave);
+                // Onto one of its popups is not leaving.
+                if (!w.pointerOverPopup(u)) w.push(.leave);
                 return 0;
             },
-            WM_LBUTTONDOWN, WM_LBUTTONUP => return w.button(u, lparam, btn_left, message == WM_LBUTTONDOWN),
-            WM_RBUTTONDOWN, WM_RBUTTONUP => return w.button(u, lparam, btn_right, message == WM_RBUTTONDOWN),
-            WM_MBUTTONDOWN, WM_MBUTTONUP => return w.button(u, lparam, btn_middle, message == WM_MBUTTONDOWN),
-            WM_XBUTTONDOWN, WM_XBUTTONUP => {
-                const which = (wparam >> 16) & 0xffff;
-                _ = w.button(u, lparam, if (which == 1) btn_side else btn_extra, message == WM_XBUTTONDOWN);
-                return 1;
+            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP => {
+                w.button(u, w.hwnd, w.pointAt(lparam), message, wparam);
+                return if (message == WM_XBUTTONDOWN or message == WM_XBUTTONUP) 1 else 0;
             },
             WM_MOUSEWHEEL, WM_MOUSEHWHEEL => {
                 const delta: i16 = @bitCast(@as(u16, @truncate(wparam >> 16)));
@@ -547,21 +605,30 @@ pub const Win32Window = struct {
         return .{ @as(f32, @floatFromInt(x)) / s, @as(f32, @floatFromInt(y)) / s };
     }
 
-    fn button(w: *Win32Window, u: *const w32.User32, lparam: LPARAM, code: u32, pressed: bool) LRESULT {
-        const pos = w.pointAt(lparam);
+    /// A button message (on the window, or a popup: `hwnd`), at `pos` in the
+    /// window's coordinates.
+    fn button(w: *Win32Window, u: *const w32.User32, hwnd: HWND, pos: [2]f32, message: UINT, wparam: WPARAM) void {
+        const code: u32, const pressed: bool = switch (message) {
+            WM_LBUTTONDOWN => .{ btn_left, true },
+            WM_LBUTTONUP => .{ btn_left, false },
+            WM_RBUTTONDOWN => .{ btn_right, true },
+            WM_RBUTTONUP => .{ btn_right, false },
+            WM_MBUTTONDOWN => .{ btn_middle, true },
+            WM_MBUTTONUP => .{ btn_middle, false },
+            else => .{ if ((wparam >> 16) & 0xffff == 1) btn_side else btn_extra, message == WM_XBUTTONDOWN },
+        };
         w.last_pointer = pos;
         // The window has the mouse while a button is held (a drag goes on
         // outside it).
         const bit: u32 = @as(u32, 1) << @intCast(code - btn_left);
         if (pressed) {
-            if (w.buttons_held == 0) _ = u.SetCapture(w.hwnd);
+            if (w.buttons_held == 0) _ = u.SetCapture(hwnd);
             w.buttons_held |= bit;
         } else {
             w.buttons_held &= ~bit;
             if (w.buttons_held == 0) _ = u.ReleaseCapture();
         }
         w.push(.{ .button = .{ .pos = pos, .code = code, .pressed = pressed } });
-        return 0;
     }
 
     fn key(w: *Win32Window, u: *const w32.User32, wparam: WPARAM, lparam: LPARAM, pressed: bool) void {
@@ -991,6 +1058,189 @@ pub const Win32Window = struct {
         _ = g.SetDIBitsToDevice(hdc, 0, 0, w.pixels_size[0], w.pixels_size[1], 0, 0, 0, w.pixels_size[1], w.pixels.ptr, &bmi, 0);
     }
 
+    // --- Popups -------------------------------------------------------------------
+
+    /// Opens a popup (a menu or a tooltip) where `placement` says, by
+    /// Wayland's positioner model (`window.Positioner`), kept on its
+    /// anchor's monitor: a layered window over the window (owned by it, so
+    /// above it, and hidden with it) that never takes the keyboard (so a
+    /// menu's keys still come to the window), its pointer input the
+    /// window's, in the window's coordinates. A tooltip lets the pointer
+    /// through. Null if it cannot be opened.
+    pub fn openPopup(w: *Win32Window, placement: window.PopupPlacement) ?u32 {
+        const u = w32.user32() orelse return null;
+        const slot = for (&w.popups) |*slot| {
+            if (slot.* == null) break slot;
+        } else return null;
+        var origin: w32.POINT = .{ .x = 0, .y = 0 };
+        _ = u.ClientToScreen(w.hwnd, &origin);
+        const s: i32 = @intCast(w.scale);
+        const pos = placement.positioner(.{ w.width, w.height }).place(w.workAreaOf(u, origin, placement.anchor));
+        const pw = @max(placement.size[0], 1) * w.scale;
+        const ph = @max(placement.size[1], 1) * w.scale;
+        const at: w32.POINT = .{ .x = origin.x + pos[0] * s, .y = origin.y + pos[1] * s };
+        var ex = WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+        if (placement.kind == .tooltip) ex |= WS_EX_TRANSPARENT;
+        const instance: ?w32.HINSTANCE = @ptrCast(w32.GetModuleHandleW(null));
+        const hwnd = u.CreateWindowExW(ex, popup_class_name, std.unicode.utf8ToUtf16LeStringLiteral(""), WS_POPUP, at.x, at.y, @intCast(pw), @intCast(ph), w.hwnd, null, instance, w) orelse return null;
+        const id = w.next_popup_id;
+        w.next_popup_id +%= 1;
+        slot.* = .{ .id = id, .placement = placement, .hwnd = hwnd, .position = pos, .screen_at = at, .pixel_size = .{ pw, ph } };
+        return id;
+    }
+
+    /// The work area (the screen less the taskbar) of the monitor `anchor`
+    /// is on, in the window's coordinates (its client area's top left is at
+    /// `origin` on the screen).
+    fn workAreaOf(w: *const Win32Window, u: *const w32.User32, origin: w32.POINT, anchor: [4]i32) window.positioner_mod.Rect {
+        const s: i32 = @intCast(w.scale);
+        const centre: w32.POINT = .{ .x = origin.x + (anchor[0] + @divTrunc(anchor[2], 2)) * s, .y = origin.y + (anchor[1] + @divTrunc(anchor[3], 2)) * s };
+        var mi: w32.MONITORINFO = .{};
+        const monitor = u.MonitorFromPoint(centre, MONITOR_DEFAULTTONEAREST);
+        if (monitor == null or u.GetMonitorInfoW(monitor.?, &mi) == 0) return .{ -1 << 20, -1 << 20, 2 << 20, 2 << 20 };
+        const r = mi.rcWork;
+        // Inward, to whole logical pixels.
+        const x0 = std.math.divCeil(i32, r.left - origin.x, s) catch 0;
+        const y0 = std.math.divCeil(i32, r.top - origin.y, s) catch 0;
+        const x1 = std.math.divFloor(i32, r.right - origin.x, s) catch 0;
+        const y1 = std.math.divFloor(i32, r.bottom - origin.y, s) catch 0;
+        return .{ x0, y0, @max(x1 - x0, 1), @max(y1 - y0, 1) };
+    }
+
+    fn popupOf(w: *Win32Window, id: u32) ?*Popup {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) return pop;
+        return null;
+    }
+
+    fn popupOfHwnd(w: *Win32Window, hwnd: HWND) ?*Popup {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.hwnd == hwnd) return pop;
+        return null;
+    }
+
+    pub fn closePopup(w: *Win32Window, id: u32) void {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) {
+            w.destroyPopup(pop);
+            slot.* = null;
+            return;
+        };
+    }
+
+    fn destroyPopup(w: *Win32Window, pop: *Popup) void {
+        if (w32.user32()) |u| {
+            _ = u.SetWindowLongPtrW(pop.hwnd, GWLP_USERDATA, 0);
+            _ = u.DestroyWindow(pop.hwnd);
+        }
+        if (w32.gdi32()) |g| {
+            if (pop.dc) |dc| _ = g.DeleteDC(dc);
+            if (pop.bitmap) |b| _ = g.DeleteObject(b);
+        }
+        w.gpa.free(pop.pixels);
+    }
+
+    /// Where the popup is, in the window's coordinates (known as soon as
+    /// it is opened: facet places it).
+    pub fn popupPosition(w: *Win32Window, id: u32) ?[2]i32 {
+        const pop = w.popupOf(id) orelse return null;
+        return pop.position;
+    }
+
+    /// The buffer to draw the popup in, all of it, at the window's scale.
+    pub fn beginSoftwarePopupFrame(w: *Win32Window, id: u32) !?gfx.software.Image {
+        const pop = w.popupOf(id) orelse return null;
+        const len = @as(usize, pop.pixel_size[0]) * pop.pixel_size[1];
+        if (pop.pixels.len != len) {
+            w.gpa.free(pop.pixels);
+            pop.pixels = &.{};
+            pop.pixels = try w.gpa.alloc(u32, len);
+        }
+        return .{ .pixels = pop.pixels, .width = pop.pixel_size[0], .height = pop.pixel_size[1] };
+    }
+
+    /// Shows what was drawn in the popup (premultiplied, per-pixel alpha),
+    /// and the popup, the first time (without taking the keyboard).
+    pub fn showPopup(w: *Win32Window, id: u32) !void {
+        const pop = w.popupOf(id) orelse return;
+        const u = w32.user32() orelse return error.NoUser32;
+        const g = w32.gdi32() orelse return error.NoGdi32;
+        if (pop.bits == null) {
+            const bmi: w32.BITMAPINFOHEADER = .{ .biWidth = @intCast(pop.pixel_size[0]), .biHeight = -@as(w32.LONG, @intCast(pop.pixel_size[1])) };
+            var bits: ?*anyopaque = null;
+            pop.bitmap = g.CreateDIBSection(null, &bmi, 0, &bits, null, 0) orelse return error.NoBitmap;
+            pop.bits = @ptrCast(@alignCast(bits orelse return error.NoBitmap));
+            pop.dc = g.CreateCompatibleDC(null) orelse return error.NoDeviceContext;
+            _ = g.SelectObject(pop.dc.?, pop.bitmap.?);
+        }
+        const len = @as(usize, pop.pixel_size[0]) * pop.pixel_size[1];
+        window.premultiply(pop.bits.?[0..len], pop.pixels);
+        const extent: w32.SIZE = .{ .cx = @intCast(pop.pixel_size[0]), .cy = @intCast(pop.pixel_size[1]) };
+        const src: w32.POINT = .{ .x = 0, .y = 0 };
+        const blend: w32.BLENDFUNCTION = .{};
+        if (u.UpdateLayeredWindow(pop.hwnd, null, &pop.screen_at, &extent, pop.dc, &src, 0, &blend, w32.ULW_ALPHA) == 0) return error.UpdateLayeredWindowFailed;
+        if (!pop.shown) {
+            _ = u.ShowWindow(pop.hwnd, SW_SHOWNOACTIVATE);
+            pop.shown = true;
+        }
+    }
+
+    /// Its menus are done (and its tooltips too, if `all`): as a compositor
+    /// ends a popup whose grab broke. The UI closes them.
+    fn endPopups(w: *Win32Window, all: bool) void {
+        for (w.popups) |slot| if (slot) |pop| {
+            if (all or pop.placement.kind == .menu) w.push(.{ .popup_done = pop.id });
+        };
+    }
+
+    /// Whether the pointer is over one of its popups.
+    fn pointerOverPopup(w: *Win32Window, u: *const w32.User32) bool {
+        var at: w32.POINT = undefined;
+        if (u.GetCursorPos(&at) == 0) return false;
+        const under = u.WindowFromPoint(at) orelse return false;
+        return w.popupOfHwnd(under) != null;
+    }
+
+    fn popupProc(hwnd: HWND, message: UINT, wparam: WPARAM, lparam: LPARAM) callconv(w32.cc) LRESULT {
+        const u = w32.user32().?;
+        if (message == WM_NCCREATE) {
+            const create: *const ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(lparam)));
+            _ = u.SetWindowLongPtrW(hwnd, GWLP_USERDATA, @bitCast(@intFromPtr(create.*)));
+            return u.DefWindowProcW(hwnd, message, wparam, lparam);
+        }
+        const w = ofHwnd(hwnd) orelse return u.DefWindowProcW(hwnd, message, wparam, lparam);
+        const pop = w.popupOfHwnd(hwnd) orelse return u.DefWindowProcW(hwnd, message, wparam, lparam);
+        switch (message) {
+            // Clicked, it does not take the keyboard from the window.
+            WM_MOUSEACTIVATE => return MA_NOACTIVATE,
+            WM_ERASEBKGND => return 1,
+            WM_SETCURSOR => {
+                _ = u.SetCursor(cursorHandle(u, w.cursor));
+                return 1;
+            },
+            WM_MOUSEMOVE => {
+                var tme: w32.TRACKMOUSEEVENT = .{ .dwFlags = TME_LEAVE, .hwndTrack = hwnd };
+                _ = u.TrackMouseEvent(&tme);
+                w.last_pointer = popupPoint(w, pop, lparam);
+                w.push(.{ .motion = w.last_pointer });
+                return 0;
+            },
+            WM_MOUSELEAVE => {
+                // Onto the window, or another popup, is not leaving.
+                if (!w.pointer_in and !w.pointerOverPopup(u)) w.push(.leave);
+                return 0;
+            },
+            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP => {
+                w.button(u, hwnd, popupPoint(w, pop, lparam), message, wparam);
+                return if (message == WM_XBUTTONDOWN or message == WM_XBUTTONUP) 1 else 0;
+            },
+            else => return u.DefWindowProcW(hwnd, message, wparam, lparam),
+        }
+    }
+
+    /// Where a mouse message on a popup is, in the window's coordinates.
+    fn popupPoint(w: *const Win32Window, pop: *const Popup, lparam: LPARAM) [2]f32 {
+        const local = w.pointAt(lparam);
+        return .{ @as(f32, @floatFromInt(pop.position[0])) + local[0], @as(f32, @floatFromInt(pop.position[1])) + local[1] };
+    }
+
     // --- The clipboard ---------------------------------------------------------------
 
     pub fn copy(w: *Win32Window, text: []const u8) void {
@@ -1069,4 +1319,41 @@ test "frames are presented to a window through its swap chain, on WARP" {
         try testing.expect(w.on_gpu);
         try testing.expectEqual([2]u32{ pw, ph }, w.gpu_size);
     }
+}
+
+test "a menu popup opens where the positioner puts it, takes no keyboard, and its input is the window's" {
+    if (@import("builtin").os.tag != .windows) return error.SkipZigTest;
+    const testing = std.testing;
+    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 300, 200 } });
+    defer w.close();
+    _ = try w.applyConfigure();
+    const u = w32.user32().?;
+
+    const placement: window.PopupPlacement = .{ .kind = .menu, .anchor = .{ 299, 199, 1, 1 }, .size = .{ 240, 4000 }, .side = .below_right, .gap = 2 };
+    const id = w.openPopup(placement) orelse return error.NoPopup;
+    defer w.closePopup(id);
+    var origin: w32.POINT = .{ .x = 0, .y = 0 };
+    _ = u.ClientToScreen(w.hwnd, &origin);
+    const bounds = w.workAreaOf(u, origin, placement.anchor);
+    const at = w.popupPosition(id).?;
+    try testing.expectEqual(placement.positioner(.{ w.width, w.height }).place(bounds), at);
+    // Taller than the screen: against its top.
+    try testing.expectEqual(bounds[1], at[1]);
+
+    const img = (try w.beginSoftwarePopupFrame(id)).?;
+    @memset(img.pixels, 0x80ff0000);
+    try w.showPopup(id);
+    const pop = w.popupOf(id).?;
+    try testing.expect(u.IsWindowVisible(pop.hwnd) != 0);
+
+    // A move on it, 10 by 5 pixels in: in the window's coordinates.
+    _ = w.takeInput();
+    const lp: LPARAM = @intCast(10 | (5 << 16));
+    _ = Win32Window.popupProc(pop.hwnd, WM_MOUSEMOVE, 0, lp);
+    const s: f32 = @floatFromInt(w.scale);
+    const events = w.takeInput();
+    try testing.expectEqual(@as(usize, 1), events.len);
+    try testing.expectEqual([2]f32{ @as(f32, @floatFromInt(at[0])) + 10 / s, @as(f32, @floatFromInt(at[1])) + 5 / s }, events[0].motion);
+    // Clicked, it does not take the keyboard.
+    try testing.expectEqual(@as(LRESULT, MA_NOACTIVATE), Win32Window.popupProc(pop.hwnd, WM_MOUSEACTIVATE, 0, 0));
 }

@@ -763,7 +763,7 @@ pub const MacWindow = struct {
         // An image of its own (Core Animation keeps it as long as it
         // likes), premultiplied, as Core Graphics wants.
         const px = try Pixels.create(pop.pixels.len);
-        premultiply(px.mem, pop.pixels);
+        window.premultiply(px.mem, pop.pixels);
         const provider = cg.provider(px, px.mem.ptr, px.mem.len * 4, &Pixels.released) orelse {
             px.unref();
             return error.NoCoreGraphics;
@@ -1041,23 +1041,6 @@ pub const MacWindow = struct {
     }
 };
 
-/// `src` (straight alpha, as facet draws) premultiplied into `dst`.
-fn premultiply(dst: []u32, src: []const u32) void {
-    for (dst, src) |*d, p| {
-        const a = p >> 24;
-        if (a == 0xff) {
-            d.* = p;
-            continue;
-        }
-        const mul = struct {
-            fn f(c: u32, alpha: u32) u32 {
-                return (c * alpha + 127) / 255;
-            }
-        }.f;
-        d.* = (a << 24) | (mul((p >> 16) & 0xff, a) << 16) | (mul((p >> 8) & 0xff, a) << 8) | mul(p & 0xff, a);
-    }
-}
-
 /// A frame shown in `layer` stays at its top left corner, as big as it
 /// was drawn, until one is drawn at the layer's new size (rather than
 /// being stretched to it).
@@ -1307,14 +1290,6 @@ test "macOS keys become the Linux ones the toolkit has" {
     try std.testing.expectEqual(@as(?u32, keymap.left), linuxKey(123));
     try std.testing.expectEqual(@as(?u32, 46), linuxKey(8)); // C, for Command and C
     try std.testing.expect(linuxKey(200) == null);
-}
-
-test "straight alpha is premultiplied" {
-    var out: [3]u32 = undefined;
-    premultiply(&out, &.{ 0xffff8000, 0x80ff8000, 0x00ffffff });
-    try std.testing.expectEqual(@as(u32, 0xffff8000), out[0]);
-    try std.testing.expectEqual(@as(u32, 0x80804000), out[1]);
-    try std.testing.expectEqual(@as(u32, 0x00000000), out[2]);
 }
 
 test "a menu popup opens where the positioner puts it, on the screen, and shows what is drawn" {

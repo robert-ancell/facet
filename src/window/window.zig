@@ -1033,6 +1033,24 @@ pub const Window = struct {
     }
 };
 
+/// `src` (straight alpha, as facet draws) premultiplied into `dst`: as
+/// macOS's and Windows' popups (Core Animation, layered windows) show it.
+pub fn premultiply(dst: []u32, src: []const u32) void {
+    for (dst, src) |*d, p| {
+        const a = p >> 24;
+        if (a == 0xff) {
+            d.* = p;
+            continue;
+        }
+        const mul = struct {
+            fn f(c: u32, alpha: u32) u32 {
+                return (c * alpha + 127) / 255;
+            }
+        }.f;
+        d.* = (a << 24) | (mul((p >> 16) & 0xff, a) << 16) | (mul((p >> 8) & 0xff, a) << 8) | mul(p & 0xff, a);
+    }
+}
+
 /// A popup opened in a window (`Window.openPopup`): a menu or tooltip in a
 /// surface of its own. Draw it with `beginSoftwareFrame` and `show`, and
 /// `close` it when done (popups are closed newest first).
@@ -1178,6 +1196,14 @@ pub const Layout = struct {
         return l.code_buf[0..l.code_len];
     }
 };
+
+test "straight alpha is premultiplied" {
+    var out: [3]u32 = undefined;
+    premultiply(&out, &.{ 0xffff8000, 0x80ff8000, 0x00ffffff });
+    try std.testing.expectEqual(@as(u32, 0xffff8000), out[0]);
+    try std.testing.expectEqual(@as(u32, 0x80804000), out[1]);
+    try std.testing.expectEqual(@as(u32, 0x00000000), out[2]);
+}
 
 test "sources are waited on through io, with a timeout" {
     if (!sys.is_linux) return error.SkipZigTest;
