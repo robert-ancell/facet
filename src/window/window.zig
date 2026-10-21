@@ -931,37 +931,24 @@ pub const Window = struct {
     pub fn releaseSpareBuffers(w: Window) void {
         w.vtable.releaseSpareBuffers(w.ptr);
     }
-    /// The buffer to draw the next frame into, in CPU memory for the software
-    /// renderer to draw into, or an error if the window cannot give one.
-    pub fn beginSoftwareFrame(w: Window) !gfx.software.Image {
-        return w.vtable.beginSoftwareFrame(w.ptr);
+    /// Begins the next frame, to be drawn into a buffer in CPU memory by the
+    /// software renderer, or an error if the window cannot give one.
+    pub fn beginSoftwareFrame(w: Window) !SoftwareFrame {
+        const target = try w.vtable.beginSoftwareFrame(w.ptr);
+        return .{ .win = w, .target = target, .age = w.vtable.bufferAge(w.ptr) };
     }
-    /// The buffer to draw the next frame into, as a dmabuf for the GPU to
-    /// draw into directly, or null if the window cannot give one (not Linux, or
-    /// the frame is in shared memory).
-    pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
-        return w.vtable.beginDmabufFrame(w.ptr);
+    /// Begins the next frame, to be drawn into a dmabuf by the GPU directly, or
+    /// null if the window cannot give one (not Linux, or the frame is in shared
+    /// memory).
+    pub fn beginDmabufFrame(w: Window) ?DmabufFrame {
+        const target = w.vtable.beginDmabufFrame(w.ptr) orelse return null;
+        return .{ .win = w, .target = target, .age = w.vtable.bufferAge(w.ptr) };
     }
-    /// The next frame drawn on the GPU into the window's Metal layer, or null
-    /// if the window cannot give one (not macOS).
-    pub fn beginMetalFrame(w: Window) ?gfx.MetalTarget {
-        return w.vtable.beginMetalFrame(w.ptr);
-    }
-    /// How many frames ago the buffer of the frame begun (by `beginSoftwareFrame`,
-    /// `beginDmabufFrame` or `beginMetalFrame`) was last drawn: 1 if in the frame
-    /// before, 0 if never.
-    pub fn bufferAge(w: Window) u32 {
-        return w.vtable.bufferAge(w.ptr);
-    }
-    /// Draws the window's own decorations over the `repainted` parts of
-    /// the frame (or all of it if null).
-    pub fn finishFrame(w: Window, repainted: ?[]const gfx.Viewport) void {
-        w.vtable.finishFrame(w.ptr, repainted);
-    }
-    /// Shows the frame, telling the system what of it changed (or all of
-    /// it if null).
-    pub fn showDamaged(w: Window, damage: ?[]const gfx.Viewport) !void {
-        return w.vtable.showDamaged(w.ptr, damage);
+    /// Begins the next frame, to be drawn on the GPU into the window's Metal
+    /// layer, or null if the window cannot give one (not macOS).
+    pub fn beginMetalFrame(w: Window) ?MetalFrame {
+        const target = w.vtable.beginMetalFrame(w.ptr) orelse return null;
+        return .{ .win = w, .target = target, .age = w.vtable.bufferAge(w.ptr) };
     }
     /// Whether the window can open popups (`openPopup`): Wayland ones can, no
     /// others yet.
@@ -1016,6 +1003,40 @@ pub const Window = struct {
         return f(w.ptr);
     }
 };
+
+/// A frame begun in a window (`Window.beginSoftwareFrame`, `beginDmabufFrame`
+/// or `beginMetalFrame`), of which `Target` is where it is drawn. Draw it (only
+/// what `age` says is out of date), `finish` it, and `show` it, before another
+/// is begun.
+pub fn WindowFrame(comptime Target: type) type {
+    return struct {
+        win: Window,
+        /// Where to draw the frame.
+        target: Target,
+        /// How many frames ago the buffer was last drawn: 1 if in the frame
+        /// before, 0 if never.
+        age: u32,
+
+        /// Draws the window's own decorations over the `repainted` parts of
+        /// the frame (or all of it if null).
+        pub fn finish(f: @This(), repainted: ?[]const gfx.Viewport) void {
+            f.win.vtable.finishFrame(f.win.ptr, repainted);
+        }
+
+        /// Shows the frame, telling the system what of it changed (or all of
+        /// it if null).
+        pub fn show(f: @This(), damage: ?[]const gfx.Viewport) !void {
+            return f.win.vtable.showDamaged(f.win.ptr, damage);
+        }
+    };
+}
+
+/// A frame drawn on the CPU, in an image.
+pub const SoftwareFrame = WindowFrame(gfx.software.Image);
+/// A frame drawn by the GPU, in a dmabuf.
+pub const DmabufFrame = WindowFrame(gfx.DmabufTarget);
+/// A frame drawn by the GPU, in a Metal layer.
+pub const MetalFrame = WindowFrame(gfx.MetalTarget);
 
 /// What an app's title bar does to its window (for the toolkit's TitleBar:
 /// `.on_close = .of(&controls, Controls.close)`, and so on).

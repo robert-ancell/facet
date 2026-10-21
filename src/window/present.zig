@@ -24,35 +24,32 @@ pub const Presenter = struct {
         var uncovered_buf: [2][gfx.renderer.max_uncovered]Viewport = undefined;
         // On the GPU straight into the window's buffer (or Metal layer) if
         // they can, or else into the buffer on the CPU.
-        const direct = if (p.directRenderer()) |dr| blk: {
-            if (dr.hasDmabuf()) if (win.beginDmabufFrame()) |target| {
-                const vps = frame.repaint(win.bufferAge());
-                dr.renderDmabuf(frame.canvases, frame.segments, &target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
+        if (p.directRenderer()) |dr| direct: {
+            if (dr.hasDmabuf()) if (win.beginDmabufFrame()) |f| {
+                const vps = frame.repaint(f.age);
+                dr.renderDmabuf(frame.canvases, frame.segments, &f.target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
                     p.no_direct = true;
-                    break :blk false;
+                    break :direct;
                 };
-                win.finishFrame(vps);
-                break :blk true;
+                f.finish(vps);
+                return f.show(frame.damage.slice());
             };
-            if (dr.hasMetal()) if (win.beginMetalFrame()) |target| {
-                const vps = frame.repaint(win.bufferAge());
-                dr.renderMetal(frame.canvases, frame.segments, &target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
+            if (dr.hasMetal()) if (win.beginMetalFrame()) |f| {
+                const vps = frame.repaint(f.age);
+                dr.renderMetal(frame.canvases, frame.segments, &f.target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
                     p.no_direct = true;
-                    break :blk false;
+                    break :direct;
                 };
-                win.finishFrame(vps);
-                break :blk true;
+                f.finish(vps);
+                return f.show(frame.damage.slice());
             };
-            break :blk false;
-        } else false;
-        if (!direct) {
-            var img = try win.beginSoftwareFrame();
-            const vps = frame.repaint(win.bufferAge());
-            img.clearViewports(frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments));
-            try r.renderSegments(frame.canvases, frame.segments, &img, vps);
-            win.finishFrame(vps);
         }
-        try win.showDamaged(frame.damage.slice());
+        var f = try win.beginSoftwareFrame();
+        const vps = frame.repaint(f.age);
+        f.target.clearViewports(frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments));
+        try r.renderSegments(frame.canvases, frame.segments, &f.target, vps);
+        f.finish(vps);
+        try f.show(frame.damage.slice());
     }
 
     /// Draws `frame` whole into popup `id`'s next buffer, and shows it;
