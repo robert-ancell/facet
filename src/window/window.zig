@@ -17,6 +17,9 @@ const std = @import("std");
 const gfx = @import("gfx");
 
 pub const clipboard = @import("clipboard.zig");
+pub const positioner_mod = @import("positioner.zig");
+/// Where popups go, as Wayland's `xdg_positioner` says.
+pub const Positioner = positioner_mod.Positioner;
 pub const present = @import("present.zig");
 /// Presents `gfx.Frame`s in a window with a renderer.
 pub const Presenter = present.Presenter;
@@ -370,6 +373,22 @@ pub const PopupPlacement = struct {
 
     pub fn eql(a: PopupPlacement, b: PopupPlacement) bool {
         return std.meta.eql(a, b);
+    }
+
+    /// As Wayland's `xdg_positioner` says it (which the compositor places it
+    /// by there, and `Positioner.place` elsewhere), in a window
+    /// `window_size` big (the anchor kept inside it, as Wayland wants).
+    pub fn positioner(pl: PopupPlacement, window_size: [2]u32) positioner_mod.Positioner {
+        const ww: i32 = @intCast(@max(window_size[0], 1));
+        const wh: i32 = @intCast(@max(window_size[1], 1));
+        const ax = std.math.clamp(pl.anchor[0], 0, ww - 1);
+        const ay = std.math.clamp(pl.anchor[1], 0, wh - 1);
+        const rect: positioner_mod.Rect = .{ ax, ay, std.math.clamp(pl.anchor[2], 1, ww - ax), std.math.clamp(pl.anchor[3], 1, wh - ay) };
+        const size: [2]i32 = .{ @intCast(@max(pl.size[0], 1)), @intCast(@max(pl.size[1], 1)) };
+        return switch (pl.side) {
+            .below_right => .{ .size = size, .anchor_rect = rect, .anchor = .top_left, .gravity = .bottom_right, .offset = .{ pl.gap, pl.gap }, .adjust = .{ .flip_x = true, .flip_y = true, .slide_x = true, .slide_y = true } },
+            .above => .{ .size = size, .anchor_rect = rect, .anchor = .top, .gravity = .top, .offset = .{ 0, -pl.gap }, .adjust = .{ .flip_y = true, .slide_x = true, .slide_y = true } },
+        };
     }
 };
 
@@ -1199,6 +1218,7 @@ test {
     _ = present;
     _ = sys;
     _ = @import("win32_keys.zig");
+    _ = positioner_mod;
     switch (@import("builtin").os.tag) {
         .windows => _ = win32,
         else => {

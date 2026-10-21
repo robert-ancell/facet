@@ -1113,30 +1113,21 @@ pub const WaylandWindow = struct {
         const positioner = try w.conn.newObject(null);
         var m = try w.wm_base.request(p.xdg_wm_base.request.create_positioner);
         m.uint(positioner.id).end();
+        // As facet means its placements everywhere (the compositor places
+        // it by these here; `Positioner.place` does elsewhere).
+        const pos = pl.positioner(.{ w.width, w.height });
         m = try positioner.request(pos_p.request.set_size);
-        m.int(@intCast(@max(pl.size[0], 1))).int(@intCast(@max(pl.size[1], 1))).end();
-        // The anchor may not reach outside the window.
-        const ww: i32 = @intCast(@max(w.width, 1));
-        const wh: i32 = @intCast(@max(w.height, 1));
-        const ax = std.math.clamp(pl.anchor[0], 0, ww - 1);
-        const ay = std.math.clamp(pl.anchor[1], 0, wh - 1);
-        const aw = std.math.clamp(pl.anchor[2], 1, ww - ax);
-        const ah = std.math.clamp(pl.anchor[3], 1, wh - ay);
+        m.int(pos.size[0]).int(pos.size[1]).end();
         m = try positioner.request(pos_p.request.set_anchor_rect);
-        m.int(ax).int(ay).int(aw).int(ah).end();
-        const adj = pos_p.constraint_adjustment;
-        const anchor: u32, const gravity: u32, const offset: [2]i32, const adjust: u32 = switch (pl.side) {
-            .below_right => .{ pos_p.anchor.top_left, pos_p.anchor.bottom_right, .{ pl.gap, pl.gap }, adj.flip_x | adj.flip_y | adj.slide_x | adj.slide_y },
-            .above => .{ pos_p.anchor.top, pos_p.anchor.top, .{ 0, -pl.gap }, adj.flip_y | adj.slide_x | adj.slide_y },
-        };
+        m.int(pos.anchor_rect[0]).int(pos.anchor_rect[1]).int(pos.anchor_rect[2]).int(pos.anchor_rect[3]).end();
         m = try positioner.request(pos_p.request.set_anchor);
-        m.uint(anchor).end();
+        m.uint(@intFromEnum(pos.anchor)).end();
         m = try positioner.request(pos_p.request.set_gravity);
-        m.uint(gravity).end();
+        m.uint(@intFromEnum(pos.gravity)).end();
         m = try positioner.request(pos_p.request.set_constraint_adjustment);
-        m.uint(adjust).end();
+        m.uint(@bitCast(pos.adjust)).end();
         m = try positioner.request(pos_p.request.set_offset);
-        m.int(offset[0]).int(offset[1]).end();
+        m.int(pos.offset[0]).int(pos.offset[1]).end();
 
         const surface = try w.conn.newObject(null);
         m = try w.compositor.request(p.wl_compositor.request.create_surface);
