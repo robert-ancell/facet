@@ -1,0 +1,24 @@
+# Builds facet on Windows, where its Direct3D 11 shaders are compiled by
+# the Windows SDK's fxc, and runs its tests there: among them the Direct3D
+# 11 renderer drawing on WARP (Direct3D's own, on the CPU) compared with
+# the software renderer, and frames presented to a window's swap chain.
+name: Windows
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build
+        run: zig build --summary all
+      - name: Build the examples
+        run: zig build examples --summary all
+      - name: Test
+        run: zig build test --summary all
