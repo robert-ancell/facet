@@ -1183,6 +1183,7 @@ test "sources are waited on through io, with a timeout" {
 test {
     _ = present;
     _ = sys;
+    _ = @import("win32_keys.zig");
     switch (@import("builtin").os.tag) {
         .windows => _ = win32,
         else => {
