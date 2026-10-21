@@ -132,8 +132,9 @@ pub const Shared = struct {
     /// The connection to assistive technologies (once a window's
     /// `enableAccessibility` has made it).
     a11y: ?*atspi.Bridge = null,
-    /// The UI whose tree it offers (the first to enable it).
-    a11y_ui: ?*Ui = null,
+    /// The next id for an object of the accessibility tree (unique in the
+    /// app: each window's tree is offered with the others').
+    a11y_next_id: u32 = accessibility.window_id,
     /// Text copied, when there is no system clipboard.
     local_clipboard: std.ArrayList(u8) = .empty,
     /// The windows' UIs (made by `createUi`).
@@ -232,7 +233,9 @@ pub const Shared = struct {
             .images = &s.images,
             .arenas = .{ .init(s.gpa), .init(s.gpa) },
             .presenter = .{ .renderer = s.renderer },
+            .a11y_window_id = s.a11y_next_id,
         };
+        s.a11y_next_id += 1;
         try s.uis.append(s.gpa, ui);
         return ui;
     }
@@ -332,7 +335,8 @@ pub const Ui = struct {
     /// has connected `shared` to AT-SPI): the last frame's tree, and the
     /// number for the next object.
     a11y_tree: ?*accessibility.Tree = null,
-    a11y_next_id: u32 = accessibility.window_id + 1,
+    /// The id of its window in the accessibility tree.
+    a11y_window_id: u32 = accessibility.window_id,
     key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
@@ -468,7 +472,6 @@ pub const Ui = struct {
     pub fn destroy(ui: *Ui) void {
         const shared = ui.shared;
         if (std.mem.indexOfScalar(*Ui, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
-        if (shared.a11y_ui == ui) shared.a11y_ui = null;
         if (ui.tooltip_popup) |t| t.popup.close();
         if (ui.menu_popup) |m| m.popup.close();
         ui.closeMenu();
@@ -483,6 +486,7 @@ pub const Ui = struct {
             if (has_atspi) if (shared.a11y) |b| w.watch(b.source(), false);
         };
         if (ui.a11y_tree) |t| {
+            if (has_atspi) if (shared.a11y) |b| b.remove(t);
             t.deinit();
             ui.gpa.destroy(t);
         }
@@ -748,7 +752,6 @@ pub const Ui = struct {
         if (envIs(environ, "NO_AT_BRIDGE", "1")) return;
         const title = if (ui.win) |w| w.title() else "";
         ui.shared.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
-        if (ui.shared.a11y != null) ui.shared.a11y_ui = ui;
         ui.needs_frame = true;
     }
 
@@ -757,7 +760,6 @@ pub const Ui = struct {
     fn updateAccessibility(ui: *Ui) void {
         if (!has_atspi) return;
         const b = ui.shared.a11y orelse return;
-        if (ui.shared.a11y_ui != ui) return;
         const root = ui.root orelse return;
         var extra: [3]*Node = undefined;
         var n: usize = 0;
@@ -767,7 +769,7 @@ pub const Ui = struct {
         };
         const title = if (ui.win) |w| w.title() else "";
         const size: [2]f32 = .{ @floatFromInt(ui.logical_size[0]), @floatFromInt(ui.logical_size[1]) };
-        const tree = accessibility.build(ui.gpa, root, extra[0..n], title, size, ui.focused, &ui.a11y_next_id) catch return;
+        const tree = accessibility.build(ui.gpa, root, extra[0..n], title, size, ui.focused, ui.a11y_window_id, &ui.shared.a11y_next_id) catch return;
         const old = ui.a11y_tree;
         b.update(old, tree);
         ui.a11y_tree = tree;

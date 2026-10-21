@@ -314,8 +314,8 @@ pub fn iconName(n: *Node, icon: anytype) []const u8 {
 
 /// An object in the tree.
 pub const Object = struct {
-    /// Its number (the window's is `window_id`), the same from frame to
-    /// frame while its widget is there.
+    /// Its number (unique in the app: the window's is the one `build` is
+    /// given), the same from frame to frame while its widget is there.
     id: u32,
     info: Info,
     /// Where it is in the window (logical pixels).
@@ -332,6 +332,7 @@ pub const Object = struct {
     focused: bool = false,
 };
 
+/// The first window's id (and an app with one window's).
 pub const window_id = 1;
 
 /// The objects of a frame: the window first, then the rest, each after
@@ -372,7 +373,7 @@ pub const Tree = struct {
 
 /// Makes the tree of the widgets under `root` (in a window `size` big,
 /// called `title`), numbering new objects from `next_id`.
-pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, title: []const u8, size: [2]f32, focused: ?*Node, next_id: *u32) error{OutOfMemory}!*Tree {
+pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, title: []const u8, size: [2]f32, focused: ?*Node, window: u32, next_id: *u32) error{OutOfMemory}!*Tree {
     const t = try gpa.create(Tree);
     t.* = .{ .arena = .init(gpa) };
     errdefer {
@@ -382,8 +383,8 @@ pub fn build(gpa: std.mem.Allocator, root: *Node, extra_roots: []const *Node, ti
     const a = t.arena.allocator();
     var b: Builder = .{ .arena = a, .next_id = next_id, .focused = focused };
     try b.objects.append(a, .{
-        .id = window_id,
-        // (No ARIA role: it is the platform's window, `window_id`.)
+        .id = window,
+        // (No ARIA role: it is the platform's window.)
         .info = .{ .role = .generic, .label = try a.dupe(u8, title) },
         .focusable = true,
         .bounds = .{ .x = 0, .y = 0, .w = size[0], .h = size[1] },

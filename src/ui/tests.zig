@@ -2454,7 +2454,7 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     const app: A11yApp = .{ .pressed = &pressed, .checked = &checked, .level = &level };
     u.frame(400, 600, 0, app);
     var next: u32 = 2;
-    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, &next);
+    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, ui.accessibility.window_id, &next);
     defer {
         tree.deinit();
         testing.allocator.destroy(tree);
@@ -2501,7 +2501,7 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     try testing.expectEqual(@as(u8, 1), objs[objs[0].children[0]].info.level.?);
     // Ids last from frame to frame.
     u.frame(400, 600, 1, app);
-    const again = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, &next);
+    const again = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "Test", .{ 400, 600 }, u.focused, ui.accessibility.window_id, &next);
     defer {
         again.deinit();
         testing.allocator.destroy(again);
@@ -2628,7 +2628,7 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
     pressKey(u, app, ui.keymap.tab, .{ .shift = true });
     // (From the text area, which takes Tab: Control, Shift and Tab.)
     pressKey(u, app, ui.keymap.tab, .{ .shift = true, .ctrl = true });
-    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "", .{ 400, 600 }, u.focused, &next);
+    const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "", .{ 400, 600 }, u.focused, ui.accessibility.window_id, &next);
     defer {
         tree.deinit();
         testing.allocator.destroy(tree);

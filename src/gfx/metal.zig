@@ -86,9 +86,11 @@ pub const MetalRenderer = struct {
     atlas: ?*atlas_mod.Atlas = null,
     atlas_stale: ?atlas_mod.Rect = null,
     images: std.AutoHashMapUnmanaged(u64, Id) = .empty,
-    /// The window's frame (kept from one to the next, so only what changed
-    /// is drawn), and the texture `record` draws in for the CPU.
-    screen: Frame = .{},
+    /// The windows' frames (each kept from one to the next, so only what
+    /// changed is drawn), by the layer each is shown in, and the texture
+    /// `record` draws in for the CPU.
+    screens: [renderer_mod.max_screens]Screen = @splat(.{}),
+    screens_used: u64 = 0,
     offscreen: Frame = .{},
     /// A frame's pixels on the CPU, for GPU draws of widgets drawn there.
     scratch: std.ArrayList(u32) = .empty,
@@ -111,6 +113,13 @@ pub const MetalRenderer = struct {
         tex: Id = null,
         width: u32 = 0,
         height: u32 = 0,
+    };
+
+    /// A window's frame, and when it was last drawn (`screens_used`).
+    const Screen = struct {
+        key: ?*anyopaque = null,
+        frame: Frame = .{},
+        used: u64 = 0,
     };
 
     pub const backend: renderer_mod.RenderBackend = .metal;
@@ -159,7 +168,8 @@ pub const MetalRenderer = struct {
         r.images.deinit(r.gpa);
         r.scratch.deinit(r.gpa);
         inline for (@typeInfo(Pipelines).@"struct".field_names) |name| objc.release(@field(r.pipelines, name));
-        for ([_]Id{ r.nearest, r.linear, r.atlas_tex, r.screen.tex, r.offscreen.tex, r.queue, r.device }) |o| objc.release(o);
+        for (&r.screens) |*sc| objc.release(sc.frame.tex);
+        for ([_]Id{ r.nearest, r.linear, r.atlas_tex, r.offscreen.tex, r.queue, r.device }) |o| objc.release(o);
         r.device = null;
     }
 
@@ -270,6 +280,23 @@ pub const MetalRenderer = struct {
 
     /// Makes `frame` `width` by `height`; true if it is new (and so has
     /// nothing in it yet).
+    /// The frame kept for the window shown in `layer` (the longest unused
+    /// window's let go, for one new).
+    fn screenOf(r: *MetalRenderer, layer: *anyopaque) *Frame {
+        r.screens_used += 1;
+        var pick = &r.screens[0];
+        for (&r.screens) |*sc| {
+            if (sc.key == layer) {
+                sc.used = r.screens_used;
+                return &sc.frame;
+            }
+            if (sc.used < pick.used) pick = sc;
+        }
+        objc.release(pick.frame.tex);
+        pick.* = .{ .key = layer, .used = r.screens_used };
+        return &pick.frame;
+    }
+
     fn ensureFrame(r: *MetalRenderer, frame: *Frame, width: u32, height: u32) !bool {
         if (frame.tex != null and frame.width == width and frame.height == height) return false;
         objc.release(frame.tex);
@@ -526,7 +553,8 @@ pub const MetalRenderer = struct {
             msg(void, layer, "setFramebufferOnly:", .{objc.no});
         }
         try r.prepare(canvases);
-        const fresh = try r.ensureFrame(&r.screen, t.width, t.height);
+        const screen = r.screenOf(t.layer);
+        const fresh = try r.ensureFrame(screen, t.width, t.height);
         const full: Viewport = .{ .width = t.width, .height = t.height };
         const all = [1]Viewport{full};
         var clear_buf: [2][renderer_mod.max_uncovered]Viewport = undefined;
@@ -534,7 +562,7 @@ pub const MetalRenderer = struct {
         const clears = if (fresh) renderer_mod.uncovered(&clear_buf, &all, segments) else clear_rects;
 
         var cmd = try r.commandBuffer();
-        var enc = try beginPass(cmd, r.screen.tex, t.width, t.height);
+        var enc = try beginPass(cmd, screen.tex, t.width, t.height);
         try r.encodeClear(enc, full, clear, clears);
         var buf: [2][renderer_mod.max_uncovered]Viewport = undefined;
         for (segments, 0..) |seg, i| switch (seg) {
@@ -551,22 +579,22 @@ pub const MetalRenderer = struct {
                     // Drawn into this frame, on this GPU: no copy through
                     // the CPU.
                     msg(void, enc, "endEncoding", .{});
-                    const frame: DirectFrame = .{ .device = r.device, .cmd = cmd, .texture = r.screen.tex, .width = t.width, .height = t.height };
+                    const frame: DirectFrame = .{ .device = r.device, .cmd = cmd, .texture = screen.tex, .width = t.width, .height = t.height };
                     const drawn = try direct(g.ctx, .metal, &frame, g.area);
-                    enc = try beginPass(cmd, r.screen.tex, t.width, t.height);
+                    enc = try beginPass(cmd, screen.tex, t.width, t.height);
                     if (drawn) continue;
                 }
                 // Drawn on the CPU: what is under it is finished first, and
                 // what is over it drawn after.
                 msg(void, enc, "endEncoding", .{});
-                finishForCpu(cmd, &r.screen);
+                finishForCpu(cmd, screen);
                 try r.scratch.resize(r.gpa, @as(usize, t.width) * t.height);
                 var img: software.Image = .{ .pixels = r.scratch.items, .width = t.width, .height = t.height };
-                download(&r.screen, img, area);
+                download(screen, img, area);
                 try g.f(g.ctx, @ptrCast(&img), g.area);
-                upload(&r.screen, img, area);
+                upload(screen, img, area);
                 cmd = try r.commandBuffer();
-                enc = try beginPass(cmd, r.screen.tex, t.width, t.height);
+                enc = try beginPass(cmd, screen.tex, t.width, t.height);
             },
         };
         msg(void, enc, "endEncoding", .{});
@@ -579,7 +607,7 @@ pub const MetalRenderer = struct {
             const h = @min(t.height, msg(u64, dst, "height", .{}));
             const blit = msg(Id, cmd, "blitCommandEncoder", .{});
             msg(void, blit, "copyFromTexture:sourceSlice:sourceLevel:sourceOrigin:sourceSize:toTexture:destinationSlice:destinationLevel:destinationOrigin:", .{
-                r.screen.tex, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 }, Size{ .width = w, .height = h }, dst, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 },
+                screen.tex, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 }, Size{ .width = w, .height = h }, dst, @as(u64, 0), @as(u64, 0), Origin{ .x = 0, .y = 0 },
             });
             msg(void, blit, "endEncoding", .{});
             if (msg(objc.Bool, layer, "presentsWithTransaction", .{}) != 0) {

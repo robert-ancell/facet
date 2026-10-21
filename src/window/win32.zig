@@ -1089,7 +1089,7 @@ pub const Win32Window = struct {
         w32.release(w.back);
         w.back = sc.backBuffer() catch return null;
         w.on_gpu = true;
-        return .{ .texture = w.back.?, .width = pw, .height = ph };
+        return .{ .texture = w.back.?, .width = pw, .height = ph, .window = w.hwnd };
     }
 
     /// The buffer to draw the next frame in, as big as the client area in

@@ -34,9 +34,12 @@ pub const Bridge = struct {
     app_name: []u8 = &.{},
     /// The id the registry gave it.
     app_id: i32 = 0,
-    /// The tree it answers from: the last frame's.
+    /// The trees it answers from (each window's last frame's), in the order
+    /// the windows came: the app's children.
+    trees: std.ArrayList(*const Tree) = .empty,
+    /// The tree of what the call being answered is to.
     tree: ?*const Tree = null,
-    /// Whether the window has been said to be active.
+    /// Whether the first window has been said to be active.
     activated: bool = false,
 
     /// Connects to the accessibility bus (`$AT_SPI_BUS_ADDRESS`, or the
@@ -73,6 +76,7 @@ pub const Bridge = struct {
     }
 
     pub fn close(b: *Bridge) void {
+        b.trees.deinit(b.gpa);
         b.conn.close();
         b.gpa.free(b.parent_bus);
         b.gpa.free(b.parent_path);
@@ -109,14 +113,21 @@ pub const Bridge = struct {
 
     // --- Events ---------------------------------------------------------------
 
-    /// Says what changed from `old` to `new` (a new frame's tree, which it
-    /// answers from now on).
+    /// Says what changed from `old` to `new` (a window's new frame's tree,
+    /// which it answers from now on; with no `old`, a window come).
     pub fn update(b: *Bridge, old: ?*const Tree, new: *const Tree) void {
-        b.tree = new;
+        const window = new.objects[0].id;
+        if (if (old) |o| std.mem.indexOfScalar(*const Tree, b.trees.items, o) else null) |i| {
+            b.trees.items[i] = new;
+        } else {
+            b.trees.append(b.gpa, new) catch return;
+            if (b.trees.items.len > 1) b.event(0, "org.a11y.atspi.Event.Object", "ChildrenChanged", "add", @intCast(b.trees.items.len - 1), .{ .object = window });
+        }
+        if (b.tree == old) b.tree = null;
         if (!b.activated) {
             b.activated = true;
-            b.event(a11y.window_id, "org.a11y.atspi.Event.Window", "Activate", "", 0, .{ .string = new.objects[0].info.label });
-            b.event(a11y.window_id, "org.a11y.atspi.Event.Object", "StateChanged", "active", 1, .none);
+            b.event(window, "org.a11y.atspi.Event.Window", "Activate", "", 0, .{ .string = new.objects[0].info.label });
+            b.event(window, "org.a11y.atspi.Event.Object", "StateChanged", "active", 1, .none);
         }
         const prev = old orelse return;
         for (new.objects) |*o| {
@@ -168,6 +179,16 @@ pub const Bridge = struct {
         }
     }
 
+    /// Says that the window whose tree `t` is (its last frame's) is gone.
+    pub fn remove(b: *Bridge, t: *const Tree) void {
+        const i = std.mem.indexOfScalar(*const Tree, b.trees.items, t) orelse return;
+        _ = b.trees.orderedRemove(i);
+        if (b.tree == t) b.tree = null;
+        const window = t.objects[0].id;
+        b.event(window, "org.a11y.atspi.Event.Object", "StateChanged", "defunct", 1, .none);
+        b.event(0, "org.a11y.atspi.Event.Object", "ChildrenChanged", "remove", @intCast(i), .{ .object = window });
+    }
+
     fn hasChild(t: *const Tree, o: *const Object, id: u32) bool {
         for (o.children) |ci| if (t.objects[ci].id == id) return true;
         return false;
@@ -175,8 +196,8 @@ pub const Bridge = struct {
 
     const Any = union(enum) { none, string: []const u8, double: f64, object: u32 };
 
-    /// An AT-SPI event: a signal from object `id`, (`kind`, `detail1`, 0,
-    /// `any`, no properties).
+    /// An AT-SPI event: a signal from object `id` (0: the app), (`kind`,
+    /// `detail1`, 0, `any`, no properties).
     fn event(b: *Bridge, id: u32, interface: []const u8, member: []const u8, kind: []const u8, detail1: i32, any: Any) void {
         var path_buf: [64]u8 = undefined;
         var w: Writer = .{ .gpa = b.gpa };
@@ -208,7 +229,7 @@ pub const Bridge = struct {
         _ = b.conn.sendMessage(.{
             .type = .signal,
             .serial = 0,
-            .path = pathOf(id, &path_buf),
+            .path = if (id == 0) root_path else pathOf(id, &path_buf),
             .interface = interface,
             .member = member,
             .signature = "siiva{sv}",
@@ -220,12 +241,16 @@ pub const Bridge = struct {
     /// What a call is to: the app, or an object of the tree.
     const Target = union(enum) { app, object: *const Object };
 
-    fn targetOf(b: *const Bridge, path: []const u8) ?Target {
+    /// The target of a call to `path` (and its tree, `tree`, if an object).
+    fn targetOf(b: *Bridge, path: []const u8) ?Target {
         if (std.mem.eql(u8, path, root_path)) return .app;
         if (!std.mem.startsWith(u8, path, object_prefix)) return null;
         const id = std.fmt.parseInt(u32, path[object_prefix.len..], 10) catch return null;
-        const t = b.tree orelse return null;
-        return .{ .object = t.find(id) orelse return null };
+        for (b.trees.items) |t| if (t.find(id)) |o| {
+            b.tree = t;
+            return .{ .object = o };
+        };
+        return null;
     }
 
     /// Answers a call; true if it acted on the UI.
@@ -361,30 +386,25 @@ pub const Bridge = struct {
 
     fn accessible(b: *Bridge, target: Target, member: []const u8, r: *Reader, w: *Writer) !?[]const u8 {
         const eq = std.mem.eql;
-        const t = b.tree orelse return null;
-        // The app has one child: the window.
-        const children: []const u32 = switch (target) {
-            .app => &.{0},
-            .object => |o| o.children,
-        };
         if (eq(u8, member, "GetChildAtIndex")) {
             const i = try r.int32();
-            if (i < 0 or i >= children.len) nullReference(w) else b.reference(w, t.objects[children[@intCast(i)]].id);
+            if (i < 0 or i >= b.childCount(target)) nullReference(w) else b.reference(w, b.childId(target, @intCast(i)));
             return "(so)";
         }
         if (eq(u8, member, "GetChildren")) {
             const arr = w.beginArray(8);
-            for (children) |ci| b.reference(w, t.objects[ci].id);
+            for (0..b.childCount(target)) |i| b.reference(w, b.childId(target, i));
             w.endArray(arr);
             return "a(so)";
         }
         if (eq(u8, member, "GetIndexInParent")) {
+            const t = b.tree;
             w.int32(switch (target) {
                 .app => -1,
                 .object => |o| if (o.parent) |p| blk: {
-                    for (t.objects[p].children, 0..) |ci, i| if (t.objects[ci].id == o.id) break :blk @intCast(i);
+                    for (t.?.objects[p].children, 0..) |ci, i| if (t.?.objects[ci].id == o.id) break :blk @intCast(i);
                     break :blk -1;
-                } else 0,
+                } else if (std.mem.indexOfScalar(*const Tree, b.trees.items, t.?)) |i| @intCast(i) else -1,
             });
             return "i";
         }
@@ -429,7 +449,7 @@ pub const Bridge = struct {
                 .object => |o| {
                     // ARIA's role (as browsers give it), and its properties
                     // that are attributes in AT-SPI.
-                    if (o.id != a11y.window_id) pair(w, "xml-roles", @tagName(o.info.role));
+                    if (o.parent != null) pair(w, "xml-roles", @tagName(o.info.role));
                     var level_buf: [4]u8 = undefined;
                     if (o.info.level) |l| pair(w, "level", std.fmt.bufPrint(&level_buf, "{d}", .{l}) catch "");
                     pair(w, "roledescription", o.info.roledescription);
@@ -453,6 +473,22 @@ pub const Bridge = struct {
             return "as";
         }
         return null;
+    }
+
+    /// How many children `target` has: the app's are its windows.
+    fn childCount(b: *const Bridge, target: Target) usize {
+        return switch (target) {
+            .app => b.trees.items.len,
+            .object => |o| o.children.len,
+        };
+    }
+
+    /// The id of `target`'s child `i`.
+    fn childId(b: *const Bridge, target: Target, i: usize) u32 {
+        return switch (target) {
+            .app => b.trees.items[i].objects[0].id,
+            .object => |o| b.tree.?.objects[o.children[i]].id,
+        };
     }
 
     fn roleOf(target: Target) AtspiRole {
@@ -539,10 +575,7 @@ pub const Bridge = struct {
                 .object => |o| o.info.description,
             });
             if (eq(u8, name, "HelpText") or eq(u8, name, "AccessibleId") or eq(u8, name, "Locale")) return out.s("");
-            if (eq(u8, name, "ChildCount")) return out.i(switch (target) {
-                .app => 1,
-                .object => |o| @intCast(o.children.len),
-            });
+            if (eq(u8, name, "ChildCount")) return out.i(@intCast(b.childCount(target)));
             if (eq(u8, name, "Parent")) {
                 if (as_variant) w.variant("(so)");
                 switch (target) {
@@ -637,7 +670,7 @@ pub const Bridge = struct {
         }
         if (eq(u8, member, "GetLayer")) {
             // A window's, or a widget's.
-            w.uint32(if (o.id == a11y.window_id) 7 else 3);
+            w.uint32(if (o.parent == null) 7 else 3);
             return "u";
         }
         if (eq(u8, member, "GetMDIZOrder")) {
@@ -1002,7 +1035,7 @@ pub const AtspiRole = enum(u32) {
 /// The AT-SPI role of an object (with ARIA's role and properties).
 pub fn atspiRole(o: *const Object) AtspiRole {
     // The window, which has no ARIA role: the platform's.
-    if (o.id == a11y.window_id) return .frame;
+    if (o.parent == null) return .frame;
     const i = &o.info;
     return switch (i.role) {
         .alert => .notification,
@@ -1115,7 +1148,7 @@ pub fn atspiStates(o: *const Object) u64 {
     set(&bits, "sensitive", !i.disabled);
     set(&bits, "focusable", o.focusable);
     set(&bits, "focused", o.focused);
-    set(&bits, "active", o.id == a11y.window_id);
+    set(&bits, "active", o.parent == null);
     if (i.checked) |c| {
         set(&bits, "checkable", true);
         set(&bits, "checked", c == .true);
@@ -1368,6 +1401,69 @@ test "the bridge answers AT-SPI's calls from the tree, and says what changed" {
     var rd = m.reader();
     try testing.expectEqualStrings("checked", try rd.string());
     try testing.expectEqual(@as(i32, 1), try rd.int32());
+
+    // A second window: the app's second child, its objects answered too.
+    const dialog = try testing.allocator.create(Tree);
+    dialog.* = .{ .arena = .init(testing.allocator) };
+    defer {
+        dialog.deinit();
+        gpa.destroy(dialog);
+    }
+    {
+        const a = dialog.arena.allocator();
+        dialog.objects = try a.dupe(Object, &.{
+            .{ .id = 20, .info = .{ .role = .generic, .label = "Dialog" }, .bounds = .{ .x = 0, .y = 0, .w = 100, .h = 50 }, .parent = null, .children = try a.dupe(u32, &.{1}), .node = null },
+            .{ .id = 21, .info = .{ .role = .button, .label = "Cancel" }, .bounds = .{ .x = 5, .y = 5, .w = 60, .h = 30 }, .parent = 0, .children = &.{}, .node = null },
+        });
+        for (dialog.objects, 0..) |o, i| try dialog.by_id.put(a, o.id, @intCast(i));
+    }
+    b.update(null, dialog);
+    {
+        const added = try peer.next();
+        defer gpa.free(added);
+        const am = try dbus.decode(added);
+        try testing.expectEqualStrings("ChildrenChanged", am.header.member.?);
+        try testing.expectEqualStrings(root_path, am.header.path.?);
+        var ar = am.reader();
+        try testing.expectEqualStrings("add", try ar.string());
+        try testing.expectEqual(@as(i32, 1), try ar.int32());
+    }
+    {
+        const r = try ask(&peer, b, root_path, "org.a11y.atspi.Accessible", "GetChildren", "", "");
+        defer gpa.free(r.bytes);
+        var cr = r.msg().reader();
+        const end = try cr.array(8);
+        for ([_][]const u8{ object_prefix ++ "1", object_prefix ++ "20" }) |path| {
+            try cr.beginStruct();
+            _ = try cr.string();
+            try testing.expectEqualStrings(path, try cr.string());
+        }
+        try testing.expectEqual(end, cr.at);
+    }
+    {
+        const r = try ask(&peer, b, object_prefix ++ "20", "org.a11y.atspi.Accessible", "GetIndexInParent", "", "");
+        defer gpa.free(r.bytes);
+        var ir = r.msg().reader();
+        try testing.expectEqual(@as(i32, 1), try ir.int32());
+    }
+    {
+        const r = try ask(&peer, b, object_prefix ++ "21", "org.a11y.atspi.Accessible", "GetRole", "", "");
+        defer gpa.free(r.bytes);
+        var gr = r.msg().reader();
+        try testing.expectEqual(@as(u32, 43), try gr.uint32());
+    }
+    // Closed, it is gone.
+    b.remove(dialog);
+    for ([_][]const u8{ "StateChanged", "ChildrenChanged" }) |member| {
+        const gone = try peer.next();
+        defer gpa.free(gone);
+        try testing.expectEqualStrings(member, (try dbus.decode(gone)).header.member.?);
+    }
+    {
+        const r = try ask(&peer, b, object_prefix ++ "21", "org.a11y.atspi.Accessible", "GetRole", "", "");
+        defer gpa.free(r.bytes);
+        try testing.expectEqual(dbus.MessageType.@"error", r.msg().header.type);
+    }
 }
 
 test "ARIA's roles and states become AT-SPI's, as Core-AAM has them" {
@@ -1386,7 +1482,7 @@ test "ARIA's roles and states become AT-SPI's, as Core-AAM has them" {
     try testing.expectEqual(AtspiRole.toggle_button, atspiRole(&obj(.{ .role = .@"switch", .checked = .true })));
     try testing.expectEqual(AtspiRole.landmark, atspiRole(&obj(.{ .role = .navigation })));
     var window = obj(.{ .role = .generic });
-    window.id = a11y.window_id;
+    window.parent = null;
     try testing.expectEqual(AtspiRole.frame, atspiRole(&window));
     const mixed = obj(.{ .role = .checkbox, .checked = .mixed });
     try testing.expect(bit(mixed, "checkable") and bit(mixed, "indeterminate") and !bit(mixed, "checked"));

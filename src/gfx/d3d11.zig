@@ -588,7 +588,10 @@ pub const D3D11Renderer = struct {
     /// The window's frame (kept from one to the next, so only what changed
     /// is drawn), the texture `record` draws in for the CPU, and what
     /// either is read back to the CPU through.
-    screen: Frame = .{},
+    /// The windows' frames (each kept from one to the next, so only what
+    /// changed is drawn), by the window each is shown in.
+    screens: [renderer_mod.max_screens]Screen = @splat(.{}),
+    screens_used: u64 = 0,
     offscreen: Frame = .{},
     staging: ?Obj = null,
     staging_size: [2]u32 = .{ 0, 0 },
@@ -602,6 +605,13 @@ pub const D3D11Renderer = struct {
         rtv: ?Obj = null,
         width: u32 = 0,
         height: u32 = 0,
+    };
+
+    /// A window's frame, and when it was last drawn (`screens_used`).
+    const Screen = struct {
+        key: ?*anyopaque = null,
+        frame: Frame = .{},
+        used: u64 = 0,
     };
 
     const Layout = enum(u2) { shape, solid, text };
@@ -679,7 +689,8 @@ pub const D3D11Renderer = struct {
         r.scratch.deinit(r.gpa);
         for (r.vs ++ r.layouts) |o| w32.release(o);
         for (r.ps) |o| w32.release(o);
-        for ([_]?Obj{ r.blend, r.raster, r.nearest, r.linear, r.vbuf, r.atlas_srv, r.atlas_tex, r.screen.rtv, r.screen.tex, r.offscreen.rtv, r.offscreen.tex, r.staging }) |o| w32.release(o);
+        for (&r.screens) |*sc| for ([_]?Obj{ sc.frame.rtv, sc.frame.tex }) |o| w32.release(o);
+        for ([_]?Obj{ r.blend, r.raster, r.nearest, r.linear, r.vbuf, r.atlas_srv, r.atlas_tex, r.offscreen.rtv, r.offscreen.tex, r.staging }) |o| w32.release(o);
         w32.release(r.context);
         w32.release(r.device);
         r.device = null;
@@ -702,6 +713,24 @@ pub const D3D11Renderer = struct {
     }
 
     // --- Textures ---------------------------------------------------------------------
+
+    /// The frame kept for the window `key` (the longest unused window's
+    /// let go, for one new).
+    fn screenOf(r: *D3D11Renderer, key: *anyopaque) *Frame {
+        r.screens_used += 1;
+        var pick = &r.screens[0];
+        for (&r.screens) |*sc| {
+            if (sc.key == key) {
+                sc.used = r.screens_used;
+                return &sc.frame;
+            }
+            if (sc.used < pick.used) pick = sc;
+        }
+        w32.release(pick.frame.rtv);
+        w32.release(pick.frame.tex);
+        pick.* = .{ .key = key, .used = r.screens_used };
+        return &pick.frame;
+    }
 
     /// Makes `frame` `width` by `height`; true if it is new (and so has
     /// nothing in it yet).
@@ -991,14 +1020,15 @@ pub const D3D11Renderer = struct {
     pub fn renderD3D11(r: *D3D11Renderer, canvases: []const *const Canvas, segments: []const Segment, t: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
         if (t.width == 0 or t.height == 0) return;
         try r.prepare(canvases);
-        const fresh = try r.ensureFrame(&r.screen, t.width, t.height);
+        const screen = r.screenOf(t.window orelse t.texture);
+        const fresh = try r.ensureFrame(screen, t.width, t.height);
         const full: Viewport = .{ .width = t.width, .height = t.height };
         const all = [1]Viewport{full};
         var clear_buf: [2][renderer_mod.max_uncovered]Viewport = undefined;
         const dmg: []const Viewport = if (fresh) &all else damage;
         const clears = if (fresh) renderer_mod.uncovered(&clear_buf, &all, segments) else clear_rects;
 
-        r.beginPass(r.screen.rtv.?, t.width, t.height);
+        r.beginPass(screen.rtv.?, t.width, t.height);
         try r.encodeClear(full, clear, clears);
         var buf: [2][renderer_mod.max_uncovered]Viewport = undefined;
         for (segments, 0..) |seg, i| switch (seg) {
@@ -1014,29 +1044,29 @@ pub const D3D11Renderer = struct {
                 if (g.direct) |direct| {
                     // Drawn into this frame, on this GPU: no copy through
                     // the CPU.
-                    const frame: DirectFrame = .{ .device = r.device.?, .context = r.context, .texture = r.screen.tex.?, .width = t.width, .height = t.height };
+                    const frame: DirectFrame = .{ .device = r.device.?, .context = r.context, .texture = screen.tex.?, .width = t.width, .height = t.height };
                     const drawn = try direct(g.ctx, .d3d11, &frame, g.area);
-                    r.beginPass(r.screen.rtv.?, t.width, t.height);
+                    r.beginPass(screen.rtv.?, t.width, t.height);
                     if (drawn) continue;
                 }
                 // Drawn on the CPU: what is under it is read back first, and
                 // what is over it drawn after.
                 try r.scratch.resize(r.gpa, @as(usize, t.width) * t.height);
                 var img: software.Image = .{ .pixels = r.scratch.items, .width = t.width, .height = t.height };
-                try r.download(&r.screen, img, area);
+                try r.download(screen, img, area);
                 try g.f(g.ctx, @ptrCast(&img), g.area);
-                r.upload(&r.screen, img, area);
-                r.beginPass(r.screen.rtv.?, t.width, t.height);
+                r.upload(screen, img, area);
+                r.beginPass(screen.rtv.?, t.width, t.height);
             },
         };
 
         // Into the window's back buffer, as big as the frame.
         const back: Obj = t.texture;
-        if (t.width == r.screen.width and t.height == r.screen.height) {
-            Context.copyResource(r.context, back, r.screen.tex.?);
+        if (t.width == screen.width and t.height == screen.height) {
+            Context.copyResource(r.context, back, screen.tex.?);
         } else {
-            const box = boxOf(.{ .width = @min(t.width, r.screen.width), .height = @min(t.height, r.screen.height) });
-            Context.copySubresourceRegion(r.context, back, 0, 0, r.screen.tex.?, &box);
+            const box = boxOf(.{ .width = @min(t.width, screen.width), .height = @min(t.height, screen.height) });
+            Context.copySubresourceRegion(r.context, back, 0, 0, screen.tex.?, &box);
         }
         // Nothing stays bound to what the window resizes.
         Context.omSetRenderTarget(r.context, null, null);

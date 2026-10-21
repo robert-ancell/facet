@@ -289,6 +289,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "editor", .source = "examples/editor.zig", .desc = "Run the syntax-highlighted code editor example" },
         .{ .name = "canvas", .source = "examples/canvas_and_qr.zig", .desc = "Run the animated wave viewer and QR code generator example" },
         .{ .name = "fetch", .source = "examples/fetch.zig", .desc = "Run the example fetching over HTTP in the background on the app's std.Io" },
+        .{ .name = "windows", .source = "examples/windows.zig", .desc = "Run the example with more than one window" },
         .{ .name = "opengl", .source = "examples/opengl.zig", .desc = "Run the OpenGL 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_gl_spv, .not_windows = true },
         .{ .name = "vulkan", .source = "examples/vulkan.zig", .desc = "Run the Vulkan 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_vk_spv, .not_windows = true },
         .{ .name = "metal", .source = "examples/metal.zig", .desc = "Run the Metal 3D Platonic solid viewer example (macOS)", .not_windows = true },

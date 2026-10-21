@@ -153,6 +153,10 @@ pub const D3D11Target = struct {
     texture: *anyopaque,
     width: u32,
     height: u32,
+    /// What the window is (its swap chain, say), the same for each of its
+    /// frames: the renderer keeps a frame for each window (by its back
+    /// buffer, if null).
+    window: ?*anyopaque = null,
 };
 
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.
@@ -177,6 +181,11 @@ pub fn scissor(clip: Rect) Viewport {
 
 /// The most viewports `uncovered` gives.
 pub const max_uncovered = 64;
+
+/// The most windows a GPU renderer keeps a frame for (to draw only what
+/// changed in it): beyond them, the longest unused window's is let go, and
+/// drawn whole again when it is next drawn.
+pub const max_screens = 8;
 
 /// What of `damage` is not filled by the GPU draws in `above` (the
 /// segments drawn after something), so that only it need be drawn: in
