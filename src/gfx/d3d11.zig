@@ -1106,3 +1106,317 @@ test "a frame drawn only where it changed keeps the rest" {
     try std.testing.expectEqual(@as(u32, 0xffffffff), pixels[5 * w + 5]);
     try std.testing.expectEqual(@as(u32, 0xff000000), pixels[5 * w + 30]);
 }
+
+// --- 3D scenes ---------------------------------------------------------------------
+
+/// Draws 3D scenes with Direct3D 11 (for `D3D11Area`): into a multisampled
+/// colour texture with depth, resolved and copied into the renderer's frame
+/// on the GPU (`renderToFrame`), or into an image on the CPU
+/// (`renderToImage`). A scene makes pipelines of its own shaders (DXBC,
+/// compiled by fxc when it is built), and buffers, and draws with them in
+/// its `render`:
+///
+///     ctx.bindPipeline(s.pipeline);
+///     ctx.setUniforms(Uniforms, &uniforms);
+///     ctx.bindVertexBuffer(s.vbo);
+///     ctx.bindIndexBuffer16(s.ibo);
+///     ctx.drawIndexed(36);
+///
+/// Its vertex shader reads attribute `location` as `TEXCOORD<location>`,
+/// and the uniforms are the constant buffer in register b0 (of both
+/// shaders), a matrix in it as column-major as Zig's `[4][4]f32` of columns
+/// (HLSL's default), so that `mul(m, v)` is `m` times `v`.
+pub const OffscreenContext = struct {
+    gpa: std.mem.Allocator,
+    device: Obj,
+    context: Obj,
+    /// Whether the device is its own (not the renderer's).
+    owned: bool,
+    depth_on: ?Obj = null,
+    depth_off: ?Obj = null,
+    /// What a scene is drawn in: the multisampled colour (if more than one
+    /// sample) and depth, and the colour resolved; their size and samples.
+    msaa_tex: ?Obj = null,
+    msaa_rtv: ?Obj = null,
+    depth_tex: ?Obj = null,
+    depth_dsv: ?Obj = null,
+    resolve: ?Obj = null,
+    resolve_rtv: ?Obj = null,
+    target_size: [2]u32 = .{ 0, 0 },
+    samples: u8 = 0,
+    staging: ?Obj = null,
+    staging_w: u32 = 0,
+    staging_h: u32 = 0,
+    /// The size of what is being drawn (for `aspect`), the uniforms'
+    /// buffer, and the vertices' stride (the bound pipeline's).
+    width: u32 = 0,
+    height: u32 = 0,
+    uniforms: ?Obj = null,
+    uniforms_size: usize = 0,
+    stride: u32 = 0,
+
+    pub const Buffer = struct {
+        buf: ?Obj = null,
+    };
+
+    pub const PipelineDesc = struct {
+        /// The vertex and pixel shaders, as DXBC.
+        vertex: []const u8,
+        pixel: []const u8,
+        vertex_stride: u32,
+        /// Each attribute's floats (1 to 4), read as `TEXCOORD<location>`.
+        attributes: []const shaders.Attribute,
+        cull_back: bool = true,
+        front_ccw: bool = true,
+        depth_test: bool = true,
+        blend: bool = false,
+    };
+
+    pub const Pipeline = struct {
+        vs: ?Obj = null,
+        ps: ?Obj = null,
+        layout: ?Obj = null,
+        raster: ?Obj = null,
+        blend: ?Obj = null,
+        stride: u32 = 0,
+        depth_test: bool = true,
+    };
+
+    pub const sample_counts = [4]u8{ 1, 2, 4, 8 };
+
+    /// On the system's GPU, its own.
+    pub fn init(gpa: std.mem.Allocator) !OffscreenContext {
+        const dev = try createDevice(false);
+        return initWith(gpa, dev.device, dev.context, true);
+    }
+
+    /// On a renderer's GPU (`D3D11Renderer.sharedDevice`), so that scenes
+    /// are drawn straight into its frames.
+    pub fn initShared(gpa: std.mem.Allocator, shared: SharedDevice) !OffscreenContext {
+        if (builtin.os.tag != .windows) return error.Unsupported;
+        return initWith(gpa, shared.device, shared.context, false);
+    }
+
+    fn initWith(gpa: std.mem.Allocator, device: Obj, context: Obj, owned: bool) !OffscreenContext {
+        var self: OffscreenContext = .{ .gpa = gpa, .device = device, .context = context, .owned = owned };
+        errdefer self.deinit();
+        self.depth_on = try Device.createDepthStencilState(device, &.{ .DepthEnable = w32.TRUE, .DepthWriteMask = 1, .DepthFunc = 2 }); // LESS
+        self.depth_off = try Device.createDepthStencilState(device, &.{ .DepthEnable = w32.FALSE, .DepthWriteMask = 0, .DepthFunc = 8 }); // ALWAYS
+        return self;
+    }
+
+    pub fn deinit(self: *OffscreenContext) void {
+        for ([_]?Obj{ self.depth_on, self.depth_off, self.msaa_rtv, self.msaa_tex, self.depth_dsv, self.depth_tex, self.resolve_rtv, self.resolve, self.staging, self.uniforms }) |o| w32.release(o);
+        if (self.owned) {
+            w32.release(self.context);
+            w32.release(self.device);
+        }
+        self.* = undefined;
+    }
+
+    /// Lets what it gave the GPU go (Direct3D keeps what is still drawn).
+    pub fn waitIdle(self: *OffscreenContext) void {
+        Context.flush(self.context);
+    }
+
+    pub fn aspect(self: *const OffscreenContext) f32 {
+        if (self.height == 0) return 1;
+        return @as(f32, @floatFromInt(self.width)) / @as(f32, @floatFromInt(self.height));
+    }
+
+    pub fn createPipeline(self: *OffscreenContext, desc: PipelineDesc) !Pipeline {
+        if (desc.vertex.len == 0 or desc.pixel.len == 0) return error.NoShaders;
+        var p: Pipeline = .{ .stride = desc.vertex_stride, .depth_test = desc.depth_test };
+        errdefer self.destroyPipeline(p);
+        p.vs = try Device.createVertexShader(self.device, desc.vertex);
+        p.ps = try Device.createPixelShader(self.device, desc.pixel);
+        var elements: [16]InputElementDesc = undefined;
+        if (desc.attributes.len > elements.len) return error.TooManyAttributes;
+        for (desc.attributes, 0..) |a, i| {
+            elements[i] = .{
+                .SemanticName = "TEXCOORD",
+                .SemanticIndex = a.location,
+                .Format = switch (a.components) {
+                    1 => format_r32,
+                    2 => format_rg32,
+                    3 => format_rgb32,
+                    else => format_rgba32,
+                },
+                .AlignedByteOffset = a.offset,
+            };
+        }
+        p.layout = try Device.createInputLayout(self.device, elements[0..desc.attributes.len], desc.vertex);
+        p.raster = try Device.createRasterizerState(self.device, &.{
+            .CullMode = if (desc.cull_back) 3 else 1, // BACK, NONE
+            .FrontCounterClockwise = if (desc.front_ccw) w32.TRUE else w32.FALSE,
+            .MultisampleEnable = w32.TRUE,
+        });
+        if (desc.blend) {
+            var blend: BlendDesc = .{};
+            blend.RenderTarget[0] = .{ .BlendEnable = w32.TRUE, .SrcBlend = 5, .DestBlend = 6, .SrcBlendAlpha = 2, .DestBlendAlpha = 6 };
+            p.blend = try Device.createBlendState(self.device, &blend);
+        }
+        return p;
+    }
+
+    pub fn destroyPipeline(_: *const OffscreenContext, p: Pipeline) void {
+        for ([_]?Obj{ p.vs, p.ps, p.layout, p.raster, p.blend }) |o| w32.release(o);
+    }
+
+    pub fn createVertexBuffer(self: *const OffscreenContext, comptime T: type, items: []const T) !Buffer {
+        return self.buffer(std.mem.sliceAsBytes(items), bind_vertex);
+    }
+
+    pub fn createIndexBuffer(self: *const OffscreenContext, indices: []const u16) !Buffer {
+        return self.buffer(std.mem.sliceAsBytes(indices), bind_index);
+    }
+
+    fn buffer(self: *const OffscreenContext, bytes: []const u8, bind: u32) !Buffer {
+        if (bytes.len == 0) return .{};
+        const init_data: SubresourceData = .{ .pSysMem = bytes.ptr };
+        return .{ .buf = try Device.createBuffer(self.device, .{ .ByteWidth = @intCast(bytes.len), .Usage = usage_immutable, .BindFlags = bind }, &init_data) };
+    }
+
+    pub fn destroyBuffer(_: *const OffscreenContext, buf: Buffer) void {
+        w32.release(buf.buf);
+    }
+
+    pub fn bindPipeline(self: *OffscreenContext, p: Pipeline) void {
+        const c = self.context;
+        Context.iaSetInputLayout(c, p.layout);
+        Context.iaSetTriangles(c);
+        Context.vsSetShader(c, p.vs);
+        Context.psSetShader(c, p.ps);
+        Context.rsSetState(c, p.raster);
+        Context.omSetBlendState(c, p.blend);
+        Context.omSetDepthStencilState(c, if (p.depth_test) self.depth_on else self.depth_off);
+        self.stride = p.stride;
+    }
+
+    /// The uniforms both shaders read (their constant buffer, b0).
+    pub fn setUniforms(self: *OffscreenContext, comptime T: type, value: *const T) void {
+        const len = std.mem.alignForward(usize, @sizeOf(T), 16);
+        if (self.uniforms == null or self.uniforms_size < len) {
+            w32.release(self.uniforms);
+            self.uniforms = Device.createBuffer(self.device, .{ .ByteWidth = @intCast(len), .Usage = usage_dynamic, .BindFlags = bind_constant, .CPUAccessFlags = cpu_write }, null) catch null;
+            self.uniforms_size = if (self.uniforms == null) 0 else len;
+        }
+        const buf = self.uniforms orelse return;
+        const m = Context.map(self.context, buf, map_write_discard) catch return;
+        @memcpy(@as([*]u8, @ptrCast(m.pData.?))[0..@sizeOf(T)], std.mem.asBytes(value));
+        Context.unmap(self.context, buf);
+        Context.vsSetConstantBuffer(self.context, buf);
+        Context.psSetConstantBuffer(self.context, buf);
+    }
+
+    pub fn bindVertexBuffer(self: *OffscreenContext, buf: Buffer) void {
+        Context.iaSetVertexBuffer(self.context, buf.buf, self.stride, 0);
+    }
+
+    pub fn bindIndexBuffer16(self: *OffscreenContext, buf: Buffer) void {
+        Context.iaSetIndexBuffer16(self.context, buf.buf);
+    }
+
+    pub fn draw(self: *OffscreenContext, vertex_count: u32) void {
+        Context.draw(self.context, vertex_count, 0);
+    }
+
+    pub fn drawIndexed(self: *OffscreenContext, index_count: u32) void {
+        Context.drawIndexed(self.context, index_count);
+    }
+
+    fn sampleIndex(samples: u8) usize {
+        return switch (samples) {
+            0, 1 => 0,
+            2, 3 => 1,
+            4...7 => 2,
+            else => 3,
+        };
+    }
+
+    /// Makes what a scene is drawn in `width` by `height`, with as many
+    /// samples as asked (or the most the GPU has, fewer).
+    fn ensureTargets(self: *OffscreenContext, width: u32, height: u32, samples: u8) !void {
+        var count = sample_counts[sampleIndex(samples)];
+        while (count > 1 and !Device.supportsSamples(self.device, format_bgra8, count)) count /= 2;
+        if (self.resolve != null and self.target_size[0] == width and self.target_size[1] == height and self.samples == count) return;
+        for ([_]?Obj{ self.msaa_rtv, self.msaa_tex, self.depth_dsv, self.depth_tex, self.resolve_rtv, self.resolve }) |o| w32.release(o);
+        self.msaa_rtv = null;
+        self.msaa_tex = null;
+        self.depth_dsv = null;
+        self.depth_tex = null;
+        self.resolve_rtv = null;
+        self.resolve = null;
+        self.samples = count;
+        self.target_size = .{ width, height };
+        self.resolve = try Device.createTexture2D(self.device, .{ .Width = width, .Height = height, .Format = format_bgra8, .BindFlags = bind_render_target | bind_shader_resource }, null);
+        self.resolve_rtv = try Device.createRenderTargetView(self.device, self.resolve.?);
+        if (count > 1) {
+            self.msaa_tex = try Device.createTexture2D(self.device, .{ .Width = width, .Height = height, .Format = format_bgra8, .SampleCount = count, .BindFlags = bind_render_target }, null);
+            self.msaa_rtv = try Device.createRenderTargetView(self.device, self.msaa_tex.?);
+        }
+        self.depth_tex = try Device.createTexture2D(self.device, .{ .Width = width, .Height = height, .Format = format_d24s8, .SampleCount = count, .BindFlags = bind_depth_stencil }, null);
+        self.depth_dsv = try Device.createDepthStencilView(self.device, self.depth_tex.?);
+    }
+
+    /// Draws the scene (`width` by `height`) over `clear_color` into
+    /// `resolve`.
+    fn encodeScene(self: *OffscreenContext, width: u32, height: u32, clear_color: ?canvas_mod.Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !void {
+        try self.ensureTargets(width, height, samples);
+        self.width = width;
+        self.height = height;
+        const c = self.context;
+        const rtv = self.msaa_rtv orelse self.resolve_rtv.?;
+        Context.omSetRenderTarget(c, rtv, self.depth_dsv);
+        Context.rsSetViewport(c, 0, 0, @floatFromInt(width), @floatFromInt(height));
+        if (clear_color) |col| Context.clearRenderTargetView(c, rtv, .{ col.r, col.g, col.b, col.a });
+        Context.clearDepth(c, self.depth_dsv.?);
+        try render_fn(user_ctx, self);
+        if (self.msaa_tex) |m| Context.resolve(c, self.resolve.?, m, format_bgra8);
+        Context.omSetRenderTarget(c, null, null);
+    }
+
+    /// Draws the scene over `area`'s viewport into `frame` on the GPU,
+    /// within its scissor; false if `frame` is on another GPU (draw with
+    /// `renderToImage`).
+    pub fn renderToFrame(self: *OffscreenContext, frame: *const DirectFrame, area: GpuArea, clear_color: ?canvas_mod.Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !bool {
+        if (frame.device != self.device) return false;
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return true;
+        const full: Viewport = .{ .width = frame.width, .height = frame.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return true else vp) orelse return true;
+        try self.encodeScene(vp.width, vp.height, clear_color, samples, user_ctx, render_fn);
+        const box = boxOf(.{ .x = sc.x - vp.x, .y = sc.y - vp.y, .width = sc.width, .height = sc.height });
+        Context.copySubresourceRegion(self.context, frame.texture, @intCast(sc.x), @intCast(sc.y), self.resolve.?, &box);
+        return true;
+    }
+
+    /// Draws the scene over `area`'s viewport into `target` on the CPU,
+    /// within its scissor.
+    pub fn renderToImage(self: *OffscreenContext, target: *software.Image, area: GpuArea, clear_color: ?canvas_mod.Color, samples: u8, user_ctx: anytype, comptime render_fn: anytype) !void {
+        const vp = area.viewport;
+        if (vp.width == 0 or vp.height == 0) return;
+        const full: Viewport = .{ .width = target.width, .height = target.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return else vp) orelse return;
+        try self.encodeScene(vp.width, vp.height, clear_color, samples, user_ctx, render_fn);
+        if (self.staging == null or self.staging_w < vp.width or self.staging_h < vp.height) {
+            w32.release(self.staging);
+            self.staging = null;
+            self.staging = try Device.createTexture2D(self.device, .{ .Width = vp.width, .Height = vp.height, .Format = format_bgra8, .Usage = usage_staging, .CPUAccessFlags = cpu_read }, null);
+            self.staging_w = vp.width;
+            self.staging_h = vp.height;
+        }
+        const local: Viewport = .{ .x = sc.x - vp.x, .y = sc.y - vp.y, .width = sc.width, .height = sc.height };
+        const box = boxOf(local);
+        Context.copySubresourceRegion(self.context, self.staging.?, box.left, box.top, self.resolve.?, &box);
+        const m = try Context.map(self.context, self.staging.?, map_read);
+        defer Context.unmap(self.context, self.staging.?);
+        const base: [*]const u8 = @ptrCast(m.pData.?);
+        const stride = target.rowStride();
+        for (0..sc.height) |row| {
+            const src: [*]const u32 = @ptrCast(@alignCast(base + (@as(usize, @intCast(local.y)) + row) * m.RowPitch + @as(usize, @intCast(local.x)) * 4));
+            const dst_at = (@as(usize, @intCast(sc.y)) + row) * stride + @as(usize, @intCast(sc.x));
+            @memcpy(target.pixels[dst_at..][0..sc.width], src[0..sc.width]);
+        }
+    }
+};

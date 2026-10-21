@@ -4,7 +4,8 @@
 //!   widgets, layout, state, damage tracking, and input handling
 //! * `gfx`: 2D vector canvas (`Canvas`), glyph `Atlas`, `Image`, generic
 //!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,
-//!   `VulkanRenderer` and `MetalRenderer` (macOS) backends
+//!   `VulkanRenderer`, `MetalRenderer` (macOS) and `D3D11Renderer`
+//!   (Windows) backends
 //! * `window`: generic `Window` interface, `Controls`, `InputEvent`,
 //!   `Clipboard`, and the built-in backends: `WaylandWindow` (Linux),
 //!   `MacWindow` (macOS) and `Win32Window` (Windows), `NativeWindow` being
@@ -139,6 +140,7 @@ pub const tween = ui.tween;
 pub const OpenGlArea = ui.OpenGlArea;
 pub const VulkanArea = ui.VulkanArea;
 pub const MetalArea = ui.MetalArea;
+pub const D3D11Area = ui.D3D11Area;
 
 pub const RenderBackend = gfx.RenderBackend;
 pub const Renderer = gfx.Renderer;
@@ -147,6 +149,8 @@ pub const OpenGlRenderer = gfx.OpenGlRenderer;
 pub const OpenGlContext = gfx.OpenGlContext;
 pub const MetalRenderer = gfx.MetalRenderer;
 pub const MetalContext = gfx.MetalContext;
+pub const D3D11Renderer = gfx.D3D11Renderer;
+pub const D3D11Context = gfx.D3D11Context;
 pub const VulkanRenderer = gfx.VulkanRenderer;
 pub const VulkanContext = gfx.VulkanContext;
 pub const Platform = window.Platform;

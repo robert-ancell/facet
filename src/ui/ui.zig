@@ -91,6 +91,7 @@ pub const tween = @import("tween.zig");
 pub const opengl_area = @import("opengl_area.zig");
 pub const vulkan_area = @import("vulkan_area.zig");
 pub const metal_area = @import("metal_area.zig");
+pub const d3d11_area = @import("d3d11_area.zig");
 /// The icons there are (`icons.Icon`), and their font.
 pub const icons = @import("icons");
 pub const keymap = @import("keymap.zig");
@@ -209,6 +210,7 @@ pub const AnimatedWidget = animated.AnimatedWidget;
 pub const OpenGlArea = opengl_area.OpenGlArea;
 pub const VulkanArea = vulkan_area.VulkanArea;
 pub const MetalArea = metal_area.MetalArea;
+pub const D3D11Area = d3d11_area.D3D11Area;
 
 pub const Painter = painter.Painter;
 pub const GpuArea = painter.GpuArea;
@@ -280,6 +282,7 @@ test {
     _ = opengl_area;
     _ = vulkan_area;
     _ = metal_area;
+    _ = d3d11_area;
     _ = keymap;
     _ = painter;
     _ = damage;

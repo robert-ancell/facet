@@ -1,6 +1,6 @@
 //! 3D: a scene drawn on the GPU in a widget, with the APIs the system has
-//! (Vulkan and OpenGL on Linux, Metal on macOS), turned by dragging, and
-//! how it is drawn.
+//! (Vulkan and OpenGL on Linux, Metal on macOS, Direct3D 11 on Windows),
+//! turned by dragging, and how it is drawn.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -58,7 +58,9 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .macos => common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{
             area(cx, s, facet.MetalArea, .metal, "Metal"),
         }),
-        .windows => common.section(cx, "Direct3D 11", "No 3D scene on Windows yet", &.{}),
+        .windows => common.section(cx, "Direct3D 11", "The scene drawn with Direct3D 11, on the renderer's GPU where it can be; drag it to turn it", &.{
+            area(cx, s, facet.D3D11Area, .d3d11, "Direct3D 11"),
+        }),
         else => common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", &.{
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
                 cx.make(facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") }),

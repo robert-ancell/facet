@@ -63,6 +63,7 @@ pub const VulkanContext = vulkan.OffscreenContext;
 pub const MetalRenderer = metal.MetalRenderer;
 pub const MetalContext = metal.OffscreenContext;
 pub const D3D11Renderer = d3d11.D3D11Renderer;
+pub const D3D11Context = d3d11.OffscreenContext;
 pub const D3D11Target = renderer.D3D11Target;
 
 test {

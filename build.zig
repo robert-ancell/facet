@@ -73,6 +73,15 @@ fn addCanvasDxbc(b: *std.Build, gfx: *std.Build.Module) void {
     }
 }
 
+/// A 3D scene's HLSL (`vertex_main` and `pixel_main`), compiled to DXBC and
+/// embedded in `mod` as `<name>_vs.dxbc` and `<name>_ps.dxbc`.
+fn addSceneDxbc(b: *std.Build, mod: *std.Build.Module, name: []const u8, source: []const u8) void {
+    const vs = b.fmt("{s}_vs.dxbc", .{name});
+    const ps = b.fmt("{s}_ps.dxbc", .{name});
+    mod.addAnonymousImport(vs, .{ .root_source_file = addDxbc(b, vs, source, "vertex_main", "vs_5_0") });
+    mod.addAnonymousImport(ps, .{ .root_source_file = addDxbc(b, ps, source, "pixel_main", "ps_5_0") });
+}
+
 /// HLSL compiled to DXBC (shader model 5.0, for Direct3D 11) by fxc, the
 /// Windows SDK's compiler, when building on Windows (`-Dfxc=` says where it
 /// is, if it is not on PATH or in the SDK). Facet is built for Windows on
@@ -266,8 +275,13 @@ pub fn build(b: *std.Build) void {
         source: []const u8,
         desc: []const u8,
         polyhedron_spv: ?std.Build.LazyPath = null,
-        /// Not built for Windows (it uses an API facet has only elsewhere).
+        /// Not built for Windows (it uses an API facet has only elsewhere),
+        /// or built only for it.
         not_windows: bool = false,
+        only_windows: bool = false,
+        /// HLSL compiled to DXBC (on Windows), embedded as `<name>_vs.dxbc`
+        /// and `<name>_ps.dxbc`: its source, and its two entry points.
+        hlsl: ?struct { name: []const u8, source: []const u8 } = null,
     }{
         .{ .name = "hello", .source = "examples/hello.zig", .desc = "Run the interactive counter example" },
         .{ .name = "navigation", .source = "examples/navigation.zig", .desc = "Run the inbox navigation, dialog, and snackbar example" },
@@ -278,13 +292,15 @@ pub fn build(b: *std.Build) void {
         .{ .name = "opengl", .source = "examples/opengl.zig", .desc = "Run the OpenGL 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_gl_spv, .not_windows = true },
         .{ .name = "vulkan", .source = "examples/vulkan.zig", .desc = "Run the Vulkan 3D Platonic solid viewer example", .polyhedron_spv = polyhedron_vk_spv, .not_windows = true },
         .{ .name = "metal", .source = "examples/metal.zig", .desc = "Run the Metal 3D Platonic solid viewer example (macOS)", .not_windows = true },
+        .{ .name = "d3d11", .source = "examples/d3d11.zig", .desc = "Run the Direct3D 11 3D Platonic solid viewer example (Windows)", .only_windows = true, .hlsl = .{ .name = "polyhedron", .source = "examples/shaders/polyhedron.hlsl" } },
     };
 
     const examples_step = b.step("examples", "Build all example applications");
     const test_step = b.step("test", "Run all unit tests");
 
     for (examples) |ex| {
-        if (ex.not_windows and target.result.os.tag == .windows) continue;
+        const windows = target.result.os.tag == .windows;
+        if (ex.not_windows and windows or ex.only_windows and !windows) continue;
         const mod = b.createModule(.{
             .root_source_file = b.path(ex.source),
             .target = target,
@@ -294,6 +310,7 @@ pub fn build(b: *std.Build) void {
         if (ex.polyhedron_spv) |spv| {
             mod.addAnonymousImport("polyhedron.spv", .{ .root_source_file = spv });
         }
+        if (ex.hlsl) |h| addSceneDxbc(b, mod, h.name, h.source);
         const exe = b.addExecutable(.{
             .name = ex.name,
             .root_module = mod,
@@ -333,6 +350,7 @@ pub fn build(b: *std.Build) void {
         if (tool.cube) {
             mod.addAnonymousImport("cube_vulkan.spv", .{ .root_source_file = cube_vulkan_spv });
             mod.addAnonymousImport("cube_opengl.spv", .{ .root_source_file = cube_opengl_spv });
+            if (target.result.os.tag == .windows) addSceneDxbc(b, mod, "cube", "tools/showcase/shaders/cube.hlsl");
         }
         const exe = b.addExecutable(.{
             .name = tool.name,

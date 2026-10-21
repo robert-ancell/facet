@@ -1,6 +1,7 @@
 //! A spinning cube, drawn by the showcase's 3D widgets: `Scene(Api)` is the
 //! scene for `facet.VulkanArea` (`Api = .vulkan`), `facet.OpenGlArea`
-//! (`Api = .opengl`) or `facet.MetalArea` (`Api = .metal`).
+//! (`Api = .opengl`), `facet.MetalArea` (`Api = .metal`) or
+//! `facet.D3D11Area` (`Api = .d3d11`).
 
 const std = @import("std");
 const facet = @import("facet");
@@ -61,13 +62,14 @@ const indices: [faces.len * 6]u16 = blk: {
     break :blk out;
 };
 
-pub const Api = enum { vulkan, opengl, metal };
+pub const Api = enum { vulkan, opengl, metal, d3d11 };
 
 pub fn Scene(comptime api: Api) type {
     const Context = switch (api) {
         .vulkan => facet.VulkanContext,
         .opengl => facet.OpenGlContext,
         .metal => facet.MetalContext,
+        .d3d11 => facet.D3D11Context,
     };
     return struct {
         /// How far round the cube has turned, and tilted towards the
@@ -104,6 +106,13 @@ pub fn Scene(comptime api: Api) type {
                         .attributes = &attributes,
                         .cull_back = false,
                     }),
+                    .d3d11 => ctx.createPipeline(.{
+                        .vertex = @embedFile("cube_vs.dxbc"),
+                        .pixel = @embedFile("cube_ps.dxbc"),
+                        .vertex_stride = @sizeOf(Vertex),
+                        .attributes = &attributes,
+                        .cull_back = false,
+                    }),
                 };
                 s.vbo = try ctx.createVertexBuffer(Vertex, &vertices);
                 s.ibo = try ctx.createIndexBuffer(&indices);
@@ -113,7 +122,7 @@ pub fn Scene(comptime api: Api) type {
             pub fn deinit(s: *State, ctx: *Context) void {
                 switch (api) {
                     .vulkan => _ = ctx.vk.DeviceWaitIdle(ctx.device),
-                    .metal => ctx.waitIdle(),
+                    .metal, .d3d11 => ctx.waitIdle(),
                     .opengl => {},
                 }
                 ctx.destroyBuffer(s.vbo);
