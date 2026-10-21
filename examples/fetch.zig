@@ -1,8 +1,8 @@
 //! Fetching in the background on the app's `std.Io` (`zig build run-fetch`):
 //! a button starts an HTTP request with `io.async`, which runs while the
 //! UI waits in `app.step` (both on the same `Io`). When it is done it puts
-//! what it found where the UI will look, and wakes the UI (`Ui.waker`) to
-//! show it.
+//! what it found where the UI will look, and wakes the UI (`Shared.waker`)
+//! to show it.
 
 const std = @import("std");
 const facet = @import("facet");

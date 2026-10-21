@@ -11,7 +11,7 @@ It makes building modern desktop applications simple: describe your interface in
 ## Features
 
 - **Material 3 Design:** Rich set of widgets including layout containers, buttons, selection controls, text fields, code editor, dialogs, menus, tooltips, images, interactive maps, QR codes, and 3D views, with automatic light and dark themes.
-- **Cross-Platform:** Runs natively on Linux, macOS, and Windows with HiDPI scaling, clipboard support, keyboard navigation, and accessibility.
+- **Cross-Platform:** Runs natively on Linux, macOS, and Windows with HiDPI scaling, multiple windows, clipboard support, keyboard navigation, and accessibility.
 - **Hardware Accelerated:** Renders smoothly using Vulkan, OpenGL, Metal, or Direct3D 11, with a built-in software renderer fallback.
 - **Ready to Use:** Ships with bundled fonts, color emoji, and Material Icons so applications work immediately with no extra setup.
 
@@ -106,6 +106,7 @@ An app can have any number of windows (`app.openWindow` again, with a
 system asks for (to close a window, to quit) is the app's to act on: the
 options above say to act on it as most apps do, or callbacks can decide
 (`.on_close_request = .{ .call = .of(&state, State.askToSave) }`).
+`zig build run-windows` runs an example with more than one window.
 
 ## Showcase
 

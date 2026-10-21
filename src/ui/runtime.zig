@@ -87,11 +87,12 @@ pub const Clipboard = struct {
     }
 };
 
-/// Wakes a `Ui` for a frame from any thread or task: for work done in the
-/// background (a fetch started with `io.async`, say), once it has put what
-/// it made where the UI will find it. It neither blocks nor allocates, so
-/// it can be used from anywhere. From `Ui.waker`; good for as long as the
-/// `Ui` is.
+/// Wakes an app's windows (or a `Ui`) for a frame from any thread or task:
+/// for work done in the background (a fetch started with `io.async`, say),
+/// once it has put what it made where the UI will find it. It neither
+/// blocks nor allocates, so it can be used from anywhere. From
+/// `Shared.waker` (an `App`'s `shared`) or `Ui.waker`; good for as long as
+/// that is.
 pub const Waker = struct {
     wake_: ?sys.Wake = null,
     woken: ?*std.atomic.Value(bool) = null,
