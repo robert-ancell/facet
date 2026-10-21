@@ -158,14 +158,16 @@ pub const TextInputState = struct {
     }
 };
 
+/// What the user did in the window, in `Window.takeInput`. The key, button,
+/// scroll and pointer events come from every window; touch, locked pointer,
+/// text input, drag-and-drop and popup events come only from Wayland ones.
 pub const InputEvent = union(enum) {
     /// The pointer moved to (or entered at) a position in the window.
     motion: [2]f32,
     /// A Linux button code (BTN_LEFT, ...), and where the pointer was.
     button: struct { pos: [2]f32, code: u32, pressed: bool },
-    /// A Linux key code (KEY_A, ...).
-    /// What it types (from the keymap), and the modifiers held, if the
-    /// window has a keymap.
+    /// A key went down or up: its Linux key code (KEY_A, ...), what it types
+    /// (from the keymap) and the modifiers held, if the window has a keymap.
     key: struct { code: u32, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },
     /// The wheel turned: by `dy` pixels down (and `dx` right), with the
     /// pointer at `pos`.
@@ -179,11 +181,11 @@ pub const InputEvent = union(enum) {
     touch_up: i32,
     /// The window's touches were cancelled by the shell.
     touch_cancel,
-    /// Relative pointer motion for a locked pointer.
+    /// Relative pointer motion for a locked pointer (Wayland only).
     relative_motion: [2]f32,
-    /// The pointer lock took effect (true), or ended (false).
+    /// The pointer lock took effect (true), or ended (false) (Wayland only).
     pointer_locked: bool,
-    /// An input method committed UTF-8 text (`zwp_text_input_v3`).
+    /// An input method committed UTF-8 text (`zwp_text_input_v3`: Wayland only).
     text_commit: struct {
         buf: [128]u8 = undefined,
         len: u8 = 0,
@@ -205,10 +207,12 @@ pub const InputEvent = union(enum) {
     },
     /// An input method asked to delete bytes around the cursor.
     text_delete_surrounding: struct { before_length: u32, after_length: u32 },
-    /// Drag-and-drop events.
+    /// Something is being dragged over the window (Wayland only), entering
+    /// at a position, moving over it, or leaving it...
     drag_enter: [2]f32,
     drag_motion: [2]f32,
     drag_leave,
+    /// ...or dropped at a position (`Window.takeDrop` has what).
     drop: [2]f32,
     /// The window system closed a popup (`Window.openPopup`), with this id:
     /// a menu, when its pointer or keyboard was used elsewhere.
@@ -217,11 +221,14 @@ pub const InputEvent = union(enum) {
 
 /// Windowing system / display server backend.
 pub const Platform = enum {
+    /// No window system: the app has no window.
     headless,
     wayland,
+    /// X11 (there is no built-in backend for it: a custom one can say so).
     x11,
     windows,
     macos,
+    /// A backend of the app's own that does not say.
     custom,
 
     pub fn name(p: Platform) []const u8 {
@@ -238,10 +245,16 @@ pub const Platform = enum {
 
 /// Surface buffer presentation mechanism.
 pub const BufferTransport = enum {
+    /// Frames drawn on the CPU, in memory the window system takes (macOS).
     memory,
+    /// Frames drawn on the CPU, in Wayland shared memory (`wl_shm`).
     wl_shm,
+    /// Frames drawn on the GPU into dmabufs the compositor takes (Linux).
     linux_dmabuf,
+    /// Frames drawn on the GPU into the window's own swapchain (a Metal
+    /// layer on macOS).
     swapchain,
+    /// A backend of the app's own that does not say.
     custom,
 
     pub fn name(t: BufferTransport) []const u8 {
@@ -296,9 +309,14 @@ pub const BufferSync = enum {
 pub const FrameSync = packed struct(u8) {
     /// Frames are shown at most once a refresh, without tearing.
     vsync: bool = false,
+    /// The compositor says when to draw the next frame (`wl_surface.frame`).
     frame_callback: bool = false,
+    /// The compositor says when each frame was shown (`wp_presentation`).
     presentation_time: bool = false,
+    /// Each frame waits for the last to be shown, not replacing it (`wp_fifo_v1`).
     fifo_v1: bool = false,
+    /// Frames can be set to be shown at a time (`wp_commit_timing_v1`: see
+    /// `Window.setPresentationTime`).
     commit_timing_v1: bool = false,
     _pad: u3 = 0,
 };
