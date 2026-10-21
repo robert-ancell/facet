@@ -63,82 +63,82 @@ pub const NavigationDemo = struct {
 
         const body = cx.make(facet.Row{
             .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.NavigationRail{
+            .children = cx.makeAll(.{
+                facet.NavigationRail{
                     .items = &rail_items,
                     .selected = state.section,
                     .on_select = .of(state, State.selectSection),
-                }),
-                cx.make(facet.Divider{ .axis = .vertical }),
-                cx.make(facet.Expanded{
+                },
+                facet.Divider{ .axis = .vertical },
+                facet.Expanded{
                     .child = cx.make(facet.Column{
                         .cross_axis_alignment = .stretch,
-                        .children = &.{
-                            cx.make(facet.TabBar{
+                        .children = cx.makeAll(.{
+                            facet.TabBar{
                                 .tabs = &tabs,
                                 .selected = state.tab,
                                 .on_select = .of(state, State.selectTab),
-                            }),
-                            cx.make(facet.Expanded{
+                            },
+                            facet.Expanded{
                                 .child = cx.make(facet.Padding{
                                     .padding = .all(24),
                                     .child = cx.make(facet.Column{
                                         .cross_axis_alignment = .stretch,
                                         .spacing = 12,
-                                        .children = &.{
-                                            cx.make(facet.Row{
+                                        .children = cx.makeAll(.{
+                                            facet.Row{
                                                 .spacing = 12,
                                                 .cross_axis_alignment = .center,
-                                                .children = &.{
-                                                    cx.make(facet.Badge{
+                                                .children = cx.makeAll(.{
+                                                    facet.Badge{
                                                         .count = state.unread,
                                                         .child = cx.make(facet.Icon{ .icon = .forum, .size = 28 }),
-                                                    }),
-                                                    cx.make(facet.Text{
+                                                    },
+                                                    facet.Text{
                                                         .text = cx.fmt("Section {d} · Tab {d} ({d} unread)", .{ state.section + 1, state.tab + 1, state.unread }),
                                                         .style = .{ .size = 18 },
-                                                    }),
-                                                    cx.make(facet.Tooltip{
+                                                    },
+                                                    facet.Tooltip{
                                                         .text = "Clear all unread items",
                                                         .child = cx.make(facet.IconButton{
                                                             .icon = .delete_sweep,
                                                             .variant = .tonal,
                                                             .on_press = .of(state, State.openClearDialog),
                                                         }),
-                                                    }),
-                                                },
-                                            }),
-                                            cx.make(facet.Card{
+                                                    },
+                                                }),
+                                            },
+                                            facet.Card{
                                                 .variant = .outlined,
                                                 .padding = .all(8),
                                                 .child = cx.make(facet.Column{
                                                     .cross_axis_alignment = .stretch,
-                                                    .children = &.{
-                                                        cx.make(facet.ListItem{
+                                                    .children = cx.makeAll(.{
+                                                        facet.ListItem{
                                                             .headline = "Welcome to Facet",
                                                             .supporting_text = "Click to mark one message as read",
                                                             .leading_icon = .chat,
                                                             .trailing_icon = .chevron_right,
                                                             .on_press = .of(state, State.markOneRead),
-                                                        }),
-                                                        cx.make(facet.Divider{}),
-                                                        cx.make(facet.ListItem{
+                                                        },
+                                                        facet.Divider{},
+                                                        facet.ListItem{
                                                             .headline = "System Status",
                                                             .supporting_text = "All rendering backends healthy",
                                                             .leading_icon = .memory,
                                                             .trailing_text = "OK",
-                                                        }),
-                                                    },
+                                                        },
+                                                    }),
                                                 }),
-                                            }),
-                                        },
+                                            },
+                                        }),
                                     }),
                                 }),
-                            }),
-                        },
+                            },
+                        }),
                     }),
-                }),
-            },
+                },
+            }),
         });
 
         const with_snackbar = cx.make(facet.Snackbar{

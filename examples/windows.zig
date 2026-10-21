@@ -49,16 +49,16 @@ const MainView = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .spacing = 16,
-                .children = &.{
-                    cx.make(facet.Text{
+                .children = cx.makeAll(.{
+                    facet.Text{
                         .text = cx.fmt("{d} open of {d} opened", .{ self.windows.openCount(), self.windows.opened }),
-                    }),
-                    cx.make(facet.FilledButton{
+                    },
+                    facet.FilledButton{
                         .label = "Open a window",
                         .icon = .add,
                         .on_press = .of(self.windows, Windows.open),
-                    }),
-                },
+                    },
+                }),
             }),
         });
     }
@@ -83,13 +83,13 @@ const Counter = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .spacing = 16,
-                .children = &.{
-                    cx.make(facet.Text{ .text = cx.fmt("Count: {d}", .{state.count}) }),
-                    cx.make(facet.OutlinedButton{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = cx.fmt("Count: {d}", .{state.count}) },
+                    facet.OutlinedButton{
                         .label = "Count",
                         .on_press = .of(state, State.increment),
-                    }),
-                },
+                    },
+                }),
             }),
         });
     }

@@ -88,15 +88,15 @@ const FetchView = struct {
             .main_axis_size = .min,
             .cross_axis_alignment = .center,
             .spacing = 16,
-            .children = &.{
-                cx.make(facet.Text{ .text = url }),
-                cx.make(facet.Text{ .text = text }),
-                cx.make(facet.FilledButton{
+            .children = cx.makeAll(.{
+                facet.Text{ .text = url },
+                facet.Text{ .text = text },
+                facet.FilledButton{
                     .label = "Fetch",
                     .icon = .download,
                     .on_press = if (status == .fetching) null else .of(self.fetch, Fetch.start),
-                }),
-            },
+                },
+            }),
         }) });
     }
 };

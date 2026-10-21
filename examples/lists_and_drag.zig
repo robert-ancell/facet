@@ -54,17 +54,17 @@ pub const ListsAndDragDemo = struct {
                 .child = cx.make(facet.Row{
                     .spacing = 10,
                     .cross_axis_alignment = .center,
-                    .children = &.{
-                        cx.make(facet.Icon{
+                    .children = cx.makeAll(.{
+                        facet.Icon{
                             .icon = .description,
                             .size = 20,
                             .color = if (selected) t.primary else t.on_surface_variant,
-                        }),
-                        cx.make(facet.Text{
+                        },
+                        facet.Text{
                             .text = label,
                             .wrap = false,
-                        }),
-                    },
+                        },
+                    }),
                 }),
             }),
         });
@@ -87,18 +87,18 @@ pub const ListsAndDragDemo = struct {
             .child = cx.make(facet.Row{
                 .cross_axis_alignment = .stretch,
                 .spacing = 20,
-                .children = &.{
-                    cx.make(facet.Expanded{
+                .children = cx.makeAll(.{
+                    facet.Expanded{
                         .flex = 2,
                         .child = cx.make(facet.Column{
                             .cross_axis_alignment = .stretch,
                             .spacing = 8,
-                            .children = &.{
-                                cx.make(facet.Text{
+                            .children = cx.makeAll(.{
+                                facet.Text{
                                     .text = "Virtualized LazyGrid (500 items — drag any card to the right):",
                                     .style = .{ .size = t.body_size, .color = t.on_surface_variant },
-                                }),
-                                cx.make(facet.Expanded{
+                                },
+                                facet.Expanded{
                                     .child = cx.make(facet.ScrollView{
                                         .child = cx.make(facet.LazyGrid{
                                             .count = item_count,
@@ -107,11 +107,11 @@ pub const ListsAndDragDemo = struct {
                                             .item = .of(state, buildGridItem),
                                         }),
                                     }),
-                                }),
-                            },
+                                },
+                            }),
                         }),
-                    }),
-                    cx.make(facet.SizedBox{
+                    },
+                    facet.SizedBox{
                         .width = 240,
                         .child = cx.make(facet.DropTarget{
                             .on_drop = .of(state, State.addPinned),
@@ -121,33 +121,33 @@ pub const ListsAndDragDemo = struct {
                                 .child = cx.make(facet.Column{
                                     .cross_axis_alignment = .start,
                                     .spacing = 12,
-                                    .children = &.{
-                                        cx.make(facet.Text{
+                                    .children = cx.makeAll(.{
+                                        facet.Text{
                                             .text = "Drop Zone (Pinned)",
                                             .style = .{ .size = 18, .color = t.on_surface },
-                                        }),
-                                        cx.make(facet.Text{
+                                        },
+                                        facet.Text{
                                             .text = if (state.selected_item) |sel|
                                                 cx.fmt("Last clicked: Item #{d}", .{sel + 1})
                                             else
                                                 "Drag items here to pin them.",
                                             .style = .{ .size = t.body_size, .color = t.on_surface_variant },
-                                        }),
-                                        cx.make(facet.Column{
+                                        },
+                                        facet.Column{
                                             .cross_axis_alignment = .start,
                                             .spacing = 8,
                                             .children = pinned_widgets[0..state.pinned_len],
-                                        }),
-                                        cx.make(facet.TextButton{
+                                        },
+                                        facet.TextButton{
                                             .label = "Clear pinned",
                                             .on_press = if (state.pinned_len > 0) .of(state, State.clearPinned) else null,
-                                        }),
-                                    },
+                                        },
+                                    }),
                                 }),
                             }),
                         }),
-                    }),
-                },
+                    },
+                }),
             }),
         });
     }

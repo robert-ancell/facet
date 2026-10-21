@@ -358,7 +358,19 @@ pub const Context = struct {
         return Widget.of(T, p);
     }
 
-    /// Text formatted into the frame's arena.
+    /// Widgets of the values in the tuple `values` (each made as `make`
+    /// does; any already a `Widget` taken as it is), as a slice in the
+    /// frame's arena: for `children`.
+    pub fn makeAll(cx: *Context, values: anytype) []const Widget {
+        const fields = @typeInfo(@TypeOf(values)).@"struct".field_types;
+        const out = cx.arena.alloc(Widget, fields.len) catch return &.{};
+        inline for (fields, 0..) |F, i| {
+            out[i] = if (F == Widget) values[i] else cx.make(values[i]);
+        }
+        return out;
+    }
+
+        /// Text formatted into the frame's arena.
     pub fn fmt(cx: *Context, comptime f: []const u8, args: anytype) []const u8 {
         return cx.arena.print(f, args) catch "…";
     }

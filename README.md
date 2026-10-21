@@ -55,28 +55,28 @@ pub const Counter = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .spacing = 16,
-                .children = &.{
-                    cx.make(facet.Text{
+                .children = cx.makeAll(.{
+                    facet.Text{
                         .text = "Hello, Facet!",
-                    }),
-                    cx.make(facet.Text{
+                    },
+                    facet.Text{
                         .text = cx.fmt("Count: {d}", .{state.count}),
-                    }),
-                    cx.make(facet.Row{
+                    },
+                    facet.Row{
                         .main_axis_size = .min,
                         .spacing = 12,
-                        .children = &.{
-                            cx.make(facet.OutlinedButton{
+                        .children = cx.makeAll(.{
+                            facet.OutlinedButton{
                                 .icon = .remove,
                                 .on_press = .of(state, State.decrement),
-                            }),
-                            cx.make(facet.FilledButton{
+                            },
+                            facet.FilledButton{
                                 .icon = .add,
                                 .on_press = .of(state, State.increment),
-                            }),
-                        },
-                    }),
-                },
+                            },
+                        }),
+                    },
+                }),
             }),
         });
     }

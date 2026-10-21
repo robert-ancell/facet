@@ -237,8 +237,8 @@ pub fn Viewer(comptime Backend: type) type {
                 .child = cx.make(facet.Row{
                     .cross_axis_alignment = .stretch,
                     .spacing = 20,
-                    .children = &.{
-                        cx.make(facet.Expanded{
+                    .children = cx.makeAll(.{
+                        facet.Expanded{
                             .child = cx.make(Backend.Area(Scene){
                                 .scene = .{
                                     .shape = state.shape,
@@ -252,8 +252,8 @@ pub fn Viewer(comptime Backend: type) type {
                                 .on_drag = .of(state, State.orbit),
                                 .child = badge,
                             }),
-                        }),
-                        cx.make(facet.Card{
+                        },
+                        facet.Card{
                             .variant = .outlined,
                             .padding = .all(14),
                             .child = cx.make(facet.SizedBox{
@@ -262,68 +262,68 @@ pub fn Viewer(comptime Backend: type) type {
                                     .main_axis_size = .min,
                                     .cross_axis_alignment = .start,
                                     .spacing = 4,
-                                    .children = &.{
-                                        cx.make(facet.Text{
+                                    .children = cx.makeAll(.{
+                                        facet.Text{
                                             .text = "Platonic Solid",
                                             .style = .{ .size = 16 },
-                                        }),
+                                        },
                                         radios[0],
                                         radios[1],
                                         radios[2],
                                         radios[3],
                                         radios[4],
-                                        cx.make(facet.Divider{}),
-                                        cx.make(facet.Text{
+                                        facet.Divider{},
+                                        facet.Text{
                                             .text = "Shader Options",
                                             .style = .{ .size = 16 },
-                                        }),
-                                        cx.make(facet.SwitchRow{
+                                        },
+                                        facet.SwitchRow{
                                             .value = state.look.lighting,
                                             .on_changed = .of(state, State.setLighting),
                                             .label = "Directional Lighting",
-                                        }),
-                                        cx.make(facet.SwitchRow{
+                                        },
+                                        facet.SwitchRow{
                                             .value = state.look.texturing,
                                             .on_changed = .of(state, State.setTexturing),
                                             .label = "Checkerboard Texture",
-                                        }),
-                                        cx.make(facet.Divider{}),
-                                        cx.make(facet.Text{
+                                        },
+                                        facet.Divider{},
+                                        facet.Text{
                                             .text = "Anti-Aliasing (MSAA)",
                                             .style = .{ .size = 14, .color = t.on_surface_variant },
-                                        }),
-                                        cx.make(facet.PillBar{
-                                            .children = &.{
-                                                cx.make(facet.PillButton{
+                                        },
+                                        facet.PillBar{
+                                            .children = cx.makeAll(.{
+                                                facet.PillButton{
                                                     .label = "Off",
                                                     .selected = state.samples == 1,
                                                     .first = true,
                                                     .on_press = .of(state, State.setSamples1),
-                                                }),
-                                                cx.make(facet.PillButton{
+                                                },
+                                                facet.PillButton{
                                                     .label = "2×",
                                                     .selected = state.samples == 2,
                                                     .on_press = .of(state, State.setSamples2),
-                                                }),
-                                                cx.make(facet.PillButton{
+                                                },
+                                                facet.PillButton{
                                                     .label = "4×",
                                                     .selected = state.samples == 4,
                                                     .on_press = .of(state, State.setSamples4),
-                                                }),
-                                                cx.make(facet.PillButton{
+                                                },
+                                                facet.PillButton{
                                                     .label = "8×",
                                                     .selected = state.samples == 8,
                                                     .last = true,
                                                     .on_press = .of(state, State.setSamples8),
-                                                }),
-                                            },
-                                        }),
-                                        cx.make(facet.Divider{}),
-                                        cx.make(facet.Text{
+                                                },
+                                            }),
+                                        },
+                                        facet.Divider{},
+                                        facet.Text{
                                             .text = cx.fmt("Rotation Speed ({d:.1}×)", .{state.speed}),
                                             .style = .{ .size = 14, .color = t.on_surface_variant },
-                                        }),
-                                        cx.make(facet.SizedBox{
+                                        },
+                                        facet.SizedBox{
                                             .width = 264,
                                             .child = cx.make(facet.Slider{
                                                 .value = state.speed,
@@ -331,31 +331,31 @@ pub fn Viewer(comptime Backend: type) type {
                                                 .max = 4.0,
                                                 .on_changed = .of(state, State.setSpeed),
                                             }),
-                                        }),
-                                        cx.make(facet.Row{
+                                        },
+                                        facet.Row{
                                             .main_axis_size = .min,
                                             .spacing = 8,
-                                            .children = &.{
-                                                cx.make(facet.ConstrainedBox{
+                                            .children = cx.makeAll(.{
+                                                facet.ConstrainedBox{
                                                     .constraints = .{ .min_w = 136 },
                                                     .child = cx.make(facet.TonalButton{
                                                         .label = if (state.paused) "Resume" else "Pause",
                                                         .icon = if (state.paused) .play_arrow else .pause,
                                                         .on_press = .of(state, State.togglePause),
                                                     }),
-                                                }),
-                                                cx.make(facet.OutlinedButton{
+                                                },
+                                                facet.OutlinedButton{
                                                     .label = "Reset",
                                                     .icon = .refresh,
                                                     .on_press = .of(state, State.resetView),
-                                                }),
-                                            },
-                                        }),
-                                    },
+                                                },
+                                            }),
+                                        },
+                                    }),
                                 }),
                             }),
-                        }),
-                    },
+                        },
+                    }),
                 }),
             });
         }

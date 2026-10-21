@@ -87,23 +87,23 @@ pub const CanvasAndQrDemo = struct {
             .child = cx.make(facet.Row{
                 .cross_axis_alignment = .start,
                 .spacing = 24,
-                .children = &.{
-                    cx.make(facet.Card{
+                .children = cx.makeAll(.{
+                    facet.Card{
                         .variant = .outlined,
                         .child = cx.make(facet.Column{
                             .main_axis_size = .min,
                             .cross_axis_alignment = .start,
                             .spacing = 12,
-                            .children = &.{
-                                cx.make(facet.Text{
+                            .children = cx.makeAll(.{
+                                facet.Text{
                                     .text = "Custom 2D Vector Widget",
                                     .style = .{ .size = 18 },
-                                }),
-                                cx.make(WaveCanvas{
+                                },
+                                WaveCanvas{
                                     .animate = state.animate,
                                     .frequency = state.frequency,
-                                }),
-                                cx.make(facet.SizedBox{
+                                },
+                                facet.SizedBox{
                                     .width = 340,
                                     .child = cx.make(facet.Slider{
                                         .value = state.frequency,
@@ -111,40 +111,40 @@ pub const CanvasAndQrDemo = struct {
                                         .max = 5.0,
                                         .on_changed = .of(state, State.setFrequency),
                                     }),
-                                }),
-                                cx.make(facet.SwitchRow{
+                                },
+                                facet.SwitchRow{
                                     .value = state.animate,
                                     .on_changed = .of(state, State.setAnimate),
                                     .label = "Animate wave",
-                                }),
-                            },
+                                },
+                            }),
                         }),
-                    }),
-                    cx.make(facet.Card{
+                    },
+                    facet.Card{
                         .variant = .outlined,
                         .child = cx.make(facet.Column{
                             .main_axis_size = .min,
                             .cross_axis_alignment = .center,
                             .spacing = 12,
-                            .children = &.{
-                                cx.make(facet.Text{
+                            .children = cx.makeAll(.{
+                                facet.Text{
                                     .text = "Live QR Code Generator",
                                     .style = .{ .size = 18 },
-                                }),
-                                cx.make(facet.QrCode{
+                                },
+                                facet.QrCode{
                                     .text = payload,
                                     .size = 180,
-                                }),
-                                cx.make(facet.TextField{
+                                },
+                                facet.TextField{
                                     .width = 240,
                                     .initial = default_url,
                                     .placeholder = "Text or URL to encode",
                                     .on_changed = .of(state, State.setPayload),
-                                }),
-                            },
+                                },
+                            }),
                         }),
-                    }),
-                },
+                    },
+                }),
             }),
         });
     }

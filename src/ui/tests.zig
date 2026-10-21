@@ -2853,3 +2853,20 @@ test "an app's windows are closed as their options say, and it quits as its own 
     again.close();
     try testing.expect(!try app.step(0));
 }
+
+test "makeAll makes each of a tuple's values a widget, taking widgets as they are" {
+    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    const S = struct {
+        var all: []const Widget = &.{};
+        fn build(cx: *Context) Widget {
+            const keyed = cx.make(ui.SizedBox{ .width = 5, .height = 5 }).withKey(7);
+            all = cx.makeAll(.{ ui.SizedBox{ .width = 10, .height = 20 }, keyed });
+            return cx.make(ui.Column{ .children = all });
+        }
+    };
+    u.frame(100, 100, 0, Root(S.build){});
+    try testing.expectEqual(@as(usize, 2), S.all.len);
+    try testing.expectEqual(@as(f32, 20), S.all[0].as(ui.SizedBox).?.height.?);
+    try testing.expectEqual(@as(?u64, 7), S.all[1].key);
+}

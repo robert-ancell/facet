@@ -93,32 +93,32 @@ pub const EditorView = struct {
             .child = cx.make(facet.Column{
                 .cross_axis_alignment = .stretch,
                 .spacing = 10,
-                .children = &.{
-                    cx.make(facet.Expanded{
+                .children = cx.makeAll(.{
+                    facet.Expanded{
                         .child = cx.make(facet.TextArea{
                             .doc = self.doc,
                             .autofocus = true,
                             .highlighter = highlightZig,
                         }),
-                    }),
-                    cx.make(facet.Row{
+                    },
+                    facet.Row{
                         .main_axis_alignment = .space_between,
-                        .children = &.{
-                            cx.make(facet.Text{
+                        .children = cx.makeAll(.{
+                            facet.Text{
                                 .text = cx.fmt("{d} lines · {d} bytes · cursor at {d}", .{
                                     lines,
                                     bytes.len,
                                     self.doc.cursor,
                                 }),
                                 .style = .{ .size = 13, .color = t.on_surface_variant },
-                            }),
-                            cx.make(facet.Text{
+                            },
+                            facet.Text{
                                 .text = "Ctrl+A / Ctrl+C / Ctrl+V or Right-Click for menu",
                                 .style = .{ .size = 13, .color = t.on_surface_variant },
-                            }),
-                        },
-                    }),
-                },
+                            },
+                        }),
+                    },
+                }),
             }),
         });
     }
