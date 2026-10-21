@@ -1,4 +1,5 @@
-//! Radio: one of a group of Material 3 radio buttons (see control.zig).
+//! Radio: one of a group of Material 3 radio buttons, and `RadioRow`, one
+//! with its label beside it (see control.zig).
 
 const focus = @import("focus.zig");
 const keymap = @import("keymap.zig");
@@ -22,7 +23,9 @@ const layerAlpha = control.layerAlpha;
 const target = control.target;
 
 /// One of a group of radio buttons: selected when `value` is the group's
-/// value, and selecting it reports `value`.
+/// value, and selecting it reports `value`. Material 3 leaves its label to
+/// the text beside it (`RadioRow` has one), so name it for assistive
+/// technologies with `Accessible`.
 pub fn Radio(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -32,7 +35,6 @@ pub fn Radio(comptime T: type) type {
         /// Called with `value` when it is selected; without it the button is
         /// disabled.
         on_changed: ?ValueCallback(T) = null,
-        label: []const u8 = "",
 
         pub const State = struct {
             latest: Latest(T) = .{},
@@ -43,19 +45,47 @@ pub fn Radio(comptime T: type) type {
         };
 
         pub fn accessible(self: *const Self, n: *Node) ?a11y.Info {
+            return .{ .role = .radio, .checked = .of(std.meta.eql(self.value, self.group_value)), .activate = a11y.callWith(n, T, self.on_changed, self.value), .disabled = self.on_changed == null };
+        }
+
+        pub fn build(self: *const Self, cx: *Context, state: *State) Widget {
+            return buildControl(T, cx, state, self.value, self.group_value, self.on_changed, "");
+        }
+    };
+}
+
+/// A radio button with its label beside it: pressing either selects it.
+pub fn RadioRow(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        value: T,
+        group_value: T,
+        /// Called with `value` when it is selected; without it the button is
+        /// disabled.
+        on_changed: ?ValueCallback(T) = null,
+        label: []const u8,
+
+        pub const State = Radio(T).State;
+
+        pub fn accessible(self: *const Self, n: *Node) ?a11y.Info {
             return .{ .role = .radio, .label = self.label, .checked = .of(std.meta.eql(self.value, self.group_value)), .activate = a11y.callWith(n, T, self.on_changed, self.value), .disabled = self.on_changed == null };
         }
 
         pub fn build(self: *const Self, cx: *Context, state: *State) Widget {
-            state.latest.update(self.value, self.on_changed);
-            const enabled = self.on_changed != null;
-            return cx.make(RadioKeys{ .child = control.control(cx, &state.latest.interaction, if (enabled) .of(state, State.press) else null, cx.make(RadioMark{
-                .selected = std.meta.eql(self.value, self.group_value),
-                .enabled = enabled,
-                .interaction = state.latest.interaction,
-            }), self.label, 4) });
+            return buildControl(T, cx, state, self.value, self.group_value, self.on_changed, self.label);
         }
     };
+}
+
+fn buildControl(comptime T: type, cx: *Context, state: *Radio(T).State, value: T, group_value: T, on_changed: ?ValueCallback(T), label: []const u8) Widget {
+    state.latest.update(value, on_changed);
+    const enabled = on_changed != null;
+    return cx.make(RadioKeys{ .child = control.control(cx, &state.latest.interaction, if (enabled) .of(state, Radio(T).State.press) else null, cx.make(RadioMark{
+        .selected = std.meta.eql(value, group_value),
+        .enabled = enabled,
+        .interaction = state.latest.interaction,
+    }), label, 4) });
 }
 
 /// Around a radio button: the arrow keys move the focus to the next (or

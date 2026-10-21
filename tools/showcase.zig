@@ -161,7 +161,7 @@ pub const Showcase = struct {
                             cx.make(facet.Text{ .text = s.page.description(), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true }),
                         },
                     }) }),
-                    cx.make(facet.Switch{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" }),
+                    cx.make(facet.SwitchRow{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" }),
                     cx.make(facet.Tooltip{
                         .text = if (s.light_theme) "Use the dark theme" else "Use the light theme",
                         .child = cx.make(facet.IconButton{ .icon = if (s.light_theme) .dark_mode else .light_mode, .on_press = .of(s, State.toggleTheme) }),

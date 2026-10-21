@@ -395,11 +395,11 @@ const Controls = struct {
 
     pub fn build(_: *const Controls, cx: *Context, state: *State) Widget {
         return cx.make(ui.Column{ .cross_axis_alignment = .start, .children = &.{
-            cx.make(ui.Checkbox{ .value = state.checked, .on_changed = .of(state, State.setChecked), .label = "Check" }),
-            cx.make(ui.Switch{ .value = state.on, .on_changed = .of(state, State.setOn), .label = "Switch" }),
-            cx.make(ui.Radio(Choice){ .value = .a, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "A" }),
-            cx.make(ui.Radio(Choice){ .value = .b, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "B" }),
-            cx.make(ui.Radio(Choice){ .value = .c, .group_value = state.choice, .label = "C (disabled)" }),
+            cx.make(ui.CheckboxRow{ .value = state.checked, .on_changed = .of(state, State.setChecked), .label = "Check" }),
+            cx.make(ui.SwitchRow{ .value = state.on, .on_changed = .of(state, State.setOn), .label = "Switch" }),
+            cx.make(ui.RadioRow(Choice){ .value = .a, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "A" }),
+            cx.make(ui.RadioRow(Choice){ .value = .b, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "B" }),
+            cx.make(ui.RadioRow(Choice){ .value = .c, .group_value = state.choice, .label = "C (disabled)" }),
             cx.make(ui.Checkbox{ .value = true }),
         } });
     }
@@ -2434,7 +2434,7 @@ const A11yApp = struct {
             cx.make(ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .child = cx.make(ui.Text{ .text = "Settings" }) }),
             cx.make(ui.Text{ .text = "Hello" }),
             cx.make(ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) }),
-            cx.make(ui.Checkbox{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
+            cx.make(ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
             cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
             cx.make(ui.Accessible{ .label = "Zoom in", .child = cx.make(ui.IconButton{ .icon = .add, .on_press = .of(self.pressed, press) }) }),
             cx.make(ui.Tooltip{ .text = "Remove it", .child = cx.make(ui.IconButton{ .icon = .remove, .on_press = .of(self.pressed, press) }) }),
@@ -2537,12 +2537,12 @@ const FocusApp = struct {
             .children = &.{
                 cx.make(ui.FilledButton{ .label = "A", .on_press = .of(self.pressed, press) }),
                 cx.make(ui.TextField{ .placeholder = "Name" }),
-                cx.make(ui.Checkbox{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
+                cx.make(ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
                 cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
                 // Disabled: passed over.
                 cx.make(ui.FilledButton{ .label = "Off" }),
-                cx.make(ui.Radio(u8){ .value = 1, .group_value = self.choice.*, .label = "One", .on_changed = .of(self.choice, choose) }),
-                cx.make(ui.Radio(u8){ .value = 2, .group_value = self.choice.*, .label = "Two", .on_changed = .of(self.choice, choose) }),
+                cx.make(ui.RadioRow(u8){ .value = 1, .group_value = self.choice.*, .label = "One", .on_changed = .of(self.choice, choose) }),
+                cx.make(ui.RadioRow(u8){ .value = 2, .group_value = self.choice.*, .label = "Two", .on_changed = .of(self.choice, choose) }),
                 cx.make(ui.SizedBox{ .width = 200, .height = 60, .child = cx.make(ui.TextArea{ .doc = self.doc }) }),
             },
         });
@@ -2577,7 +2577,7 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
     try testing.expect(u.focused == null);
 
     // In order, past the disabled button, round to the start.
-    const order = [_]type{ ui.FilledButton, ui.TextField, ui.Checkbox, ui.Slider, ui.Radio(u8), ui.Radio(u8), ui.TextArea };
+    const order = [_]type{ ui.FilledButton, ui.TextField, ui.CheckboxRow, ui.Slider, ui.RadioRow(u8), ui.RadioRow(u8), ui.TextArea };
     inline for (order) |T| {
         pressKey(u, app, ui.keymap.tab, .{});
         try testing.expect(focusedIn(u, T));

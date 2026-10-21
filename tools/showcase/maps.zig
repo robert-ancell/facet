@@ -144,11 +144,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         }),
         common.section(cx, "The globe", "Zoomed out, a globe with a glow, and night where the sun has set (fading as it becomes the flat map)", &.{
             common.labelled(cx, "Globe", &.{
-                cx.make(facet.Switch{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" }),
-                cx.make(facet.Switch{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" }),
+                cx.make(facet.SwitchRow{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" }),
+                cx.make(facet.SwitchRow{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" }),
             }),
             common.labelled(cx, "Night", &.{
-                cx.make(facet.Switch{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" }),
+                cx.make(facet.SwitchRow{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" }),
             }),
             common.labelled(cx, if (s.hours == 0) "Now" else cx.fmt("{s}{d:.1} hours", .{ if (s.hours > 0) "+" else "", s.hours }), &.{
                 cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) }),

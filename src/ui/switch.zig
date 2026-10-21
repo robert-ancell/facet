@@ -1,5 +1,5 @@
-//! Switch: Material 3's switch, its handle sliding between off and on
-//! (see control.zig).
+//! Switch: Material 3's switch, its handle sliding between off and on, and
+//! `SwitchRow`, one with its label beside it (see control.zig).
 
 const a11y = @import("accessibility.zig");
 const std = @import("std");
@@ -22,11 +22,13 @@ const target = control.target;
 
 const Color = gfx.Color;
 
+/// A switch on its own: Material 3 leaves its label to the text beside it
+/// (`SwitchRow` has one), so name it for assistive technologies with
+/// `Accessible`.
 pub const Switch = struct {
     value: bool,
     /// Called with the new value; without it the switch is disabled.
     on_changed: ?ValueCallback(bool) = null,
-    label: []const u8 = "",
 
     /// How long the handle takes to cross.
     pub const travel_ns = 150 * std.time.ns_per_ms;
@@ -43,28 +45,50 @@ pub const Switch = struct {
     };
 
     pub fn accessible(self: *const Switch, n: *Node) ?a11y.Info {
-        return .{ .role = .@"switch", .label = self.label, .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
+        return .{ .role = .@"switch", .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
     }
 
     pub fn build(self: *const Switch, cx: *Context, state: *State) Widget {
-        state.latest.update(self.value, self.on_changed);
-        // The handle slides to the value.
-        const goal: f32 = if (self.value) 1 else 0;
-        const now = cx.now();
-        var pos = state.position orelse goal;
-        const step = @as(f32, @floatFromInt(now -| state.last_ns)) / travel_ns;
-        pos = if (pos < goal) @min(pos + step, goal) else @max(pos - step, goal);
-        state.position = pos;
-        state.last_ns = now;
-        if (pos != goal) cx.requestFrame();
-        const enabled = self.on_changed != null;
-        return control.control(cx, &state.latest.interaction, if (enabled) .of(state, State.press) else null, cx.make(SwitchMark{
-            .position = pos,
-            .enabled = enabled,
-            .interaction = state.latest.interaction,
-        }), self.label, 12);
+        return buildControl(cx, state, self.value, self.on_changed, "");
     }
 };
+
+/// A switch with its label beside it: pressing either toggles it.
+pub const SwitchRow = struct {
+    value: bool,
+    /// Called with the new value; without it the switch is disabled.
+    on_changed: ?ValueCallback(bool) = null,
+    label: []const u8,
+
+    pub const State = Switch.State;
+
+    pub fn accessible(self: *const SwitchRow, n: *Node) ?a11y.Info {
+        return .{ .role = .@"switch", .label = self.label, .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
+    }
+
+    pub fn build(self: *const SwitchRow, cx: *Context, state: *State) Widget {
+        return buildControl(cx, state, self.value, self.on_changed, self.label);
+    }
+};
+
+fn buildControl(cx: *Context, state: *Switch.State, value: bool, on_changed: ?ValueCallback(bool), label: []const u8) Widget {
+    state.latest.update(value, on_changed);
+    // The handle slides to the value.
+    const goal: f32 = if (value) 1 else 0;
+    const now = cx.now();
+    var pos = state.position orelse goal;
+    const step = @as(f32, @floatFromInt(now -| state.last_ns)) / Switch.travel_ns;
+    pos = if (pos < goal) @min(pos + step, goal) else @max(pos - step, goal);
+    state.position = pos;
+    state.last_ns = now;
+    if (pos != goal) cx.requestFrame();
+    const enabled = on_changed != null;
+    return control.control(cx, &state.latest.interaction, if (enabled) .of(state, Switch.State.press) else null, cx.make(SwitchMark{
+        .position = pos,
+        .enabled = enabled,
+        .interaction = state.latest.interaction,
+    }), label, 12);
+}
 
 /// A switch's track and handle.
 pub const SwitchMark = struct {

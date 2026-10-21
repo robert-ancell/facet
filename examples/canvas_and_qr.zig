@@ -112,7 +112,7 @@ pub const CanvasAndQrDemo = struct {
                                         .on_changed = .of(state, State.setFrequency),
                                     }),
                                 }),
-                                cx.make(facet.Switch{
+                                cx.make(facet.SwitchRow{
                                     .value = state.animate,
                                     .on_changed = .of(state, State.setAnimate),
                                     .label = "Animate wave",

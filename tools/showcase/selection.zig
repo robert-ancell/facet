@@ -101,13 +101,13 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 
     var toppings: [topping_names.len]facet.Widget = undefined;
     for (&toppings, topping_names, &s.toppings) |*w, name, *on| {
-        w.* = cx.make(facet.Checkbox{ .value = on.*, .on_changed = setter(on), .label = name });
+        w.* = cx.make(facet.CheckboxRow{ .value = on.*, .on_changed = setter(on), .label = name });
     }
 
     const sizes = [_]struct { Size, []const u8 }{ .{ .small, "Small" }, .{ .medium, "Medium" }, .{ .large, "Large" } };
     var radios: [sizes.len]facet.Widget = undefined;
     for (&radios, sizes) |*w, sz| {
-        w.* = cx.make(facet.Radio(Size){ .value = sz[0], .group_value = s.size, .on_changed = .of(s, State.setSize), .label = sz[1] });
+        w.* = cx.make(facet.RadioRow(Size){ .value = sz[0], .group_value = s.size, .on_changed = .of(s, State.setSize), .label = sz[1] });
     }
 
     var filters: [filter_names.len]facet.Widget = undefined;
@@ -136,11 +136,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         common.section(cx, "Checkboxes", "Any number of options from a set, each on or off", &.{
             common.labelled(cx, "Toppings", &toppings),
             common.labelled(cx, "Disabled", &.{
-                cx.make(facet.Checkbox{ .value = true, .label = "Always on" }),
-                cx.make(facet.Checkbox{ .value = false, .label = "Never on" }),
+                cx.make(facet.CheckboxRow{ .value = true, .label = "Always on" }),
+                cx.make(facet.CheckboxRow{ .value = false, .label = "Never on" }),
             }),
             common.labelled(cx, "Agreement", &.{
-                cx.make(facet.Checkbox{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" }),
+                cx.make(facet.CheckboxRow{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" }),
                 cx.make(facet.FilledButton{ .label = "Continue", .on_press = if (s.terms) common.pressed(cx, &s.agreed, "Continue") else null }),
             }),
             common.status(cx, s.agreed.text("Agree to the terms to continue")),
@@ -148,18 +148,18 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         common.section(cx, "Radio buttons", "Exactly one option from a set, here of an enum", &.{
             common.labelled(cx, "Size", &radios),
             common.labelled(cx, "Disabled", &.{
-                cx.make(facet.Radio(u8){ .value = 0, .group_value = 0, .label = "Chosen" }),
-                cx.make(facet.Radio(u8){ .value = 1, .group_value = 0, .label = "Not chosen" }),
+                cx.make(facet.RadioRow(u8){ .value = 0, .group_value = 0, .label = "Chosen" }),
+                cx.make(facet.RadioRow(u8){ .value = 1, .group_value = 0, .label = "Not chosen" }),
             }),
             common.status(cx, cx.fmt("Size is {s}", .{@tagName(s.size)})),
         }),
         common.section(cx, "Switches", "A setting turned on or off straight away", &.{
             common.labelled(cx, "Radios", &.{
-                cx.make(facet.Switch{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" }),
-                cx.make(facet.Switch{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" }),
+                cx.make(facet.SwitchRow{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" }),
+                cx.make(facet.SwitchRow{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" }),
             }),
             common.labelled(cx, "Override", &.{
-                cx.make(facet.Switch{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" }),
+                cx.make(facet.SwitchRow{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" }),
             }),
         }),
         common.section(cx, "Sliders", "A value from a range, continuous or in steps", &.{

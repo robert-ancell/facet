@@ -1,4 +1,5 @@
-//! Checkbox: Material 3's checkbox, on or off (see control.zig).
+//! Checkbox: Material 3's checkbox, on or off, and `CheckboxRow`, one with
+//! its label beside it (see control.zig).
 
 const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
@@ -18,11 +19,13 @@ const Latest = control.Latest;
 const layerAlpha = control.layerAlpha;
 const target = control.target;
 
+/// A checkbox on its own: Material 3 leaves its label to the text beside
+/// it (`CheckboxRow` has one), so name it for assistive technologies with
+/// `Accessible`.
 pub const Checkbox = struct {
     value: bool,
     /// Called with the new value; without it the checkbox is disabled.
     on_changed: ?ValueCallback(bool) = null,
-    label: []const u8 = "",
 
     pub const State = struct {
         latest: Latest(bool) = .{},
@@ -33,19 +36,41 @@ pub const Checkbox = struct {
     };
 
     pub fn accessible(self: *const Checkbox, n: *Node) ?a11y.Info {
-        return .{ .role = .checkbox, .label = self.label, .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
+        return .{ .role = .checkbox, .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
     }
 
     pub fn build(self: *const Checkbox, cx: *Context, state: *State) Widget {
-        state.latest.update(self.value, self.on_changed);
-        const enabled = self.on_changed != null;
-        return control.control(cx, &state.latest.interaction, if (enabled) .of(state, State.press) else null, cx.make(CheckboxMark{
-            .checked = self.value,
-            .enabled = enabled,
-            .interaction = state.latest.interaction,
-        }), self.label, 4);
+        return buildControl(cx, state, self.value, self.on_changed, "");
     }
 };
+
+/// A checkbox with its label beside it: pressing either toggles it.
+pub const CheckboxRow = struct {
+    value: bool,
+    /// Called with the new value; without it the checkbox is disabled.
+    on_changed: ?ValueCallback(bool) = null,
+    label: []const u8,
+
+    pub const State = Checkbox.State;
+
+    pub fn accessible(self: *const CheckboxRow, n: *Node) ?a11y.Info {
+        return .{ .role = .checkbox, .label = self.label, .checked = .of(self.value), .activate = a11y.callWith(n, bool, self.on_changed, !self.value), .disabled = self.on_changed == null };
+    }
+
+    pub fn build(self: *const CheckboxRow, cx: *Context, state: *State) Widget {
+        return buildControl(cx, state, self.value, self.on_changed, self.label);
+    }
+};
+
+fn buildControl(cx: *Context, state: *Checkbox.State, value: bool, on_changed: ?ValueCallback(bool), label: []const u8) Widget {
+    state.latest.update(value, on_changed);
+    const enabled = on_changed != null;
+    return control.control(cx, &state.latest.interaction, if (enabled) .of(state, Checkbox.State.press) else null, cx.make(CheckboxMark{
+        .checked = value,
+        .enabled = enabled,
+        .interaction = state.latest.interaction,
+    }), label, 4);
+}
 
 /// A checkbox's box and tick, in its touch target.
 pub const CheckboxMark = struct {

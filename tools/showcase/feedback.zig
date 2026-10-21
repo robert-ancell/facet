@@ -80,7 +80,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         common.section(cx, "Progress indicators", "How far along work is, or that it is happening when that is not known", &.{
             common.labelled(cx, cx.fmt("Determinate {d:.0}%", .{s.progress * 100}), &.{
                 cx.make(facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = s.progress }) }),
-                cx.make(facet.Switch{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" }),
+                cx.make(facet.SwitchRow{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" }),
             }),
             common.labelled(cx, "Indeterminate", &.{
                 cx.make(facet.Expanded{ .child = cx.make(facet.ProgressBar{}) }),
@@ -141,7 +141,7 @@ pub fn wrap(cx: *facet.Context, s: *State, child: facet.Widget) facet.Widget {
     const ringtones = [_]struct { Ringtone, []const u8 }{ .{ .classic, "Classic" }, .{ .chime, "Chime" }, .{ .pulse, "Pulse" } };
     var radios: [ringtones.len]facet.Widget = undefined;
     for (&radios, ringtones) |*w, r| {
-        w.* = cx.make(facet.Radio(Ringtone){ .value = r[0], .group_value = s.ringtone, .on_changed = .of(s, State.setRingtone), .label = r[1] });
+        w.* = cx.make(facet.RadioRow(Ringtone){ .value = r[0], .group_value = s.ringtone, .on_changed = .of(s, State.setRingtone), .label = r[1] });
     }
     const with_snackbar = cx.make(facet.Snackbar{
         .message = s.snackbar,

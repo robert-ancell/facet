@@ -194,7 +194,7 @@ pub fn Viewer(comptime Backend: type) type {
             const t = cx.theme();
             var radios: [solids.shapes.len]facet.Widget = undefined;
             for (&radios, solids.shapes) |*w, sh| {
-                w.* = cx.make(facet.Radio(Shape){
+                w.* = cx.make(facet.RadioRow(Shape){
                     .value = sh,
                     .group_value = state.shape,
                     .on_changed = .of(state, State.chooseShape),
@@ -277,12 +277,12 @@ pub fn Viewer(comptime Backend: type) type {
                                             .text = "Shader Options",
                                             .style = .{ .size = 16 },
                                         }),
-                                        cx.make(facet.Switch{
+                                        cx.make(facet.SwitchRow{
                                             .value = state.look.lighting,
                                             .on_changed = .of(state, State.setLighting),
                                             .label = "Directional Lighting",
                                         }),
-                                        cx.make(facet.Switch{
+                                        cx.make(facet.SwitchRow{
                                             .value = state.look.texturing,
                                             .on_changed = .of(state, State.setTexturing),
                                             .label = "Checkerboard Texture",

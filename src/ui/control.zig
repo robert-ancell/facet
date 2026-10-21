@@ -3,10 +3,12 @@
 //!
 //! Each control shows the value it is given and reports a change
 //! through `on_changed` (the app's state holds the value, and its next
-//! build shows the change). Without `on_changed` it is disabled. With a
-//! `label`, the label is beside the control and pressing either toggles
-//! it. Each is a `Pressable` around the control's mark (a widget that
-//! paints it, with Material's hover and press state layer) and its label.
+//! build shows the change). Without `on_changed` it is disabled. Each
+//! control is a `Pressable` around its mark (a widget that paints it, with
+//! Material's hover and press state layer); a row form of it (`SwitchRow`,
+//! `CheckboxRow`, `RadioRow`) has its `label` beside the mark, and pressing
+//! either toggles it. The control on its own is named for assistive
+//! technologies with `Accessible`.
 
 const widget = @import("widget.zig");
 const Interaction = @import("pressable.zig").Interaction;
