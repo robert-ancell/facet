@@ -75,7 +75,7 @@ pub const Source = struct {
 pub const max_sources = 16;
 
 /// Waits through `io` until one of `sources` has read something, or for
-/// `timeout_ns` (forever if `maxInt(u64)`), and gives each what it read
+/// `timeout_ns` nanoseconds (forever if `maxInt(u64)`), and gives each what it read
 /// (some may have read something even if others were first).
 /// `error.Canceled` if the task is canceled.
 pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
@@ -159,7 +159,7 @@ pub const TextInputState = struct {
     password: bool = false,
     /// Enter adds a new line, rather than ending the text.
     multiline: bool = false,
-    /// The cursor in window coordinates (`[x, y, width, height]`).
+    /// The cursor in window coordinates, in logical pixels (`[x, y, width, height]`).
     cursor_rect: [4]i32 = .{ 0, 0, 1, 20 },
 
     pub const ChangeCause = enum { input_method, other };
@@ -179,6 +179,7 @@ pub const TextInputState = struct {
 /// What the user did in the window, in `Window.takeInput`. The key, button,
 /// scroll and pointer events come from every window; touch, locked pointer,
 /// text input, drag-and-drop and popup events come only from Wayland ones.
+/// Positions are `[x, y]` in logical pixels from the window's top left.
 pub const InputEvent = union(enum) {
     /// The pointer moved to (or entered at) a position in the window.
     motion: [2]f32,
@@ -187,8 +188,8 @@ pub const InputEvent = union(enum) {
     /// A key went down or up: its Linux key code (KEY_A, ...), what it types
     /// (from the keymap) and the modifiers held, if the window has a keymap.
     key: struct { code: u32, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },
-    /// The wheel turned: by `dy` pixels down (and `dx` right), with the
-    /// pointer at `pos`.
+    /// The wheel turned: by `dy` logical pixels down (and `dx` right), with
+    /// the pointer at `pos`.
     scroll: struct { pos: [2]f32, dx: f32, dy: f32 },
     /// The pointer left the window.
     leave,
@@ -199,7 +200,8 @@ pub const InputEvent = union(enum) {
     touch_up: i32,
     /// The window's touches were cancelled by the shell.
     touch_cancel,
-    /// Relative pointer motion for a locked pointer (Wayland only).
+    /// Relative pointer motion `[dx, dy]`, in logical pixels, for a locked
+    /// pointer (Wayland only).
     relative_motion: [2]f32,
     /// The pointer lock took effect (true), or ended (false) (Wayland only).
     pointer_locked: bool,
@@ -352,6 +354,7 @@ pub const PopupPlacement = struct {
     kind: PopupKind,
     /// The rectangle it is placed against, `[x, y, width, height]`.
     anchor: [4]i32,
+    /// Its size, `[width, height]`.
     size: [2]u32,
     side: Side,
     /// How far it is from the anchor.
@@ -783,8 +786,8 @@ pub const Window = struct {
     pub fn poll(w: Window) !void {
         return w.vtable.poll(w.ptr);
     }
-    /// Handles events as `poll` does, but first waits up to `timeout_ns` (forever
-    /// if `std.math.maxInt(u64)`) for something to come: an event, a paste, a read
+    /// Handles events as `poll` does, but first waits up to `timeout_ns` nanoseconds
+    /// (forever if `std.math.maxInt(u64)`) for something to come: an event, a paste, a read
     /// of a source added with `watch`, or a held key to repeat. Returns early when
     /// any of these arrives.
     pub fn wait(w: Window, timeout_ns: u64) !void {
@@ -898,14 +901,14 @@ pub const Window = struct {
     pub fn takeDrop(w: Window) ?DroppedData {
         return w.vtable.takeDrop(w.ptr);
     }
-    /// Says the next frame shown is drawn for `target_ns` (on the monotonic
-    /// clock, as `nextPresentationNs` gives): a window that can, does not
+    /// Says the next frame shown is drawn for `target_ns` (in nanoseconds on the
+    /// monotonic clock, as `nextPresentationNs` gives): a window that can, does not
     /// show it before then (Wayland with `wp_commit_timing_v1`; ignored elsewhere).
     pub fn setPresentationTime(w: Window, target_ns: u64) void {
         w.vtable.setPresentationTime(w.ptr, target_ns);
     }
-    /// The time of the first display refresh after `now_ns` (the monotonic clock),
-    /// for drawing a frame to be shown then. `now_ns` itself if it is not known.
+    /// The time of the first display refresh after `now_ns`, both in nanoseconds on
+    /// the monotonic clock (as `nowNs` gives), for drawing a frame to be shown then. `now_ns` itself if it is not known.
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
@@ -918,7 +921,8 @@ pub const Window = struct {
     pub fn layout(w: Window) Layout {
         return w.vtable.layout(w.ptr);
     }
-    /// The display's refresh period, or 0 if unknown.
+    /// The display's refresh period in nanoseconds, or 0 if unknown (see
+    /// `refreshHz`).
     pub fn refreshNs(w: Window) u64 {
         return w.vtable.refreshNs(w.ptr);
     }
@@ -965,8 +969,8 @@ pub const Window = struct {
     pub fn closePopup(w: Window, id: u32) void {
         w.vtable.closePopup(w.ptr, id);
     }
-    /// Where the window system put the popup (in the window's
-    /// coordinates), once it has.
+    /// Where the window system put the popup (`[x, y]` of its top left in the
+    /// window's coordinates, in logical pixels), once it has.
     pub fn popupPosition(w: Window, id: u32) ?[2]i32 {
         return w.vtable.popupPosition(w.ptr, id);
     }
