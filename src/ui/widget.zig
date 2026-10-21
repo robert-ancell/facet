@@ -333,11 +333,22 @@ const missing: Missing = .{};
 
 /// What `build` functions get: the frame's arena, and the UI.
 pub const Context = struct {
+    /// The UI the widget is built in: its window's (its `theme`, the
+    /// app's `io`, and what the app's windows share, as `shared`).
     ui: *Ui,
+    /// The frame's arena, which `make`, `makeAll` and `fmt` allocate in:
+    /// what is made in it lasts until the frame after next is built (so it
+    /// is there while this frame is laid out, painted and handles input,
+    /// and while the next is built). Never freed one by one.
     arena: std.mem.Allocator,
-    /// The node being built.
+    /// The toolkit's own: the node the widget is built in, for widgets that
+    /// change it (`Themed`) or open a menu from it later (`DropdownMenu`).
+    /// It is `undefined` for what is built outside a node (a menu's or
+    /// popup's content, the title bar), so an app's widgets should not use
+    /// it.
     node: *Node,
-    /// The theme the widget is built in (see `theme`).
+    /// The theme the widget is built in, if not the UI's (that of the
+    /// nearest `Themed` above it): read it with `theme`.
     theme_ptr: ?*const Theme = null,
 
     /// A widget of `value`'s type, copied into the frame's arena (with
