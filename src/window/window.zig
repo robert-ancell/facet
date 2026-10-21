@@ -401,6 +401,7 @@ pub const Window = struct {
         setMinimized: *const fn (ptr: *anyopaque) void,
         canMaximize: *const fn (ptr: *anyopaque) bool,
         canMinimize: *const fn (ptr: *anyopaque) bool,
+        canFullscreen: *const fn (ptr: *anyopaque) bool,
         setFullscreen: *const fn (ptr: *anyopaque, on: bool) void,
         startMove: *const fn (ptr: *anyopaque) void,
         setTextInput: *const fn (ptr: *anyopaque, state: ?TextInputState) void,
@@ -573,6 +574,10 @@ pub const Window = struct {
                 if (@hasDecl(T, "canMinimize")) return self(p).canMinimize();
                 return @hasDecl(T, "setMinimized");
             }
+            fn canFullscreenFn(p: *anyopaque) bool {
+                if (@hasDecl(T, "canFullscreen")) return self(p).canFullscreen();
+                return @hasDecl(T, "setFullscreen");
+            }
             fn setMaximizedFn(p: *anyopaque, on: bool) void {
                 if (@hasDecl(T, "setMaximized")) self(p).setMaximized(on);
             }
@@ -704,6 +709,7 @@ pub const Window = struct {
                 .setMinimized = setMinimizedFn,
                 .canMaximize = canMaximizeFn,
                 .canMinimize = canMinimizeFn,
+                .canFullscreen = canFullscreenFn,
                 .setFullscreen = setFullscreenFn,
                 .startMove = startMoveFn,
                 .setTextInput = setTextInputFn,
@@ -857,6 +863,11 @@ pub const Window = struct {
     /// Makes the window fill the screen (`on`), or go back to its own size.
     pub fn setMaximized(w: Window, on: bool) void {
         w.vtable.setMaximized(w.ptr, on);
+    }
+    /// Whether the window system can make the window fullscreen (see
+    /// `canMaximize`).
+    pub fn canFullscreen(w: Window) bool {
+        return w.vtable.canFullscreen(w.ptr);
     }
     /// Makes the window cover the whole display (`on`), or go back to its own size.
     pub fn setFullscreen(w: Window, on: bool) void {
@@ -1032,7 +1043,7 @@ pub const Controls = struct {
 
     /// Toggle whether the window fills the entire display (fullscreen).
     pub fn toggleFullscreen(c: *Controls) void {
-        if (c.win) |w| w.setFullscreen(!w.isFullscreen());
+        if (c.win) |w| if (w.canFullscreen()) w.setFullscreen(!w.isFullscreen());
     }
 
     /// The title bar was pressed: drag the window (unless it fills the

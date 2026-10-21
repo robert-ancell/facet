@@ -663,6 +663,7 @@ pub const WaylandWindow = struct {
     /// everything, if it does not say).
     can_maximize: bool = true,
     can_minimize: bool = true,
+    can_fullscreen: bool = true,
     press_serial: u32 = 0,
     buttons_down: u32 = 0,
     enter_serial: u32 = 0,
@@ -1282,6 +1283,10 @@ pub const WaylandWindow = struct {
 
     pub fn canMinimize(w: *const WaylandWindow) bool {
         return w.can_minimize;
+    }
+
+    pub fn canFullscreen(w: *const WaylandWindow) bool {
+        return w.can_fullscreen;
     }
 
     pub fn setMaximized(w: *WaylandWindow, on: bool) void {
@@ -2634,10 +2639,12 @@ pub const WaylandWindow = struct {
                 const caps = r.array() catch return;
                 w.can_maximize = false;
                 w.can_minimize = false;
+                w.can_fullscreen = false;
                 var i: usize = 0;
                 while (i + 4 <= caps.len) : (i += 4) switch (std.mem.readInt(u32, caps[i..][0..4], .little)) {
                     p.xdg_toplevel.wm_capabilities.maximize => w.can_maximize = true,
                     p.xdg_toplevel.wm_capabilities.minimize => w.can_minimize = true,
+                    p.xdg_toplevel.wm_capabilities.fullscreen => w.can_fullscreen = true,
                     else => {},
                 };
             },
@@ -2980,7 +2987,7 @@ test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only whi
     try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
 }
 
-test "xdg_toplevel.wm_capabilities says whether the window can be minimized and maximized" {
+test "xdg_toplevel.wm_capabilities says whether the window can be minimized, maximized and made fullscreen" {
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
@@ -2988,17 +2995,19 @@ test "xdg_toplevel.wm_capabilities says whether the window can be minimized and 
         .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
     // Until the compositor says otherwise, it can do everything.
-    try std.testing.expect(win.canMinimize() and win.canMaximize());
+    try std.testing.expect(win.canMinimize() and win.canMaximize() and win.canFullscreen());
     var disp: client.Display = .{ .gpa = std.testing.allocator, .conn = undefined };
     // An array of one capability (fullscreen): 4 bytes long.
     const msg = [_]u32{ 4, p.xdg_toplevel.wm_capabilities.fullscreen };
     var r = wire.Reader{ .data = std.mem.sliceAsBytes(&msg), .c = undefined };
     WaylandWindow.toplevelEvent(&win, &disp, 0, p.xdg_toplevel.event.wm_capabilities, &r);
     try std.testing.expect(!win.canMinimize() and !win.canMaximize());
+    try std.testing.expect(win.canFullscreen());
     const both = [_]u32{ 8, p.xdg_toplevel.wm_capabilities.maximize, p.xdg_toplevel.wm_capabilities.minimize };
     r = .{ .data = std.mem.sliceAsBytes(&both), .c = undefined };
     WaylandWindow.toplevelEvent(&win, &disp, 0, p.xdg_toplevel.event.wm_capabilities, &r);
     try std.testing.expect(win.canMinimize() and win.canMaximize());
+    try std.testing.expect(!win.canFullscreen());
 }
 
 test "a popup's configure places it, input on it is in window coordinates, and popup_done is passed on" {
