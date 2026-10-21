@@ -622,6 +622,16 @@ pub const WaylandWindow = struct {
         return w.title_buf[0..w.title_len];
     }
 
+    /// Sets the title the compositor shows (`getTitle` keeps the start of it).
+    pub fn setTitle(w: *WaylandWindow, title: []const u8) void {
+        const n = @min(title.len, w.title_buf.len);
+        @memcpy(w.title_buf[0..n], title[0..n]);
+        w.title_len = n;
+        var m = w.toplevel.request(p.xdg_toplevel.request.set_title) catch return;
+        m.string(title).end();
+        w.conn.flush() catch {};
+    }
+
     gpa: std.mem.Allocator,
     /// What it does its I/O, and waits, through.
     io: std.Io,

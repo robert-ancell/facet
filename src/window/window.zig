@@ -387,6 +387,7 @@ pub const Window = struct {
         extensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) Decorations,
         title: *const fn (ptr: *anyopaque) []const u8,
+        setTitle: *const fn (ptr: *anyopaque, title: []const u8) void,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
         wait: *const fn (ptr: *anyopaque, timeout_ns: u64) anyerror!void,
         takeInput: *const fn (ptr: *anyopaque) []const InputEvent,
@@ -506,6 +507,9 @@ pub const Window = struct {
                 if (@hasDecl(T, "getTitle")) return self(p).getTitle();
                 if (@hasField(T, "title")) return self(p).title;
                 return "";
+            }
+            fn setTitleFn(p: *anyopaque, text: []const u8) void {
+                if (@hasDecl(T, "setTitle")) self(p).setTitle(text);
             }
             fn pollFn(p: *anyopaque) anyerror!void {
                 if (@hasDecl(T, "poll")) return self(p).poll();
@@ -695,6 +699,7 @@ pub const Window = struct {
                 .extensions = extensionsFn,
                 .decorations = decorationsFn,
                 .title = titleFn,
+                .setTitle = setTitleFn,
                 .poll = pollFn,
                 .wait = waitFn,
                 .takeInput = takeInputFn,
@@ -780,6 +785,11 @@ pub const Window = struct {
     /// The window's title, or "" if it has none.
     pub fn title(w: Window) []const u8 {
         return w.vtable.title(w.ptr);
+    }
+    /// Sets the window's title, for the window system to show (in its title
+    /// bar, task bar or window list).
+    pub fn setTitle(w: Window, text: []const u8) void {
+        w.vtable.setTitle(w.ptr, text);
     }
     /// Handles the events that have already come, without waiting. Read the
     /// input they made with `takeInput`.

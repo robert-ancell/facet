@@ -254,6 +254,16 @@ pub const MacWindow = struct {
         return w.title_buf;
     }
 
+    /// Sets the title the window's title bar shows.
+    pub fn setTitle(w: *MacWindow, title: []const u8) void {
+        const owned = w.gpa.dupe(u8, title) catch return;
+        w.gpa.free(w.title_buf);
+        w.title_buf = owned;
+        const pool = objc.push();
+        defer objc.pop(pool);
+        msg(void, w.win, "setTitle:", .{objc.nsString(title)});
+    }
+
     pub fn size(w: *const MacWindow) [2]u32 {
         return .{ w.width, w.height };
     }
