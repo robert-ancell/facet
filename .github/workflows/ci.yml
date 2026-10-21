@@ -1,0 +1,33 @@
+# Builds facet, its examples and tools, and runs its tests, on Linux, macOS
+# and Windows. Each builds for itself (facet is not cross-compiled): on
+# Windows its Direct3D 11 shaders are compiled by the Windows SDK's fxc.
+#
+# The runners have no display and (mostly) no GPU: tests that need one
+# (the Vulkan, OpenGL and Metal renderers, a Wayland compositor) skip
+# themselves without it. On Windows the Direct3D 11 renderer is tested on
+# WARP (Direct3D's own, on the CPU), compared with the software renderer,
+# and frames are presented to a window's swap chain.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build
+        run: zig build --summary all
+      - name: Build the examples
+        run: zig build examples --summary all
+      - name: Test
+        run: zig build test --summary all
