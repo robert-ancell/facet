@@ -709,7 +709,8 @@ pub const Window = struct {
     pub fn bufferTransport(w: Window) BufferTransport {
         return w.vtable.bufferTransport(w.ptr);
     }
-    /// How the window system knows a GPU frame is finished being drawn.
+    /// How the window system knows a GPU frame is finished being drawn (the
+    /// dmabuf fences and syncobj points are Linux only; `.none` elsewhere).
     pub fn bufferSync(w: Window) BufferSync {
         return w.vtable.bufferSync(w.ptr);
     }
@@ -722,7 +723,7 @@ pub const Window = struct {
         return w.vtable.refreshHz(w.ptr);
     }
     /// The window system's protocol extensions the window uses (for
-    /// Wayland, the global interfaces bound).
+    /// Wayland, the global interfaces bound; none elsewhere).
     pub fn extensions(w: Window) []const []const u8 {
         return w.vtable.extensions(w.ptr);
     }
@@ -780,7 +781,7 @@ pub const Window = struct {
         return w.vtable.isFullscreen(w.ptr);
     }
     /// Whether the window is tiled against other windows or the screen's edges, so it
-    /// has no rounded corners or shadow of its own.
+    /// has no rounded corners or shadow of its own (Wayland only; false elsewhere).
     pub fn isTiled(w: Window) bool {
         return w.vtable.isTiled(w.ptr);
     }
@@ -826,30 +827,33 @@ pub const Window = struct {
         w.vtable.setFullscreen(w.ptr, on);
     }
     /// Starts moving the window with the pointer, for a title bar pressed by the
-    /// user. Does nothing unless a button is held.
+    /// user. Does nothing unless a button is held. Wayland only: elsewhere the
+    /// system's own title bar moves the window.
     pub fn startMove(w: Window) void {
         w.vtable.startMove(w.ptr);
     }
     /// Tells the input method about the focused text widget (for composing text,
     /// an on-screen keyboard and where to put its candidates), or that none is
     /// focused if null. Commits come back as `text_commit` and `text_preedit` events.
+    /// Wayland only (`zwp_text_input_v3`): it does nothing elsewhere.
     pub fn setTextInput(w: Window, state: ?TextInputState) void {
         w.vtable.setTextInput(w.ptr, state);
     }
     /// Starts dragging `bytes` of type `mime_type`, to be dropped on this window or
     /// another. `actions` is a bit set of what the receiver may do with it (the
     /// Wayland `dnd_action`s: copy 1, move 2, ask 4). Returns false if it could not
-    /// start (it has to follow a press).
+    /// start (it has to follow a press). Wayland only: false elsewhere.
     pub fn startDrag(w: Window, mime_type: []const u8, bytes: []const u8, actions: u32) bool {
         return w.vtable.startDrag(w.ptr, mime_type, bytes, actions);
     }
-    /// The data dropped on the window since the last call, or null if there is none.
+    /// The data dropped on the window since the last call, or null if there is none
+    /// (always, except on Wayland).
     pub fn takeDrop(w: Window) ?DroppedData {
         return w.vtable.takeDrop(w.ptr);
     }
     /// Says the next frame shown is drawn for `target_ns` (on the monotonic
     /// clock, as `nextPresentationNs` gives): a window that can, does not
-    /// show it before then.
+    /// show it before then (Wayland with `wp_commit_timing_v1`; ignored elsewhere).
     pub fn setPresentationTime(w: Window, target_ns: u64) void {
         w.vtable.setPresentationTime(w.ptr, target_ns);
     }
@@ -863,7 +867,7 @@ pub const Window = struct {
     pub fn watch(w: Window, source: Source, on: bool) void {
         w.vtable.watch(w.ptr, source, on);
     }
-    /// The keyboard layout in use.
+    /// The keyboard layout in use, from the Wayland keymap (empty elsewhere).
     pub fn layout(w: Window) Layout {
         return w.vtable.layout(w.ptr);
     }
@@ -885,7 +889,8 @@ pub const Window = struct {
         return w.vtable.beginSoftwareFrame(w.ptr);
     }
     /// The buffer to draw the next frame into, as a dmabuf for the GPU to
-    /// draw into directly (instead of `beginSoftwareFrame`), or null if it is not one.
+    /// draw into directly (instead of `beginSoftwareFrame`), or null if it is not
+    /// one (not Linux, or the frame is in shared memory).
     pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
         return w.vtable.beginDmabufFrame(w.ptr);
     }
@@ -909,7 +914,8 @@ pub const Window = struct {
     pub fn showDamaged(w: Window, damage: ?[]const gfx.Viewport) !void {
         return w.vtable.showDamaged(w.ptr, damage);
     }
-    /// Whether the window can open popups (`openPopup`).
+    /// Whether the window can open popups (`openPopup`): Wayland ones can, no
+    /// others yet.
     pub fn supportsPopups(w: Window) bool {
         return w.vtable.supportsPopups(w.ptr);
     }
@@ -955,7 +961,7 @@ pub const Window = struct {
         if (w.vtable.paste) |f| f(w.ptr, sink) else sink.f(sink.ctx, null);
     }
     /// Whether the system's appearance is dark (null if the window does not
-    /// say; on Linux it is facet's own setting).
+    /// say, as Wayland's does not: the app's own theme setting applies).
     pub fn prefersDark(w: Window) ?bool {
         const f = w.vtable.prefersDark orelse return null;
         return f(w.ptr);
