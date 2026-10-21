@@ -17,6 +17,21 @@ It makes building modern desktop applications simple: describe your interface in
 
 ## Example
 
+Add Facet to your project:
+
+```sh
+zig fetch --save git+https://github.com/robert-ancell/facet
+```
+
+Import the `facet` module in your `build.zig`:
+
+```zig
+const facet_dep = b.dependency("facet", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("facet", facet_dep.module("facet"));
+```
+
+Then build your UI in `src/main.zig`:
+
 ```zig
 const std = @import("std");
 const facet = @import("facet");
