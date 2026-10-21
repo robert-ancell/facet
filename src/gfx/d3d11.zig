@@ -433,7 +433,7 @@ const SwapChainDesc1 = extern struct {
     BufferUsage: u32 = 0x20, // DXGI_USAGE_RENDER_TARGET_OUTPUT
     BufferCount: u32 = 2,
     Scaling: u32 = 1, // DXGI_SCALING_NONE
-    SwapEffect: u32 = 4, // DXGI_SWAP_EFFECT_FLIP_DISCARD
+    SwapEffect: u32 = 3, // DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL
     AlphaMode: u32 = 3, // DXGI_ALPHA_MODE_IGNORE
     Flags: u32 = swap_flags,
 };
