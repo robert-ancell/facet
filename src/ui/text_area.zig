@@ -865,7 +865,7 @@ test "typing into a text area, moving up and down, and copying" {
     u.keyEvent(keymap.left_ctrl, true);
     press(u, keymap.key_c);
     u.keyEvent(keymap.left_ctrl, false);
-    try testing.expectEqualStrings("first line", u.local_clipboard.items);
+    try testing.expectEqualStrings("first line", u.shared.local_clipboard.items);
     press(u, keymap.backspace);
     try testing.expectEqualStrings("\nsecond line\na", d.text());
 }

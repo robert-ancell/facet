@@ -274,7 +274,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
     const fira = try facet.font.Font.init(facet.font.default_font_data);
     const u = try facet.Ui.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
-    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.attachRenderer(u.shared.software_renderer.renderer(), false);
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
     var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);

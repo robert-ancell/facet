@@ -52,7 +52,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     // Offered to assistive technologies on Linux (over AT-SPI) only.
     if (builtin.os.tag != .linux) return common.page(cx, &.{ qr, painting, anim });
     const a11y = common.section(cx, "Accessibility", "What the widgets are, offered to screen readers (and other assistive technologies) over AT-SPI; widgets of the app's own are described with Accessible", &.{
-        common.status(cx, if (cx.ui.a11y != null) "Offered over AT-SPI: try Orca, or Accerciser to look at the tree" else "Not offered: there is no AT-SPI bus (or NO_AT_BRIDGE is set)"),
+        common.status(cx, if (cx.ui.shared.a11y != null) "Offered over AT-SPI: try Orca, or Accerciser to look at the tree" else "Not offered: there is no AT-SPI bus (or NO_AT_BRIDGE is set)"),
     });
     return common.page(cx, &.{ qr, painting, a11y, anim });
 }

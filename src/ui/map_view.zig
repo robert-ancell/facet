@@ -427,7 +427,7 @@ pub const MapView = struct {
         // Pictures first, then shapes (each tile once, though it may be
         // drawn for several further in).
         for (drawn.items) |d| if (d.what == .image) drawImageTile(c, &v, d, arena);
-        var labels: tile_painter.Labels = .{ .arena = arena, .area = whole, .font = n.ui.font, .atlas = &n.ui.atlas };
+        var labels: tile_painter.Labels = .{ .arena = arena, .area = whole, .font = n.ui.font, .atlas = n.ui.atlas };
         const Shapes = struct { tp: TilePainter, tile: *const VectorTile };
         var shapes: std.ArrayList(Shapes) = .empty;
         for (drawn.items, 0..) |d, i| {
@@ -471,7 +471,7 @@ pub const MapView = struct {
             const w = n.ui.atlas.runs.measure(.{ .font = f, .size = size_px }, self.source.attribution);
             const box: gfx.Rect = .{ .x = n.size.w - w - 12, .y = n.size.h - 20, .w = w + 12, .h = 20 };
             c.fillRoundedRect(box, .{ .tl = 6 }, t.surface.withAlpha(0.8));
-            _ = c.drawText(&n.ui.atlas, .{ .font = f, .size = size_px }, box.x + 6, box.y + 14, self.source.attribution, t.on_surface_variant);
+            _ = c.drawText(n.ui.atlas, .{ .font = f, .size = size_px }, box.x + 6, box.y + 14, self.source.attribution, t.on_surface_variant);
         };
     }
 

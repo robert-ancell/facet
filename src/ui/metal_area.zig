@@ -194,8 +194,8 @@ pub fn MetalArea(comptime Scene: type) type {
 
         /// The device of the UI's renderer, if it is the Metal one.
         fn sharedDevice(n: *Node) ?gfx.metal.SharedDevice {
-            const vr = &(n.ui.metal_renderer orelse return null);
-            const r = n.ui.renderer orelse return null;
+            const vr = &(n.ui.shared.metal_renderer orelse return null);
+            const r = n.ui.shared.renderer orelse return null;
             if (r.ptr != @as(*anyopaque, @ptrCast(vr))) return null;
             return vr.sharedDevice();
         }

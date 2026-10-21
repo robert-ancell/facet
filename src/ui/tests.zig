@@ -1479,13 +1479,13 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     const u = try ui.Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
-    const expected_renderer: gfx.RenderBackend = if (u.d3d11_renderer != null)
+    const expected_renderer: gfx.RenderBackend = if (u.shared.d3d11_renderer != null)
         .d3d11
-    else if (u.metal_renderer != null)
+    else if (u.shared.metal_renderer != null)
         .metal
-    else if (u.vulkan_renderer != null)
+    else if (u.shared.vulkan_renderer != null)
         .vulkan
-    else if (u.opengl_renderer != null)
+    else if (u.shared.opengl_renderer != null)
         .opengl
     else
         .software;
@@ -1583,7 +1583,7 @@ fn vulkanOpenGlAndSoftware() !void {
         var gl = gl_val;
         defer gl.deinit();
         u.attachRenderer(gl.renderer(), false);
-        try testing.expectEqual(gfx.RenderBackend.opengl, u.renderer.?.backend());
+        try testing.expectEqual(gfx.RenderBackend.opengl, u.shared.renderer.?.backend());
         const img = try Image.init(u, 200, 80);
         defer img.deinit();
         try testing.expectEqual(u.theme.primary.toArgb(), img.at(20, 20));
@@ -1592,8 +1592,8 @@ fn vulkanOpenGlAndSoftware() !void {
 
     // 3. Explicitly test SoftwareRenderer fallback
     {
-        u.attachRenderer(u.software_renderer.renderer(), false);
-        try testing.expectEqual(gfx.RenderBackend.software, u.renderer.?.backend());
+        u.attachRenderer(u.shared.software_renderer.renderer(), false);
+        try testing.expectEqual(gfx.RenderBackend.software, u.shared.renderer.?.backend());
         const img = try Image.init(u, 200, 80);
         defer img.deinit();
         try testing.expectEqual(u.theme.primary.toArgb(), img.at(20, 20));
@@ -1694,7 +1694,7 @@ const PopupWin = struct {
 test "menus and tooltips go in popups of their own when the window has them" {
     const u = try ui.Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
-    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.attachRenderer(u.shared.software_renderer.renderer(), false);
     u.theme = .light;
     var win: PopupWin = .{};
     defer win.deinit();
@@ -1865,7 +1865,7 @@ test "frames are drawn straight into dmabufs when the renderer can, and the CPU 
 test "a GPU draw can also say how to draw straight into a GPU frame, which the CPU way ignores" {
     const u = try ui.Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
-    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.attachRenderer(u.shared.software_renderer.renderer(), false);
     const Area = struct {
         var cpu: u32 = 0;
         var direct: u32 = 0;
@@ -2346,7 +2346,7 @@ test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
     const fira = try font.Font.init(fira_data);
     const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
-    u.attachRenderer(u.software_renderer.renderer(), false);
+    u.attachRenderer(u.shared.software_renderer.renderer(), false);
     var win: TwoBufferWin = .{};
     u.attachWindow(&win, null);
     // Lines of letters far apart, one changing size each frame (so the

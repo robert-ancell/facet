@@ -1136,10 +1136,10 @@ test "a password field has a visibility toggle button on the right hand side" {
     // While revealed, selecting and copying works.
     st.selectAll();
     st.copy();
-    try testing.expectEqualStrings("secret", u.local_clipboard.items);
+    try testing.expectEqualStrings("secret", u.shared.local_clipboard.items);
 
     // Clicking the toggle button again hides the password back to dots, blocking copy.
-    u.local_clipboard.clearRetainingCapacity();
+    u.shared.local_clipboard.clearRetainingCapacity();
     u.pointerButton(toggle_at, btn_left, true);
     u.pointerButton(toggle_at, btn_left, false);
     try testing.expect(!st.revealed);
@@ -1147,7 +1147,7 @@ test "a password field has a visibility toggle button on the right hand side" {
     try testing.expectEqualStrings("••••••", tf.shown(st, &buf, st.text()));
     st.selectAll();
     st.copy();
-    try testing.expectEqual(@as(usize, 0), u.local_clipboard.items.len);
+    try testing.expectEqual(@as(usize, 0), u.shared.local_clipboard.items.len);
 }
 
 test "initial text and max_len never split a multi-byte UTF-8 character" {

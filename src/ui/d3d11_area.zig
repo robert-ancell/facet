@@ -194,8 +194,8 @@ pub fn D3D11Area(comptime Scene: type) type {
 
         /// The device of the UI's renderer, if it is the Direct3D 11 one.
         fn sharedDevice(n: *Node) ?gfx.d3d11.SharedDevice {
-            const vr = &(n.ui.d3d11_renderer orelse return null);
-            const r = n.ui.renderer orelse return null;
+            const vr = &(n.ui.shared.d3d11_renderer orelse return null);
+            const r = n.ui.shared.renderer orelse return null;
             if (r.ptr != @as(*anyopaque, @ptrCast(vr))) return null;
             return vr.sharedDevice();
         }

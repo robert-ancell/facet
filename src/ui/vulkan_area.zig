@@ -192,8 +192,8 @@ pub fn VulkanArea(comptime Scene: type) type {
 
         /// The device of the UI's renderer, if it is the Vulkan one.
         fn sharedDevice(n: *Node) ?gfx.vulkan.SharedDevice {
-            const vr = &(n.ui.vulkan_renderer orelse return null);
-            const r = n.ui.renderer orelse return null;
+            const vr = &(n.ui.shared.vulkan_renderer orelse return null);
+            const r = n.ui.shared.renderer orelse return null;
             if (r.ptr != @as(*anyopaque, @ptrCast(vr))) return null;
             return vr.sharedDevice();
         }

@@ -64,14 +64,14 @@ pub const Painter = struct {
     /// pen position after it. Nothing is drawn without a font.
     pub fn text(p: *Painter, size: f32, x: f32, baseline: f32, str: []const u8, color: gfx.Color) f32 {
         const f = p.ui.font orelse return x;
-        return p.canvas().drawText(&p.ui.atlas, .{ .font = f, .size = size }, x, baseline, str, color);
+        return p.canvas().drawText(p.ui.atlas, .{ .font = f, .size = size }, x, baseline, str, color);
     }
 
     /// Draws an icon `size` square with its top left at (`x`, `y`).
     pub fn icon(p: *Painter, which: @import("icons").Icon, x: f32, y: f32, size: f32, color: gfx.Color) void {
         var buf: [4]u8 = undefined;
         // Icons fill the em square, with the baseline at the bottom.
-        _ = p.canvas().drawText(&p.ui.atlas, .{ .font = &p.ui.icon_font, .size = size }, x, y + size, @import("icons").text(which, &buf), color);
+        _ = p.canvas().drawText(p.ui.atlas, .{ .font = p.ui.icon_font, .size = size }, x, y + size, @import("icons").text(which, &buf), color);
     }
 
     /// Limits drawing to `r` (relative to the widget) until `restoreClip`

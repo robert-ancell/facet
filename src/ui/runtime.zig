@@ -102,10 +102,12 @@ pub const Waker = struct {
     }
 };
 
-pub const Ui = struct {
+/// What an app's windows share, each window's `Ui` drawing with it: the
+/// fonts, the glyph atlas, the renderer, the images loaded, what wakes the
+/// UI (`Waker`), the accessibility bus, and the clipboard within the app.
+/// It does its I/O, and tells the time, through `io` (the app's).
+pub const Shared = struct {
     gpa: std.mem.Allocator,
-    /// What it does its I/O (loading images, the accessibility bus) and
-    /// tells the time through: the app's.
     io: std.Io,
     /// Text is drawn in it; without one, text takes no space.
     font: ?*const font.Font,
@@ -113,8 +115,6 @@ pub const Ui = struct {
     emoji_font: ?font.Font = null,
     /// Icons are drawn with it (see `Icon`).
     icon_font: font.Font,
-    theme: Theme = .dark,
-    last_surface: ?gfx.Color = null,
     atlas: gfx.Atlas,
     vulkan_renderer: ?gfx.VulkanRenderer = null,
     opengl_renderer: ?gfx.OpenGlRenderer = null,
@@ -123,6 +123,171 @@ pub const Ui = struct {
     software_renderer: gfx.SoftwareRenderer = .{},
     renderer: ?gfx.Renderer = null,
     owns_renderer: bool = false,
+    /// Images loaded in the background (for `Image`).
+    images: image_loader.Cache = .{},
+    /// Readable when a `Waker` has woken the UI (made by the first
+    /// `waker`), and set (as it might be read by a window's wait first).
+    wake: ?sys.Wake = null,
+    woken: std.atomic.Value(bool) = .init(false),
+    /// The connection to assistive technologies (once a window's
+    /// `enableAccessibility` has made it).
+    a11y: ?*atspi.Bridge = null,
+    /// Text copied, when there is no system clipboard.
+    local_clipboard: std.ArrayList(u8) = .empty,
+    /// The windows' UIs (made by `createUi`).
+    uis: std.ArrayList(*Ui) = .empty,
+
+    /// What the app's windows share, with the given `font` (`null` for no
+    /// text font; icons still use the bundled Material Icons font). The
+    /// renderer is the Metal one (on macOS), the Direct3D 11 one (on
+    /// Windows), or the Vulkan one, then OpenGL (elsewhere), or else the
+    /// software one.
+    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*Shared {
+        const s = try gpa.create(Shared);
+        errdefer gpa.destroy(s);
+        s.* = .{
+            .gpa = gpa,
+            .io = io,
+            .images = .{ .io = io },
+            .font = f,
+            .icon_font = try font.Font.init(@import("icons").font_data),
+            .atlas = try gfx.Atlas.init(gpa),
+        };
+        if (comptime builtin.os.tag == .macos) {
+            if (gfx.MetalRenderer.initDefault(gpa)) |mtl| {
+                s.metal_renderer = mtl;
+                s.renderer = s.metal_renderer.?.renderer();
+                s.owns_renderer = true;
+            } else |_| {
+                s.renderer = s.software_renderer.renderer();
+            }
+        } else if (comptime builtin.os.tag == .windows) {
+            if (gfx.D3D11Renderer.initDefault(gpa)) |dx| {
+                s.d3d11_renderer = dx;
+                s.renderer = s.d3d11_renderer.?.renderer();
+                s.owns_renderer = true;
+            } else |_| {
+                s.renderer = s.software_renderer.renderer();
+            }
+        } else if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
+            s.vulkan_renderer = vk;
+            s.renderer = s.vulkan_renderer.?.renderer();
+            s.owns_renderer = true;
+        } else |_| if (gfx.OpenGlRenderer.initDefault(gpa)) |gl| {
+            s.opengl_renderer = gl;
+            s.renderer = s.opengl_renderer.?.renderer();
+            s.owns_renderer = true;
+        } else |_| {
+            s.renderer = s.software_renderer.renderer();
+        }
+        return s;
+    }
+
+    /// What the app's windows share, using the bundled default Fira Sans and
+    /// Twemoji Mozilla fallback fonts.
+    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*Shared {
+        return createWithFontData(gpa, io, font.default_font_data);
+    }
+
+    /// What the app's windows share, drawing text in the OpenType or
+    /// TrueType font in `data` (which must outlive it), falling back to the
+    /// bundled Twemoji Mozilla font for emoji.
+    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*Shared {
+        const s = try create(gpa, io, null);
+        errdefer s.destroy();
+        s.owned_font = try font.Font.init(data);
+        s.emoji_font = font.Font.init(font.emoji_font_data) catch null;
+        const f = &s.owned_font.?;
+        if (s.emoji_font) |*ef| f.fallback = ef;
+        s.font = f;
+        return s;
+    }
+
+    /// Lets it go: the windows' UIs must be destroyed first.
+    pub fn destroy(s: *Shared) void {
+        std.debug.assert(s.uis.items.len == 0);
+        s.uis.deinit(s.gpa);
+        s.images.deinit();
+        if (s.wake) |*x| x.deinit();
+        if (has_atspi) if (s.a11y) |b| b.close();
+        s.local_clipboard.deinit(s.gpa);
+        if (s.owns_renderer) if (s.renderer) |r| r.deinit();
+        s.atlas.deinit();
+        s.gpa.destroy(s);
+    }
+
+    /// A window's UI, drawing with what is shared (destroy it before this).
+    pub fn createUi(s: *Shared) !*Ui {
+        const ui = try s.gpa.create(Ui);
+        errdefer s.gpa.destroy(ui);
+        ui.* = .{
+            .shared = s,
+            .gpa = s.gpa,
+            .io = s.io,
+            .font = s.font,
+            .icon_font = &s.icon_font,
+            .atlas = &s.atlas,
+            .images = &s.images,
+            .arenas = .{ .init(s.gpa), .init(s.gpa) },
+            .presenter = .{ .renderer = s.renderer },
+        };
+        try s.uis.append(s.gpa, ui);
+        return ui;
+    }
+
+    /// Draws every window with `r` (a custom or GPU `gfx.Renderer`, e.g.
+    /// `OpenGlRenderer.renderer()`, `VulkanRenderer.renderer()`, or
+    /// `gfx.Renderer.of(&my_backend)`), which is its to deinit if
+    /// `take_ownership`.
+    pub fn attachRenderer(s: *Shared, r: gfx.Renderer, take_ownership: bool) void {
+        if (s.owns_renderer) if (s.renderer) |old| old.deinit();
+        s.vulkan_renderer = null;
+        s.opengl_renderer = null;
+        s.metal_renderer = null;
+        s.d3d11_renderer = null;
+        s.renderer = r;
+        s.owns_renderer = take_ownership;
+        for (s.uis.items) |ui| ui.presenter = .{ .renderer = r };
+    }
+
+    /// Something to wake the UI for a frame from another thread or task
+    /// (it only marks it to be drawn if there are no fds left).
+    pub fn waker(s: *Shared) Waker {
+        if (s.wake == null) s.wake = sys.Wake.create() catch return .{ .woken = &s.woken };
+        return .{ .wake_ = s.wake, .woken = &s.woken };
+    }
+
+    /// What is read when a `Waker` wakes the UI (to wait on with the
+    /// windows'), once there is a waker.
+    pub fn wakeSource(s: *Shared) ?window_mod.Source {
+        return if (s.wake) |*x| .ofWake(x) else null;
+    }
+
+    /// Takes the wakes since the last time; true if there were any.
+    pub fn takeWakes(s: *Shared) bool {
+        const drained = if (s.wake) |*w| w.drain() else false;
+        return s.woken.swap(false, .acq_rel) or drained;
+    }
+};
+
+pub const Ui = struct {
+    /// What the app's windows share (see `Shared`), and whether this UI
+    /// made it for itself (`create`: a UI of its own, with no others).
+    shared: *Shared,
+    owns_shared: bool = false,
+    /// From `shared`, which they are: what allocates, and what does the
+    /// I/O and tells the time (the app's `Io`).
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    /// Text is drawn in it; without one, text takes no space (`shared`'s).
+    font: ?*const font.Font,
+    /// Icons are drawn with it (see `Icon`), glyphs kept in the atlas, and
+    /// images loaded in the background (for `Image`): `shared`'s.
+    icon_font: *const font.Font,
+    atlas: *gfx.Atlas,
+    images: *image_loader.Cache,
+    theme: Theme = .dark,
+    last_surface: ?gfx.Color = null,
     root: ?*Node = null,
     /// Widgets are made in one while the other holds the last frame's
     /// (which events between frames still use).
@@ -161,16 +326,9 @@ pub const Ui = struct {
     /// A keymap of its own (`loadKeymap`), for keys from `keyEvent` that
     /// say nothing of what they type, and the modifiers it keeps.
     loaded_keymap: ?window_mod.xkb.Keymap = null,
-    /// Images loaded in the background (for `Image`).
-    images: image_loader.Cache = .{},
-    /// Readable when a `Waker` has woken it (made by the first `waker`),
-    /// and set (as it might be read by the window's wait first).
-    wake: ?sys.Wake = null,
-    woken: std.atomic.Value(bool) = .init(false),
     /// What it is to assistive technologies (once `enableAccessibility`
-    /// has connected to AT-SPI): the last frame's tree, and the number for
-    /// the next object.
-    a11y: ?*atspi.Bridge = null,
+    /// has connected `shared` to AT-SPI): the last frame's tree, and the
+    /// number for the next object.
     a11y_tree: ?*accessibility.Tree = null,
     a11y_next_id: u32 = accessibility.window_id + 1,
     key_state: window_mod.xkb.State = .{},
@@ -191,7 +349,6 @@ pub const Ui = struct {
     /// The system's clipboard (the app gives it); without one, text is
     /// copied within the app (`local_clipboard`).
     clipboard: ?Clipboard = null,
-    local_clipboard: std.ArrayList(u8) = .empty,
     /// A paste under way: the widget that asked (whose going drops it),
     /// and where the text goes.
     paste: ?struct { owner: *Node, on_text: widget.ValueCallback([]const u8) } = null,
@@ -275,94 +432,51 @@ pub const Ui = struct {
         }
     };
 
-    /// Creates a `Ui` with the given `font` (`null` for no text font; icons
-    /// still use the bundled Material Icons font).
-    /// Tries initializing the Metal 2D renderer (on macOS), the Direct3D 11
-    /// one (on Windows), or the Vulkan one first, then OpenGL (elsewhere),
-    /// before falling back to Software.
+    /// Creates a `Ui` of its own (a window's, with no other windows to
+    /// share with: see `Shared.createUi`) with the given `font` (`null` for
+    /// no text font; icons still use the bundled Material Icons font),
+    /// drawn with the best renderer there is (see `Shared.create`).
     ///
     /// It does its I/O, and tells the time, through `io`: the app's (as
     /// from `std.process.Init`).
     pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*Ui {
-        const ui = try gpa.create(Ui);
-        errdefer gpa.destroy(ui);
-        ui.* = .{
-            .gpa = gpa,
-            .io = io,
-            .images = .{ .io = io },
-            .font = f,
-            .icon_font = try font.Font.init(@import("icons").font_data),
-            .atlas = try gfx.Atlas.init(gpa),
-            .arenas = .{ .init(gpa), .init(gpa) },
-        };
-        if (comptime builtin.os.tag == .macos) {
-            if (gfx.MetalRenderer.initDefault(gpa)) |mtl| {
-                ui.metal_renderer = mtl;
-                ui.renderer = ui.metal_renderer.?.renderer();
-                ui.owns_renderer = true;
-            } else |_| {
-                ui.renderer = ui.software_renderer.renderer();
-            }
-        } else if (comptime builtin.os.tag == .windows) {
-            if (gfx.D3D11Renderer.initDefault(gpa)) |dx| {
-                ui.d3d11_renderer = dx;
-                ui.renderer = ui.d3d11_renderer.?.renderer();
-                ui.owns_renderer = true;
-            } else |_| {
-                ui.renderer = ui.software_renderer.renderer();
-            }
-        } else if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
-            ui.vulkan_renderer = vk;
-            ui.renderer = ui.vulkan_renderer.?.renderer();
-            ui.owns_renderer = true;
-        } else |_| if (gfx.OpenGlRenderer.initDefault(gpa)) |gl| {
-            ui.opengl_renderer = gl;
-            ui.renderer = ui.opengl_renderer.?.renderer();
-            ui.owns_renderer = true;
-        } else |_| {
-            ui.renderer = ui.software_renderer.renderer();
-        }
-        ui.presenter = .{ .renderer = ui.renderer };
-        return ui;
+        return standalone(try Shared.create(gpa, io, f));
     }
 
-    /// Creates a `Ui` using the bundled default Fira Sans and Twemoji Mozilla
-    /// fallback fonts.
+    /// Creates a `Ui` of its own using the bundled default Fira Sans and
+    /// Twemoji Mozilla fallback fonts.
     pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*Ui {
-        return createWithFontData(gpa, io, font.default_font_data);
+        return standalone(try Shared.createDefault(gpa, io));
     }
 
-    /// Creates a `Ui` drawing text in the OpenType or TrueType font in
-    /// `data` (which must outlive it), falling back to the bundled Twemoji
-    /// Mozilla font for emoji.
+    /// Creates a `Ui` of its own drawing text in the OpenType or TrueType
+    /// font in `data` (which must outlive it), falling back to the bundled
+    /// Twemoji Mozilla font for emoji.
     pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*Ui {
-        const ui = try create(gpa, io, null);
-        errdefer ui.destroy();
-        ui.owned_font = try font.Font.init(data);
-        ui.emoji_font = font.Font.init(font.emoji_font_data) catch null;
-        const f = &ui.owned_font.?;
-        if (ui.emoji_font) |*ef| f.fallback = ef;
-        ui.font = f;
+        return standalone(try Shared.createWithFontData(gpa, io, data));
+    }
+
+    fn standalone(shared: *Shared) !*Ui {
+        errdefer shared.destroy();
+        const ui = try shared.createUi();
+        ui.owns_shared = true;
         return ui;
     }
 
     pub fn destroy(ui: *Ui) void {
+        const shared = ui.shared;
+        if (std.mem.indexOfScalar(*Ui, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
         if (ui.tooltip_popup) |t| t.popup.close();
         if (ui.menu_popup) |m| m.popup.close();
         ui.closeMenu();
         ui.endDrag(false);
         if (ui.loaded_keymap) |*km| km.deinit();
         if (ui.title_bar_root) |tb| tb.destroy();
-        if (ui.images.waitSource()) |src| if (ui.win) |w| w.watch(src, false);
-        ui.images.deinit();
-        if (ui.wake) |*x| {
-            if (ui.win) |w| w.watch(.ofWake(x), false);
-            x.deinit();
+        if (ui.win) |w| {
+            if (ui.images.waitSource()) |src| w.watch(src, false);
+            if (shared.wakeSource()) |src| w.watch(src, false);
+            if (has_atspi) if (shared.a11y) |b| w.watch(b.source(), false);
         }
-        if (has_atspi) if (ui.a11y) |b| {
-            if (ui.win) |w| w.watch(b.source(), false);
-            b.close();
-        };
         if (ui.a11y_tree) |t| {
             t.deinit();
             ui.gpa.destroy(t);
@@ -372,7 +486,6 @@ pub const Ui = struct {
         if (ui.tooltip_root) |t| t.destroy();
         ui.drag_scratch.deinit(ui.gpa);
         if (ui.root) |r| r.destroy();
-        ui.local_clipboard.deinit(ui.gpa);
         ui.hovered.deinit(ui.gpa);
         ui.hover_scratch.deinit(ui.gpa);
         for (ui.canvases.items) |c| {
@@ -381,23 +494,16 @@ pub const Ui = struct {
         }
         ui.canvases.deinit(ui.gpa);
         ui.segments.deinit(ui.gpa);
-        if (ui.owns_renderer) if (ui.renderer) |r| r.deinit();
-        ui.atlas.deinit();
         for (&ui.arenas) |*a| a.deinit();
         ui.gpa.destroy(ui);
+        if (ui.owns_shared) shared.destroy();
     }
 
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
-    /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`).
+    /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`): for
+    /// all the app's windows (see `Shared.attachRenderer`).
     pub fn attachRenderer(ui: *Ui, r: gfx.Renderer, take_ownership: bool) void {
-        if (ui.owns_renderer) if (ui.renderer) |old| old.deinit();
-        ui.vulkan_renderer = null;
-        ui.opengl_renderer = null;
-        ui.metal_renderer = null;
-        ui.d3d11_renderer = null;
-        ui.renderer = r;
-        ui.owns_renderer = take_ownership;
-        ui.presenter = .{ .renderer = r };
+        ui.shared.attachRenderer(r, take_ownership);
     }
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
@@ -452,7 +558,7 @@ pub const Ui = struct {
             .frame_sync = if (ui.win) |w| w.frameSync() else .{},
             .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
             .extensions = if (ui.win) |w| w.extensions() else &.{},
-            .renderer = if (ui.renderer) |r| r.backend() else .software,
+            .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
             .decorations = ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },
@@ -527,20 +633,18 @@ pub const Ui = struct {
     /// Something to wake the UI for a frame from another thread or task
     /// (it only marks it to be drawn if there are no fds left).
     pub fn waker(ui: *Ui) Waker {
-        if (ui.wake == null) ui.wake = sys.Wake.create() catch return .{ .woken = &ui.woken };
-        return .{ .wake_ = ui.wake, .woken = &ui.woken };
+        return ui.shared.waker();
     }
 
     /// What is read when a `Waker` wakes it (to wait on with the window's),
     /// once there is a waker.
     pub fn wakeSource(ui: *Ui) ?window_mod.Source {
-        return if (ui.wake) |*x| .ofWake(x) else null;
+        return ui.shared.wakeSource();
     }
 
     /// Takes the wakes since the last time; true if there were any.
     pub fn takeWakes(ui: *Ui) bool {
-        const drained = if (ui.wake) |*w| w.drain() else false;
-        return ui.woken.swap(false, .acq_rel) or drained;
+        return ui.shared.takeWakes();
     }
 
     /// Now, on the clock frames and input are timed on (`window.nowNs`).
@@ -634,10 +738,10 @@ pub const Ui = struct {
     /// Without it, nothing is offered; it can be tried again.
     pub fn enableAccessibility(ui: *Ui, environ: std.process.Environ) void {
         if (!has_atspi) return;
-        if (ui.a11y != null) return;
+        if (ui.shared.a11y != null) return;
         if (envIs(environ, "NO_AT_BRIDGE", "1")) return;
         const title = if (ui.win) |w| w.title() else "";
-        ui.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
+        ui.shared.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
         ui.needs_frame = true;
     }
 
@@ -645,7 +749,7 @@ pub const Ui = struct {
     /// told), if it is offered at all.
     fn updateAccessibility(ui: *Ui) void {
         if (!has_atspi) return;
-        const b = ui.a11y orelse return;
+        const b = ui.shared.a11y orelse return;
         const root = ui.root orelse return;
         var extra: [3]*Node = undefined;
         var n: usize = 0;
@@ -669,7 +773,7 @@ pub const Ui = struct {
     /// (pressed a button), so a frame is needed.
     pub fn dispatchAccessibility(ui: *Ui) bool {
         if (!has_atspi) return false;
-        const b = ui.a11y orelse return false;
+        const b = ui.shared.a11y orelse return false;
         const acted = b.dispatch();
         if (acted) ui.needs_frame = true;
         return acted;
@@ -965,15 +1069,15 @@ pub const Ui = struct {
     pub fn copyText(ui: *Ui, text: []const u8) void {
         if (ui.clipboard) |c| return c.vtable.copy(c.ptr, text);
         if (ui.win) |w| if (w.hasClipboard()) return w.copy(text);
-        ui.local_clipboard.clearRetainingCapacity();
-        ui.local_clipboard.appendSlice(ui.gpa, text) catch {};
+        ui.shared.local_clipboard.clearRetainingCapacity();
+        ui.shared.local_clipboard.appendSlice(ui.gpa, text) catch {};
     }
 
     pub fn pasteText(ui: *Ui, owner: *Node, on_text: widget.ValueCallback([]const u8)) void {
         ui.paste = .{ .owner = owner, .on_text = on_text };
         if (ui.clipboard) |c| return c.vtable.paste(c.ptr, .{ .ctx = ui, .f = pasted });
         if (ui.win) |w| if (w.hasClipboard()) return w.paste(.{ .ctx = ui, .f = pasted });
-        pasted(ui, if (ui.local_clipboard.items.len > 0) ui.local_clipboard.items else null);
+        pasted(ui, if (ui.shared.local_clipboard.items.len > 0) ui.shared.local_clipboard.items else null);
     }
 
     fn pasted(ctx: *anyopaque, text: ?[]const u8) void {
@@ -1075,11 +1179,11 @@ pub const Ui = struct {
         return out[0..region.len];
     }
 
-    /// Renders the last painted frame through `ui.renderer` into `target`.
+    /// Renders the last painted frame through `ui.shared.renderer` into `target`.
     /// `target` is a pointer to the renderer's target type (`*gfx.software.Image`
     /// for the software renderer); another type is `error.WrongTarget`.
     pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
-        const r = ui.renderer orelse return error.NoRenderer;
+        const r = ui.shared.renderer orelse return error.NoRenderer;
         try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items[0..ui.main_segments], target, damage);
     }
 
@@ -1671,7 +1775,7 @@ pub const App = struct {
             a.win.watch(src, true);
             a.watching_wake = true;
         };
-        if (has_atspi and !a.watching_a11y) if (a.ui.a11y) |b| {
+        if (has_atspi and !a.watching_a11y) if (a.ui.shared.a11y) |b| {
             a.win.watch(b.source(), true);
             a.watching_a11y = true;
         };
