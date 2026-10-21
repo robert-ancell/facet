@@ -83,18 +83,29 @@ pub const Counter = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
+    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+        .on_quit_request = .quit,
+        .on_last_window_closed = .quit,
+    });
+    defer app.deinit();
+    const win = try app.openWindow(.{
         .title = "Hello Facet",
         .size = .{ 480, 320 },
+        .on_close_request = .close,
     });
-    defer app.close();
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(Counter{});
+        try win.draw(Counter{});
     }
 }
 ```
+
+An app can have any number of windows (`app.openWindow` again, with a
+`.parent` for a dialog's), each drawn with its own `draw`. What the
+system asks for (to close a window, to quit) is the app's to act on: the
+options above say to act on it as most apps do, or callbacks can decide
+(`.on_close_request = .{ .call = .of(&state, State.askToSave) }`).
 
 ## Showcase
 

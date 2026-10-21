@@ -53,7 +53,8 @@ pub const MacWindow = struct {
     width: u32,
     height: u32,
     scale: u32 = 1,
-    closed: bool = false,
+    /// The window system asked for it to be closed (taken by the app).
+    close_requested: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
     refresh_ns: u64 = std.time.ns_per_s / 60,
@@ -912,8 +913,9 @@ pub const MacWindow = struct {
 
     const delegate_methods = struct {
         fn windowShouldClose(d: Id, _: objc.Sel, _: Id) callconv(.c) objc.Bool {
-            // The app closes it, when it has seen that it was asked to.
-            if (objc.owner(MacWindow, d)) |w| w.closed = true;
+            // The app closes it, if it will, when it takes the request.
+            if (objc.owner(MacWindow, d)) |w| w.close_requested = true;
+            postWake();
             return objc.no;
         }
         fn changed(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
@@ -1171,9 +1173,9 @@ fn startApp() Id {
 
 fn shouldTerminate(_: Id, _: objc.Sel, _: Id) callconv(.c) u64 {
     if (current_display) |d| d.quit_requested = true;
-    for (windows.items) |w| w.closed = true;
     postWake();
-    // NSTerminateCancel: the app ends when it sees its windows closed.
+    // NSTerminateCancel: the app quits, if it will, when it takes the
+    // request.
     return 0;
 }
 

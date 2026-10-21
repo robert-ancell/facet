@@ -206,13 +206,18 @@ pub const Showcase = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
-        .title = "Facet Showcase",
+    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
         .app_id = "facet-showcase",
+        .on_quit_request = .quit,
+        .on_last_window_closed = .quit,
+    });
+    defer app.deinit();
+    const win = try app.openWindow(.{
+        .title = "Facet Showcase",
         .size = .{ 1120, 760 },
         .min_size = .{ 800, 480 },
+        .on_close_request = .close,
     });
-    defer app.close();
 
     var notes = try facet.TextDocument.init(init.gpa, text.initial_notes);
     defer notes.deinit();
@@ -221,7 +226,7 @@ pub fn main(init: std.process.Init) !void {
 
     while (try app.step(60 * std.time.ns_per_s)) {
         app.takeInput();
-        try app.draw(Showcase{ .notes = &notes, .code = &code });
+        try win.draw(Showcase{ .notes = &notes, .code = &code });
     }
 }
 

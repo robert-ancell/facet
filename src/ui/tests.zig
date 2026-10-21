@@ -2736,3 +2736,117 @@ test "a Waker woken by a task on the Io ends the wait for it" {
     try testing.expect(u.takeWakes());
     try testing.expect(!u.takeWakes());
 }
+
+/// A display of `AppWin`s, which the system asks to close (or the app to
+/// quit) when a test says.
+const AppDisplay = struct {
+    windows: [4]AppWin = @splat(.{}),
+    len: usize = 0,
+    quit_requested: bool = false,
+
+    const AppWin = struct {
+        width: u32 = 64,
+        height: u32 = 48,
+        pixels: [64 * 48]u32 = @splat(0),
+        shown: u32 = 0,
+        close_requested: bool = false,
+        closed: bool = false,
+        parent: ?*AppWin = null,
+
+        pub const Options = struct {
+            title: []const u8,
+            parent: ?*AppWin = null,
+        };
+        pub fn beginSoftwareFrame(w: *AppWin) !gfx.software.Image {
+            return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
+        }
+        pub fn showDamaged(w: *AppWin, _: ?[]const gfx.Viewport) !void {
+            w.shown += 1;
+        }
+        pub fn close(w: *AppWin) void {
+            w.closed = true;
+        }
+    };
+
+    pub fn openWindow(d: *AppDisplay, o: AppWin.Options) !*AppWin {
+        if (d.len == d.windows.len) return error.TooManyWindows;
+        d.windows[d.len] = .{ .parent = o.parent };
+        d.len += 1;
+        return &d.windows[d.len - 1];
+    }
+    pub fn takeQuitRequest(d: *AppDisplay) bool {
+        defer d.quit_requested = false;
+        return d.quit_requested;
+    }
+};
+
+test "an app's windows are closed as their options say, and it quits as its own say" {
+    var display: AppDisplay = .{};
+    const Seen = struct {
+        quit_asked: u32 = 0,
+        last_closed: u32 = 0,
+        close_asked: ?*ui.App.Window = null,
+        fn quitAsked(s: *@This()) void {
+            s.quit_asked += 1;
+        }
+        fn lastClosed(s: *@This()) void {
+            s.last_closed += 1;
+        }
+        fn closeAsked(s: *@This(), w: *ui.App.Window) void {
+            s.close_asked = w;
+        }
+    };
+    var seen: Seen = .{};
+    const app = try ui.App.init(testing.allocator, testing.io, .empty, .{
+        .display = .of(&display),
+        .on_quit_request = .{ .call = .of(&seen, Seen.quitAsked) },
+        .on_last_window_closed = .{ .call = .of(&seen, Seen.lastClosed) },
+    });
+    defer app.deinit();
+    app.shared.attachRenderer(app.shared.software_renderer.renderer(), false);
+    const main = try app.openWindow(.{ .title = "main" });
+    const kept = try app.openWindow(.{ .title = "kept", .parent = main, .on_close_request = .{ .call = .of(&seen, Seen.closeAsked) } });
+    const closing = try app.openWindow(.{ .title = "closing", .on_close_request = .close });
+    try testing.expectEqual(&display.windows[0], display.windows[1].parent.?);
+
+    try testing.expect(try app.step(0));
+    try main.draw(ui.SizedBox{ .width = 10, .height = 10 });
+    try kept.draw(ui.SizedBox{ .width = 10, .height = 10 });
+    try testing.expectEqual(@as(u32, 1), display.windows[0].shown);
+
+    // By default, a request to close is the app's to act on: nothing is
+    // done. Asked to, the window closes, or the callback is called.
+    for (&display.windows) |*w| w.close_requested = true;
+    try testing.expect(try app.step(0));
+    try testing.expect(!main.isClosed());
+    try testing.expectEqual(kept, seen.close_asked.?);
+    try testing.expect(!kept.isClosed());
+    try testing.expect(closing.isClosed());
+    try testing.expect(display.windows[2].closed);
+    // A closed window's handle stays, and drawing it does nothing.
+    try closing.draw(ui.SizedBox{ .width = 10, .height = 10 });
+    try testing.expectEqual(@as(u32, 0), display.windows[2].shown);
+    closing.destroy();
+
+    // The system's request to quit is told; the app goes on until it quits.
+    display.quit_requested = true;
+    try testing.expect(try app.step(0));
+    try testing.expectEqual(@as(u32, 1), seen.quit_asked);
+
+    // Its last window closed, it is told so, and goes on with none.
+    kept.close();
+    try testing.expect(try app.step(0));
+    try testing.expectEqual(@as(u32, 0), seen.last_closed);
+    main.close();
+    try testing.expect(try app.step(0));
+    try testing.expectEqual(@as(u32, 1), seen.last_closed);
+    try testing.expect(try app.step(0));
+    try testing.expectEqual(@as(u32, 1), seen.last_closed);
+
+    // A window opened again; told to, it quits once that is closed.
+    app.on_last_window_closed = .quit;
+    const again = try app.openWindow(.{ .title = "again" });
+    try testing.expect(try app.step(0));
+    again.close();
+    try testing.expect(!try app.step(0));
+}

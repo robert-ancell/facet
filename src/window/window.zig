@@ -424,7 +424,7 @@ pub const Window = struct {
         takeInput: *const fn (ptr: *anyopaque) []const InputEvent,
         size: *const fn (ptr: *anyopaque) [2]u32,
         scale: *const fn (ptr: *anyopaque) u32,
-        isClosed: *const fn (ptr: *anyopaque) bool,
+        takeCloseRequest: *const fn (ptr: *anyopaque) bool,
         isSuspended: *const fn (ptr: *anyopaque) bool,
         isMaximized: *const fn (ptr: *anyopaque) bool,
         isFullscreen: *const fn (ptr: *anyopaque) bool,
@@ -564,9 +564,13 @@ pub const Window = struct {
                 if (@hasField(T, "scale")) return s.scale;
                 return 1;
             }
-            fn isClosedFn(p: *anyopaque) bool {
+            fn takeCloseRequestFn(p: *anyopaque) bool {
                 const s = self(p);
-                if (@hasField(T, "closed")) return s.closed;
+                if (@hasDecl(T, "takeCloseRequest")) return s.takeCloseRequest();
+                if (@hasField(T, "close_requested")) {
+                    defer s.close_requested = false;
+                    return s.close_requested;
+                }
                 return false;
             }
             fn isSuspendedFn(p: *anyopaque) bool {
@@ -741,7 +745,7 @@ pub const Window = struct {
                 .takeInput = takeInputFn,
                 .size = sizeFn,
                 .scale = scaleFn,
-                .isClosed = isClosedFn,
+                .takeCloseRequest = takeCloseRequestFn,
                 .isSuspended = isSuspendedFn,
                 .isMaximized = isMaximizedFn,
                 .isFullscreen = isFullscreenFn,
@@ -862,9 +866,11 @@ pub const Window = struct {
     pub fn scale(w: Window) u32 {
         return w.vtable.scale(w.ptr);
     }
-    /// Whether the window system has closed the window (the user asked it to end).
-    pub fn isClosed(w: Window) bool {
-        return w.vtable.isClosed(w.ptr);
+    /// Takes the window system's request to close the window (the user
+    /// pressed its close button), if there was one since last taken: it
+    /// stays open until it is closed (`close`).
+    pub fn takeCloseRequest(w: Window) bool {
+        return w.vtable.takeCloseRequest(w.ptr);
     }
     /// Whether the window is not shown (minimized or hidden), so drawing frames
     /// would be wasted.
@@ -1313,15 +1319,16 @@ pub const D3D11Frame = WindowFrame(gfx.D3D11Target);
 /// `.on_close = .of(&controls, Controls.close)`, and so on).
 pub const Controls = struct {
     win: ?Window = null,
-    /// The close button was pressed: the app should end.
-    quit: bool = false,
+    /// The close button was pressed: the window should be closed (taken by
+    /// the app as the window system's own request is).
+    close_requested: bool = false,
 
     pub fn init(impl: anytype) Controls {
         return .{ .win = Window.from(impl) };
     }
 
     pub fn close(c: *Controls) void {
-        c.quit = true;
+        c.close_requested = true;
     }
 
     /// The minimize button: hide the window.

@@ -151,14 +151,19 @@ pub const CanvasAndQrDemo = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
+    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+        .on_quit_request = .quit,
+        .on_last_window_closed = .quit,
+    });
+    defer app.deinit();
+    const win = try app.openWindow(.{
         .title = "Facet Canvas & QR",
         .size = .{ 740, 460 },
+        .on_close_request = .close,
     });
-    defer app.close();
 
     while (try app.step(std.math.maxInt(u64))) {
         app.takeInput();
-        try app.draw(CanvasAndQrDemo{});
+        try win.draw(CanvasAndQrDemo{});
     }
 }

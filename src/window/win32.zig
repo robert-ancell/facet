@@ -277,7 +277,8 @@ pub const Win32Window = struct {
     scale: u32 = 1,
     /// The client area in pixels.
     pixel_size: [2]u32 = .{ 0, 0 },
-    closed: bool = false,
+    /// The window system asked for it to be closed (taken by the app).
+    close_requested: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
     minimized: bool = false,
@@ -577,8 +578,8 @@ pub const Win32Window = struct {
     fn handle(w: *Win32Window, u: *const w32.User32, message: UINT, wparam: WPARAM, lparam: LPARAM) ?LRESULT {
         switch (message) {
             WM_CLOSE => {
-                // The app closes it, when it has seen that it was asked to.
-                w.closed = true;
+                // The app closes it, if it will, when it takes the request.
+                w.close_requested = true;
                 return 0;
             },
             WM_DESTROY => return 0,

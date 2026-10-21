@@ -362,16 +362,21 @@ fn buildReport(cx: *facet.Context) facet.Widget {
 }
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.open(init.gpa, init.io, init.minimal.environ, .{
-        .title = "Facet Info",
+    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
         .app_id = "facet-info",
+        .on_quit_request = .quit,
+        .on_last_window_closed = .quit,
+    });
+    defer app.deinit();
+    const win = try app.openWindow(.{
+        .title = "Facet Info",
         .size = .{ 1000, 720 },
         .min_size = .{ 640, 400 },
+        .on_close_request = .close,
     });
-    defer app.close();
 
     while (try app.step(60 * std.time.ns_per_s)) {
         app.takeInput();
-        try app.draw(Info{});
+        try win.draw(Info{});
     }
 }

@@ -794,7 +794,8 @@ pub const WaylandWindow = struct {
     last_geometry: ?[3]u32 = null,
     next_size: [2]i32 = .{ 0, 0 },
     pending_serial: ?u32 = null,
-    closed: bool = false,
+    /// The window system asked for it to be closed (taken by the app).
+    close_requested: bool = false,
     suspended: bool = false,
     maximized: bool = false,
     fullscreen: bool = false,
@@ -2853,7 +2854,7 @@ pub const WaylandWindow = struct {
                 w.fullscreen = fullscreen;
                 w.tiled = tiled;
             },
-            p.xdg_toplevel.event.close => w.closed = true,
+            p.xdg_toplevel.event.close => w.close_requested = true,
             p.xdg_toplevel.event.wm_capabilities => {
                 const caps = r.array() catch return;
                 w.can_maximize = false;

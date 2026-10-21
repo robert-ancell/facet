@@ -132,6 +132,8 @@ pub const Shared = struct {
     /// The connection to assistive technologies (once a window's
     /// `enableAccessibility` has made it).
     a11y: ?*atspi.Bridge = null,
+    /// The UI whose tree it offers (the first to enable it).
+    a11y_ui: ?*Ui = null,
     /// Text copied, when there is no system clipboard.
     local_clipboard: std.ArrayList(u8) = .empty,
     /// The windows' UIs (made by `createUi`).
@@ -466,17 +468,20 @@ pub const Ui = struct {
     pub fn destroy(ui: *Ui) void {
         const shared = ui.shared;
         if (std.mem.indexOfScalar(*Ui, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
+        if (shared.a11y_ui == ui) shared.a11y_ui = null;
         if (ui.tooltip_popup) |t| t.popup.close();
         if (ui.menu_popup) |m| m.popup.close();
         ui.closeMenu();
         ui.endDrag(false);
         if (ui.loaded_keymap) |*km| km.deinit();
         if (ui.title_bar_root) |tb| tb.destroy();
-        if (ui.win) |w| {
+        // A UI of its own waited on what it shares through its window (an
+        // app's, through its display).
+        if (ui.owns_shared) if (ui.win) |w| {
             if (ui.images.waitSource()) |src| w.watch(src, false);
             if (shared.wakeSource()) |src| w.watch(src, false);
             if (has_atspi) if (shared.a11y) |b| w.watch(b.source(), false);
-        }
+        };
         if (ui.a11y_tree) |t| {
             t.deinit();
             ui.gpa.destroy(t);
@@ -495,8 +500,9 @@ pub const Ui = struct {
         ui.canvases.deinit(ui.gpa);
         ui.segments.deinit(ui.gpa);
         for (&ui.arenas) |*a| a.deinit();
+        const owns_shared = ui.owns_shared;
         ui.gpa.destroy(ui);
-        if (ui.owns_shared) shared.destroy();
+        if (owns_shared) shared.destroy();
     }
 
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
@@ -742,6 +748,7 @@ pub const Ui = struct {
         if (envIs(environ, "NO_AT_BRIDGE", "1")) return;
         const title = if (ui.win) |w| w.title() else "";
         ui.shared.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
+        if (ui.shared.a11y != null) ui.shared.a11y_ui = ui;
         ui.needs_frame = true;
     }
 
@@ -750,6 +757,7 @@ pub const Ui = struct {
     fn updateAccessibility(ui: *Ui) void {
         if (!has_atspi) return;
         const b = ui.shared.a11y orelse return;
+        if (ui.shared.a11y_ui != ui) return;
         const root = ui.root orelse return;
         var extra: [3]*Node = undefined;
         var n: usize = 0;
@@ -1603,19 +1611,6 @@ pub const Ui = struct {
     }
 };
 
-/// A native toolkit app: a window (the system's own, a `NativeWindow`,
-/// unless given one), its `Controls`, and a `Ui`. The app runs it in a
-/// loop of its own:
-///
-///     while (try app.step(std.math.maxInt(u64))) {
-///         app.takeInput();
-///         try app.draw(Root{ .state = &state });
-///     }
-///
-/// It does its I/O, waits, and tells the time through the `std.Io` it is
-/// given (the app's, as from `std.process.Init`), so other tasks on it go
-/// on while `step` waits: a fetch started with `io.async`, which wakes
-/// the UI (`Ui.waker`) when it is done.
 /// Whether environment variable `key` is `value` (both ASCII).
 fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value: []const u8) bool {
     if (builtin.os.tag == .windows) {
@@ -1628,137 +1623,250 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
     return std.mem.eql(u8, v, value);
 }
 
+/// A native toolkit app: its windows (the system's own, opened on a
+/// `window.NativeDisplay`, unless it is given a display), each with its
+/// `Controls` and a `Ui`, and what they share (`Shared`: the font, the
+/// renderer, the theme). The app runs them in a loop of its own:
+///
+///     const app = try App.init(gpa, io, environ, .{ .on_quit_request = .quit, .on_last_window_closed = .quit });
+///     defer app.deinit();
+///     const win = try app.openWindow(.{ .title = "Hello", .on_close_request = .close });
+///     while (try app.step(std.math.maxInt(u64))) {
+///         app.takeInput();
+///         try win.draw(Root{ .state = &state });
+///     }
+///
+/// What the system asks (to close a window, to quit) is done as its
+/// options say: by default nothing is, and it is the app's own to do
+/// (with `Window.close` and `quit`). Callbacks are called on the app's
+/// thread, in `step`.
+///
+/// It does its I/O, waits, and tells the time through the `std.Io` it is
+/// given (the app's, as from `std.process.Init`), so other tasks on it go
+/// on while `step` waits: a fetch started with `io.async`, which wakes
+/// the UI (`Shared.waker`) when it is done.
 pub const App = struct {
     gpa: std.mem.Allocator,
     io: std.Io,
-    win: window_mod.Window,
-    /// Whether `close` closes `win` (it was opened by `open`).
-    owns_window: bool = false,
-    controls: window_mod.Controls,
-    ui: *Ui,
-    clear_color: ?u32 = null,
+    environ: std.process.Environ,
+    display: window_mod.Display,
+    /// Whether `deinit` closes `display` (it was opened by `init`).
+    owns_display: bool = false,
+    shared: *Shared,
+    /// Its windows, open and closed (until destroyed).
+    windows: std.ArrayList(*Window) = .empty,
+    /// How many of them are open, and whether the last was closed since
+    /// `step` last saw.
+    open_windows: usize = 0,
+    last_window_closed: bool = false,
+    app_id: ?[]const u8 = null,
+    on_quit_request: OnQuitRequest = .ignore,
+    on_last_window_closed: OnLastWindowClosed = .ignore,
+    /// `quit` was called: `step` returns false.
+    quitting: bool = false,
     appearance: theme_mod.Settings = .{},
     theme_watch: theme_mod.Watch = .{},
     /// The system's appearance (dark or not) when last seen, for windows
     /// that say (macOS): the theme follows it when it changes.
     system_dark: ?bool = null,
-    dirty: bool = true,
-    /// Whether the window waits on the image loader, the `Waker`s, and the
+    /// Whether the display waits on the image loader, the `Waker`s, and the
     /// accessibility bus.
     watching_images: bool = false,
     watching_wake: bool = false,
     watching_a11y: bool = false,
-    /// Each frame's timings written to stderr (`FACET_TRACE=1`), and when
-    /// the last was begun.
+    /// Each frame's timings written to stderr (`FACET_TRACE=1`).
     trace: bool = false,
-    last_frame_ns: u64 = 0,
-    /// A frame is being drawn because the window asked (from inside the
-    /// window system's loop, which holds the app's).
-    held: bool = false,
-    /// The last `draw` showed nothing, so `step` waits rather than going
-    /// straight on to draw again.
-    idle: bool = false,
-    suspended: bool = false,
-    /// The root last drawn, kept to draw again when the window asks (see
-    /// `window.Window.setRedraw`), and whether a frame is being drawn.
-    kept_root: ?KeptRoot = null,
-    drawing: bool = false,
 
-    const KeptRoot = struct {
-        ptr: *anyopaque,
-        draw: *const fn (a: *App, ptr: *anyopaque) anyerror!void,
-        free: *const fn (gpa: std.mem.Allocator, ptr: *anyopaque) void,
+    /// What is done when the system asks the app to quit (macOS's Quit,
+    /// ⌘Q): nothing, `quit`, or a callback.
+    pub const OnQuitRequest = union(enum) {
+        ignore,
+        quit,
+        call: widget.Callback,
+    };
+    /// What is done when the last open window is closed: nothing (the app
+    /// goes on, with no windows), `quit`, or a callback.
+    pub const OnLastWindowClosed = union(enum) {
+        ignore,
+        quit,
+        call: widget.Callback,
+    };
+    /// What is done when a window is asked to close (its close button):
+    /// nothing, `Window.close`, or a callback given the window.
+    pub const OnCloseRequest = union(enum) {
+        ignore,
+        close,
+        call: widget.ValueCallback(*Window),
     };
 
     pub const Options = struct {
-        title: []const u8,
+        /// What the system knows the app by (Wayland's app id), for its
+        /// windows.
         app_id: ?[]const u8 = null,
-        size: [2]u32 = .{ 1280, 720 },
-        min_size: ?[2]u32 = null,
-        maximized: bool = false,
         /// The OpenType or TrueType font text is drawn in (the file's
         /// bytes, which must outlive the app); the bundled Fira Sans if
         /// null.
         font_data: ?[]const u8 = null,
-        clear_color: ?u32 = null,
+        /// What its windows are on (a custom backend's, or
+        /// `window.Display.single` for a custom backend's one window),
+        /// which stays the caller's to close after the app; the system's
+        /// own (a `window.NativeDisplay`) if null.
+        display: ?window_mod.Display = null,
+        on_quit_request: OnQuitRequest = .ignore,
+        on_last_window_closed: OnLastWindowClosed = .ignore,
     };
 
-    /// Opens a window of the system's (connecting to the Wayland compositor
-    /// in `environ`, on Linux; AppKit's, on macOS) and makes an app in it
-    /// (see `openIn`), both doing their I/O through `io`.
-    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*App {
-        const win = try window_mod.NativeWindow.open(gpa, io, environ, .{
-            .title = options.title,
-            .app_id = options.app_id,
-            .size = options.size,
-            .min_size = options.min_size,
-            .maximized = options.maximized,
-        });
-        errdefer win.close();
-        const a = try openIn(gpa, io, win, options);
-        a.owns_window = true;
-        a.ui.enableAccessibility(environ);
-        a.trace = envIs(environ, "FACET_TRACE", "1");
-        return a;
-    }
+    /// How a window opened by `openWindow` starts out.
+    pub const WindowOptions = struct {
+        title: []const u8,
+        size: [2]u32 = .{ 1280, 720 },
+        min_size: ?[2]u32 = null,
+        maximized: bool = false,
+        /// What is under it all (ARGB); the theme's surface colour if null.
+        clear_color: ?u32 = null,
+        /// A window it belongs to (a dialog's, a tool window's): it stays
+        /// above it.
+        parent: ?*Window = null,
+        on_close_request: OnCloseRequest = .ignore,
+    };
 
-    /// Makes an app in `win` (a `window.Window`, or a pointer to a window
-    /// `Window.of` takes), which stays the caller's to close after the
-    /// app. Of `options`, only `min_size`, `font_data` and `clear_color`
-    /// apply: the window is already open. The app does its I/O through
-    /// `io` (the window, through its own).
-    pub fn openIn(gpa: std.mem.Allocator, io: std.Io, win: anytype, options: Options) !*App {
-        const w = window_mod.Window.from(win);
-        const ui = if (options.font_data) |data| try Ui.createWithFontData(gpa, io, data) else try Ui.createDefault(gpa, io);
-        errdefer ui.destroy();
+    /// How a window added by `addWindow` is used.
+    pub const AddOptions = struct {
+        min_size: ?[2]u32 = null,
+        clear_color: ?u32 = null,
+        on_close_request: OnCloseRequest = .ignore,
+    };
+
+    /// Makes an app with no windows yet (opened by `openWindow`): on the
+    /// system's display (connecting to the Wayland compositor in
+    /// `environ`, on Linux; AppKit, on macOS), unless `options` gives one.
+    /// It does its I/O through `io`.
+    pub fn init(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*App {
+        const owns_display = options.display == null;
+        const display: window_mod.Display = options.display orelse .of(try window_mod.NativeDisplay.open(gpa, io, environ));
+        errdefer if (owns_display) display.close();
+        const shared = if (options.font_data) |data| try Shared.createWithFontData(gpa, io, data) else try Shared.createDefault(gpa, io);
+        errdefer shared.destroy();
         const a = try gpa.create(App);
         a.* = .{
             .gpa = gpa,
             .io = io,
-            .win = w,
-            .controls = .init(w),
-            .ui = ui,
-            .clear_color = options.clear_color,
+            .environ = environ,
+            .display = display,
+            .owns_display = owns_display,
+            .shared = shared,
+            .app_id = options.app_id,
+            .on_quit_request = options.on_quit_request,
+            .on_last_window_closed = options.on_last_window_closed,
             .appearance = theme_mod.loadSettings(io),
+            .trace = envIs(environ, "FACET_TRACE", "1"),
         };
         _ = a.theme_watch.changed(io);
-        _ = a.followSystem();
-        ui.theme = a.appearance.theme.scheme();
-        ui.min_size_floor = options.min_size orelse .{ 0, 0 };
-        ui.attachWindow(w, &a.controls);
-        w.setRedraw(.{ .ctx = a, .f = redraw });
         return a;
     }
 
-    pub fn close(a: *App) void {
-        a.win.setRedraw(null);
-        if (a.kept_root) |k| k.free(a.gpa, k.ptr);
-        a.ui.destroy();
-        if (a.owns_window) a.win.close();
+    /// Closes its windows (and frees their handles), and lets it go.
+    pub fn deinit(a: *App) void {
+        for (a.windows.items) |w| {
+            w.close();
+            a.gpa.destroy(w);
+        }
+        a.windows.deinit(a.gpa);
+        if (a.watching_images) if (a.shared.images.waitSource()) |src| a.display.watch(src, false);
+        if (a.watching_wake) if (a.shared.wakeSource()) |src| a.display.watch(src, false);
+        if (has_atspi and a.watching_a11y) if (a.shared.a11y) |b| a.display.watch(b.source(), false);
+        a.shared.destroy();
+        if (a.owns_display) a.display.close();
         a.gpa.destroy(a);
     }
 
-    /// Takes the system's appearance, if the window says what it is and it
+    /// Opens a window of the display's, as `options` says.
+    pub fn openWindow(a: *App, options: WindowOptions) !*Window {
+        const parent: ?window_mod.Window = if (options.parent) |p| (if (p.closed) return error.ParentClosed else p.win) else null;
+        const win = try a.display.openWindow(.{
+            .title = options.title,
+            .app_id = a.app_id,
+            .size = options.size,
+            .min_size = options.min_size,
+            .maximized = options.maximized,
+            .parent = parent,
+        });
+        errdefer win.close();
+        const w = try a.adopt(win, .{ .min_size = options.min_size, .clear_color = options.clear_color, .on_close_request = options.on_close_request });
+        w.owns_window = true;
+        w.ui.enableAccessibility(a.environ);
+        return w;
+    }
+
+    /// Adds `win` (a custom backend's window: a `window.Window`, or a
+    /// pointer to a window `Window.of` takes), which is already open and
+    /// stays the caller's to close after the app's window is closed.
+    pub fn addWindow(a: *App, win: anytype, options: AddOptions) !*Window {
+        return a.adopt(window_mod.Window.from(win), options);
+    }
+
+    fn adopt(a: *App, win: window_mod.Window, options: AddOptions) !*Window {
+        try a.windows.ensureUnusedCapacity(a.gpa, 1);
+        const ui = try a.shared.createUi();
+        errdefer ui.destroy();
+        const w = try a.gpa.create(Window);
+        w.* = .{
+            .app = a,
+            .win = win,
+            .controls = .init(win),
+            .ui = ui,
+            .clear_color = options.clear_color,
+            .on_close_request = options.on_close_request,
+        };
+        a.windows.appendAssumeCapacity(w);
+        a.open_windows += 1;
+        if (a.followSystem()) a.applyTheme();
+        ui.theme = a.appearance.theme.scheme();
+        ui.min_size_floor = options.min_size orelse .{ 0, 0 };
+        ui.attachWindow(win, &w.controls);
+        win.setRedraw(.{ .ctx = w, .f = Window.redraw });
+        return w;
+    }
+
+    /// Makes `step` return false (from its next return on): the app
+    /// should end.
+    pub fn quit(a: *App) void {
+        a.quitting = true;
+    }
+
+    /// Takes the system's appearance, if a window says what it is and it
     /// has changed since last seen; true if it had.
     fn followSystem(a: *App) bool {
-        const dark = a.win.prefersDark() orelse return false;
+        const dark = for (a.windows.items) |w| {
+            if (w.closed) continue;
+            if (w.win.prefersDark()) |d| break d;
+        } else return false;
         if (a.system_dark == dark) return false;
         a.system_dark = dark;
         a.appearance.theme = if (dark) .dark else .light;
         return true;
     }
 
-    pub fn setTheme(a: *App, mode: theme_mod.Mode) void {
-        a.appearance.theme = mode;
-        a.ui.theme = mode.scheme();
-        _ = a.theme_watch.changed(a.io);
-        a.dirty = true;
+    /// Gives every window's UI the app's theme, and redraws them.
+    fn applyTheme(a: *App) void {
+        for (a.windows.items) |w| if (!w.closed) {
+            w.ui.theme = a.appearance.theme.scheme();
+            w.dirty = true;
+        };
     }
 
-    /// Waits until there is something to do: a frame to draw that the
-    /// window is ready for, or something from the window (or, with nothing
-    /// to draw, `idle_timeout_ns`); then brings the UI up to date with the
-    /// window. False when the app should end.
+    pub fn setTheme(a: *App, mode: theme_mod.Mode) void {
+        a.appearance.theme = mode;
+        _ = a.theme_watch.changed(a.io);
+        a.applyTheme();
+    }
+
+    /// Waits until there is something to do: a frame to draw that its
+    /// window is ready for, or something from the windows (or, with
+    /// nothing to draw, `idle_timeout_ns`); then does what the system
+    /// asked (as the options say, or by their callbacks), and brings the
+    /// UIs up to date with their windows. False when the app should end
+    /// (`quit` was called).
     ///
     /// A frame is drawn only once the window has shown the last one, so
     /// that it is drawn for the time it will be shown, not a frame early.
@@ -1766,150 +1874,285 @@ pub const App = struct {
     /// It waits through the app's `std.Io`, so other tasks on it go on
     /// meanwhile; `error.Canceled` if this task is canceled.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
-        // Woken when an image is loaded, as by the window's events.
-        if (!a.watching_images) if (a.ui.images.waitSource()) |src| {
-            a.win.watch(src, true);
+        if (a.quitting) return false;
+        // Woken when an image is loaded, as by the windows' events.
+        if (!a.watching_images) if (a.shared.images.waitSource()) |src| {
+            a.display.watch(src, true);
             a.watching_images = true;
         };
-        if (!a.watching_wake) if (a.ui.wakeSource()) |src| {
-            a.win.watch(src, true);
+        if (!a.watching_wake) if (a.shared.wakeSource()) |src| {
+            a.display.watch(src, true);
             a.watching_wake = true;
         };
-        if (has_atspi and !a.watching_a11y) if (a.ui.shared.a11y) |b| {
-            a.win.watch(b.source(), true);
+        if (has_atspi and !a.watching_a11y) if (a.shared.a11y) |b| {
+            a.display.watch(b.source(), true);
             a.watching_a11y = true;
         };
-        if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
-            const refresh = a.win.refreshNs();
-            const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
-            try a.win.wait(if (a.wantsFrame()) frame_ns else idle_timeout_ns);
-        } else {
-            try a.win.poll();
-        }
-        if (a.win.isClosed() or a.controls.quit) return false;
-        if (a.ui.images.collect()) a.dirty = true;
-        if (a.ui.takeWakes()) a.dirty = true;
-        if (a.ui.dispatchAccessibility()) a.dirty = true;
-        if (try a.win.applyConfigure() != null) a.dirty = true;
-        const suspended = a.win.isSuspended();
-        if (suspended != a.suspended) {
-            a.suspended = suspended;
-            if (suspended) a.win.releaseSpareBuffers() else a.dirty = true;
-        }
+        // Not waiting at all if a window has a frame to draw now, or else
+        // not past a frame's time if one has a frame to draw at all.
+        var timeout_ns = idle_timeout_ns;
+        const ready = for (a.windows.items) |w| {
+            if (w.closed or !w.wantsFrame()) continue;
+            if (!w.idle and !w.win.isFramePending()) break true;
+            const refresh = w.win.refreshNs();
+            timeout_ns = @min(timeout_ns, if (refresh > 0) refresh else 16 * std.time.ns_per_ms);
+        } else false;
+        if (ready) try a.display.poll() else try a.display.wait(timeout_ns);
+
+        // What is the app's, for all its windows.
+        var all = false;
+        if (a.shared.images.collect()) all = true;
+        if (a.shared.takeWakes()) all = true;
+        if (has_atspi) if (a.shared.a11y) |b| if (b.dispatch()) {
+            all = true;
+        };
         if (a.theme_watch.changed(a.io)) {
             a.appearance = theme_mod.loadSettings(a.io);
-            a.ui.theme = a.appearance.theme.scheme();
-            a.dirty = true;
+            a.applyTheme();
         }
-        if (a.followSystem()) {
-            a.ui.theme = a.appearance.theme.scheme();
-            a.dirty = true;
-        }
-        a.ui.syncWindow(a.win);
-        return true;
-    }
-
-    pub fn takeInput(a: *App) void {
-        a.ui.takeInput(a.win);
-    }
-
-    /// Whether there is a frame to draw: the window shows, and something
-    /// changed or a widget asked for one.
-    fn wantsFrame(a: *const App) bool {
-        return !a.suspended and (a.dirty or a.ui.needs_frame);
-    }
-
-    /// Draws and shows a frame of `root` (for now, on the `Io`'s clock), if
-    /// there is one to draw and the window is ready for it.
-    ///
-    /// `root` is kept until the next `draw`, for the window to have drawn
-    /// again while the app's loop is held by the window system (macOS,
-    /// while the window is resized by its edge); what it points to must
-    /// last as long.
-    pub fn draw(a: *App, root: anytype) !void {
-        a.keepRoot(root);
-        a.idle = true;
-        if (!a.wantsFrame()) return;
-        if (a.win.isFramePending()) {
-            if (try a.ui.presentPopups()) a.idle = false;
-            return;
-        }
-        try a.drawFrame(a.ui.clockNs(), root);
-    }
-
-    fn drawFrame(a: *App, now_ns: u64, root: anytype) !void {
-        a.drawing = true;
-        defer a.drawing = false;
-        a.dirty = false;
-        const size = a.win.size();
-        const target_ns = a.win.nextPresentationNs(now_ns);
-        const begun = a.ui.clockNs();
-        a.ui.frame(size[0], size[1], target_ns, root);
-        const built = a.ui.clockNs();
-        a.win.setPresentationTime(target_ns);
-        const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
-        const shown = try a.ui.present(a.win, clear);
-        if (shown) a.idle = false;
-        if (a.trace) a.traceFrame(begun, built, shown);
-    }
-
-    /// Writes how the frame just drawn went (`FACET_TRACE=1`): since the
-    /// last began, whether the window system was holding the loop (the
-    /// window asked for it), and how long it took to build and to present.
-    fn traceFrame(a: *App, begun: u64, built: u64, shown: bool) void {
-        const done = a.ui.clockNs();
-        const ms = struct {
-            fn f(ns: u64) f64 {
-                return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
-            }
-        }.f;
-        std.debug.print("facet: frame {d}: +{d:.1} ms{s}{s} build {d:.1} present {d:.1}\n", .{
-            a.ui.frame_no,
-            ms(begun -| a.last_frame_ns),
-            if (a.held) " held" else "",
-            if (shown) "" else " (nothing shown)",
-            ms(built - begun),
-            ms(done - built),
-        });
-        a.last_frame_ns = begun;
-    }
-
-    fn keepRoot(a: *App, root: anytype) void {
-        const T = @TypeOf(root);
-        const Kept = struct {
-            fn draw(app: *App, p: *anyopaque) anyerror!void {
-                try app.drawFrame(app.ui.clockNs(), @as(*const T, @ptrCast(@alignCast(p))).*);
-            }
-            fn free(gpa: std.mem.Allocator, p: *anyopaque) void {
-                gpa.destroy(@as(*T, @ptrCast(@alignCast(p))));
-            }
+        if (a.followSystem()) a.applyTheme();
+        if (a.display.takeQuitRequest()) switch (a.on_quit_request) {
+            .ignore => {},
+            .quit => a.quit(),
+            .call => |c| c.call(),
         };
-        if (a.kept_root) |k| {
-            if (k.draw == &Kept.draw) {
-                @as(*T, @ptrCast(@alignCast(k.ptr))).* = root;
+
+        // Each window's (by index: a callback may open more).
+        var i: usize = 0;
+        while (i < a.windows.items.len) : (i += 1) {
+            const w = a.windows.items[i];
+            if (w.closed) continue;
+            if (all) w.dirty = true;
+            const asked = w.win.takeCloseRequest();
+            const pressed = w.controls.close_requested;
+            w.controls.close_requested = false;
+            if (asked or pressed) switch (w.on_close_request) {
+                .ignore => {},
+                .close => w.close(),
+                .call => |c| c.call(w),
+            };
+            if (w.closed) continue;
+            if (try w.win.applyConfigure() != null) w.dirty = true;
+            const suspended = w.win.isSuspended();
+            if (suspended != w.suspended) {
+                w.suspended = suspended;
+                if (suspended) w.win.releaseSpareBuffers() else w.dirty = true;
+            }
+            w.ui.syncWindow(w.win);
+        }
+        if (a.last_window_closed) {
+            a.last_window_closed = false;
+            if (a.open_windows == 0) switch (a.on_last_window_closed) {
+                .ignore => {},
+                .quit => a.quit(),
+                .call => |c| c.call(),
+            };
+        }
+        return !a.quitting;
+    }
+
+    /// Hands each window's input to its UI (its widgets' callbacks are
+    /// called).
+    pub fn takeInput(a: *App) void {
+        var i: usize = 0;
+        while (i < a.windows.items.len) : (i += 1) {
+            const w = a.windows.items[i];
+            if (w.closed) continue;
+            w.busy = true;
+            w.ui.takeInput(w.win);
+            w.busy = false;
+            if (w.closed) w.release();
+        }
+    }
+
+    /// One of the app's windows (see `openWindow`), and its UI. It is drawn
+    /// with `draw`. Closed (`close`), its handle stays valid (and `draw`
+    /// does nothing) until it is destroyed (`destroy`, or `App.deinit`).
+    pub const Window = struct {
+        app: *App,
+        win: window_mod.Window,
+        /// Whether `close` closes `win` (it was opened by `openWindow`).
+        owns_window: bool = false,
+        /// What its title bar's buttons do (see `window.Controls`).
+        controls: window_mod.Controls,
+        /// Its UI (destroyed when it is closed).
+        ui: *Ui,
+        clear_color: ?u32 = null,
+        on_close_request: OnCloseRequest = .ignore,
+        closed: bool = false,
+        /// Closed while its UI was handling input or drawing: it is let go
+        /// when that is done.
+        busy: bool = false,
+        released: bool = false,
+        dirty: bool = true,
+        /// A frame is being drawn because the window asked (from inside the
+        /// window system's loop, which holds the app's).
+        held: bool = false,
+        /// The last `draw` showed nothing, so `step` waits rather than going
+        /// straight on to draw again.
+        idle: bool = false,
+        suspended: bool = false,
+        /// The root last drawn, kept to draw again when the window asks (see
+        /// `window.Window.setRedraw`), and whether a frame is being drawn.
+        kept_root: ?KeptRoot = null,
+        drawing: bool = false,
+        /// When the last frame (`FACET_TRACE=1`) was begun.
+        last_frame_ns: u64 = 0,
+
+        const KeptRoot = struct {
+            ptr: *anyopaque,
+            draw: *const fn (w: *Window, ptr: *anyopaque) anyerror!void,
+            free: *const fn (gpa: std.mem.Allocator, ptr: *anyopaque) void,
+        };
+
+        /// Closes it (its UI too): its handle stays valid, until it is
+        /// destroyed.
+        pub fn close(w: *Window) void {
+            if (w.closed) return;
+            w.closed = true;
+            const a = w.app;
+            a.open_windows -= 1;
+            if (a.open_windows == 0) a.last_window_closed = true;
+            if (!w.busy and !w.drawing) w.release();
+        }
+
+        fn release(w: *Window) void {
+            if (w.released) return;
+            w.released = true;
+            w.win.setRedraw(null);
+            if (w.kept_root) |k| k.free(w.app.gpa, k.ptr);
+            w.kept_root = null;
+            w.ui.destroy();
+            if (w.owns_window) w.win.close();
+        }
+
+        /// Whether it has been closed.
+        pub fn isClosed(w: *const Window) bool {
+            return w.closed;
+        }
+
+        /// Closes it (if it is open), and frees its handle.
+        pub fn destroy(w: *Window) void {
+            w.close();
+            const a = w.app;
+            if (std.mem.indexOfScalar(*Window, a.windows.items, w)) |i| _ = a.windows.orderedRemove(i);
+            a.gpa.destroy(w);
+        }
+
+        /// Changes the title the system shows for it.
+        pub fn setTitle(w: *Window, title: []const u8) void {
+            if (w.closed) return;
+            w.win.setTitle(title);
+            w.dirty = true;
+        }
+
+        /// Whether there is a frame to draw: the window shows, and something
+        /// changed or a widget asked for one.
+        fn wantsFrame(w: *const Window) bool {
+            return !w.suspended and (w.dirty or w.ui.needs_frame);
+        }
+
+        /// Draws and shows a frame of `root` (for now, on the `Io`'s clock),
+        /// if there is one to draw and the window is ready for it (and it is
+        /// open).
+        ///
+        /// `root` is kept until the next `draw`, for the window to have drawn
+        /// again while the app's loop is held by the window system (macOS,
+        /// while the window is resized by its edge); what it points to must
+        /// last as long.
+        pub fn draw(w: *Window, root: anytype) !void {
+            if (w.closed) return;
+            w.keepRoot(root);
+            w.idle = true;
+            if (!w.wantsFrame()) return;
+            if (w.win.isFramePending()) {
+                if (try w.ui.presentPopups()) w.idle = false;
                 return;
             }
-            k.free(a.gpa, k.ptr);
-            a.kept_root = null;
+            try w.drawFrame(root);
         }
-        const p = a.gpa.create(T) catch return;
-        p.* = root;
-        a.kept_root = .{ .ptr = p, .draw = &Kept.draw, .free = &Kept.free };
-    }
 
-    /// Draws a frame of the root kept, at the window's size now, if
-    /// there is one to draw (it was resized, or a widget asked for one):
-    /// the window asks, from inside the window system's loop.
-    fn redraw(ctx: *anyopaque) void {
-        const a: *App = @ptrCast(@alignCast(ctx));
-        // Not inside a frame (one can resize the window, to its minimum).
-        if (a.drawing) return;
-        const k = a.kept_root orelse return;
-        if (a.win.applyConfigure() catch return) |_| a.dirty = true;
-        if (!a.wantsFrame()) return;
-        a.ui.syncWindow(a.win);
-        a.held = true;
-        defer a.held = false;
-        k.draw(a, k.ptr) catch {};
-    }
+        fn drawFrame(w: *Window, root: anytype) !void {
+            w.drawing = true;
+            defer {
+                w.drawing = false;
+                if (w.closed) w.release();
+            }
+            w.dirty = false;
+            const size = w.win.size();
+            const now_ns = w.ui.clockNs();
+            const target_ns = w.win.nextPresentationNs(now_ns);
+            const begun = w.ui.clockNs();
+            w.ui.frame(size[0], size[1], target_ns, root);
+            const built = w.ui.clockNs();
+            w.win.setPresentationTime(target_ns);
+            const clear = w.clear_color orelse w.ui.theme.surface.toArgb();
+            const shown = try w.ui.present(w.win, clear);
+            if (shown) w.idle = false;
+            if (w.app.trace) w.traceFrame(begun, built, shown);
+        }
+
+        /// Writes how the frame just drawn went (`FACET_TRACE=1`): since the
+        /// last began, whether the window system was holding the loop (the
+        /// window asked for it), and how long it took to build and to present.
+        fn traceFrame(w: *Window, begun: u64, built: u64, shown: bool) void {
+            const done = w.ui.clockNs();
+            const ms = struct {
+                fn f(ns: u64) f64 {
+                    return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
+                }
+            }.f;
+            const index = std.mem.indexOfScalar(*Window, w.app.windows.items, w) orelse 0;
+            std.debug.print("facet: window {d} frame {d}: +{d:.1} ms{s}{s} build {d:.1} present {d:.1}\n", .{
+                index,
+                w.ui.frame_no,
+                ms(begun -| w.last_frame_ns),
+                if (w.held) " held" else "",
+                if (shown) "" else " (nothing shown)",
+                ms(built - begun),
+                ms(done - built),
+            });
+            w.last_frame_ns = begun;
+        }
+
+        fn keepRoot(w: *Window, root: anytype) void {
+            const T = @TypeOf(root);
+            const gpa = w.app.gpa;
+            const Kept = struct {
+                fn draw(win: *Window, p: *anyopaque) anyerror!void {
+                    try win.drawFrame(@as(*const T, @ptrCast(@alignCast(p))).*);
+                }
+                fn free(g: std.mem.Allocator, p: *anyopaque) void {
+                    g.destroy(@as(*T, @ptrCast(@alignCast(p))));
+                }
+            };
+            if (w.kept_root) |k| {
+                if (k.draw == &Kept.draw) {
+                    @as(*T, @ptrCast(@alignCast(k.ptr))).* = root;
+                    return;
+                }
+                k.free(gpa, k.ptr);
+                w.kept_root = null;
+            }
+            const p = gpa.create(T) catch return;
+            p.* = root;
+            w.kept_root = .{ .ptr = p, .draw = &Kept.draw, .free = &Kept.free };
+        }
+
+        /// Draws a frame of the root kept, at the window's size now, if
+        /// there is one to draw (it was resized, or a widget asked for one):
+        /// the window asks, from inside the window system's loop.
+        fn redraw(ctx: *anyopaque) void {
+            const w: *Window = @ptrCast(@alignCast(ctx));
+            // Not inside a frame (one can resize the window, to its minimum).
+            if (w.drawing or w.closed) return;
+            const k = w.kept_root orelse return;
+            if (w.win.applyConfigure() catch return) |_| w.dirty = true;
+            if (!w.wantsFrame()) return;
+            w.ui.syncWindow(w.win);
+            w.held = true;
+            defer w.held = false;
+            k.draw(w, k.ptr) catch {};
+        }
+    };
 };

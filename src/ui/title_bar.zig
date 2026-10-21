@@ -311,7 +311,7 @@ test "the title bar defaults to the UI's window controls" {
     u.pointerMotion(at);
     u.pointerButton(at, btn_left, true);
     u.pointerButton(at, btn_left, false);
-    try testing.expect(controls.quit);
+    try testing.expect(controls.close_requested);
 }
 
 test "Ui automatically adds TitleBar on Wayland with client-side decorations and omits it with server-side decorations" {
@@ -347,15 +347,15 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     try testing.expectEqual(@as(f32, 600 - TitleBar.height), u.root.?.size.h);
     try testing.expectEqual(window_mod.Decorations.client, u.backend().decorations);
 
-    // Clicking the automatic title bar's close button triggers controls.quit.
+    // Clicking the automatic title bar's close button triggers controls.close_requested.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
     u.pointerMotion(at);
     u.pointerButton(at, btn_left, true);
     u.pointerButton(at, btn_left, false);
-    try testing.expect(controls.quit);
+    try testing.expect(controls.close_requested);
 
     // When the compositor negotiates server-side decorations, TitleBar is not added.
-    controls.quit = false;
+    controls.close_requested = false;
     mock_win.decorations = .server;
     u.syncWindow(&mock_win);
     u.frame(800, 600, 1, Root{});
