@@ -135,7 +135,7 @@ test "vertex layouts match float counts and SPIR-V / GLSL shaders are valid" {
         try std.testing.expect(spv.len > 0 and spv.len % 4 == 0);
     }
     for ([_][:0]const u8{ glsl_shape_vs, glsl_shape_fs, glsl_solid_vs, glsl_solid_fs, glsl_text_vs, glsl_text_fs, glsl_image_fs }) |src| {
-        try std.testing.expect(std.mem.startsWith(u8, src, "#version 330 core\n"));
+        try std.testing.expect(std.mem.startsWith(u8, src, "#version 330 core\n") or std.mem.startsWith(u8, src, "#version 330 core\r\n"));
     }
     for ([_][]const u8{ "shape_vs", "shape_fs", "solid_vs", "solid_fs", "text_vs", "text_fs", "image_fs" }) |entry| {
         try std.testing.expect(std.mem.indexOf(u8, msl, entry) != null);

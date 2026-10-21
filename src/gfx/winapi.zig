@@ -115,15 +115,31 @@ pub fn nowQpc() i64 {
 
 /// A system DLL, loaded once (null if it is not there).
 pub fn dll(comptime name: []const u8) ?HMODULE {
-    const S = struct {
-        var loaded = false;
-        var module: ?HMODULE = null;
-    };
-    if (!S.loaded) {
-        S.loaded = true;
-        S.module = LoadLibraryW(std.unicode.utf8ToUtf16LeStringLiteral(name));
+    const s = dllSlot(name);
+    if (!s.loaded) {
+        s.loaded = true;
+        s.module = LoadLibraryW(std.unicode.utf8ToUtf16LeStringLiteral(name));
     }
-    return S.module;
+    return s.module;
+}
+
+const DllSlot = struct {
+    loaded: bool = false,
+    module: ?HMODULE = null,
+};
+
+fn dllSlot(comptime name: []const u8) *DllSlot {
+    const S = struct {
+        const key = name;
+        var slot: DllSlot = .{};
+    };
+    _ = S.key;
+    return &S.slot;
+}
+
+test "each DLL name has its own loaded module slot" {
+    try std.testing.expect(dllSlot("d3d11.dll") != dllSlot("user32.dll"));
+    try std.testing.expect(dllSlot("d3d11.dll") != dllSlot("gdi32.dll"));
 }
 
 /// Function `name` of DLL `lib` (null if either is not there).
