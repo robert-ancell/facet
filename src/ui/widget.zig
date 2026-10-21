@@ -33,6 +33,7 @@ const window_mod = @import("window");
 const geometry = @import("geometry.zig");
 const painter_mod = @import("painter.zig");
 const runtime = @import("runtime.zig");
+const menu_mod = @import("menu.zig");
 
 const Size = geometry.Size;
 const Point = geometry.Point;
@@ -332,6 +333,21 @@ const Missing = struct {
 const missing: Missing = .{};
 
 /// What `build` functions get: the frame's arena, and the UI.
+/// Where a widget is (from `Context.anchor`, as it is built), to open a menu
+/// from later, as a button's callback does. Kept in the widget's `State`,
+/// it is good for as long as the widget is there.
+pub const Anchor = struct {
+    node: ?*Node = null,
+
+    /// Opens a menu of `items` (copied) just below the widget, as a
+    /// dropdown's; nothing, if it was not taken while building a widget.
+    pub fn openMenu(a: Anchor, items: []const menu_mod.Item) void {
+        const n = a.node orelse return;
+        const pos = n.position();
+        n.ui.openMenu(n, .{ pos[0], pos[1] + n.size.h }, items);
+    }
+};
+
 pub const Context = struct {
     /// The UI the widget is built in: its window's (its `theme`, the
     /// app's `io`, and what the app's windows share, as `shared`).
@@ -341,12 +357,10 @@ pub const Context = struct {
     /// is there while this frame is laid out, painted and handles input,
     /// and while the next is built). Never freed one by one.
     arena: std.mem.Allocator,
-    /// The toolkit's own: the node the widget is built in, for widgets that
-    /// change it (`Themed`) or open a menu from it later (`DropdownMenu`).
-    /// It is `undefined` for what is built outside a node (a menu's or
-    /// popup's content, the title bar), so an app's widgets should not use
-    /// it.
-    node: *Node,
+    /// The toolkit's own (not for an app's widgets, which have `anchor`):
+    /// the node the widget is built in, or null for what is built outside
+    /// one (a menu's or popup's content, the title bar).
+    node: ?*Node = null,
     /// The theme the widget is built in, if not the UI's (that of the
     /// nearest `Themed` above it): read it with `theme`.
     theme_ptr: ?*const Theme = null,
@@ -379,6 +393,12 @@ pub const Context = struct {
             out[i] = if (F == Widget) values[i] else cx.make(values[i]);
         }
         return out;
+    }
+
+    /// Where the widget being built is, to open a menu from later (from a
+    /// callback): see `Anchor`.
+    pub fn anchor(cx: *const Context) Anchor {
+        return .{ .node = cx.node };
     }
 
     /// Text formatted into the frame's arena.

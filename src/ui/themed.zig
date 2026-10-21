@@ -25,7 +25,8 @@ pub const Themed = struct {
 
     pub fn build(self: *const Themed, cx: *Context, state: *State) Widget {
         state.theme = self.theme;
-        cx.node.theme_ptr = &state.theme;
+        // Its node's, for the nodes below to take.
+        if (cx.node) |n| n.theme_ptr = &state.theme;
         cx.theme_ptr = &state.theme;
         return self.child orelse cx.make(Empty{});
     }

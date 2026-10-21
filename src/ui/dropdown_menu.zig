@@ -45,22 +45,20 @@ pub const DropdownMenu = struct {
     };
 
     pub const State = struct {
-        node: ?*Node = null,
+        anchor: widget.Anchor = .{},
         on_selected: ?ValueCallback(usize) = null,
         labels: [max_options][]const u8 = undefined,
         picks: [max_options]Pick = undefined,
         len: usize = 0,
 
         fn open(st: *State) void {
-            const n = st.node orelse return;
             if (st.len == 0) return;
             var items: [max_options]MenuItem = undefined;
             for (st.labels[0..st.len], st.picks[0..st.len], items[0..st.len], 0..) |label, *pick, *item, i| {
                 pick.* = .{ .state = st, .index = i };
                 item.* = .{ .label = label, .on_press = .of(pick, Pick.choose) };
             }
-            const pos = n.position();
-            n.ui.openMenu(n, .{ pos[0], pos[1] + n.size.h }, items[0..st.len]);
+            st.anchor.openMenu(items[0..st.len]);
         }
     };
 
@@ -71,7 +69,7 @@ pub const DropdownMenu = struct {
 
     pub fn build(self: *const DropdownMenu, cx: *Context, state: *State) Widget {
         const enabled = self.on_selected != null and self.options.len > 0;
-        state.node = cx.node;
+        state.anchor = cx.anchor();
         state.on_selected = self.on_selected;
         state.len = @min(self.options.len, max_options);
         for (self.options[0..state.len], state.labels[0..state.len]) |opt, *dst| dst.* = opt;

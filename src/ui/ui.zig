@@ -108,6 +108,7 @@ pub const Alignment = geometry.Alignment;
 
 pub const Widget = widget.Widget;
 pub const Context = widget.Context;
+pub const Anchor = widget.Anchor;
 pub const BackendInfo = widget.BackendInfo;
 pub const Node = widget.Node;
 pub const Event = widget.Event;

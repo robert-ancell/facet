@@ -27,6 +27,7 @@ pub const Shared = ui.Shared;
 pub const App = ui.App;
 pub const Widget = ui.Widget;
 pub const Context = ui.Context;
+pub const Anchor = ui.Anchor;
 pub const BackendInfo = ui.BackendInfo;
 pub const Node = ui.Node;
 pub const Event = ui.Event;

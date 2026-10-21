@@ -681,7 +681,7 @@ pub const Ui = struct {
         _ = ui.images.collect();
         const s = @max(ui.scale, 1);
         ui.damage.begin(ui.frame_no, width * s, height * s);
-        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+        var cx: Context = .{ .ui = ui, .arena = ui.arena() };
         const w = cx.make(root);
         if (ui.root) |r| if (r.widget.vtable != w.vtable) {
             r.destroy();
@@ -799,7 +799,7 @@ pub const Ui = struct {
             return null;
         }
         const title = if (ui.win) |w| w.title() else "";
-        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+        var cx: Context = .{ .ui = ui, .arena = ui.arena() };
         const w = cx.make(title_bar_mod.TitleBar{ .title = title });
         if (ui.title_bar_root) |tb| if (tb.widget.vtable != w.vtable) {
             tb.destroy();
@@ -820,7 +820,7 @@ pub const Ui = struct {
             return null;
         };
         // In the theme of the widget that opened it.
-        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined, .theme_ptr = menu.owner.theme_ptr };
+        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .theme_ptr = menu.owner.theme_ptr };
         const w = switch (menu.content) {
             .items => |items| cx.make(menu_mod.Menu{ .items = items }),
             .popup => |popup| popup.f(popup.ctx, &cx),
@@ -850,7 +850,7 @@ pub const Ui = struct {
             ui.drag_root = null;
             return null;
         };
-        var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+        var cx: Context = .{ .ui = ui, .arena = ui.arena() };
         const w = cx.make(drag_mod.Chip{ .label = d.label, .icon = d.icon });
         if (ui.drag_root == null) ui.drag_root = Node.create(ui, w);
         const n = ui.drag_root orelse return null;
@@ -871,7 +871,7 @@ pub const Ui = struct {
                 if (target.laid_out != ui.frame_no) continue;
                 const tt = target.widget.as(tooltip_mod.Tooltip) orelse continue;
                 if (tt.text.len == 0) continue;
-                var cx: Context = .{ .ui = ui, .arena = ui.arena(), .node = undefined };
+                var cx: Context = .{ .ui = ui, .arena = ui.arena() };
                 const w = cx.make(tooltip_mod.Bubble{ .text = tt.text });
                 if (ui.tooltip_root == null) ui.tooltip_root = Node.create(ui, w);
                 const n = ui.tooltip_root orelse return null;

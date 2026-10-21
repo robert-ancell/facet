@@ -2870,3 +2870,29 @@ test "makeAll makes each of a tuple's values a widget, taking widgets as they ar
     try testing.expectEqual(@as(f32, 20), S.all[0].as(ui.SizedBox).?.height.?);
     try testing.expectEqual(@as(?u64, 7), S.all[1].key);
 }
+
+test "an anchor opens a menu just below its widget, and one taken from no widget nothing" {
+    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    const S = struct {
+        var anchor: ui.Anchor = .{};
+        fn build(cx: *Context) Widget {
+            return cx.make(ui.Padding{ .padding = .all(20), .child = cx.make(ui.Align{
+                .alignment = .top_left,
+                .child = cx.make(Kept{}),
+            }) });
+        }
+        const Kept = struct {
+            pub fn build(_: *const @This(), cx: *Context) Widget {
+                anchor = cx.anchor();
+                return cx.make(ui.SizedBox{ .width = 50, .height = 30 });
+            }
+        };
+    };
+    u.frame(200, 200, 0, Root(S.build){});
+    (ui.Anchor{}).openMenu(&.{.{ .label = "Nothing" }});
+    try testing.expect(u.menu == null);
+    S.anchor.openMenu(&.{.{ .label = "Cut" }});
+    try testing.expect(u.menu != null);
+    try testing.expectEqual(ui.Point{ 20, 50 }, u.menu.?.at);
+}

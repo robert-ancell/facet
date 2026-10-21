@@ -159,17 +159,15 @@ const MenuButton = struct {
     };
 
     pub const State = struct {
-        node: ?*facet.Node = null,
+        anchor: facet.Anchor = .{},
         log: ?*Log = null,
         actions: [5]Action = undefined,
 
         fn open(st: *@This()) void {
-            const n = st.node orelse return;
             const log = st.log orelse return;
             const names = [_][]const u8{ "Cut", "Copy", "Paste", "Share", "Delete" };
             for (&st.actions, names) |*a, name| a.* = .{ .log = log, .name = name };
-            const pos = n.position();
-            n.ui.openMenu(n, .{ pos[0], pos[1] + n.size.h }, &.{
+            st.anchor.openMenu(&.{
                 .{ .label = "Cut", .shortcut = "Ctrl+X", .on_press = .of(&st.actions[0], Action.run) },
                 .{ .label = "Copy", .shortcut = "Ctrl+C", .on_press = .of(&st.actions[1], Action.run) },
                 .{ .label = "Paste", .shortcut = "Ctrl+V", .on_press = .of(&st.actions[2], Action.run) },
@@ -180,7 +178,7 @@ const MenuButton = struct {
     };
 
     pub fn build(self: *const MenuButton, cx: *facet.Context, state: *@This().State) facet.Widget {
-        state.node = cx.node;
+        state.anchor = cx.anchor();
         state.log = self.log;
         return cx.make(facet.OutlinedButton{
             .label = "Edit",
