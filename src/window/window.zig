@@ -309,9 +309,10 @@ pub const BufferSync = enum {
     /// There is nothing to wait for: the buffers are in CPU memory
     /// (`wl_shm`, headless).
     none,
-    /// Fences the kernel keeps with each buffer (dmabuf implicit sync).
+    /// Fences the kernel keeps with each buffer (dmabuf implicit sync). Linux
+    /// only.
     implicit,
-    /// Explicit timeline points (`wp_linux_drm_syncobj_v1`).
+    /// Explicit timeline points (`wp_linux_drm_syncobj_v1`). Linux only.
     linux_drm_syncobj_v1,
 
     pub fn name(s: BufferSync) []const u8 {
@@ -751,8 +752,7 @@ pub const Window = struct {
     pub fn bufferTransport(w: Window) BufferTransport {
         return w.vtable.bufferTransport(w.ptr);
     }
-    /// How the window system knows a GPU frame is finished being drawn (the
-    /// dmabuf fences and syncobj points are Linux only; `.none` elsewhere).
+    /// How the window system knows a GPU frame is finished being drawn.
     pub fn bufferSync(w: Window) BufferSync {
         return w.vtable.bufferSync(w.ptr);
     }
