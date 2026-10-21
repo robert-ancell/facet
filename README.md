@@ -106,7 +106,7 @@ zig build run-showcase
 
 ## Special Thanks ❤️
 
-Dazzle is built on the foundations of these great projects:
+Facet is built on the foundations of these great projects:
 
 - [Zig](https://ziglang.org/)
 - [Material Design](https://m3.material.io/)
