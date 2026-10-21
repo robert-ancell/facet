@@ -101,13 +101,6 @@ pub fn main(init: std.process.Init) !void {
 }
 ```
 
-An app can have any number of windows (`app.openWindow` again, with a
-`.parent` for a dialog's), each drawn with its own `draw`. What the
-system asks for (to close a window, to quit) is the app's to act on: the
-options above say to act on it as most apps do, or callbacks can decide
-(`.on_close_request = .{ .call = .of(&state, State.askToSave) }`).
-`zig build run-windows` runs an example with more than one window.
-
 ## Showcase
 
 Run the interactive widget showcase from the repository root:
