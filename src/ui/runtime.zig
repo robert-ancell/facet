@@ -23,7 +23,6 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
 const window_mod = @import("window");
 const gfx = @import("gfx");
 const font = @import("font");
@@ -131,23 +130,10 @@ pub const Ui = struct {
     now_ns: u64 = 0,
     /// Something changed (input, or a widget asked for another frame).
     needs_frame: bool = true,
-    /// The frame's drawing: canvases (kept for reuse) and GPU draws; and
-    /// those of the frame before, which a presenter may still be drawing
-    /// (they take turns, as the arenas do).
+    /// The frame's drawing: canvases (kept for reuse) and GPU draws.
     canvases: std.ArrayList(*gfx.Canvas) = .empty,
     canvases_used: usize = 0,
     segments: std.ArrayList(Segment) = .empty,
-    prev_canvases: std.ArrayList(*gfx.Canvas) = .empty,
-    prev_segments: std.ArrayList(Segment) = .empty,
-    /// For frames made to outlive the next (`gfx.Frame.Owned`): which
-    /// images the presenter has, whether it has the glyph atlas, and the
-    /// layers GPU draws were drawn in, by their keys.
-    sent: gfx.frame.Residency = .{},
-    atlas_sent: bool = false,
-    layers: std.AutoHashMapUnmanaged(u64, Layer) = .empty,
-    /// For tracing: how long making the last frame's packet own what it
-    /// needs (drawing its GPU draws' layers) took.
-    own_ns: u64 = 0,
     pointer: ?Point = null,
     /// Event handlers under the pointer, deepest first.
     hovered: std.ArrayList(*Node) = .empty,
@@ -327,7 +313,6 @@ pub const Ui = struct {
             ui.renderer = ui.software_renderer.renderer();
         }
         ui.presenter = .{ .renderer = ui.renderer };
-        if (build_options.render_thread) ui.useRenderThread() catch {};
         return ui;
     }
 
@@ -382,18 +367,12 @@ pub const Ui = struct {
         ui.local_clipboard.deinit(ui.gpa);
         ui.hovered.deinit(ui.gpa);
         ui.hover_scratch.deinit(ui.gpa);
-        ui.presenter.deinit();
-        for ([_]*std.ArrayList(*gfx.Canvas){ &ui.canvases, &ui.prev_canvases }) |list| {
-            for (list.items) |c| {
-                c.deinit();
-                ui.gpa.destroy(c);
-            }
-            list.deinit(ui.gpa);
+        for (ui.canvases.items) |c| {
+            c.deinit();
+            ui.gpa.destroy(c);
         }
+        ui.canvases.deinit(ui.gpa);
         ui.segments.deinit(ui.gpa);
-        ui.prev_segments.deinit(ui.gpa);
-        ui.sent.deinit(ui.gpa);
-        ui.layers.deinit(ui.gpa);
         if (ui.owns_renderer) if (ui.renderer) |r| r.deinit();
         ui.atlas.deinit();
         for (&ui.arenas) |*a| a.deinit();
@@ -409,16 +388,7 @@ pub const Ui = struct {
         ui.metal_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
-        // A presenter of its own, which has none of what was sent the last.
-        const owned = ui.presenter.owned_frames;
-        const threaded = ui.presenter.thread != null;
-        ui.presenter.deinit();
-        ui.presenter = .{ .renderer = r, .owned_frames = owned };
-        if (threaded) ui.useRenderThread() catch {};
-        ui.sent.deinit(ui.gpa);
-        ui.sent = .{};
-        ui.atlas_sent = false;
-        ui.layers.clearRetainingCapacity();
+        ui.presenter = .{ .renderer = r };
     }
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
@@ -578,12 +548,7 @@ pub const Ui = struct {
     /// filling a `width` by `height` window.
     pub fn frame(ui: *Ui, width: u32, height: u32, now_ns: u64, root: anytype) void {
         ui.frame_no += 1;
-        // The drawing of the frame before last is drawn in again, once its
-        // presenter is done with it.
-        ui.presenter.waitRetired(ui.frame_no -| 2);
         _ = ui.arenas[@intCast(ui.frame_no % 2)].reset(.retain_capacity);
-        std.mem.swap(std.ArrayList(*gfx.Canvas), &ui.canvases, &ui.prev_canvases);
-        std.mem.swap(std.ArrayList(Segment), &ui.segments, &ui.prev_segments);
         ui.now_ns = now_ns;
         ui.needs_frame = false;
         ui.checkHold();
@@ -1049,16 +1014,6 @@ pub const Ui = struct {
     }
 
     fn newCanvasSized(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
-        const c = ui.poolCanvas(size) orelse return null;
-        ui.segments.append(ui.gpa, .{ .canvas = c }) catch {
-            ui.canvases_used -= 1;
-            return null;
-        };
-        return c;
-    }
-
-    /// The next of this frame's canvases, started.
-    fn poolCanvas(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
         if (ui.canvases_used == ui.canvases.items.len) {
             const c = ui.gpa.create(gfx.Canvas) catch return null;
             c.* = .init(ui.gpa);
@@ -1069,6 +1024,7 @@ pub const Ui = struct {
         }
         const c = ui.canvases.items[ui.canvases_used];
         c.beginScaled(size[0], size[1], @max(ui.scale, 1));
+        ui.segments.append(ui.gpa, .{ .canvas = c }) catch return null;
         ui.canvases_used += 1;
         return c;
     }
@@ -1115,42 +1071,7 @@ pub const Ui = struct {
     /// for the software renderer); another type is `error.WrongTarget`.
     pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
         const r = ui.renderer orelse return error.NoRenderer;
-        if (gfx.renderer.typeId(@typeInfo(@TypeOf(target)).pointer.child) != r.vtable.target) return error.WrongTarget;
-        // The renderer's work where it is used (on the render thread, if
-        // there is one); GPU draws (widgets' code) here.
-        const canvases = ui.canvases.items[0..ui.canvases_used];
-        const segments = ui.segments.items[0..ui.main_segments];
-        const Draw = struct {
-            r: gfx.Renderer,
-            canvases: []const *const gfx.Canvas,
-            canvas: ?*const gfx.Canvas = null,
-            target: @TypeOf(target),
-            damage: ?[]const gfx.Viewport,
-            fn f(ctx: *anyopaque) anyerror!void {
-                const d: *@This() = @ptrCast(@alignCast(ctx));
-                if (d.canvas) |c| try d.r.record(c, d.target, d.damage) else try d.r.prepare(d.canvases);
-            }
-        };
-        var draw: Draw = .{ .r = r, .canvases = canvases, .target = target, .damage = damage };
-        try ui.presenter.call(&draw, Draw.f);
-        var buf: [2][gfx.renderer.max_uncovered]gfx.Viewport = undefined;
-        for (segments, 0..) |seg, i| switch (seg) {
-            .canvas => |c| {
-                draw.canvas = c;
-                draw.damage = if (damage) |list| gfx.renderer.uncovered(&buf, list, segments[i + 1 ..]) else null;
-                try ui.presenter.call(&draw, Draw.f);
-            },
-            .gpu => |g| if (gfx.renderer.covers(damage, g.area.scissor orelse g.area.viewport)) try g.f(g.ctx, @ptrCast(@constCast(target)), g.area),
-        };
-    }
-
-    /// Presents frames from a render thread of facet's own from now on
-    /// (for the window's system: its windows may hold the UI's thread, or
-    /// block while frames are shown). Nothing else changes for the app:
-    /// the thread draws only what the UI made, and runs none of its code.
-    pub fn useRenderThread(ui: *Ui) !void {
-        if (ui.presenter.thread != null) return;
-        try ui.presenter.startThread(ui.gpa, ui.io);
+        try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items[0..ui.main_segments], target, damage);
     }
 
     /// Draws the last painted frame into `img` on the CPU using `gfx.software`.
@@ -1171,7 +1092,6 @@ pub const Ui = struct {
             .segments = ui.segments.items[0..ui.main_segments],
             .clear = clear,
             .damage = damageOf(&ui.damage.frame),
-            .frame_no = ui.frame_no,
         };
         comptime std.debug.assert(damage_mod.Tracker.history_len + 1 <= gfx.Frame.max_ages);
         comptime std.debug.assert(damage_mod.Region.max_rects <= gfx.frame.Damage.max_rects);
@@ -1193,138 +1113,9 @@ pub const Ui = struct {
         const w = window_mod.Window.from(win);
         const popups = try ui.presentPopups(w);
         if (!ui.changed()) return popups;
-        var f = ui.framePacket(clear);
-        if (ui.presenter.owned_frames) {
-            const start = ui.clockNs();
-            try ui.ownFrame(&f);
-            ui.own_ns = ui.clockNs() - start;
-        }
+        const f = ui.framePacket(clear);
         try ui.presenter.present(w, &f);
         return true;
-    }
-
-    /// Where a GPU draw was drawn (in the frame's pixels), and the image of
-    /// it the presenter has.
-    const Layer = struct { rect: gfx.Viewport, id: u64 };
-
-    /// Makes `f` outlive the next frame (see `gfx.Frame.Owned`): GPU draws
-    /// drawn here into layers, and what the presenter does not have yet of
-    /// the glyph atlas and the images copied.
-    fn ownFrame(ui: *Ui, f: *gfx.Frame) !void {
-        const a = ui.arena();
-        ui.sent.begin(ui.gpa, f.frame_no, ui, forgetLayer);
-        var canvases: std.ArrayList(*gfx.Canvas) = .empty;
-        var segments: std.ArrayList(Segment) = .empty;
-        var new_images: std.ArrayList(gfx.Image) = .empty;
-        errdefer for (new_images.items) |img| ui.gpa.free(img.pixels);
-        for (f.segments) |seg| switch (seg) {
-            .canvas => |c| {
-                try canvases.append(a, c);
-                try segments.append(a, seg);
-            },
-            .gpu => |g| if (try ui.layerOf(g, &new_images)) |c| {
-                try canvases.append(a, c);
-                try segments.append(a, .{ .canvas = c });
-            },
-        };
-        for (canvases.items) |c| for (c.batches.items) |*b| {
-            const img = b.image orelse continue;
-            if (!ui.sent.has(b.image_id)) {
-                const pixels = try ui.gpa.dupe(u32, img.pixels);
-                new_images.append(a, .{ .pixels = pixels, .width = img.width, .height = img.height, .id = b.image_id }) catch |e| {
-                    ui.gpa.free(pixels);
-                    return e;
-                };
-            }
-            try ui.sent.use(ui.gpa, b.image_id);
-        };
-        // The atlas's rows that changed (all of it for a new presenter).
-        const atlas_w = gfx.atlas.width;
-        if (!ui.atlas_sent) ui.atlas.packet_dirty = .{ .x0 = 0, .y0 = 0, .x1 = atlas_w, .y1 = gfx.atlas.height };
-        var rows: ?gfx.frame.AtlasRows = null;
-        if (ui.atlas.packet_dirty) |d| {
-            const y0: usize = d.y0;
-            const y1: usize = @min(d.y1, gfx.atlas.height);
-            if (y1 > y0) rows = .{ .y0 = d.y0, .rows = try a.dupe(u8, ui.atlas.pixels[y0 * atlas_w .. y1 * atlas_w]) };
-        }
-        ui.atlas.packet_dirty = null;
-        ui.atlas_sent = true;
-        f.canvases = canvases.items;
-        f.segments = segments.items;
-        f.owned = .{ .gpa = ui.gpa, .canvases = canvases.items, .atlas_rows = rows, .new_images = new_images.items };
-    }
-
-    /// A GPU draw drawn into a layer of its own (an image, on a canvas over
-    /// what is under it): drawn again only if its key changed (null if it
-    /// is not drawn: a draw for another kind of target, or of nothing).
-    fn layerOf(ui: *Ui, g: gfx.GpuDraw, new_images: *std.ArrayList(gfx.Image)) !?*gfx.Canvas {
-        if (g.target) |t| if (t != gfx.renderer.typeId(gfx.software.Image)) return null;
-        const whole: gfx.Viewport = .{ .width = ui.frame_size[0], .height = ui.frame_size[1] };
-        const shown = if (g.area.scissor) |sc| g.area.viewport.intersect(sc) orelse return null else g.area.viewport;
-        const rect = whole.intersect(shown) orelse return null;
-        const a = ui.arena();
-        const max = gfx.Image.max_size;
-        // In tiles no bigger than an image may be.
-        const across = std.math.divCeil(u32, rect.width, max) catch unreachable;
-        const down = std.math.divCeil(u32, rect.height, max) catch unreachable;
-        const tiles = try a.alloc(gfx.Image, across * down);
-        // The same as last drawn (with the same key), if the presenter has it.
-        const prior: ?Layer = if (g.key) |k| ui.layers.get(k) else null;
-        const cached = if (prior) |l| tiles.len == 1 and std.meta.eql(l.rect, rect) and ui.sent.has(l.id) else false;
-        if (cached) {
-            tiles[0] = .{ .pixels = &.{}, .width = rect.width, .height = rect.height, .id = prior.?.id };
-            try ui.sent.use(ui.gpa, prior.?.id);
-        } else {
-            // Drawn over nothing, where it was in the frame.
-            const pixels = try ui.gpa.alloc(u32, @as(usize, rect.width) * rect.height);
-            defer ui.gpa.free(pixels);
-            @memset(pixels, 0);
-            var target: gfx.software.Image = .{ .pixels = pixels, .width = rect.width, .height = rect.height };
-            var area = g.area;
-            area.viewport.x -= rect.x;
-            area.viewport.y -= rect.y;
-            if (area.scissor) |*sc| {
-                sc.x -= rect.x;
-                sc.y -= rect.y;
-            }
-            try g.f(g.ctx, @ptrCast(&target), area);
-            for (0..down) |ty| for (0..across) |tx| {
-                const x0 = tx * max;
-                const y0 = ty * max;
-                const tw: u32 = @intCast(@min(max, rect.width - x0));
-                const th: u32 = @intCast(@min(max, rect.height - y0));
-                const tile = try ui.gpa.alloc(u32, @as(usize, tw) * th);
-                for (0..th) |row| @memcpy(tile[row * tw ..][0..tw], pixels[(y0 + row) * rect.width + x0 ..][0..tw]);
-                const img: gfx.Image = .init(tile, tw, th);
-                new_images.append(a, img) catch |e| {
-                    ui.gpa.free(tile);
-                    return e;
-                };
-                try ui.sent.use(ui.gpa, img.id);
-                tiles[ty * across + tx] = img;
-            };
-            if (g.key) |k| if (tiles.len == 1) try ui.layers.put(ui.gpa, k, .{ .rect = rect, .id = tiles[0].id });
-        }
-        const s = @max(ui.scale, 1);
-        const sf: f32 = @floatFromInt(s);
-        const c = ui.poolCanvas(ui.logical_size) orelse return error.OutOfMemory;
-        for (tiles, 0..) |*img, i| {
-            const tx: u32 = @intCast(i % across);
-            const ty: u32 = @intCast(i / across);
-            const x: f32 = @floatFromInt(@as(i64, rect.x) + tx * max);
-            const y: f32 = @floatFromInt(@as(i64, rect.y) + ty * max);
-            c.drawImage(img, .{ .x = x / sf, .y = y / sf, .w = @as(f32, @floatFromInt(img.width)) / sf, .h = @as(f32, @floatFromInt(img.height)) / sf }, 1);
-        }
-        return c;
-    }
-
-    /// An image the presenter no longer has: a layer of it is gone too.
-    fn forgetLayer(ui: *Ui, id: u64) void {
-        var it = ui.layers.iterator();
-        while (it.next()) |e| if (e.value_ptr.id == id) {
-            ui.layers.removeByPtr(e.key_ptr);
-            return;
-        };
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).
@@ -1343,8 +1134,7 @@ pub const Ui = struct {
                 },
                 .gpu => {},
             };
-            var f: gfx.Frame = .{ .canvases = canvases[0..n], .segments = segments, .clear = 0, .frame_no = ui.frame_no };
-            if (ui.presenter.owned_frames) try ui.ownFrame(&f);
+            const f: gfx.Frame = .{ .canvases = canvases[0..n], .segments = segments, .clear = 0 };
             if (!try ui.presenter.presentPopup(w, layer.id, &f)) {
                 ui.needs_frame = true;
                 continue;
@@ -1733,14 +1523,6 @@ pub const App = struct {
     watching_images: bool = false,
     watching_wake: bool = false,
     watching_a11y: bool = false,
-    watching_presenter: bool = false,
-    /// Each frame's timings written to stderr (`FACET_TRACE=1`), and when
-    /// the last was begun.
-    trace: bool = false,
-    last_frame_ns: u64 = 0,
-    /// A frame is being drawn because the window asked (from inside the
-    /// window system's loop, which holds the app's).
-    held: bool = false,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1767,10 +1549,6 @@ pub const App = struct {
         /// null.
         font_data: ?[]const u8 = null,
         clear_color: ?u32 = null,
-        /// Whether frames are presented from a render thread (null: as
-        /// the system's windows need, or as `FACET_RENDER_THREAD` (1 or 0)
-        /// says). Nothing else changes for the app.
-        render_thread: ?bool = null,
     };
 
     /// Opens a window of the system's (connecting to the Wayland compositor
@@ -1788,10 +1566,6 @@ pub const App = struct {
         const a = try openIn(gpa, io, win, options);
         a.owns_window = true;
         a.ui.enableAccessibility(environ);
-        if (environ.getPosix("FACET_TRACE")) |v| a.trace = std.mem.eql(u8, v, "1");
-        const env = environ.getPosix("FACET_RENDER_THREAD");
-        const threaded = options.render_thread orelse if (env) |v| std.mem.eql(u8, v, "1") else window_mod.NativeWindow.wants_render_thread;
-        if (threaded) a.ui.useRenderThread() catch {};
         return a;
     }
 
@@ -1868,15 +1642,11 @@ pub const App = struct {
             a.win.watch(src, true);
             a.watching_wake = true;
         };
-        if (!a.watching_presenter) if (a.ui.presenter.source()) |src| {
-            a.win.watch(src, true);
-            a.watching_presenter = true;
-        };
         if (has_atspi and !a.watching_a11y) if (a.ui.a11y) |b| {
             a.win.watch(b.source(), true);
             a.watching_a11y = true;
         };
-        if (!a.wantsFrame() or a.idle or a.win.isFramePending() or a.ui.presenter.busy()) {
+        if (!a.wantsFrame() or a.idle or a.win.isFramePending()) {
             const refresh = a.win.refreshNs();
             const frame_ns = if (refresh > 0) refresh else 16 * std.time.ns_per_ms;
             try a.win.wait(if (a.wantsFrame()) frame_ns else idle_timeout_ns);
@@ -1884,8 +1654,6 @@ pub const App = struct {
             try a.win.poll();
         }
         if (a.win.isClosed() or a.controls.quit) return false;
-        // A frame the render thread has drawn is shown.
-        if (try a.ui.presenter.collect()) a.idle = false;
         if (a.ui.images.collect()) a.dirty = true;
         if (a.ui.takeWakes()) a.dirty = true;
         if (a.ui.dispatchAccessibility()) a.dirty = true;
@@ -1929,8 +1697,6 @@ pub const App = struct {
         a.keepRoot(root);
         a.idle = true;
         if (!a.wantsFrame()) return;
-        // The render thread is drawing the last: drawn once it is shown.
-        if (a.ui.presenter.busy()) return;
         if (a.win.isFramePending()) {
             if (try a.ui.presentPopups(a.win)) a.idle = false;
             return;
@@ -1944,43 +1710,10 @@ pub const App = struct {
         a.dirty = false;
         const size = a.win.size();
         const target_ns = a.win.nextPresentationNs(now_ns);
-        const begun = a.ui.clockNs();
         a.ui.frame(size[0], size[1], target_ns, root);
-        const built = a.ui.clockNs();
         a.win.setPresentationTime(target_ns);
         const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
-        a.ui.own_ns = 0;
-        const shown = try a.ui.present(a.win, clear);
-        if (shown) a.idle = false;
-        if (a.trace) a.traceFrame(begun, built, shown);
-    }
-
-    /// Writes how the frame just drawn went (`FACET_TRACE=1`): since the
-    /// last began, whether AppKit was holding the loop (the window asked
-    /// for it), how long it took to build, to draw its GPU draws' layers,
-    /// and to present (and of that, waiting for the render thread), and
-    /// how long the render thread took to draw the last.
-    fn traceFrame(a: *App, begun: u64, built: u64, shown: bool) void {
-        const done = a.ui.clockNs();
-        const ms = struct {
-            fn f(ns: u64) f64 {
-                return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
-            }
-        }.f;
-        const p = &a.ui.presenter;
-        std.debug.print("facet: frame {d}: +{d:.1} ms{s}{s} build {d:.1} layers {d:.1} present {d:.1} (waited {d:.1}) render {d:.1}\n", .{
-            a.ui.frame_no,
-            ms(begun -| a.last_frame_ns),
-            if (a.held) " held" else "",
-            if (shown) "" else " (nothing shown)",
-            ms(built - begun),
-            ms(a.ui.own_ns),
-            ms(done - built -| a.ui.own_ns),
-            ms(p.waited_ns),
-            ms(p.rendered_ns),
-        });
-        p.waited_ns = 0;
-        a.last_frame_ns = begun;
+        if (try a.ui.present(a.win, clear)) a.idle = false;
     }
 
     fn keepRoot(a: *App, root: anytype) void {
@@ -2016,11 +1749,7 @@ pub const App = struct {
         const k = a.kept_root orelse return;
         if (a.win.applyConfigure() catch return) |_| a.dirty = true;
         if (!a.wantsFrame()) return;
-        // Not while the render thread draws the last (shown first).
-        a.ui.presenter.flush() catch {};
         a.ui.syncWindow(a.win);
-        a.held = true;
-        defer a.held = false;
         k.draw(a, k.ptr) catch {};
     }
 };

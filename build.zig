@@ -65,35 +65,23 @@ pub const Modules = struct {
     wayland: *std.Build.Module,
 };
 
-/// How the modules are built: for testing, every UI may present its frames
-/// from a render thread (as on systems whose windows need one), and the
-/// code may be built with the thread sanitizer.
-pub const Config = struct {
-    render_thread: bool = false,
-    sanitize_thread: bool = false,
-};
-
 pub fn createModules(
     b: *std.Build,
     name: []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.lang.Optimize,
     icon_font: IconFont,
-    config: Config,
 ) Modules {
-    const tsan: ?bool = if (config.sanitize_thread) true else null;
     const wayland = b.createModule(.{
         .root_source_file = b.path("src/wayland/wayland.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
     });
 
     const font = b.createModule(.{
         .root_source_file = b.path("src/font/font.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
     });
     font.addAnonymousImport("FiraSans-Regular.ttf", .{ .root_source_file = b.path("fonts/FiraSans-Regular.ttf") });
     font.addAnonymousImport("TwemojiMozilla.ttf", .{ .root_source_file = b.path("fonts/TwemojiMozilla.ttf") });
@@ -102,7 +90,6 @@ pub fn createModules(
         .root_source_file = b.path("src/icons/icons.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
         .imports = &.{
             .{ .name = "font", .module = font },
             .{ .name = "icon_codepoints", .module = b.createModule(.{
@@ -118,7 +105,6 @@ pub fn createModules(
         .root_source_file = b.path("src/gfx/gfx.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
         .link_libc = true,
         .imports = &.{
             .{ .name = "font", .module = font },
@@ -135,7 +121,6 @@ pub fn createModules(
         .root_source_file = b.path("src/window/window.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
         .link_libc = true,
         .imports = &.{
             .{ .name = "wayland", .module = wayland },
@@ -147,7 +132,6 @@ pub fn createModules(
         .root_source_file = b.path("src/ui/ui.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
         .imports = &.{
             .{ .name = "gfx", .module = gfx },
             .{ .name = "font", .module = font },
@@ -156,15 +140,10 @@ pub fn createModules(
         },
     });
 
-    const build_options = b.addOptions();
-    build_options.addOption(bool, "render_thread", config.render_thread);
-    ui.addOptions("build_options", build_options);
-
     const facet = b.addModule(name, .{
         .root_source_file = b.path("src/facet.zig"),
         .target = target,
         .optimize = optimize,
-        .sanitize_thread = tsan,
         .imports = &.{
             .{ .name = "ui", .module = ui },
             .{ .name = "gfx", .module = gfx },
@@ -191,10 +170,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const icon_font = addIconFont(b);
-    const mods = createModules(b, "facet", target, optimize, icon_font, .{
-        .render_thread = b.option(bool, "render-thread", "Present every UI's frames from a render thread (for testing it where it is not needed)") orelse false,
-        .sanitize_thread = b.option(bool, "tsan", "Build with the thread sanitizer") orelse false,
-    });
+    const mods = createModules(b, "facet", target, optimize, icon_font);
     const polyhedron_gl_spv = addSpirv(b, "polyhedron_gl", "examples/shaders/polyhedron.zig", .opengl);
     const polyhedron_vk_spv = addSpirv(b, "polyhedron_vk", "examples/shaders/polyhedron.zig", .vulkan);
 

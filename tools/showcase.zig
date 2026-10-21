@@ -271,30 +271,10 @@ test {
 }
 
 test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
-    try checkRedraws(.borrowed);
-}
-
-test "frames made to outlive the next, with copies of the atlas and the images, draw the same" {
-    try checkRedraws(.owned);
-}
-
-test "frames presented from a render thread draw the same" {
-    try checkRedraws(.threaded);
-}
-
-/// Draws every page for a while, presenting each frame (as packets made to
-/// outlive the next, as for a render thread, if `.owned`; from a render
-/// thread if `.threaded`), and checks each against drawing it all.
-fn checkRedraws(mode: enum { borrowed, owned, threaded }) !void {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
     const u = try facet.Ui.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.software_renderer.renderer(), false);
-    switch (mode) {
-        .borrowed => {},
-        .owned => u.presenter.owned_frames = true,
-        .threaded => try u.useRenderThread(),
-    }
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
     var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);
@@ -355,15 +335,10 @@ fn checkRedraws(mode: enum { borrowed, owned, threaded }) !void {
         }
         t += (1 + rng.random().uintLessThan(u64, 3)) * 8 * std.time.ns_per_ms;
         u.frame(w, h, t, root);
-        // What it should be, drawn first (presenting an owned frame points
-        // its canvases at the presenter's copies).
-        if (!u.changed()) continue;
+        if (!try u.present(&win, 0xff000000)) continue;
         @memset(want, 0xff000000);
         var img: facet.gfx.software.Image = .{ .pixels = want, .width = w, .height = h };
         try u.render(&img, null);
-        if (!try u.present(&win, 0xff000000)) continue;
-        // Drawn (if on the render thread) and shown.
-        try u.presenter.flush();
         std.testing.expectEqualSlices(u32, want, win.pixels[win.back]) catch |err| {
             std.debug.print("on the {s} page, frame {d}\n", .{ @tagName(page), f });
             return err;

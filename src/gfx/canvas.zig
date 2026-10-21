@@ -149,10 +149,8 @@ pub const Batch = struct {
     /// Vertex data, `floatsPerVertex(kind)` floats per vertex, three
     /// vertices per triangle.
     floats: std.ArrayList(f32) = .empty,
-    /// For `.image` batches: the image (one per batch), and its id (to
-    /// know it by when the image itself may be gone: see `gfx.Frame.Owned`).
+    /// For `.image` batches: the image (one per batch).
     image: ?*const Image = null,
-    image_id: u64 = 0,
     /// Everything drawn in it.
     bounds: Rect,
     /// The parts of `bounds` drawn in, more closely: shapes next to each
@@ -725,7 +723,6 @@ pub const Canvas = struct {
         var b: Batch = if (c.spare.pop()) |s| s else .{ .kind = kind, .bounds = bounds, .clip = null };
         b.kind = kind;
         b.image = image;
-        b.image_id = if (image) |img| img.id else 0;
         b.bounds = bounds;
         b.clip = c.clip;
         b.areas.clearRetainingCapacity();

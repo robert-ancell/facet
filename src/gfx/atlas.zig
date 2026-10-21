@@ -43,10 +43,8 @@ pub const Atlas = struct {
     shelf_x: u32 = 0,
     shelf_y: u32 = 0,
     shelf_h: u32 = 0,
-    /// Texels changed since the last upload, and since the last frame made
-    /// to outlive the next (`gfx.Frame.Owned`, which carries their rows).
+    /// Texels changed since the last upload.
     dirty: ?Rect = null,
-    packet_dirty: ?Rect = null,
     /// A glyph did not fit this frame (and was not drawn): the atlas starts
     /// again empty at the next frame.
     full: bool = false,
@@ -79,7 +77,6 @@ pub const Atlas = struct {
         a.shelf_h = 0;
         a.full = false;
         a.dirty = .{ .x0 = 0, .y0 = 0, .x1 = width, .y1 = height };
-        a.packet_dirty = a.dirty;
     }
 
     /// The glyph at `size` pixels per em shifted right by `subpixel`
@@ -128,13 +125,7 @@ pub const Atlas = struct {
     }
 
     fn markDirty(a: *Atlas, r: Rect) void {
-        a.dirty = unite(a.dirty, r);
-        a.packet_dirty = unite(a.packet_dirty, r);
-    }
-
-    pub fn unite(a: ?Rect, b: Rect) Rect {
-        const d = a orelse return b;
-        return .{ .x0 = @min(d.x0, b.x0), .y0 = @min(d.y0, b.y0), .x1 = @max(d.x1, b.x1), .y1 = @max(d.y1, b.y1) };
+        a.dirty = if (a.dirty) |d| .{ .x0 = @min(d.x0, r.x0), .y0 = @min(d.y0, r.y0), .x1 = @max(d.x1, r.x1), .y1 = @max(d.y1, r.y1) } else r;
     }
 };
 
