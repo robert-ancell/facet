@@ -111,19 +111,32 @@ pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
     };
 }
 
-/// The pointer shape the window shows.
+/// The pointer shape the window shows (`Window.setCursor`). macOS has no
+/// shape for `wait`, `progress`, `help`, `nwse_resize` or `nesw_resize`, and
+/// shows the arrow for them.
 pub const Cursor = enum {
+    /// The arrow.
     default,
+    /// A hand, over something that can be pressed (a link).
     pointer,
+    /// An I-beam, over text.
     text,
+    /// An open hand, over something that can be dragged...
     grab,
+    /// ...and a closed one, while it is.
     grabbing,
     crosshair,
+    /// Something is being moved.
     move,
+    /// What is under the pointer cannot be used.
     not_allowed,
+    /// The app is busy and cannot be used.
     wait,
+    /// The app is busy but can still be used.
     progress,
     help,
+    /// Resizing left and right, up and down, or along either diagonal
+    /// (top left to bottom right, top right to bottom left).
     ew_resize,
     ns_resize,
     nwse_resize,
@@ -132,6 +145,8 @@ pub const Cursor = enum {
 
 /// The focused text widget's state, for the platform's input method.
 pub const TextInputState = struct {
+    /// The text around the cursor (all of it, or the part near it), for the
+    /// input method to suggest from.
     surrounding_text: []const u8 = "",
     /// Byte offsets of the cursor and the selection's other end in
     /// `surrounding_text`.
@@ -140,13 +155,16 @@ pub const TextInputState = struct {
     /// Whether the input method or something else (the app, the user
     /// editing directly) made the last change.
     change_cause: ChangeCause = .input_method,
+    /// The text is secret: the input method should not learn or suggest it.
     password: bool = false,
+    /// Enter adds a new line, rather than ending the text.
     multiline: bool = false,
     /// The cursor in window coordinates (`[x, y, width, height]`).
     cursor_rect: [4]i32 = .{ 0, 0, 1, 20 },
 
     pub const ChangeCause = enum { input_method, other };
 
+    /// Whether two are the same, so a window need only be told of a change.
     pub fn eql(a: TextInputState, b: TextInputState) bool {
         return a.cursor == b.cursor and
             a.anchor == b.anchor and
