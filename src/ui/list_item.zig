@@ -85,15 +85,15 @@ pub const ListItem = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .start,
                 .spacing = 2,
-                .children = &.{
+                .children = cx.makeAll(.{
                     title,
-                    cx.make(Text{
+                    Text{
                         .text = self.supporting_text,
                         .style = .{ .size = 13, .color = t.on_surface_variant },
                         .wrap = false,
                         .ellipsis = true,
-                    }),
-                },
+                    },
+                }),
             })
         else
             title;

@@ -86,11 +86,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         card.* = cx.make(facet.Card{
             .variant = .outlined,
             .padding = .all(8),
-            .child = cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 6, .children = &.{
+            .child = cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 6, .children = cx.makeAll(.{
                 onChecks(cx, 192, 108, cx.make(facet.Image{ .source = .{ .bytes = f[2] }, .loading = .func(loading), .failed = .func(failed) })),
-                cx.make(facet.Text{ .text = f[0], .style = .{ .size = 14, .color = t.on_surface }, .wrap = false }),
-                cx.make(facet.Text{ .text = f[1], .style = .{ .size = 12, .color = t.on_surface_variant } }),
-            } }),
+                facet.Text{ .text = f[0], .style = .{ .size = 14, .color = t.on_surface }, .wrap = false },
+                facet.Text{ .text = f[1], .style = .{ .size = 12, .color = t.on_surface_variant } },
+            }) }),
         });
     }
 
@@ -102,88 +102,88 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const part: facet.Image.Region = .{ .x = @intFromFloat(@round(s.part_x)), .y = @intFromFloat(@round(s.part_y)), .w = 80, .h = 60 };
 
     return common.page(cx, &.{
-        common.section(cx, "Formats", "PNG, JPEG, GIF and WebP, decoded in the background (here from the bytes of files built in)", &.{
-            cx.make(facet.Grid{ .cell = .{ .w = 210, .h = 200 }, .spacing = 12, .children = &cards }),
-        }),
-        common.section(cx, "From memory", "Pixels the app has made, shown at once: at their size, smaller, and faded", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .end, .children = &.{
-                cx.make(facet.SizedBox{ .width = 48, .height = 48, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) }),
-                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) }),
-                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture }, .opacity = 0.6 }) }),
-                cx.make(facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture }, .opacity = 0.25 }) }),
-            } }),
-        }),
-        common.section(cx, "Fitting", "Made smaller to fit the space it is given, keeping its shape, but never bigger than it is", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
+        common.section(cx, "Formats", "PNG, JPEG, GIF and WebP, decoded in the background (here from the bytes of files built in)", cx.makeAll(.{
+            facet.Grid{ .cell = .{ .w = 210, .h = 200 }, .spacing = 12, .children = &cards },
+        })),
+        common.section(cx, "From memory", "Pixels the app has made, shown at once: at their size, smaller, and faded", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .end, .children = cx.makeAll(.{
+                facet.SizedBox{ .width = 48, .height = 48, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) },
+                facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture } }) },
+                facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture }, .opacity = 0.6 }) },
+                facet.SizedBox{ .width = 96, .height = 96, .child = cx.make(facet.Image{ .source = .{ .image = &s.picture }, .opacity = 0.25 }) },
+            }) },
+        })),
+        common.section(cx, "Fitting", "Made smaller to fit the space it is given, keeping its shape, but never bigger than it is", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
                 framed(cx, 80, 80, photo),
                 framed(cx, 200, 60, photo),
                 framed(cx, 90, 140, photo),
-            } }),
+            } },
             // Bigger than the photo: it shows at its size.
             framed(cx, 300, 170, photo),
-        }),
-        common.section(cx, "A part of an image", "Only the part shown is decoded (of a JPEG, only the blocks under it are turned into pixels), so a part of an image too big to load whole can be shown", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
-                cx.make(facet.SizedBox{ .width = 256, .height = 144, .child = cx.make(facet.Overlay{ .children = &.{
-                    cx.make(facet.Image{ .source = .{ .bytes = photo }, .opacity = 0.5 }),
-                    cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
+        })),
+        common.section(cx, "A part of an image", "Only the part shown is decoded (of a JPEG, only the blocks under it are turned into pixels), so a part of an image too big to load whole can be shown", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+                facet.SizedBox{ .width = 256, .height = 144, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
+                    facet.Image{ .source = .{ .bytes = photo }, .opacity = 0.5 },
+                    facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
                         .padding = .{ .left = @round(s.part_x), .top = @round(s.part_y) },
                         .child = cx.make(facet.Decorated{
                             .border = .{ .width = 2, .color = t.primary },
                             .child = cx.make(facet.SizedBox{ .width = part_size[0], .height = part_size[1] }),
                         }),
-                    }) }),
-                } }) }),
-                cx.make(facet.Image{ .source = .{ .bytes = photo }, .region = part, .loading = .func(loading) }),
-            } }),
-            common.labelled(cx, "Across", &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_x, .max = 256 - part_size[0], .on_changed = .of(s, State.setPartX) }) }),
-            }),
-            common.labelled(cx, "Down", &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_y, .max = 144 - part_size[1], .on_changed = .of(s, State.setPartY) }) }),
-            }),
+                    }) },
+                }) }) },
+                facet.Image{ .source = .{ .bytes = photo }, .region = part, .loading = .func(loading) },
+            }) },
+            common.labelled(cx, "Across", cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_x, .max = 256 - part_size[0], .on_changed = .of(s, State.setPartX) }) },
+            })),
+            common.labelled(cx, "Down", cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.part_y, .max = 144 - part_size[1], .on_changed = .of(s, State.setPartY) }) },
+            })),
             common.status(cx, cx.fmt("The part {d} × {d} from ({d}, {d}): all that is decoded", .{ part.w, part.h, part.x, part.y })),
-        }),
-        common.section(cx, "From a URL", "Fetched over HTTP or HTTPS (or file:// and data: URLs), with a spinner until it is ready", &.{
-            cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = &.{
-                cx.make(facet.TextField{ .placeholder = "https://…/picture.jpg", .initial = s.url_typed.buf[0..s.url_typed.len], .max_len = 127, .width = 260, .on_changed = .of(s, State.setUrl), .on_submit = .of(s, State.loadUrl) }),
-                cx.make(facet.TonalButton{ .label = "Load", .on_press = .of(s, State.loadUrl) }),
-                cx.make(facet.TextButton{ .label = "Load again", .icon = .refresh, .on_press = .of(s, State.reload) }),
-            } }),
-            cx.make(facet.Align{ .alignment = .center_left, .child = onChecks(cx, 300, 170, cx.make(facet.Image{
+        })),
+        common.section(cx, "From a URL", "Fetched over HTTP or HTTPS (or file:// and data: URLs), with a spinner until it is ready", cx.makeAll(.{
+            facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                facet.TextField{ .placeholder = "https://…/picture.jpg", .initial = s.url_typed.buf[0..s.url_typed.len], .max_len = 127, .width = 260, .on_changed = .of(s, State.setUrl), .on_submit = .of(s, State.loadUrl) },
+                facet.TonalButton{ .label = "Load", .on_press = .of(s, State.loadUrl) },
+                facet.TextButton{ .label = "Load again", .icon = .refresh, .on_press = .of(s, State.reload) },
+            }) },
+            facet.Align{ .alignment = .center_left, .child = onChecks(cx, 300, 170, cx.make(facet.Image{
                 .source = .{ .url = url },
                 .loading = .func(loading),
                 .failed = .func(failed),
-            })) }),
+            })) },
             common.status(cx, url),
-        }),
-        common.section(cx, "When it cannot be loaded", "What the failed builder makes shows instead; without one, nothing does", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
+        })),
+        common.section(cx, "When it cannot be loaded", "What the failed builder makes shows instead; without one, nothing does", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
                 onChecks(cx, 160, 90, cx.make(facet.Image{ .source = .{ .bytes = "not an image" }, .failed = .func(failed) })),
                 onChecks(cx, 160, 90, cx.make(facet.Image{ .source = .{ .file = "/no/such/picture.png" } })),
-            } }),
-        }),
+            } },
+        })),
     });
 }
 
 /// `image` centred on a checked background `w` by `h`, so what is
 /// transparent in it shows.
 fn onChecks(cx: *facet.Context, w: f32, h: f32, image: facet.Widget) facet.Widget {
-    return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Overlay{ .children = &.{
-        cx.make(Checks{}),
-        cx.make(facet.Center{ .child = image }),
-    } }) });
+    return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
+        Checks{},
+        facet.Center{ .child = image },
+    }) }) });
 }
 
 /// The photo in a box `w` by `h`, outlined to show the space it has.
 fn framed(cx: *facet.Context, w: f32, h: f32, photo: []const u8) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 4, .children = &.{
-        cx.make(facet.Decorated{ .border = .{ .width = 1, .color = t.outline }, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Center{
+    return cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 4, .children = cx.makeAll(.{
+        facet.Decorated{ .border = .{ .width = 1, .color = t.outline }, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Center{
             .child = cx.make(facet.Image{ .source = .{ .bytes = photo }, .loading = .func(loading) }),
-        }) }) }),
-        cx.make(facet.Text{ .text = cx.fmt("{d:.0} × {d:.0}", .{ w, h }), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false }),
-    } });
+        }) }) },
+        facet.Text{ .text = cx.fmt("{d:.0} × {d:.0}", .{ w, h }), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
+    }) });
 }
 
 fn loading(cx: *facet.Context) facet.Widget {
@@ -192,10 +192,10 @@ fn loading(cx: *facet.Context) facet.Widget {
 
 fn failed(cx: *facet.Context) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = &.{
-        cx.make(facet.Icon{ .icon = .image, .size = 32, .color = t.outline }),
-        cx.make(facet.Text{ .text = "Could not be loaded", .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false }),
-    } });
+    return cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = cx.makeAll(.{
+        facet.Icon{ .icon = .image, .size = 32, .color = t.outline },
+        facet.Text{ .text = "Could not be loaded", .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
+    }) });
 }
 
 /// A checkerboard, filling its space.

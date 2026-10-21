@@ -78,61 +78,61 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 
     return common.page(cx, &.{
         common.section(cx, "Progress indicators", "How far along work is, or that it is happening when that is not known", &.{
-            common.labelled(cx, cx.fmt("Determinate {d:.0}%", .{s.progress * 100}), &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = s.progress }) }),
-                cx.make(facet.SwitchRow{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" }),
-            }),
-            common.labelled(cx, "Indeterminate", &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.ProgressBar{}) }),
-            }),
-            common.labelled(cx, "Styled", &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = 0.7, .height = 12, .color = t.@"error", .track_color = t.surface_container_highest }) }),
-            }),
-            common.labelled(cx, "Spinners", &.{
-                cx.make(facet.Spinner{ .size = 24 }),
-                cx.make(facet.Spinner{}),
-                cx.make(facet.Spinner{ .size = 64, .color = t.@"error" }),
-            }),
+            common.labelled(cx, cx.fmt("Determinate {d:.0}%", .{s.progress * 100}), cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = s.progress }) },
+                facet.SwitchRow{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" },
+            })),
+            common.labelled(cx, "Indeterminate", cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.ProgressBar{}) },
+            })),
+            common.labelled(cx, "Styled", cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = 0.7, .height = 12, .color = t.@"error", .track_color = t.surface_container_highest }) },
+            })),
+            common.labelled(cx, "Spinners", cx.makeAll(.{
+                facet.Spinner{ .size = 24 },
+                facet.Spinner{},
+                facet.Spinner{ .size = 64, .color = t.@"error" },
+            })),
         }),
         common.section(cx, "Badges", "Counts and labels on icons, or on their own", &.{
-            common.labelled(cx, "On icons", &.{
-                cx.make(facet.Badge{ .child = cx.make(facet.Icon{ .icon = .notifications, .size = 28 }) }),
-                cx.make(facet.Badge{ .count = s.unread, .show = s.unread > 0, .child = cx.make(facet.Icon{ .icon = .mail, .size = 28 }) }),
-                cx.make(facet.Badge{ .label = "NEW", .child = cx.make(facet.Icon{ .icon = .star, .size = 28 }) }),
-            }),
-            common.labelled(cx, "On their own", &.{
-                cx.make(facet.Badge{ .count = 7 }),
-                cx.make(facet.Badge{ .count = 1234 }),
-                cx.make(facet.Badge{ .label = "Beta", .color = t.primary, .text_color = t.on_primary }),
-            }),
-            common.labelled(cx, cx.fmt("{d} unread", .{s.unread}), &.{
-                cx.make(facet.OutlinedButton{ .label = "Add one", .icon = .add, .on_press = .of(s, State.addUnread) }),
-                cx.make(facet.OutlinedButton{ .label = "Add 50", .on_press = .of(s, State.addManyUnread) }),
-                cx.make(facet.TextButton{ .label = "Read all", .on_press = .of(s, State.readAll) }),
-            }),
+            common.labelled(cx, "On icons", cx.makeAll(.{
+                facet.Badge{ .child = cx.make(facet.Icon{ .icon = .notifications, .size = 28 }) },
+                facet.Badge{ .count = s.unread, .show = s.unread > 0, .child = cx.make(facet.Icon{ .icon = .mail, .size = 28 }) },
+                facet.Badge{ .label = "NEW", .child = cx.make(facet.Icon{ .icon = .star, .size = 28 }) },
+            })),
+            common.labelled(cx, "On their own", cx.makeAll(.{
+                facet.Badge{ .count = 7 },
+                facet.Badge{ .count = 1234 },
+                facet.Badge{ .label = "Beta", .color = t.primary, .text_color = t.on_primary },
+            })),
+            common.labelled(cx, cx.fmt("{d} unread", .{s.unread}), cx.makeAll(.{
+                facet.OutlinedButton{ .label = "Add one", .icon = .add, .on_press = .of(s, State.addUnread) },
+                facet.OutlinedButton{ .label = "Add 50", .on_press = .of(s, State.addManyUnread) },
+                facet.TextButton{ .label = "Read all", .on_press = .of(s, State.readAll) },
+            })),
         }),
-        common.section(cx, "Dialogs", "A question over the app that must be answered before going on", &.{
-            cx.make(facet.Row{
+        common.section(cx, "Dialogs", "A question over the app that must be answered before going on", cx.makeAll(.{
+            facet.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.FilledButton{ .label = "Simple dialog", .on_press = .of(s, State.openSimple) }),
-                    cx.make(facet.TonalButton{ .label = "Dialog with content", .icon = .notifications, .on_press = .of(s, State.openContent) }),
+                .children = cx.makeAll(.{
+                    facet.FilledButton{ .label = "Simple dialog", .on_press = .of(s, State.openSimple) },
+                    facet.TonalButton{ .label = "Dialog with content", .icon = .notifications, .on_press = .of(s, State.openContent) },
                     common.status(cx, s.log.text("")),
-                },
-            }),
-        }),
-        common.section(cx, "Snackbars", "A brief message at the bottom of the window, with an optional action", &.{
-            cx.make(facet.Row{
+                }),
+            },
+        })),
+        common.section(cx, "Snackbars", "A brief message at the bottom of the window, with an optional action", cx.makeAll(.{
+            facet.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.TonalButton{ .label = "Save", .icon = .save, .on_press = .of(s, State.showSaved) }),
-                    cx.make(facet.OutlinedButton{ .label = "Delete", .icon = .delete, .on_press = .of(s, State.showDeleted) }),
+                .children = cx.makeAll(.{
+                    facet.TonalButton{ .label = "Save", .icon = .save, .on_press = .of(s, State.showSaved) },
+                    facet.OutlinedButton{ .label = "Delete", .icon = .delete, .on_press = .of(s, State.showDeleted) },
                     common.status(cx, cx.fmt("{d} messages deleted", .{s.deleted})),
-                },
-            }),
-        }),
+                }),
+            },
+        })),
     });
 }
 

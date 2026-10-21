@@ -135,63 +135,63 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "Checkboxes", "Any number of options from a set, each on or off", &.{
             common.labelled(cx, "Toppings", &toppings),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.CheckboxRow{ .value = true, .label = "Always on" }),
-                cx.make(facet.CheckboxRow{ .value = false, .label = "Never on" }),
-            }),
-            common.labelled(cx, "Agreement", &.{
-                cx.make(facet.CheckboxRow{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" }),
-                cx.make(facet.FilledButton{ .label = "Continue", .on_press = if (s.terms) common.pressed(cx, &s.agreed, "Continue") else null }),
-            }),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.CheckboxRow{ .value = true, .label = "Always on" },
+                facet.CheckboxRow{ .value = false, .label = "Never on" },
+            })),
+            common.labelled(cx, "Agreement", cx.makeAll(.{
+                facet.CheckboxRow{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" },
+                facet.FilledButton{ .label = "Continue", .on_press = if (s.terms) common.pressed(cx, &s.agreed, "Continue") else null },
+            })),
             common.status(cx, s.agreed.text("Agree to the terms to continue")),
         }),
         common.section(cx, "Radio buttons", "Exactly one option from a set, here of an enum", &.{
             common.labelled(cx, "Size", &radios),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.RadioRow(u8){ .value = 0, .group_value = 0, .label = "Chosen" }),
-                cx.make(facet.RadioRow(u8){ .value = 1, .group_value = 0, .label = "Not chosen" }),
-            }),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.RadioRow(u8){ .value = 0, .group_value = 0, .label = "Chosen" },
+                facet.RadioRow(u8){ .value = 1, .group_value = 0, .label = "Not chosen" },
+            })),
             common.status(cx, cx.fmt("Size is {s}", .{@tagName(s.size)})),
         }),
         common.section(cx, "Switches", "A setting turned on or off straight away", &.{
-            common.labelled(cx, "Radios", &.{
-                cx.make(facet.SwitchRow{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" }),
-                cx.make(facet.SwitchRow{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" }),
-            }),
-            common.labelled(cx, "Override", &.{
-                cx.make(facet.SwitchRow{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" }),
-            }),
+            common.labelled(cx, "Radios", cx.makeAll(.{
+                facet.SwitchRow{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" },
+                facet.SwitchRow{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" },
+            })),
+            common.labelled(cx, "Override", cx.makeAll(.{
+                facet.SwitchRow{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" },
+            })),
         }),
         common.section(cx, "Sliders", "A value from a range, continuous or in steps", &.{
-            common.labelled(cx, cx.fmt("Volume {d:.0}%", .{s.volume * 100}), &.{
-                cx.make(facet.Icon{ .icon = .remove, .size = 20, .color = t.on_surface_variant }),
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.volume, .on_changed = .of(s, State.setVolume) }) }),
-                cx.make(facet.Icon{ .icon = .add, .size = 20, .color = t.on_surface_variant }),
-            }),
-            common.labelled(cx, cx.fmt("Brightness {d:.0}", .{s.brightness}), &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.brightness, .min = 0, .max = 100, .divisions = 10, .on_changed = .of(s, State.setBrightness) }) }),
-            }),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = 0.3 }) }),
-            }),
+            common.labelled(cx, cx.fmt("Volume {d:.0}%", .{s.volume * 100}), cx.makeAll(.{
+                facet.Icon{ .icon = .remove, .size = 20, .color = t.on_surface_variant },
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.volume, .on_changed = .of(s, State.setVolume) }) },
+                facet.Icon{ .icon = .add, .size = 20, .color = t.on_surface_variant },
+            })),
+            common.labelled(cx, cx.fmt("Brightness {d:.0}", .{s.brightness}), cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.brightness, .min = 0, .max = 100, .divisions = 10, .on_changed = .of(s, State.setBrightness) }) },
+            })),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = 0.3 }) },
+            })),
         }),
         common.section(cx, "Dropdown menus", "One option from a list shown in a menu: by index, or of a type with Select", &.{
-            common.labelled(cx, "Resolution", &.{
-                cx.make(facet.DropdownMenu{ .options = &resolutions, .selected = s.resolution, .on_selected = .of(s, State.setResolution), .icon = .image, .width = 200 }),
-            }),
-            common.labelled(cx, "Quality", &.{
-                cx.make(facet.Select(Quality){ .options = &qualities, .value = s.quality, .on_changed = .of(s, State.setQuality), .icon = .tune, .width = 200 }),
-            }),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.DropdownMenu{ .options = &resolutions, .selected = null, .placeholder = "Not available", .width = 200 }),
-            }),
+            common.labelled(cx, "Resolution", cx.makeAll(.{
+                facet.DropdownMenu{ .options = &resolutions, .selected = s.resolution, .on_selected = .of(s, State.setResolution), .icon = .image, .width = 200 },
+            })),
+            common.labelled(cx, "Quality", cx.makeAll(.{
+                facet.Select(Quality){ .options = &qualities, .value = s.quality, .on_changed = .of(s, State.setQuality), .icon = .tune, .width = 200 },
+            })),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.DropdownMenu{ .options = &resolutions, .selected = null, .placeholder = "Not available", .width = 200 },
+            })),
         }),
         common.section(cx, "Chips", "Filter chips turned on and off, and input chips that can be removed", &.{
             common.labelled(cx, "Filters", &filters),
             common.labelled(cx, "Tags", tags[0..tag_count]),
-            common.labelled(cx, "Assist", &.{
-                cx.make(facet.Chip{ .label = "Add to calendar", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add to calendar") }),
-            }),
+            common.labelled(cx, "Assist", cx.makeAll(.{
+                facet.Chip{ .label = "Add to calendar", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add to calendar") },
+            })),
             common.status(cx, s.log.text("Choose an assist chip")),
         }),
     });

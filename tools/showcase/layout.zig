@@ -88,15 +88,15 @@ const ThemePanel = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .start,
                 .spacing = 10,
-                .children = &.{
-                    cx.make(facet.Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true }),
-                    cx.make(facet.Row{ .spacing = 10, .cross_axis_alignment = .center, .children = &.{
-                        cx.make(facet.Switch{ .value = self.on.*, .on_changed = .of(self.on, set) }),
-                        cx.make(facet.Badge{ .count = 3, .child = cx.make(facet.Icon{ .icon = .mail }) }),
-                    } }),
-                    cx.make(facet.FilledButton{ .label = "Save", .on_press = .of(self.on, toggle) }),
-                    cx.make(facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = .of(self.on, toggle) }),
-                },
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true },
+                    facet.Row{ .spacing = 10, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                        facet.Switch{ .value = self.on.*, .on_changed = .of(self.on, set) },
+                        facet.Badge{ .count = 3, .child = cx.make(facet.Icon{ .icon = .mail }) },
+                    }) },
+                    facet.FilledButton{ .label = "Save", .on_press = .of(self.on, toggle) },
+                    facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = .of(self.on, toggle) },
+                }),
             }) }),
         });
     }
@@ -117,10 +117,10 @@ fn fruitPill(cx: *facet.Context, name: []const u8, in_basket: bool) facet.Widget
             .main_axis_size = .min,
             .spacing = 6,
             .cross_axis_alignment = .center,
-            .children = &.{
-                cx.make(facet.Icon{ .icon = .sell, .size = 18, .color = fg }),
-                cx.make(facet.Text{ .text = name, .style = .{ .size = 14, .color = fg }, .wrap = false }),
-            },
+            .children = cx.makeAll(.{
+                facet.Icon{ .icon = .sell, .size = 18, .color = fg },
+                facet.Text{ .text = name, .style = .{ .size = 14, .color = fg }, .wrap = false },
+            }),
         }) }),
     });
 }
@@ -201,59 +201,59 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "Rows and columns", "Children along a line: spread along it by main axis alignment", &main_rows),
         common.section(cx, "Cross axis alignment", "And placed across it by cross axis alignment", &cross_rows),
-        common.section(cx, "Sharing space", "Expanded children share what is left over by their flex: here 1, 2 and 3", &.{
-            cx.make(facet.Row{ .spacing = 6, .children = &.{
-                cx.make(facet.Expanded{ .flex = 1, .child = box(cx, 0, null, 32) }),
-                cx.make(facet.Expanded{ .flex = 2, .child = box(cx, 1, null, 32) }),
-                cx.make(facet.Expanded{ .flex = 3, .child = box(cx, 2, null, 32) }),
-            } }),
-            cx.make(facet.SizedBox{ .height = 120, .child = cx.make(facet.Row{ .spacing = 6, .cross_axis_alignment = .stretch, .children = &.{
+        common.section(cx, "Sharing space", "Expanded children share what is left over by their flex: here 1, 2 and 3", cx.makeAll(.{
+            facet.Row{ .spacing = 6, .children = cx.makeAll(.{
+                facet.Expanded{ .flex = 1, .child = box(cx, 0, null, 32) },
+                facet.Expanded{ .flex = 2, .child = box(cx, 1, null, 32) },
+                facet.Expanded{ .flex = 3, .child = box(cx, 2, null, 32) },
+            }) },
+            facet.SizedBox{ .height = 120, .child = cx.make(facet.Row{ .spacing = 6, .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
                 box(cx, 3, 80, null),
-                cx.make(facet.Expanded{ .child = cx.make(facet.Column{ .spacing = 6, .cross_axis_alignment = .stretch, .children = &.{
-                    cx.make(facet.Expanded{ .child = box(cx, 4, null, null) }),
-                    cx.make(facet.Expanded{ .flex = 2, .child = box(cx, 5, null, null) }),
-                } }) }),
-            } }) }),
-        }),
-        common.section(cx, "Grid", "Equal cells, as many to a row as fit", &.{
-            cx.make(facet.Grid{ .cell = .{ .w = 72, .h = 48 }, .spacing = 8, .children = &tiles }),
-        }),
-        common.section(cx, "Layers and alignment", "An overlay stacks layers; each aligns its content in the space", &.{
-            cx.make(facet.SizedBox{ .height = 170, .child = cx.make(facet.Overlay{ .children = &layers }) }),
-        }),
+                facet.Expanded{ .child = cx.make(facet.Column{ .spacing = 6, .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
+                    facet.Expanded{ .child = box(cx, 4, null, null) },
+                    facet.Expanded{ .flex = 2, .child = box(cx, 5, null, null) },
+                }) }) },
+            }) }) },
+        })),
+        common.section(cx, "Grid", "Equal cells, as many to a row as fit", cx.makeAll(.{
+            facet.Grid{ .cell = .{ .w = 72, .h = 48 }, .spacing = 8, .children = &tiles },
+        })),
+        common.section(cx, "Layers and alignment", "An overlay stacks layers; each aligns its content in the space", cx.makeAll(.{
+            facet.SizedBox{ .height = 170, .child = cx.make(facet.Overlay{ .children = &layers }) },
+        })),
         common.section(cx, "Sizing", "Fixed sizes, sizes within limits, padding, and centering", &.{
             common.labelled(cx, "Sized box", &.{ box(cx, 0, 24, 24), box(cx, 1, 48, 24), box(cx, 2, 96, 24) }),
-            common.labelled(cx, "Constrained", &.{
-                cx.make(facet.ConstrainedBox{ .constraints = .{ .min_w = 160, .max_w = 160 }, .child = cx.make(facet.OutlinedButton{ .label = "At least 160 wide", .on_press = .of(s, State.press) }) }),
-                cx.make(facet.ConstrainedBox{ .constraints = .{ .max_w = 120 }, .child = cx.make(facet.Text{ .text = "At most 120 pixels wide, so this wraps", .style = .{ .size = 13, .color = t.on_surface } }) }),
-            }),
-            common.labelled(cx, "Padding", &.{
-                cx.make(facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(4), .child = box(cx, 3, 32, 16) }) }),
-                cx.make(facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(16), .child = box(cx, 3, 32, 16) }) }),
-                cx.make(facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .symmetric(32, 4), .child = box(cx, 3, 32, 16) }) }),
-            }),
+            common.labelled(cx, "Constrained", cx.makeAll(.{
+                facet.ConstrainedBox{ .constraints = .{ .min_w = 160, .max_w = 160 }, .child = cx.make(facet.OutlinedButton{ .label = "At least 160 wide", .on_press = .of(s, State.press) }) },
+                facet.ConstrainedBox{ .constraints = .{ .max_w = 120 }, .child = cx.make(facet.Text{ .text = "At most 120 pixels wide, so this wraps", .style = .{ .size = 13, .color = t.on_surface } }) },
+            })),
+            common.labelled(cx, "Padding", cx.makeAll(.{
+                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(4), .child = box(cx, 3, 32, 16) }) },
+                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(16), .child = box(cx, 3, 32, 16) }) },
+                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .symmetric(32, 4), .child = box(cx, 3, 32, 16) }) },
+            })),
             common.labelled(cx, "Center", &.{strip(cx, 56, cx.make(facet.Center{ .child = box(cx, 4, 64, 20) }))}),
         }),
-        common.section(cx, "Decoration", "Backgrounds, borders, and rounded corners, the same or each different", &.{
-            cx.make(facet.Row{ .spacing = 12, .children = &.{
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary }) }),
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(12) }) }),
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(24) }) }),
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) }),
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border = .{ .width = 2, .color = t.primary }, .radius = .all(12) }) }),
-                cx.make(facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border = .{ .width = 4, .color = t.outline }, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) }),
-            } }),
-        }),
-        common.section(cx, "Themes", "Themed gives the widgets below it a theme of its own: here the opposite one, and one with colours changed", &.{
-            cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .start, .children = &.{
-                cx.make(facet.Expanded{ .child = cx.make(ThemePanel{ .title = "The app's theme", .on = &s.themed_switches[0] }) }),
-                cx.make(facet.Expanded{ .child = cx.make(facet.Themed{ .theme = opposite(cx.theme()), .child = cx.make(ThemePanel{ .title = "The opposite", .on = &s.themed_switches[1] }) }) }),
-                cx.make(facet.Expanded{ .child = cx.make(facet.Themed{ .theme = custom(cx.theme()), .child = cx.make(ThemePanel{ .title = "Changed colours", .on = &s.themed_switches[2] }) }) }),
-            } }),
-        }),
-        common.section(cx, "Pressing", "Pressable makes anything a button, and says when the pointer is over it or pressing it", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &.{
-                cx.make(facet.Pressable{
+        common.section(cx, "Decoration", "Backgrounds, borders, and rounded corners, the same or each different", cx.makeAll(.{
+            facet.Row{ .spacing = 12, .children = cx.makeAll(.{
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(12) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(24) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border = .{ .width = 2, .color = t.primary }, .radius = .all(12) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border = .{ .width = 4, .color = t.outline }, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) },
+            }) },
+        })),
+        common.section(cx, "Themes", "Themed gives the widgets below it a theme of its own: here the opposite one, and one with colours changed", cx.makeAll(.{
+            facet.Row{ .spacing = 12, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(ThemePanel{ .title = "The app's theme", .on = &s.themed_switches[0] }) },
+                facet.Expanded{ .child = cx.make(facet.Themed{ .theme = opposite(cx.theme()), .child = cx.make(ThemePanel{ .title = "The opposite", .on = &s.themed_switches[1] }) }) },
+                facet.Expanded{ .child = cx.make(facet.Themed{ .theme = custom(cx.theme()), .child = cx.make(ThemePanel{ .title = "Changed colours", .on = &s.themed_switches[2] }) }) },
+            }) },
+        })),
+        common.section(cx, "Pressing", "Pressable makes anything a button, and says when the pointer is over it or pressing it", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                facet.Pressable{
                     .on_press = .of(s, State.press),
                     .interaction = &s.hover,
                     .child = cx.make(facet.SizedBox{ .width = 200, .height = 56, .child = cx.make(facet.Decorated{
@@ -265,28 +265,28 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                             .wrap = false,
                         }) }),
                     }) }),
-                }),
+                },
                 common.status(cx, cx.fmt("Pressed {d} times", .{s.presses})),
-            } }),
-        }),
-        common.section(cx, "Dragging and dropping", "Drag a fruit into the basket", &.{
-            cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = if (source_count > 0) sources[0..source_count] else &[_]facet.Widget{
+            }) },
+        })),
+        common.section(cx, "Dragging and dropping", "Drag a fruit into the basket", cx.makeAll(.{
+            facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = if (source_count > 0) sources[0..source_count] else &[_]facet.Widget{
                 common.status(cx, "All the fruit is in the basket"),
-            } }),
-            cx.make(facet.SizedBox{ .height = 96, .child = cx.make(facet.DropTarget{
+            } },
+            facet.SizedBox{ .height = 96, .child = cx.make(facet.DropTarget{
                 .on_drop = .of(s, State.drop),
                 .child = cx.make(facet.Card{
                     .variant = .outlined,
-                    .child = cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = &.{
-                        cx.make(facet.Icon{ .icon = .folder, .color = t.on_surface_variant }),
-                        cx.make(facet.Expanded{ .child = if (basket_count > 0)
+                    .child = cx.make(facet.Row{ .spacing = 8, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                        facet.Icon{ .icon = .folder, .color = t.on_surface_variant },
+                        facet.Expanded{ .child = if (basket_count > 0)
                             cx.make(facet.Row{ .spacing = 8, .children = basket[0..basket_count] })
                         else
-                            cx.make(facet.Text{ .text = "The basket is empty", .style = .{ .color = t.on_surface_variant } }) }),
-                        cx.make(facet.TextButton{ .label = "Empty", .on_press = if (basket_count > 0) .of(s, State.empty) else null }),
-                    } }),
+                            cx.make(facet.Text{ .text = "The basket is empty", .style = .{ .color = t.on_surface_variant } }) },
+                        facet.TextButton{ .label = "Empty", .on_press = if (basket_count > 0) .of(s, State.empty) else null },
+                    }) }),
                 }),
-            }) }),
-        }),
+            }) },
+        })),
     });
 }

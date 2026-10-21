@@ -62,54 +62,54 @@ const Buffer = struct {
 pub fn build(cx: *facet.Context, s: *State, notes: *facet.TextDocument, code: *facet.TextDocument) facet.Widget {
     const t = cx.theme();
     return common.page(cx, &.{
-        common.section(cx, "Text", "Text in the theme's sizes and colours", &.{
-            cx.make(facet.Text{ .text = "Title text", .style = .{ .size = t.title_size, .color = t.on_surface } }),
-            cx.make(facet.Text{ .text = "Body text, the size most text is", .style = .{ .size = t.body_size, .color = t.on_surface } }),
-            cx.make(facet.Text{ .text = "Supporting text, quieter than the body", .style = .{ .size = 13, .color = t.on_surface_variant } }),
-            cx.make(facet.Text{ .text = "Primary colour for emphasis", .style = .{ .size = t.body_size, .color = t.primary } }),
-            cx.make(facet.Text{ .text = "Error colour for problems", .style = .{ .size = t.body_size, .color = t.@"error" } }),
-            cx.make(facet.Text{ .text = "Accents and emoji: Grüße, café, naïve 🎉", .style = .{ .size = t.body_size, .color = t.on_surface } }),
-        }),
+        common.section(cx, "Text", "Text in the theme's sizes and colours", cx.makeAll(.{
+            facet.Text{ .text = "Title text", .style = .{ .size = t.title_size, .color = t.on_surface } },
+            facet.Text{ .text = "Body text, the size most text is", .style = .{ .size = t.body_size, .color = t.on_surface } },
+            facet.Text{ .text = "Supporting text, quieter than the body", .style = .{ .size = 13, .color = t.on_surface_variant } },
+            facet.Text{ .text = "Primary colour for emphasis", .style = .{ .size = t.body_size, .color = t.primary } },
+            facet.Text{ .text = "Error colour for problems", .style = .{ .size = t.body_size, .color = t.@"error" } },
+            facet.Text{ .text = "Accents and emoji: Grüße, café, naïve 🎉", .style = .{ .size = t.body_size, .color = t.on_surface } },
+        })),
         common.section(cx, "Layout", "Text wrapped to its width, cut short with an ellipsis, and aligned", &.{
-            common.labelled(cx, "Wrapped", &.{cx.make(facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .style = .{ .color = t.on_surface } }) })}),
-            common.labelled(cx, "Ellipsis", &.{cx.make(facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .wrap = false, .ellipsis = true, .style = .{ .color = t.on_surface } }) })}),
+            common.labelled(cx, "Wrapped", cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .style = .{ .color = t.on_surface } }) }})),
+            common.labelled(cx, "Ellipsis", cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .wrap = false, .ellipsis = true, .style = .{ .color = t.on_surface } }) }})),
             common.labelled(cx, "Start", &.{aligned(cx, .start)}),
             common.labelled(cx, "Center", &.{aligned(cx, .center)}),
             common.labelled(cx, "End", &.{aligned(cx, .end)}),
         }),
         common.section(cx, "Text fields", "Single lines of text: typed, hidden, submitted with Enter, or unavailable", &.{
-            common.labelled(cx, "Name", &.{
-                cx.make(facet.TextField{ .placeholder = "Your name", .initial = s.name.text(), .on_changed = .of(s, State.setName) }),
-                cx.make(facet.Text{
+            common.labelled(cx, "Name", cx.makeAll(.{
+                facet.TextField{ .placeholder = "Your name", .initial = s.name.text(), .on_changed = .of(s, State.setName) },
+                facet.Text{
                     .text = if (s.name.len == 0) "" else cx.fmt("Hello, {s}!", .{s.name.text()}),
                     .style = .{ .size = 13, .color = t.primary },
                     .wrap = false,
                     .ellipsis = true,
-                }),
-            }),
-            common.labelled(cx, "Password", &.{
-                cx.make(facet.TextField{ .placeholder = "Password", .obscure = true, .initial = s.password.text(), .on_changed = .of(s, State.setPassword) }),
-                cx.make(facet.Text{ .text = cx.fmt("{d} characters", .{std.unicode.utf8CountCodepoints(s.password.text()) catch 0}), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false }),
-            }),
-            common.labelled(cx, "Search", &.{
-                cx.make(facet.TextField{ .placeholder = "Type and press Enter", .initial = s.search.text(), .on_changed = .of(s, State.setSearch), .on_submit = .of(s, State.submitSearch) }),
+                },
+            })),
+            common.labelled(cx, "Password", cx.makeAll(.{
+                facet.TextField{ .placeholder = "Password", .obscure = true, .initial = s.password.text(), .on_changed = .of(s, State.setPassword) },
+                facet.Text{ .text = cx.fmt("{d} characters", .{std.unicode.utf8CountCodepoints(s.password.text()) catch 0}), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+            })),
+            common.labelled(cx, "Search", cx.makeAll(.{
+                facet.TextField{ .placeholder = "Type and press Enter", .initial = s.search.text(), .on_changed = .of(s, State.setSearch), .on_submit = .of(s, State.submitSearch) },
                 common.status(cx, s.submitted.text("")),
-            }),
-            common.labelled(cx, "Large", &.{
-                cx.make(facet.TextField{ .placeholder = "Larger text", .size = 20, .width = 320 }),
-            }),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.TextField{ .initial = "Can't be edited", .enabled = false }),
-            }),
+            })),
+            common.labelled(cx, "Large", cx.makeAll(.{
+                facet.TextField{ .placeholder = "Larger text", .size = 20, .width = 320 },
+            })),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.TextField{ .initial = "Can't be edited", .enabled = false },
+            })),
         }),
-        common.section(cx, "Text areas", "Many lines of text in a shared document, plain or with code highlighted", &.{
+        common.section(cx, "Text areas", "Many lines of text in a shared document, plain or with code highlighted", cx.makeAll(.{
             area(cx, notes, null, 96),
             area(cx, code, highlightZig, 160),
-            cx.make(facet.Text{
+            facet.Text{
                 .text = cx.fmt("The code is {d} lines, {d} bytes, with the cursor at {d}", .{ 1 + std.mem.count(u8, code.text(), "\n"), code.text().len, code.cursor }),
                 .style = .{ .size = 13, .color = t.on_surface_variant },
-            }),
-        }),
+            },
+        })),
     });
 }
 

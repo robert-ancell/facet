@@ -90,10 +90,10 @@ pub const TitleBar = struct {
         }
         return cx.make(DragArea{ .on_drag = on_drag, .on_maximize = on_maximize, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(Bar{
             .title = self.title,
-            .children = &.{
-                cx.make(Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true }),
-                cx.make(Row{ .spacing = spacing, .main_axis_size = .min, .children = buttons[0..n] }),
-            },
+            .children = cx.makeAll(.{
+                Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true },
+                Row{ .spacing = spacing, .main_axis_size = .min, .children = buttons[0..n] },
+            }),
         }) }) });
     }
 };
@@ -177,9 +177,9 @@ test "the title bar's buttons, and dragging it" {
     const Root = struct {
         app: *App,
         pub fn build(self: *const @This(), cx: *Context) Widget {
-            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = &.{
-                cx.make(TitleBar{ .title = "Settings", .on_close = .of(self.app, App.close), .on_maximize = .of(self.app, App.maximize), .on_drag = .of(self.app, App.drag) }),
-            } });
+            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
+                TitleBar{ .title = "Settings", .on_close = .of(self.app, App.close), .on_maximize = .of(self.app, App.maximize), .on_drag = .of(self.app, App.drag) },
+            }) });
         }
     };
     u.frame(800, 600, 0, Root{ .app = &app });
@@ -226,9 +226,9 @@ test "double clicking the title bar toggles maximize, instead of dragging" {
     const Root = struct {
         app: *App,
         pub fn build(self: *const @This(), cx: *Context) Widget {
-            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = &.{
-                cx.make(TitleBar{ .title = "Settings", .on_maximize = .of(self.app, App.maximize), .on_drag = .of(self.app, App.drag) }),
-            } });
+            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
+                TitleBar{ .title = "Settings", .on_maximize = .of(self.app, App.maximize), .on_drag = .of(self.app, App.drag) },
+            }) });
         }
     };
     u.frame(800, 600, 0, Root{ .app = &app });
@@ -269,9 +269,9 @@ test "a fullscreen window has no title bar" {
             b.* = true;
         }
         pub fn build(self: *const @This(), cx: *Context) Widget {
-            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = &.{
-                cx.make(TitleBar{ .title = "Settings", .on_close = .of(self.closed, close) }),
-            } });
+            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
+                TitleBar{ .title = "Settings", .on_close = .of(self.closed, close) },
+            }) });
         }
     };
     u.fullscreen = true;
@@ -301,9 +301,9 @@ test "the title bar defaults to the UI's window controls" {
     u.controls = &controls;
     const Root = struct {
         pub fn build(_: *const @This(), cx: *Context) Widget {
-            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = &.{
-                cx.make(TitleBar{ .title = "Settings" }),
-            } });
+            return cx.make(Column{ .cross_axis_alignment = .stretch, .children = cx.makeAll(.{
+                TitleBar{ .title = "Settings" },
+            }) });
         }
     };
     u.frame(800, 600, 0, Root{});

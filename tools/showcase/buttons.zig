@@ -35,57 +35,57 @@ pub const State = struct {
 pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "Common buttons", "Filled, tonal, outlined and text buttons, from the most emphasis to the least", &.{
-            common.labelled(cx, "Label", &.{
-                cx.make(facet.FilledButton{ .label = "Filled", .on_press = common.pressed(cx, &s.log, "Filled") }),
-                cx.make(facet.TonalButton{ .label = "Tonal", .on_press = common.pressed(cx, &s.log, "Tonal") }),
-                cx.make(facet.OutlinedButton{ .label = "Outlined", .on_press = common.pressed(cx, &s.log, "Outlined") }),
-                cx.make(facet.TextButton{ .label = "Text", .on_press = common.pressed(cx, &s.log, "Text") }),
-            }),
-            common.labelled(cx, "Leading icon", &.{
-                cx.make(facet.FilledButton{ .label = "Send", .icon = .send, .on_press = common.pressed(cx, &s.log, "Send") }),
-                cx.make(facet.TonalButton{ .label = "Edit", .icon = .edit, .on_press = common.pressed(cx, &s.log, "Edit") }),
-                cx.make(facet.OutlinedButton{ .label = "Share", .icon = .share, .on_press = common.pressed(cx, &s.log, "Share") }),
-                cx.make(facet.TextButton{ .label = "Add", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add") }),
-            }),
-            common.labelled(cx, "Trailing icon", &.{
-                cx.make(facet.FilledButton{ .label = "Next", .trailing_icon = .chevron_right, .on_press = common.pressed(cx, &s.log, "Next") }),
-                cx.make(facet.OutlinedButton{ .label = "Download", .trailing_icon = .download, .on_press = common.pressed(cx, &s.log, "Download") }),
-                cx.make(facet.TextButton{ .label = "More", .trailing_icon = .expand_more, .on_press = common.pressed(cx, &s.log, "More") }),
-            }),
-            common.labelled(cx, "Destructive", &.{
-                cx.make(facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = common.pressed(cx, &s.log, "Delete") }),
-            }),
-            common.labelled(cx, "Disabled", &.{
-                cx.make(facet.FilledButton{ .label = "Filled" }),
-                cx.make(facet.TonalButton{ .label = "Tonal" }),
-                cx.make(facet.OutlinedButton{ .label = "Outlined" }),
-                cx.make(facet.TextButton{ .label = "Text" }),
-            }),
+            common.labelled(cx, "Label", cx.makeAll(.{
+                facet.FilledButton{ .label = "Filled", .on_press = common.pressed(cx, &s.log, "Filled") },
+                facet.TonalButton{ .label = "Tonal", .on_press = common.pressed(cx, &s.log, "Tonal") },
+                facet.OutlinedButton{ .label = "Outlined", .on_press = common.pressed(cx, &s.log, "Outlined") },
+                facet.TextButton{ .label = "Text", .on_press = common.pressed(cx, &s.log, "Text") },
+            })),
+            common.labelled(cx, "Leading icon", cx.makeAll(.{
+                facet.FilledButton{ .label = "Send", .icon = .send, .on_press = common.pressed(cx, &s.log, "Send") },
+                facet.TonalButton{ .label = "Edit", .icon = .edit, .on_press = common.pressed(cx, &s.log, "Edit") },
+                facet.OutlinedButton{ .label = "Share", .icon = .share, .on_press = common.pressed(cx, &s.log, "Share") },
+                facet.TextButton{ .label = "Add", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add") },
+            })),
+            common.labelled(cx, "Trailing icon", cx.makeAll(.{
+                facet.FilledButton{ .label = "Next", .trailing_icon = .chevron_right, .on_press = common.pressed(cx, &s.log, "Next") },
+                facet.OutlinedButton{ .label = "Download", .trailing_icon = .download, .on_press = common.pressed(cx, &s.log, "Download") },
+                facet.TextButton{ .label = "More", .trailing_icon = .expand_more, .on_press = common.pressed(cx, &s.log, "More") },
+            })),
+            common.labelled(cx, "Destructive", cx.makeAll(.{
+                facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = common.pressed(cx, &s.log, "Delete") },
+            })),
+            common.labelled(cx, "Disabled", cx.makeAll(.{
+                facet.FilledButton{ .label = "Filled" },
+                facet.TonalButton{ .label = "Tonal" },
+                facet.OutlinedButton{ .label = "Outlined" },
+                facet.TextButton{ .label = "Text" },
+            })),
             common.status(cx, s.log.text("Press a button")),
         }),
         common.section(cx, "Icon buttons", "Icon-only buttons in four styles, which can toggle, each with a tooltip saying what it does", &.{
-            common.labelled(cx, "Standard", &.{
-                cx.make(facet.Tooltip{ .text = "Favourite", .child = cx.make(facet.IconButton{ .icon = .favorite, .selected = s.favourite, .on_press = .of(s, State.toggleFavourite) }) }),
-                cx.make(facet.Tooltip{ .text = "Search", .child = cx.make(facet.IconButton{ .icon = .search, .on_press = common.pressed(cx, &s.log, "Search") }) }),
-                cx.make(facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .print }) }),
-            }),
-            common.labelled(cx, "Filled", &.{
-                cx.make(facet.Tooltip{ .text = "Bookmark", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled, .selected = s.bookmarked, .on_press = .of(s, State.toggleBookmarked) }) }),
-                cx.make(facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled }) }),
-            }),
-            common.labelled(cx, "Tonal", &.{
-                cx.make(facet.Tooltip{ .text = "Mute", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal, .selected = s.muted, .on_press = .of(s, State.toggleMuted) }) }),
-                cx.make(facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal }) }),
-            }),
-            common.labelled(cx, "Outlined", &.{
-                cx.make(facet.Tooltip{ .text = "Lock", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined, .selected = s.locked, .on_press = .of(s, State.toggleLocked) }) }),
-                cx.make(facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined }) }),
-            }),
-            common.labelled(cx, "Sizes", &.{
-                cx.make(facet.IconButton{ .icon = .settings, .size = 32, .icon_size = 18, .on_press = common.pressed(cx, &s.log, "Small settings") }),
-                cx.make(facet.IconButton{ .icon = .settings, .on_press = common.pressed(cx, &s.log, "Settings") }),
-                cx.make(facet.IconButton{ .icon = .settings, .size = 56, .icon_size = 32, .variant = .tonal, .on_press = common.pressed(cx, &s.log, "Large settings") }),
-            }),
+            common.labelled(cx, "Standard", cx.makeAll(.{
+                facet.Tooltip{ .text = "Favourite", .child = cx.make(facet.IconButton{ .icon = .favorite, .selected = s.favourite, .on_press = .of(s, State.toggleFavourite) }) },
+                facet.Tooltip{ .text = "Search", .child = cx.make(facet.IconButton{ .icon = .search, .on_press = common.pressed(cx, &s.log, "Search") }) },
+                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .print }) },
+            })),
+            common.labelled(cx, "Filled", cx.makeAll(.{
+                facet.Tooltip{ .text = "Bookmark", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled, .selected = s.bookmarked, .on_press = .of(s, State.toggleBookmarked) }) },
+                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled }) },
+            })),
+            common.labelled(cx, "Tonal", cx.makeAll(.{
+                facet.Tooltip{ .text = "Mute", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal, .selected = s.muted, .on_press = .of(s, State.toggleMuted) }) },
+                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal }) },
+            })),
+            common.labelled(cx, "Outlined", cx.makeAll(.{
+                facet.Tooltip{ .text = "Lock", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined, .selected = s.locked, .on_press = .of(s, State.toggleLocked) }) },
+                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined }) },
+            })),
+            common.labelled(cx, "Sizes", cx.makeAll(.{
+                facet.IconButton{ .icon = .settings, .size = 32, .icon_size = 18, .on_press = common.pressed(cx, &s.log, "Small settings") },
+                facet.IconButton{ .icon = .settings, .on_press = common.pressed(cx, &s.log, "Settings") },
+                facet.IconButton{ .icon = .settings, .size = 56, .icon_size = 32, .variant = .tonal, .on_press = common.pressed(cx, &s.log, "Large settings") },
+            })),
         }),
         common.section(cx, "Segmented buttons", "A choice of one from a few, as a group of joined buttons", &.{
             common.labelled(cx, "Labels", &.{segmented(Range, cx, &s.range, &.{
@@ -100,16 +100,16 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 .{ .value = .board, .label = "Board", .icon = .dashboard },
             })}),
         }),
-        common.section(cx, "Menus", "A list of actions over everything else, from a button; items can show shortcuts, be destructive, or be unavailable", &.{
-            cx.make(facet.Row{
+        common.section(cx, "Menus", "A list of actions over everything else, from a button; items can show shortcuts, be destructive, or be unavailable", cx.makeAll(.{
+            facet.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(MenuButton{ .log = &s.menu }),
+                .children = cx.makeAll(.{
+                    MenuButton{ .log = &s.menu },
                     common.status(cx, s.menu.text("Open the menu and choose an action")),
-                },
-            }),
-        }),
+                }),
+            },
+        })),
     });
 }
 

@@ -131,13 +131,13 @@ pub const Dialog = struct {
         });
 
         const modal = cx.make(Overlay{
-            .children = &.{
-                cx.make(Scrim{
+            .children = cx.makeAll(.{
+                Scrim{
                     .on_dismiss = self.on_dismiss,
                     .child = cx.make(Decorated{ .color = gfx.Color.argb(0x88000000) }),
-                }),
-                cx.make(Center{ .child = card }),
-            },
+                },
+                Center{ .child = card },
+            }),
         });
 
         if (self.child) |under| {

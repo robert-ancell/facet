@@ -40,22 +40,22 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const colours = [_]facet.Color{ t.on_surface, t.primary, t.@"error", .rgb(0x66bb6a), .rgb(0xffa726) };
     var sizes: [5]facet.Widget = undefined;
     for (&sizes, [_]f32{ 16, 24, 32, 48, 64 }) |*w, size| {
-        w.* = cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = &.{
-            cx.make(facet.Icon{ .icon = s.chosen, .size = size, .color = t.on_surface }),
-            cx.make(facet.Text{ .text = cx.fmt("{d:.0}", .{size}), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false }),
-        } });
+        w.* = cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = cx.makeAll(.{
+            facet.Icon{ .icon = s.chosen, .size = size, .color = t.on_surface },
+            facet.Text{ .text = cx.fmt("{d:.0}", .{size}), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
+        }) });
     }
     var tinted: [colours.len]facet.Widget = undefined;
     for (&tinted, colours) |*w, c| w.* = cx.make(facet.Icon{ .icon = s.chosen, .size = 40, .color = c });
 
     const q = s.query[0..s.query_len];
     return common.page(cx, &.{
-        common.section(cx, cx.fmt("All {d} icons", .{all.len}), "Material's icons, from a font of them built in; type to search their names, and press one to choose it", &.{
-            cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = &.{
-                cx.make(facet.TextField{ .placeholder = "Search", .initial = q, .on_changed = .of(s, State.setQuery) }),
+        common.section(cx, cx.fmt("All {d} icons", .{all.len}), "Material's icons, from a font of them built in; type to search their names, and press one to choose it", cx.makeAll(.{
+            facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                facet.TextField{ .placeholder = "Search", .initial = q, .on_changed = .of(s, State.setQuery) },
                 common.status(cx, if (q.len == 0) cx.fmt("{d} icons", .{s.match_count}) else cx.fmt("{d} with “{s}”", .{ s.match_count, q })),
-            } }),
-            cx.make(facet.SizedBox{
+            }) },
+            facet.SizedBox{
                 .height = 340,
                 .child = cx.make(facet.Decorated{
                     .border = .{ .width = 1, .color = t.outline_variant },
@@ -71,16 +71,16 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                             .item = .of(s, cell),
                         }) }) }).withKey(std.hash.Wyhash.hash(0, q)),
                 }),
-            }),
-        }),
-        common.section(cx, cx.fmt("“{s}”", .{@tagName(s.chosen)}), "The icon chosen, at sizes and in colours", &.{
-            cx.make(facet.Row{ .spacing = 20, .cross_axis_alignment = .end, .children = &sizes }),
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &tinted }),
-            cx.make(facet.Decorated{ .color = t.surface_container, .radius = .all(6), .child = cx.make(facet.Padding{
+            },
+        })),
+        common.section(cx, cx.fmt("“{s}”", .{@tagName(s.chosen)}), "The icon chosen, at sizes and in colours", cx.makeAll(.{
+            facet.Row{ .spacing = 20, .cross_axis_alignment = .end, .children = &sizes },
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &tinted },
+            facet.Decorated{ .color = t.surface_container, .radius = .all(6), .child = cx.make(facet.Padding{
                 .padding = .symmetric(12, 8),
                 .child = cx.make(facet.Text{ .text = cx.fmt("cx.make(facet.Icon{{ .icon = .{f}, .size = 24 }})", .{std.zig.fmtId(@tagName(s.chosen))}), .style = .{ .size = 13, .color = t.on_surface } }),
-            }) }),
-        }),
+            }) },
+        })),
     });
 }
 
@@ -104,9 +104,9 @@ fn cell(s: *State, cx: *facet.Context, i: usize) facet.Widget {
         .padding = .all(6),
         .radius = 8,
         .on_press = .of(c, Choose.choose),
-        .child = cx.make(facet.Column{ .spacing = 6, .children = &.{
-            cx.make(facet.Icon{ .icon = icon, .size = 28, .color = if (chosen) t.primary else t.on_surface }),
-            cx.make(facet.Text{ .text = @tagName(icon), .style = .{ .size = 11, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true, .text_align = .center }),
-        } }),
+        .child = cx.make(facet.Column{ .spacing = 6, .children = cx.makeAll(.{
+            facet.Icon{ .icon = icon, .size = 28, .color = if (chosen) t.primary else t.on_surface },
+            facet.Text{ .text = @tagName(icon), .style = .{ .size = 11, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true, .text_align = .center },
+        }) }),
     }) });
 }

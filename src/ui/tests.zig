@@ -75,10 +75,10 @@ test "an overflowing row is clipped, and striped along the edge it overflows" {
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 100, .height = 40, .child = cx.make(ui.Row{ .children = &.{
-                cx.make(ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = red }) }),
-                cx.make(ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = blue }) }),
-            } }) }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 100, .height = 40, .child = cx.make(ui.Row{ .children = cx.makeAll(.{
+                ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = red }) },
+                ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = blue }) },
+            }) }) }) });
         }
     }.f;
     u.frame(200, 60, 0, Root(build){});
@@ -114,19 +114,19 @@ test "layouts that make no sense still lay out" {
     const build = struct {
         fn f(cx: *Context) Widget {
             return cx.make(ui.Column{
-                .children = &.{
+                .children = cx.makeAll(.{
                     // A column in a column: unbounded height, where Expanded
                     // has no space to share.
-                    cx.make(ui.Column{ .children = &.{
-                        cx.make(ui.Expanded{ .child = cx.make(ui.Text{ .text = "Expanded in unbounded space" }) }),
-                        cx.make(Nonsense{}),
-                    } }),
+                    cx.make(ui.Column{ .children = cx.makeAll(.{
+                        ui.Expanded{ .child = cx.make(ui.Text{ .text = "Expanded in unbounded space" }) },
+                        Nonsense{},
+                    }) }),
                     // A row in a row: unbounded width.
-                    cx.make(ui.Row{ .children = &.{cx.make(ui.Row{ .children = &.{cx.make(ui.Text{ .text = "Row in a row" })} })} }),
-                    cx.make(ui.SizedBox{ .width = -5, .height = std.math.nan(f32) }),
-                    cx.make(ui.Padding{ .padding = .all(1000), .child = cx.make(ui.Text{ .text = "Padded away" }) }),
-                    cx.make(ui.Center{ .child = cx.make(ui.Overlay{}) }),
-                },
+                    cx.make(ui.Row{ .children = cx.makeAll(.{ui.Row{ .children = cx.makeAll(.{ui.Text{ .text = "Row in a row" }}) }}) }),
+                    ui.SizedBox{ .width = -5, .height = std.math.nan(f32) },
+                    ui.Padding{ .padding = .all(1000), .child = cx.make(ui.Text{ .text = "Padded away" }) },
+                    ui.Center{ .child = cx.make(ui.Overlay{}) },
+                }),
             });
         }
     }.f;
@@ -154,11 +154,11 @@ const Counter = struct {
     };
 
     pub fn build(_: *const Counter, cx: *Context, state: *State) Widget {
-        return cx.make(ui.Column{ .children = &.{
-            cx.make(ui.Text{ .text = cx.fmt("Count {d}", .{state.count}) }),
-            cx.make(ui.OutlinedButton{ .label = "Add", .on_press = .of(state, State.add) }),
-            cx.make(ui.OutlinedButton{ .label = "Disabled" }),
-        } });
+        return cx.make(ui.Column{ .children = cx.makeAll(.{
+            ui.Text{ .text = cx.fmt("Count {d}", .{state.count}) },
+            ui.OutlinedButton{ .label = "Add", .on_press = .of(state, State.add) },
+            ui.OutlinedButton{ .label = "Disabled" },
+        }) });
     }
 };
 
@@ -298,10 +298,10 @@ test "an overlay's top layer takes the pointer where it has something" {
         }
         const token: u8 = 0;
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Overlay{ .children = &.{
-                cx.make(ui.Pressable{ .on_press = .of(&token, addBelow) }),
-                cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 50, .height = 50, .child = cx.make(ui.Pressable{ .on_press = .of(&token, addAbove) }) }) }),
-            } });
+            return cx.make(ui.Overlay{ .children = cx.makeAll(.{
+                ui.Pressable{ .on_press = .of(&token, addBelow) },
+                ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 50, .height = 50, .child = cx.make(ui.Pressable{ .on_press = .of(&token, addAbove) }) }) },
+            }) });
         }
     };
     u.frame(200, 200, 0, Root(S.f){});
@@ -328,11 +328,11 @@ test "GPU draws go between the 2D layers, in the tree's order" {
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Overlay{ .children = &.{
-                cx.make(ui.Decorated{ .color = red }),
-                cx.make(ui.Padding{ .padding = .all(10), .child = cx.make(GpuView{}) }),
-                cx.make(ui.Center{ .child = cx.make(ui.Text{ .text = "Over" }) }),
-            } });
+            return cx.make(ui.Overlay{ .children = cx.makeAll(.{
+                ui.Decorated{ .color = red },
+                ui.Padding{ .padding = .all(10), .child = cx.make(GpuView{}) },
+                ui.Center{ .child = cx.make(ui.Text{ .text = "Over" }) },
+            }) });
         }
     }.f;
     u.frame(200, 100, 0, Root(build){});
@@ -348,17 +348,17 @@ test "rows and columns align and space their children" {
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Column{ .children = &.{
-                cx.make(ui.Row{ .main_axis_alignment = .center, .spacing = 10, .children = &.{
-                    cx.make(ui.SizedBox{ .width = 20, .height = 10 }),
-                    cx.make(ui.SizedBox{ .width = 30, .height = 20 }),
-                } }),
-                cx.make(ui.Row{ .main_axis_alignment = .space_between, .cross_axis_alignment = .end, .children = &.{
-                    cx.make(ui.SizedBox{ .width = 20, .height = 10 }),
-                    cx.make(ui.Expanded{ .child = cx.make(ui.SizedBox{ .height = 5 }) }),
-                    cx.make(ui.SizedBox{ .width = 30, .height = 20 }),
-                } }),
-            } });
+            return cx.make(ui.Column{ .children = cx.makeAll(.{
+                ui.Row{ .main_axis_alignment = .center, .spacing = 10, .children = cx.makeAll(.{
+                    ui.SizedBox{ .width = 20, .height = 10 },
+                    ui.SizedBox{ .width = 30, .height = 20 },
+                }) },
+                ui.Row{ .main_axis_alignment = .space_between, .cross_axis_alignment = .end, .children = cx.makeAll(.{
+                    ui.SizedBox{ .width = 20, .height = 10 },
+                    ui.Expanded{ .child = cx.make(ui.SizedBox{ .height = 5 }) },
+                    ui.SizedBox{ .width = 30, .height = 20 },
+                }) },
+            }) });
         }
     }.f;
     u.frame(200, 100, 0, Root(build){});
@@ -394,14 +394,14 @@ const Controls = struct {
     };
 
     pub fn build(_: *const Controls, cx: *Context, state: *State) Widget {
-        return cx.make(ui.Column{ .cross_axis_alignment = .start, .children = &.{
-            cx.make(ui.CheckboxRow{ .value = state.checked, .on_changed = .of(state, State.setChecked), .label = "Check" }),
-            cx.make(ui.SwitchRow{ .value = state.on, .on_changed = .of(state, State.setOn), .label = "Switch" }),
-            cx.make(ui.RadioRow(Choice){ .value = .a, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "A" }),
-            cx.make(ui.RadioRow(Choice){ .value = .b, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "B" }),
-            cx.make(ui.RadioRow(Choice){ .value = .c, .group_value = state.choice, .label = "C (disabled)" }),
-            cx.make(ui.Checkbox{ .value = true }),
-        } });
+        return cx.make(ui.Column{ .cross_axis_alignment = .start, .children = cx.makeAll(.{
+            ui.CheckboxRow{ .value = state.checked, .on_changed = .of(state, State.setChecked), .label = "Check" },
+            ui.SwitchRow{ .value = state.on, .on_changed = .of(state, State.setOn), .label = "Switch" },
+            ui.RadioRow(Choice){ .value = .a, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "A" },
+            ui.RadioRow(Choice){ .value = .b, .group_value = state.choice, .on_changed = .of(state, State.choose), .label = "B" },
+            ui.RadioRow(Choice){ .value = .c, .group_value = state.choice, .label = "C (disabled)" },
+            ui.Checkbox{ .value = true },
+        }) });
     }
 };
 
@@ -463,11 +463,11 @@ test "checkboxes, switches and radio buttons report changes, and their labels pr
 const Label = struct {
     text: []const u8,
     pub fn build(self: *const Label, cx: *Context) Widget {
-        return cx.make(ui.Column{ .cross_axis_alignment = .start, .children = &.{
-            cx.make(ui.Text{ .text = "Static title" }),
-            cx.make(ui.Text{ .text = self.text }),
-            cx.make(ui.OutlinedButton{ .label = "Button", .on_press = .of(&dummy_count, addDummy) }),
-        } });
+        return cx.make(ui.Column{ .cross_axis_alignment = .start, .children = cx.makeAll(.{
+            ui.Text{ .text = "Static title" },
+            ui.Text{ .text = self.text },
+            ui.OutlinedButton{ .label = "Button", .on_press = .of(&dummy_count, addDummy) },
+        }) });
     }
 };
 
@@ -524,9 +524,9 @@ test "only what changed is damaged" {
 const Maybe = struct {
     show: bool,
     pub fn build(self: *const Maybe, cx: *Context) Widget {
-        return cx.make(ui.Column{ .children = if (self.show) &.{
-            cx.make(ui.SizedBox{ .width = 50, .height = 20, .child = cx.make(ui.Decorated{ .color = red }) }),
-        } else &.{} });
+        return cx.make(ui.Column{ .children = if (self.show) cx.makeAll(.{
+            ui.SizedBox{ .width = 50, .height = 20, .child = cx.make(ui.Decorated{ .color = red }) },
+        }) else &.{} });
     }
 };
 
@@ -710,12 +710,12 @@ test "icons are drawn from the icon font, in their box" {
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .main_axis_size = .min, .children = &.{
-                cx.make(ui.Icon{ .icon = .folder, .size = 48, .color = red }),
-                cx.make(ui.OutlinedButton{ .label = "Up", .icon = .arrow_upward }),
-                cx.make(ui.OutlinedButton{ .icon = .close }),
-                cx.make(ui.OutlinedButton{ .label = "More", .trailing_icon = .expand_more }),
-            } }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .main_axis_size = .min, .children = cx.makeAll(.{
+                ui.Icon{ .icon = .folder, .size = 48, .color = red },
+                ui.OutlinedButton{ .label = "Up", .icon = .arrow_upward },
+                ui.OutlinedButton{ .icon = .close },
+                ui.OutlinedButton{ .label = "More", .trailing_icon = .expand_more },
+            }) }) });
         }
     }.f;
     u.frame(400, 100, 0, Root(build){});
@@ -956,11 +956,11 @@ const DragTest = struct {
 
     pub fn build(self: *const DragTest, cx: *Context) Widget {
         const box = cx.make(ui.SizedBox{ .width = 80, .height = 80 });
-        return cx.make(ui.Row{ .children = &.{
-            cx.make(ui.Draggable{ .data = 7, .label = "seven", .on_press = .of(self, pressed), .child = box }),
-            cx.make(ui.Draggable{ .data = 8, .label = "eight", .child = box }),
-            cx.make(ui.DropTarget{ .on_drop = .of(self, drop), .accepts = odd, .child = box }),
-        } });
+        return cx.make(ui.Row{ .children = cx.makeAll(.{
+            ui.Draggable{ .data = 7, .label = "seven", .on_press = .of(self, pressed), .child = box },
+            ui.Draggable{ .data = 8, .label = "eight", .child = box },
+            ui.DropTarget{ .on_drop = .of(self, drop), .accepts = odd, .child = box },
+        }) });
     }
 };
 
@@ -1088,61 +1088,61 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
                 .{ .label = "Beta", .badge = 2 },
             };
             const main_col = cx.make(ui.Row{
-                .children = &.{
-                    cx.make(ui.NavigationRail{
+                .children = cx.makeAll(.{
+                    ui.NavigationRail{
                         .items = &rail_items,
                         .selected = state.rail,
                         .on_select = .of(state, State.setRail),
                         .extended = false,
-                    }),
-                    cx.make(ui.Divider{ .axis = .vertical }),
-                    cx.make(ui.Expanded{
+                    },
+                    ui.Divider{ .axis = .vertical },
+                    ui.Expanded{
                         .child = cx.make(ui.Column{
                             .cross_axis_alignment = .stretch,
                             .spacing = 8,
-                            .children = &.{
-                                cx.make(ui.TabBar{
+                            .children = cx.makeAll(.{
+                                ui.TabBar{
                                     .tabs = &tabs,
                                     .selected = state.tab,
                                     .on_select = .of(state, State.setTab),
-                                }),
-                                cx.make(ui.Slider{
+                                },
+                                ui.Slider{
                                     .value = state.slider_val,
                                     .on_changed = .of(state, State.setSlider),
-                                }),
-                                cx.make(ui.Slider{
+                                },
+                                ui.Slider{
                                     .value = state.discrete_val,
                                     .min = 0,
                                     .max = 100,
                                     .divisions = 4,
                                     .on_changed = .of(state, State.setDiscrete),
-                                }),
-                                cx.make(ui.ProgressBar{ .value = state.slider_val }),
-                                cx.make(ui.Select(Mode){
+                                },
+                                ui.ProgressBar{ .value = state.slider_val },
+                                ui.Select(Mode){
                                     .options = &opts,
                                     .value = state.mode,
                                     .on_changed = .of(state, State.setMode),
-                                }),
-                                cx.make(ui.Row{
+                                },
+                                ui.Row{
                                     .spacing = 8,
-                                    .children = &.{
-                                        cx.make(ui.FilledButton{ .label = "Filled", .on_press = .of(state, State.toggleChip) }),
-                                        cx.make(ui.TonalButton{ .label = "Tonal", .on_press = .of(state, State.toggleChip) }),
-                                        cx.make(ui.TextButton{ .label = "Text", .on_press = .of(state, State.toggleChip) }),
-                                        cx.make(ui.Tooltip{
+                                    .children = cx.makeAll(.{
+                                        ui.FilledButton{ .label = "Filled", .on_press = .of(state, State.toggleChip) },
+                                        ui.TonalButton{ .label = "Tonal", .on_press = .of(state, State.toggleChip) },
+                                        ui.TextButton{ .label = "Text", .on_press = .of(state, State.toggleChip) },
+                                        ui.Tooltip{
                                             .text = "Settings tip",
                                             .child = cx.make(ui.IconButton{ .icon = .settings, .variant = .tonal, .on_press = .of(state, State.toggleChip) }),
-                                        }),
-                                        cx.make(ui.Chip{
+                                        },
+                                        ui.Chip{
                                             .label = "Tag",
                                             .selected = state.chip_selected,
                                             .on_press = .of(state, State.toggleChip),
                                             .on_remove = .of(state, State.removeChip),
-                                        }),
-                                        cx.make(ui.Badge{ .count = 150, .child = cx.make(ui.Icon{ .icon = .wifi }) }),
-                                    },
-                                }),
-                                cx.make(ui.Card{
+                                        },
+                                        ui.Badge{ .count = 150, .child = cx.make(ui.Icon{ .icon = .wifi }) },
+                                    }),
+                                },
+                                ui.Card{
                                     .variant = .outlined,
                                     .child = cx.make(ui.ListItem{
                                         .headline = "Row title",
@@ -1150,11 +1150,11 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
                                         .leading_icon = .folder,
                                         .trailing_icon = .chevron_right,
                                     }),
-                                }),
-                            },
+                                },
+                            }),
                         }),
-                    }),
-                },
+                    },
+                }),
             });
             const with_snack = cx.make(ui.Snackbar{
                 .message = "Saved",
@@ -1258,23 +1258,23 @@ test "widget cursor shapes reflect hovered and captured widgets" {
                 .child = cx.make(ui.Column{
                     .cross_axis_alignment = .start,
                     .spacing = 10,
-                    .children = &.{
-                        cx.make(ui.OutlinedButton{ .label = "Enabled", .on_press = .of(&dummy_count, addDummy) }),
-                        cx.make(ui.OutlinedButton{ .label = "Disabled" }),
-                        cx.make(ui.SizedBox{
+                    .children = cx.makeAll(.{
+                        ui.OutlinedButton{ .label = "Enabled", .on_press = .of(&dummy_count, addDummy) },
+                        ui.OutlinedButton{ .label = "Disabled" },
+                        ui.SizedBox{
                             .width = 200,
                             .child = cx.make(ui.TextField{ .initial = "hello" }),
-                        }),
-                        cx.make(ui.SizedBox{
+                        },
+                        ui.SizedBox{
                             .width = 200,
                             .child = cx.make(ui.Slider{ .value = self.slider_val.*, .on_changed = .of(self.slider_val, SetSlider.set) }),
-                        }),
-                        cx.make(ui.Draggable{
+                        },
+                        ui.Draggable{
                             .data = 1,
                             .label = "drag-me",
                             .child = cx.make(ui.SizedBox{ .width = 80, .height = 40 }),
-                        }),
-                    },
+                        },
+                    }),
                 }),
             });
         }
@@ -1414,15 +1414,15 @@ test "minimum window size is computed from widget tree and synchronized to windo
         pub fn build(_: *const @This(), cx: *Context) Widget {
             return cx.make(ui.Column{
                 .cross_axis_alignment = .stretch,
-                .children = &.{
-                    cx.make(ui.TitleBar{ .title = "Min Size" }),
-                    cx.make(ui.Expanded{
+                .children = cx.makeAll(.{
+                    ui.TitleBar{ .title = "Min Size" },
+                    ui.Expanded{
                         .child = cx.make(ui.Padding{
                             .padding = .all(20),
                             .child = cx.make(ui.SizedBox{ .width = 400, .height = 260 }),
                         }),
-                    }),
-                },
+                    },
+                }),
             });
         }
     };
@@ -2025,13 +2025,13 @@ test "Themed gives the widgets below it, and the menus they open, a theme of its
             reds.primary = red;
             var blues = reds;
             blues.primary = blue;
-            return cx.make(ui.Row{ .children = &.{
-                cx.make(Probe{ .built = &self.outside[0], .laid_out = &self.outside[1] }),
-                cx.make(ui.Themed{ .theme = reds, .child = cx.make(ui.Row{ .children = &.{
-                    cx.make(Probe{ .built = &self.inside[0], .laid_out = &self.inside[1] }),
-                    cx.make(ui.Themed{ .theme = blues, .child = cx.make(Probe{ .built = &self.nested[0], .laid_out = &self.nested[1] }) }),
-                } }) }),
-            } });
+            return cx.make(ui.Row{ .children = cx.makeAll(.{
+                Probe{ .built = &self.outside[0], .laid_out = &self.outside[1] },
+                ui.Themed{ .theme = reds, .child = cx.make(ui.Row{ .children = cx.makeAll(.{
+                    Probe{ .built = &self.inside[0], .laid_out = &self.inside[1] },
+                    ui.Themed{ .theme = blues, .child = cx.make(Probe{ .built = &self.nested[0], .laid_out = &self.nested[1] }) },
+                }) }) },
+            }) });
         }
     };
     const root: Probes = .{ .outside = &outside, .inside = &inside, .nested = &nested };
@@ -2112,10 +2112,10 @@ test "an image loads in the background, showing what it is given meanwhile, or n
                     return c.make(ui.Text{ .text = "broken" });
                 }
             }.f;
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .children = &.{
-                cx.make(ui.Image{ .source = self.source, .loading = .func(spinner), .failed = .func(broken) }),
-                cx.make(ui.Image{ .source = self.source }),
-            } }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .children = cx.makeAll(.{
+                ui.Image{ .source = self.source, .loading = .func(spinner), .failed = .func(broken) },
+                ui.Image{ .source = self.source },
+            }) }) });
         }
     };
     var root: ImageRoot = .{ .source = .{ .bytes = png } };
@@ -2430,17 +2430,17 @@ const A11yApp = struct {
     }
 
     pub fn build(self: *const A11yApp, cx: *Context) Widget {
-        return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .children = &.{
-            cx.make(ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .child = cx.make(ui.Text{ .text = "Settings" }) }),
-            cx.make(ui.Text{ .text = "Hello" }),
-            cx.make(ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) }),
-            cx.make(ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
-            cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
-            cx.make(ui.Accessible{ .label = "Zoom in", .child = cx.make(ui.IconButton{ .icon = .add, .on_press = .of(self.pressed, press) }) }),
-            cx.make(ui.Tooltip{ .text = "Remove it", .child = cx.make(ui.IconButton{ .icon = .remove, .on_press = .of(self.pressed, press) }) }),
-            cx.make(ui.Accessible{ .hidden = true, .child = cx.make(ui.Text{ .text = "decoration" }) }),
-            cx.make(ui.TextField{ .placeholder = "Name", .initial = "Ada" }),
-        } });
+        return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+            ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .child = cx.make(ui.Text{ .text = "Settings" }) },
+            ui.Text{ .text = "Hello" },
+            ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) },
+            ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) },
+            ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) },
+            ui.Accessible{ .label = "Zoom in", .child = cx.make(ui.IconButton{ .icon = .add, .on_press = .of(self.pressed, press) }) },
+            ui.Tooltip{ .text = "Remove it", .child = cx.make(ui.IconButton{ .icon = .remove, .on_press = .of(self.pressed, press) }) },
+            ui.Accessible{ .hidden = true, .child = cx.make(ui.Text{ .text = "decoration" }) },
+            ui.TextField{ .placeholder = "Name", .initial = "Ada" },
+        }) });
     }
 };
 
@@ -2534,17 +2534,17 @@ const FocusApp = struct {
         return cx.make(ui.Column{
             .main_axis_size = .min,
             .cross_axis_alignment = .start,
-            .children = &.{
-                cx.make(ui.FilledButton{ .label = "A", .on_press = .of(self.pressed, press) }),
-                cx.make(ui.TextField{ .placeholder = "Name" }),
-                cx.make(ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) }),
-                cx.make(ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) }),
+            .children = cx.makeAll(.{
+                ui.FilledButton{ .label = "A", .on_press = .of(self.pressed, press) },
+                ui.TextField{ .placeholder = "Name" },
+                ui.CheckboxRow{ .value = self.checked.*, .label = "Wi-Fi", .on_changed = .of(self.checked, check) },
+                ui.Slider{ .value = self.level.*, .min = 0, .max = 10, .divisions = 10, .on_changed = .of(self.level, setLevel) },
                 // Disabled: passed over.
                 cx.make(ui.FilledButton{ .label = "Off" }),
-                cx.make(ui.RadioRow(u8){ .value = 1, .group_value = self.choice.*, .label = "One", .on_changed = .of(self.choice, choose) }),
-                cx.make(ui.RadioRow(u8){ .value = 2, .group_value = self.choice.*, .label = "Two", .on_changed = .of(self.choice, choose) }),
-                cx.make(ui.SizedBox{ .width = 200, .height = 60, .child = cx.make(ui.TextArea{ .doc = self.doc }) }),
-            },
+                ui.RadioRow(u8){ .value = 1, .group_value = self.choice.*, .label = "One", .on_changed = .of(self.choice, choose) },
+                ui.RadioRow(u8){ .value = 2, .group_value = self.choice.*, .label = "Two", .on_changed = .of(self.choice, choose) },
+                ui.SizedBox{ .width = 200, .height = 60, .child = cx.make(ui.TextArea{ .doc = self.doc }) },
+            }),
         });
     }
 };
@@ -2653,9 +2653,9 @@ const DialogApp = struct {
             .on_confirm = .of(self.dismissed, dismiss),
             .dismiss_label = "Cancel",
             .on_dismiss = .of(self.dismissed, dismiss),
-            .child = cx.make(ui.Column{ .children = &.{
-                cx.make(ui.FilledButton{ .label = "Behind", .on_press = .of(self.dismissed, dismiss) }),
-            } }),
+            .child = cx.make(ui.Column{ .children = cx.makeAll(.{
+                ui.FilledButton{ .label = "Behind", .on_press = .of(self.dismissed, dismiss) },
+            }) }),
         });
     }
 };

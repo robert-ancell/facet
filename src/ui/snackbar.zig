@@ -99,13 +99,13 @@ pub const Snackbar = struct {
 
         if (self.child) |under| {
             return cx.make(Overlay{
-                .children = &.{
+                .children = cx.makeAll(.{
                     under,
-                    cx.make(Align{
+                    Align{
                         .alignment = .bottom_center,
                         .child = cx.make(Padding{ .padding = .all(16), .child = bar }),
-                    }),
-                },
+                    },
+                }),
             });
         }
         return bar;

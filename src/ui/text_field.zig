@@ -718,9 +718,9 @@ test "typing into a text field" {
         sink: *Sink,
         obscure: bool,
         pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
-            return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .children = &.{
-                cx.make(TextField{ .placeholder = "Password", .obscure = self.obscure, .on_changed = .of(self.sink, Sink.changed), .on_submit = .of(self.sink, Sink.submit) }),
-            } }) });
+            return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .children = cx.makeAll(.{
+                TextField{ .placeholder = "Password", .obscure = self.obscure, .on_changed = .of(self.sink, Sink.changed), .on_submit = .of(self.sink, Sink.submit) },
+            }) }) });
         }
     };
     u.frame(400, 200, 0, App{ .sink = &sink, .obscure = false });
@@ -799,11 +799,11 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     const App = struct {
         sinks: *[3]Sink,
         pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
-            return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .spacing = 10, .children = &.{
-                cx.make(TextField{ .initial = "hello world", .on_changed = .of(&self.sinks[0], Sink.changed) }),
-                cx.make(TextField{ .on_changed = .of(&self.sinks[1], Sink.changed) }),
-                cx.make(TextField{ .initial = "secret", .obscure = true, .on_changed = .of(&self.sinks[2], Sink.changed) }),
-            } }) });
+            return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .spacing = 10, .children = cx.makeAll(.{
+                TextField{ .initial = "hello world", .on_changed = .of(&self.sinks[0], Sink.changed) },
+                TextField{ .on_changed = .of(&self.sinks[1], Sink.changed) },
+                TextField{ .initial = "secret", .obscure = true, .on_changed = .of(&self.sinks[2], Sink.changed) },
+            }) }) });
         }
     };
     var now: u64 = 0;
@@ -1180,12 +1180,12 @@ test "double click selects current word, triple click selects all, and selection
                 .padding = .all(40),
                 .child = cx.make(Column{
                     .cross_axis_alignment = .start,
-                    .children = &.{
-                        cx.make(TextField{
+                    .children = cx.makeAll(.{
+                        TextField{
                             .initial = "https://github.com/robert-ancell/facet",
                             .width = 160,
-                        }),
-                    },
+                        },
+                    }),
                 }),
             });
         }

@@ -24,10 +24,10 @@ fn sectionHeading(cx: *facet.Context, title: []const u8, subtitle: []const u8) f
         .main_axis_size = .min,
         .cross_axis_alignment = .start,
         .spacing = 4,
-        .children = &.{
-            cx.make(facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false }),
-            cx.make(facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } }),
-        },
+        .children = cx.makeAll(.{
+            facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
+            facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
+        }),
     });
 }
 
@@ -139,175 +139,175 @@ fn buildReport(cx: *facet.Context) facet.Widget {
         .main_axis_size = .min,
         .cross_axis_alignment = .stretch,
         .spacing = 18,
-        .children = &.{
+        .children = cx.makeAll(.{
             sectionHeading(
                 cx,
                 "Active Runtime Backend",
                 "Live windowing platform, surface buffer transport, window decorations, and 2D renderer reported by cx.backend()",
             ),
-            cx.make(facet.Row{
+            facet.Row{
                 .spacing = 16,
                 .cross_axis_alignment = .start,
-                .children = &.{
-                    cx.make(facet.Expanded{
+                .children = cx.makeAll(.{
+                    facet.Expanded{
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
                                 .main_axis_size = .min,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
-                                .children = &.{
-                                    cx.make(facet.Row{
+                                .children = cx.makeAll(.{
+                                    facet.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
-                                        .children = &.{
-                                            cx.make(facet.Icon{ .icon = .computer, .size = 20, .color = t.primary }),
-                                            cx.make(facet.Text{ .text = "Windowing Platform", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false }),
-                                        },
-                                    }),
-                                    cx.make(facet.Text{ .text = info.platform.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false }),
-                                    cx.make(facet.Text{ .text = platform_desc, .style = .{ .size = 13, .color = t.on_surface_variant } }),
-                                },
+                                        .children = cx.makeAll(.{
+                                            facet.Icon{ .icon = .computer, .size = 20, .color = t.primary },
+                                            facet.Text{ .text = "Windowing Platform", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                        }),
+                                    },
+                                    facet.Text{ .text = info.platform.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    facet.Text{ .text = platform_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                }),
                             }),
                         }),
-                    }),
-                    cx.make(facet.Expanded{
+                    },
+                    facet.Expanded{
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
                                 .main_axis_size = .min,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
-                                .children = &.{
-                                    cx.make(facet.Row{
+                                .children = cx.makeAll(.{
+                                    facet.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
-                                        .children = &.{
-                                            cx.make(facet.Icon{ .icon = .layers, .size = 20, .color = t.primary }),
-                                            cx.make(facet.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false }),
-                                        },
-                                    }),
-                                    cx.make(facet.Text{ .text = info.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false }),
-                                    cx.make(facet.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } }),
-                                },
+                                        .children = cx.makeAll(.{
+                                            facet.Icon{ .icon = .layers, .size = 20, .color = t.primary },
+                                            facet.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                        }),
+                                    },
+                                    facet.Text{ .text = info.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    facet.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                }),
                             }),
                         }),
-                    }),
-                    cx.make(facet.Expanded{
+                    },
+                    facet.Expanded{
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
                                 .main_axis_size = .min,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
-                                .children = &.{
-                                    cx.make(facet.Row{
+                                .children = cx.makeAll(.{
+                                    facet.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
-                                        .children = &.{
-                                            cx.make(facet.Icon{ .icon = .memory, .size = 20, .color = t.primary }),
-                                            cx.make(facet.Text{ .text = "2D Renderer", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false }),
-                                        },
-                                    }),
-                                    cx.make(facet.Text{ .text = info.renderer.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false }),
-                                    cx.make(facet.Text{ .text = renderer_desc, .style = .{ .size = 13, .color = t.on_surface_variant } }),
-                                },
+                                        .children = cx.makeAll(.{
+                                            facet.Icon{ .icon = .memory, .size = 20, .color = t.primary },
+                                            facet.Text{ .text = "2D Renderer", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                        }),
+                                    },
+                                    facet.Text{ .text = info.renderer.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    facet.Text{ .text = renderer_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                }),
                             }),
                         }),
-                    }),
-                },
-            }),
-            cx.make(facet.Divider{}),
+                    },
+                }),
+            },
+            facet.Divider{},
             sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, synchronization, decoration mode, and rendering pipeline"),
-            cx.make(facet.Row{
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "Wayland", .selected = info.platform == .wayland }),
-                    cx.make(facet.Chip{ .label = "X11", .selected = info.platform == .x11 }),
-                    cx.make(facet.Chip{ .label = "Windows", .selected = info.platform == .windows }),
-                    cx.make(facet.Chip{ .label = "macOS", .selected = info.platform == .macos }),
-                    cx.make(facet.Chip{ .label = "Headless", .selected = info.platform == .headless }),
-                },
-            }),
-            cx.make(facet.Row{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "Wayland", .selected = info.platform == .wayland },
+                    facet.Chip{ .label = "X11", .selected = info.platform == .x11 },
+                    facet.Chip{ .label = "Windows", .selected = info.platform == .windows },
+                    facet.Chip{ .label = "macOS", .selected = info.platform == .macos },
+                    facet.Chip{ .label = "Headless", .selected = info.platform == .headless },
+                }),
+            },
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "wl_shm", .selected = info.buffer_transport == .wl_shm }),
-                    cx.make(facet.Chip{ .label = "linux_dmabuf", .selected = info.buffer_transport == .linux_dmabuf }),
-                    cx.make(facet.Chip{ .label = "Swapchain", .selected = info.buffer_transport == .swapchain }),
-                    cx.make(facet.Chip{ .label = "CPU Memory", .selected = info.buffer_transport == .memory }),
-                },
-            }),
-            cx.make(facet.Row{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "wl_shm", .selected = info.buffer_transport == .wl_shm },
+                    facet.Chip{ .label = "linux_dmabuf", .selected = info.buffer_transport == .linux_dmabuf },
+                    facet.Chip{ .label = "Swapchain", .selected = info.buffer_transport == .swapchain },
+                    facet.Chip{ .label = "CPU Memory", .selected = info.buffer_transport == .memory },
+                }),
+            },
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "Implicit", .selected = info.buffer_sync == .implicit }),
-                    cx.make(facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = info.buffer_sync == .linux_drm_syncobj_v1 }),
-                    cx.make(facet.Chip{ .label = "None", .selected = info.buffer_sync == .none }),
-                },
-            }),
-            cx.make(facet.Row{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "Implicit", .selected = info.buffer_sync == .implicit },
+                    facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = info.buffer_sync == .linux_drm_syncobj_v1 },
+                    facet.Chip{ .label = "None", .selected = info.buffer_sync == .none },
+                }),
+            },
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "wl_surface.frame", .selected = info.frame_sync.frame_callback }),
-                    cx.make(facet.Chip{ .label = "wp_presentation", .selected = info.frame_sync.presentation_time }),
-                    cx.make(facet.Chip{ .label = "wp_fifo_v1", .selected = info.frame_sync.fifo_v1 }),
-                    cx.make(facet.Chip{ .label = "wp_commit_timing_v1", .selected = info.frame_sync.commit_timing_v1 }),
-                },
-            }),
-            cx.make(facet.Row{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "wl_surface.frame", .selected = info.frame_sync.frame_callback },
+                    facet.Chip{ .label = "wp_presentation", .selected = info.frame_sync.presentation_time },
+                    facet.Chip{ .label = "wp_fifo_v1", .selected = info.frame_sync.fifo_v1 },
+                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = info.frame_sync.commit_timing_v1 },
+                }),
+            },
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "Client-side (CSD)", .selected = info.decorations == .client }),
-                    cx.make(facet.Chip{ .label = "Server-side (SSD)", .selected = info.decorations == .server }),
-                    cx.make(facet.Chip{ .label = "None", .selected = info.decorations == .none }),
-                },
-            }),
-            cx.make(facet.Row{
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "Client-side (CSD)", .selected = info.decorations == .client },
+                    facet.Chip{ .label = "Server-side (SSD)", .selected = info.decorations == .server },
+                    facet.Chip{ .label = "None", .selected = info.decorations == .none },
+                }),
+            },
+            facet.Row{
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false }),
-                    cx.make(facet.Chip{ .label = "Software", .selected = info.renderer == .software }),
-                    cx.make(facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl }),
-                    cx.make(facet.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan }),
-                    cx.make(facet.Chip{ .label = "Metal", .selected = info.renderer == .metal }),
-                    cx.make(facet.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 }),
-                },
-            }),
-            cx.make(facet.Divider{}),
+                .children = cx.makeAll(.{
+                    facet.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    facet.Chip{ .label = "Software", .selected = info.renderer == .software },
+                    facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl },
+                    facet.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan },
+                    facet.Chip{ .label = "Metal", .selected = info.renderer == .metal },
+                    facet.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 },
+                }),
+            },
+            facet.Divider{},
             sectionHeading(
                 cx,
                 "Wayland Extensions",
                 cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{info.extensions.len}),
             ),
             ext_section,
-            cx.make(facet.Divider{}),
+            facet.Divider{},
             sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, VSync & synchronization, window decorations, window state, and input configuration"),
-            cx.make(facet.Card{
+            facet.Card{
                 .variant = .outlined,
                 .padding = .all(4),
                 .child = cx.make(facet.Column{
                     .main_axis_size = .min,
                     .cross_axis_alignment = .stretch,
-                    .children = &.{
-                        cx.make(facet.ListItem{
+                    .children = cx.makeAll(.{
+                        facet.ListItem{
                             .headline = "Windowing & Buffer Protocol",
                             .supporting_text = cx.fmt("{s}  ·  {s}", .{ platform_desc, transport_desc }),
                             .leading_icon = .computer,
@@ -315,30 +315,30 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                                 .label = cx.fmt("{s} ({s})", .{ info.platform.name(), info.buffer_transport.name() }),
                                 .color = t.primary,
                             }),
-                        }),
-                        cx.make(facet.Divider{ .inset = 16 }),
-                        cx.make(facet.ListItem{
+                        },
+                        facet.Divider{ .inset = 16 },
+                        facet.ListItem{
                             .headline = "VSync & Frame Synchronization",
                             .supporting_text = sync_text,
                             .leading_icon = .speed,
                             .trailing = cx.make(facet.Badge{ .label = vsync_badge, .color = t.primary }),
-                        }),
-                        cx.make(facet.Divider{ .inset = 16 }),
-                        cx.make(facet.ListItem{
+                        },
+                        facet.Divider{ .inset = 16 },
+                        facet.ListItem{
                             .headline = "Window Decorations",
                             .supporting_text = decorations_desc,
                             .leading_icon = .widgets,
                             .trailing = cx.make(facet.Badge{ .label = info.decorations.name(), .color = t.primary }),
-                        }),
-                        cx.make(facet.Divider{ .inset = 16 }),
-                        cx.make(facet.ListItem{
+                        },
+                        facet.Divider{ .inset = 16 },
+                        facet.ListItem{
                             .headline = "2D Rendering Pipeline",
                             .supporting_text = renderer_desc,
                             .leading_icon = .memory,
                             .trailing = cx.make(facet.Badge{ .label = info.renderer.name(), .color = t.primary }),
-                        }),
-                        cx.make(facet.Divider{ .inset = 16 }),
-                        cx.make(facet.ListItem{
+                        },
+                        facet.Divider{ .inset = 16 },
+                        facet.ListItem{
                             .headline = "Surface Resolution & HiDPI Scale",
                             .supporting_text = cx.fmt(
                                 "Logical: {d} × {d} px  ·  Physical buffer: {d} × {d} px",
@@ -346,18 +346,18 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                             ),
                             .leading_icon = .fullscreen,
                             .trailing_text = cx.fmt("{d}x scale", .{info.scale}),
-                        }),
-                        cx.make(facet.Divider{ .inset = 16 }),
-                        cx.make(facet.ListItem{
+                        },
+                        facet.Divider{ .inset = 16 },
+                        facet.ListItem{
                             .headline = "Window State & Keyboard Layout",
                             .supporting_text = cx.fmt("State: {s}  ·  Keyboard: {s}", .{ window_state, info.keyboard.name() }),
                             .leading_icon = .keyboard,
                             .trailing_text = info.keyboard.code(),
-                        }),
-                    },
+                        },
+                    }),
                 }),
-            }),
-        },
+            },
+        }),
     });
 }
 

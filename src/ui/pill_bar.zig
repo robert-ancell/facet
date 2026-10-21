@@ -84,10 +84,10 @@ pub const PillButton = struct {
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
                 .spacing = 8,
-                .children = &.{
-                    cx.make(Icon{ .icon = ic, .size = 18, .color = color }),
+                .children = cx.makeAll(.{
+                    Icon{ .icon = ic, .size = 18, .color = color },
                     label_text,
-                },
+                }),
             })
         else
             label_text;

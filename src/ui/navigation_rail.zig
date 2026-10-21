@@ -142,15 +142,15 @@ const RailDestination = struct {
                             .child = cx.make(Row{
                                 .cross_axis_alignment = .center,
                                 .spacing = 12,
-                                .children = &.{
+                                .children = cx.makeAll(.{
                                     icon_widget,
-                                    cx.make(Expanded{ .child = cx.make(Text{
+                                    Expanded{ .child = cx.make(Text{
                                         .text = self.item.label,
                                         .style = .{ .size = 18, .color = color },
                                         .wrap = false,
                                         .ellipsis = true,
-                                    }) }),
-                                },
+                                    }) },
+                                }),
                             }),
                         }),
                     }),
@@ -176,15 +176,15 @@ const RailDestination = struct {
                     .main_axis_size = .min,
                     .cross_axis_alignment = .center,
                     .spacing = 4,
-                    .children = &.{
+                    .children = cx.makeAll(.{
                         pill,
-                        cx.make(Text{
+                        Text{
                             .text = self.item.label,
                             .style = .{ .size = 12, .color = color },
                             .wrap = false,
                             .ellipsis = true,
-                        }),
-                    },
+                        },
+                    }),
                 }),
             }),
         });

@@ -52,14 +52,14 @@ pub fn control(cx: *Context, interaction: *Interaction, on_press: ?Callback, mar
     const content = if (label.len == 0) mark else cx.make(Row{
         .main_axis_size = .min,
         .spacing = gap,
-        .children = &.{
+        .children = cx.makeAll(.{
             mark,
-            cx.make(Padding{ .padding = .{ .right = 8 }, .child = cx.make(Text{
+            Padding{ .padding = .{ .right = 8 }, .child = cx.make(Text{
                 .text = label,
                 .style = .{ .color = if (on_press != null) t.on_surface else t.on_surface.withAlpha(0.38) },
                 .wrap = false,
-            }) }),
-        },
+            }) },
+        }),
     });
     return cx.make(Pressable{ .on_press = on_press, .interaction = interaction, .child = content });
 }

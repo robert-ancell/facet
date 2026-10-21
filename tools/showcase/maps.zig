@@ -105,9 +105,9 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     });
 
     return common.page(cx, &.{
-        common.section(cx, "A slippy map", "Drag it, and zoom with the wheel or a double click; zoomed out, it is a globe", &.{
-            cx.make(facet.SizedBox{ .height = 400, .child = cx.make(facet.Overlay{ .children = &.{
-                cx.make(facet.Decorated{
+        common.section(cx, "A slippy map", "Drag it, and zoom with the wheel or a double click; zoomed out, it is a globe", cx.makeAll(.{
+            facet.SizedBox{ .height = 400, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
+                facet.Decorated{
                     .border = .{ .width = 1, .color = t.outline_variant },
                     .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(facet.MapView{
                         .source = source,
@@ -118,41 +118,41 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                         .night = night,
                         .max_zoom = max_zoom,
                     }) }),
-                }),
-                cx.make(facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.Decorated{
+                },
+                facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.Decorated{
                     .color = t.surface.withAlpha(0.9),
                     .radius = .all(20),
-                    .child = cx.make(facet.Column{ .main_axis_size = .min, .children = &.{
-                        cx.make(facet.Accessible{ .label = "Zoom in", .child = cx.make(facet.IconButton{ .icon = .add, .on_press = .of(s, State.zoomIn) }) }),
-                        cx.make(facet.Accessible{ .label = "Zoom out", .child = cx.make(facet.IconButton{ .icon = .remove, .on_press = .of(s, State.zoomOut) }) }),
-                    } }),
-                }) }) }),
-            } }) }),
+                    .child = cx.make(facet.Column{ .main_axis_size = .min, .children = cx.makeAll(.{
+                        facet.Accessible{ .label = "Zoom in", .child = cx.make(facet.IconButton{ .icon = .add, .on_press = .of(s, State.zoomIn) }) },
+                        facet.Accessible{ .label = "Zoom out", .child = cx.make(facet.IconButton{ .icon = .remove, .on_press = .of(s, State.zoomOut) }) },
+                    }) }),
+                }) }) },
+            }) }) },
             common.status(cx, where),
-        }),
+        })),
         common.section(cx, "Tiles", "Made here: vector tiles drawn in a style, or images drawn from them in the same style", &.{
-            common.labelled(cx, "Tiles", &.{
-                cx.make(facet.Select(Kind){ .options = &kinds, .value = s.kind, .on_changed = .of(s, State.setKind), .width = 180 }),
-            }),
-            common.labelled(cx, "Style", &.{
-                cx.make(facet.Select(Look){ .options = &looks, .value = s.look, .on_changed = .of(s, State.setLook), .width = 180 }),
-            }),
-            common.labelled(cx, "Go to", &.{
-                cx.make(facet.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) }),
-                cx.make(facet.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) }),
-            }),
+            common.labelled(cx, "Tiles", cx.makeAll(.{
+                facet.Select(Kind){ .options = &kinds, .value = s.kind, .on_changed = .of(s, State.setKind), .width = 180 },
+            })),
+            common.labelled(cx, "Style", cx.makeAll(.{
+                facet.Select(Look){ .options = &looks, .value = s.look, .on_changed = .of(s, State.setLook), .width = 180 },
+            })),
+            common.labelled(cx, "Go to", cx.makeAll(.{
+                facet.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) },
+                facet.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) },
+            })),
         }),
         common.section(cx, "The globe", "Zoomed out, a globe with a glow, and night where the sun has set (fading as it becomes the flat map)", &.{
-            common.labelled(cx, "Globe", &.{
-                cx.make(facet.SwitchRow{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" }),
-                cx.make(facet.SwitchRow{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" }),
-            }),
-            common.labelled(cx, "Night", &.{
-                cx.make(facet.SwitchRow{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" }),
-            }),
-            common.labelled(cx, if (s.hours == 0) "Now" else cx.fmt("{s}{d:.1} hours", .{ if (s.hours > 0) "+" else "", s.hours }), &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) }),
-            }),
+            common.labelled(cx, "Globe", cx.makeAll(.{
+                facet.SwitchRow{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" },
+                facet.SwitchRow{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" },
+            })),
+            common.labelled(cx, "Night", cx.makeAll(.{
+                facet.SwitchRow{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" },
+            })),
+            common.labelled(cx, if (s.hours == 0) "Now" else cx.fmt("{s}{d:.1} hours", .{ if (s.hours > 0) "+" else "", s.hours }), cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) },
+            })),
         }),
     });
 }

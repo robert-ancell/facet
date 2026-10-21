@@ -109,10 +109,10 @@ const MenuRow = struct {
             .focus_radius = 0,
             .child = cx.make(Decorated{ .color = if (layer > 0) accent.withAlpha(layer) else null, .child = cx.make(SizedBox{
                 .height = item_height,
-                .child = cx.make(Padding{ .padding = .symmetric(12, 0), .child = cx.make(Row{ .spacing = 12, .children = &.{
-                    cx.make(Expanded{ .child = cx.make(Text{ .text = self.item.label, .style = .{ .size = t.label_size, .color = label_color }, .wrap = false, .ellipsis = true }) }),
-                    cx.make(Text{ .text = self.item.shortcut, .style = .{ .size = t.label_size, .color = hint_color }, .wrap = false }),
-                } }) }),
+                .child = cx.make(Padding{ .padding = .symmetric(12, 0), .child = cx.make(Row{ .spacing = 12, .children = cx.makeAll(.{
+                    Expanded{ .child = cx.make(Text{ .text = self.item.label, .style = .{ .size = t.label_size, .color = label_color }, .wrap = false, .ellipsis = true }) },
+                    Text{ .text = self.item.shortcut, .style = .{ .size = t.label_size, .color = hint_color }, .wrap = false },
+                }) }) }),
             }) }),
         });
     }

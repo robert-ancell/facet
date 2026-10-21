@@ -151,51 +151,51 @@ pub const Showcase = struct {
             .child = cx.make(facet.Row{
                 .spacing = 16,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(facet.Expanded{ .child = cx.make(facet.Column{
+                .children = cx.makeAll(.{
+                    facet.Expanded{ .child = cx.make(facet.Column{
                         .main_axis_size = .min,
                         .cross_axis_alignment = .start,
                         .spacing = 2,
-                        .children = &.{
-                            cx.make(facet.Text{ .text = s.page.title(), .style = .{ .size = t.title_size, .color = t.on_surface }, .wrap = false, .ellipsis = true }),
-                            cx.make(facet.Text{ .text = s.page.description(), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true }),
-                        },
-                    }) }),
-                    cx.make(facet.SwitchRow{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" }),
-                    cx.make(facet.Tooltip{
+                        .children = cx.makeAll(.{
+                            facet.Text{ .text = s.page.title(), .style = .{ .size = t.title_size, .color = t.on_surface }, .wrap = false, .ellipsis = true },
+                            facet.Text{ .text = s.page.description(), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true },
+                        }),
+                    }) },
+                    facet.SwitchRow{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" },
+                    facet.Tooltip{
                         .text = if (s.light_theme) "Use the dark theme" else "Use the light theme",
                         .child = cx.make(facet.IconButton{ .icon = if (s.light_theme) .dark_mode else .light_mode, .on_press = .of(s, State.toggleTheme) }),
-                    }),
-                },
+                    },
+                }),
             }),
         });
 
         const body = cx.make(facet.Row{
             .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(facet.NavigationRail{
+            .children = cx.makeAll(.{
+                facet.NavigationRail{
                     .items = &rail_items,
                     .selected = @backingInt(s.page),
                     .on_select = .of(s, State.selectPage),
                     .extended = s.extended_rail,
-                }),
-                cx.make(facet.Divider{ .axis = .vertical }),
-                cx.make(facet.Expanded{
+                },
+                facet.Divider{ .axis = .vertical },
+                facet.Expanded{
                     .child = cx.make(facet.Column{
                         .cross_axis_alignment = .stretch,
-                        .children = &.{
+                        .children = cx.makeAll(.{
                             header,
-                            cx.make(facet.Divider{}),
-                            cx.make(facet.Expanded{
+                            facet.Divider{},
+                            facet.Expanded{
                                 // A view for each page, so each starts at the top.
                                 .child = cx.make(facet.ScrollView{
                                     .child = cx.make(facet.Padding{ .padding = .all(24), .child = content }),
                                 }).withKey(@backingInt(s.page)),
-                            }),
-                        },
+                            },
+                        }),
                     }),
-                }),
-            },
+                },
+            }),
         });
 
         return cx.make(facet.Decorated{

@@ -27,10 +27,10 @@ pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demo
         .main_axis_size = .min,
         .cross_axis_alignment = .start,
         .spacing = 4,
-        .children = &.{
-            cx.make(facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false }),
-            cx.make(facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } }),
-        },
+        .children = cx.makeAll(.{
+            facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
+            facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
+        }),
     });
     @memcpy(children[1..], demos);
     return cx.make(facet.Column{

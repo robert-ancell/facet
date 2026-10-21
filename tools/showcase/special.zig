@@ -34,16 +34,16 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 
     const qr_text = if (s.qr.len > 0) s.qr.buf[0..s.qr.len] else "https://github.com/robert-ancell/facet";
 
-    const qr = common.section(cx, "QR code", "Text encoded as a QR code, made as it is typed", &.{
-        cx.make(facet.Row{ .spacing = 24, .cross_axis_alignment = .center, .children = &.{
-            cx.make(facet.QrCode{ .text = qr_text, .size = 160 }),
-            cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 8, .children = &.{
-                cx.make(facet.TextField{ .placeholder = "Text to encode", .initial = s.qr.buf[0..s.qr.len], .max_len = 127, .width = 300, .on_changed = .of(s, State.setQr) }),
-                cx.make(facet.Text{ .text = cx.fmt("{d} bytes", .{qr_text.len}), .style = .{ .size = 13, .color = t.on_surface_variant } }),
-                cx.make(facet.QrCode{ .text = "Small", .size = 64 }),
-            } }),
-        } }),
-    });
+    const qr = common.section(cx, "QR code", "Text encoded as a QR code, made as it is typed", cx.makeAll(.{
+        facet.Row{ .spacing = 24, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+            facet.QrCode{ .text = qr_text, .size = 160 },
+            facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
+                facet.TextField{ .placeholder = "Text to encode", .initial = s.qr.buf[0..s.qr.len], .max_len = 127, .width = 300, .on_changed = .of(s, State.setQr) },
+                facet.Text{ .text = cx.fmt("{d} bytes", .{qr_text.len}), .style = .{ .size = 13, .color = t.on_surface_variant } },
+                facet.QrCode{ .text = "Small", .size = 64 },
+            }) },
+        }) },
+    }));
     const painting = common.section(cx, "Custom painting", "A widget of its own, painting shapes and lines on the canvas each frame", &.{
         // Described to screen readers as what it is.
         cx.make(facet.Accessible{ .role = .img, .label = "A Lissajous figure", .roledescription = "animation", .description = "Lines and circles tracing a figure that turns", .child = cx.make(Lissajous{}) }),
@@ -72,12 +72,12 @@ const easings = [_]Easing{
 fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
     const t = cx.theme();
     const rows = cx.arena.alloc(facet.Widget, easings.len + 2) catch return &.{};
-    rows[0] = cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = &.{
-        cx.make(facet.FilledButton{ .label = "Play", .icon = .bolt, .on_press = .of(s, State.play) }),
+    rows[0] = cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+        facet.FilledButton{ .label = "Play", .icon = .bolt, .on_press = .of(s, State.play) },
         common.status(cx, "Each dot crosses in a second, eased differently"),
-    } });
+    }) });
     for (rows[1..][0..easings.len], &easings) |*row, *e| {
-        row.* = common.labelled(cx, e[0], &.{cx.make(facet.Expanded{ .child = cx.make(facet.Decorated{
+        row.* = common.labelled(cx, e[0], cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Decorated{
             .color = t.surface_container,
             .radius = .all(14),
             .child = cx.make(facet.SizedBox{ .height = 28, .child = cx.make(facet.Padding{
@@ -88,16 +88,16 @@ fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
                     .builder = .of(e, dot),
                 }),
             }) }),
-        }) })});
+        }) }}));
     }
-    rows[easings.len + 1] = common.labelled(cx, "Back and forth", &.{cx.make(facet.Expanded{ .child = cx.make(facet.SizedBox{
+    rows[easings.len + 1] = common.labelled(cx, "Back and forth", cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.SizedBox{
         .height = 28,
         .child = cx.make(facet.AnimatedWidget{
             .duration_ns = 1500 * std.time.ns_per_ms,
             .repeat = .reverse,
             .builder = .func(pulse),
         }),
-    }) })});
+    }) }}));
     return rows;
 }
 

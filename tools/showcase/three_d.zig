@@ -61,26 +61,26 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .windows => common.section(cx, "Direct3D 11", "The scene drawn with Direct3D 11, on the renderer's GPU where it can be; drag it to turn it", &.{
             area(cx, s, facet.D3D11Area, .d3d11, "Direct3D 11"),
         }),
-        else => common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", &.{
-            cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
-                cx.make(facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") }),
-                cx.make(facet.Expanded{ .child = area(cx, s, facet.OpenGlArea, .opengl, "OpenGL") }),
-            } }),
-        }),
+        else => common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", cx.makeAll(.{
+            facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+                facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") },
+                facet.Expanded{ .child = area(cx, s, facet.OpenGlArea, .opengl, "OpenGL") },
+            }) },
+        })),
     };
     return common.page(cx, &.{
         scenes,
         common.section(cx, "Drawing", "How it moves, and how its edges are smoothed", &.{
-            common.labelled(cx, "Spin", &.{
-                cx.make(facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning) }),
-                cx.make(facet.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.reset) }),
-            }),
-            common.labelled(cx, cx.fmt("Speed {d:.1}×", .{s.speed}), &.{
-                cx.make(facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.speed, .min = 0.1, .max = 4, .on_changed = .of(s, State.setSpeed) }) }),
-            }),
-            common.labelled(cx, "Anti-aliasing", &.{
-                cx.make(facet.Select(Samples){ .options = &samples, .value = s.samples, .on_changed = .of(s, State.setSamples), .width = 180 }),
-            }),
+            common.labelled(cx, "Spin", cx.makeAll(.{
+                facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning) },
+                facet.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.reset) },
+            })),
+            common.labelled(cx, cx.fmt("Speed {d:.1}×", .{s.speed}), cx.makeAll(.{
+                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.speed, .min = 0.1, .max = 4, .on_changed = .of(s, State.setSpeed) }) },
+            })),
+            common.labelled(cx, "Anti-aliasing", cx.makeAll(.{
+                facet.Select(Samples){ .options = &samples, .value = s.samples, .on_changed = .of(s, State.setSamples), .width = 180 },
+            })),
         }),
     });
 }

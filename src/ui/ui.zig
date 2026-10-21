@@ -15,10 +15,10 @@
 //!             fn add(s: *State) void { s.count += 1; }
 //!         };
 //!         pub fn build(self: *const Counter, cx: *ui.Context, state: *State) ui.Widget {
-//!             return cx.make(ui.Row{ .spacing = 12, .children = &.{
-//!                 cx.make(ui.Text{ .text = cx.fmt("{s}: {d}", .{ self.label, state.count }) }),
-//!                 cx.make(ui.OutlinedButton{ .label = "Add", .on_press = .of(state, State.add) }),
-//!             } });
+//!             return cx.make(ui.Row{ .spacing = 12, .children = cx.makeAll(.{
+//!                 ui.Text{ .text = cx.fmt("{s}: {d}", .{ self.label, state.count }) },
+//!                 ui.OutlinedButton{ .label = "Add", .on_press = .of(state, State.add) },
+//!             }) });
 //!         }
 //!     };
 //!

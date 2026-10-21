@@ -79,13 +79,13 @@ pub const TabBar = struct {
         return cx.make(Column{
             .main_axis_size = .min,
             .cross_axis_alignment = .stretch,
-            .children = &.{
-                cx.make(Row{
+            .children = cx.makeAll(.{
+                Row{
                     .main_axis_size = if (self.expand) .max else .min,
                     .children = children,
-                }),
-                cx.make(Divider{}),
-            },
+                },
+                Divider{},
+            }),
         });
     }
 };
@@ -119,10 +119,10 @@ const TabItem = struct {
                 .spacing = 8,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
-                    cx.make(Icon{ .icon = ic, .size = 18, .color = color }),
+                .children = cx.makeAll(.{
+                    Icon{ .icon = ic, .size = 18, .color = color },
                     label,
-                },
+                }),
             })
         else
             label;
@@ -132,10 +132,10 @@ const TabItem = struct {
                 .spacing = 6,
                 .main_axis_size = .min,
                 .cross_axis_alignment = .center,
-                .children = &.{
+                .children = cx.makeAll(.{
                     content,
-                    cx.make(Badge{ .count = if (b > 0) b else null }),
-                },
+                    Badge{ .count = if (b > 0) b else null },
+                }),
             });
         }
 
