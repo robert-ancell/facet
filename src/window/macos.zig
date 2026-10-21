@@ -93,10 +93,33 @@ pub const MacWindow = struct {
     metal_layer: Id = null,
     on_gpu: bool = false,
     gpu_size: [2]u32 = .{ 0, 0 },
+    /// Its popups (menus and tooltips, each a panel of its own: see
+    /// `openPopup`), and the next one's id.
+    popups: [max_popups]?Popup = @splat(null),
+    next_popup_id: u32 = 1,
     /// What it does its I/O through, and the sources watched through the
     /// run loop.
     io: std.Io,
     watched: [8]?Watch = @splat(null),
+
+    const max_popups = 4;
+
+    /// A popup: a borderless panel over the window (a child window of it),
+    /// whose view's input goes to the window (in its coordinates), and
+    /// what it shows.
+    const Popup = struct {
+        id: u32,
+        placement: window.PopupPlacement,
+        panel: Id,
+        view: Id,
+        layer: Id,
+        /// Where its top left is, in the window's coordinates (logical
+        /// pixels), and its size in pixels.
+        position: [2]i32,
+        pixel_size: [2]u32,
+        /// What is drawn in it (straight alpha, as facet draws).
+        pixels: []u32 = &.{},
+    };
 
     pub const platform: window.Platform = .macos;
     pub const decorations: window.Decorations = .server;
@@ -223,6 +246,10 @@ pub const MacWindow = struct {
     pub fn close(w: *MacWindow) void {
         const pool = objc.push();
         defer objc.pop(pool);
+        for (&w.popups) |*slot| if (slot.*) |*pop| {
+            w.destroyPopup(pop);
+            slot.* = null;
+        };
         for (&w.watched) |*slot| if (slot.*) |_| w.unwatch(slot);
         w.setRedraw(null);
         msg(void, w.win, "setDelegate:", .{@as(Id, null)});
@@ -598,6 +625,172 @@ pub const MacWindow = struct {
         sink.f(sink.ctx, if (str == null) null else objc.utf8(str));
     }
 
+    // --- Popups -------------------------------------------------------------------
+
+    /// Opens a popup (a menu or a tooltip) where `placement` says, by
+    /// Wayland's positioner model (`window.Positioner`), kept on the
+    /// window's screen: a borderless panel over the window that does not
+    /// take the keyboard (so a menu's keys still come to the window), its
+    /// pointer input the window's, in the window's coordinates. A tooltip
+    /// lets the pointer through. Null if it cannot be opened.
+    pub fn openPopup(w: *MacWindow, placement: window.PopupPlacement) ?u32 {
+        const slot = for (&w.popups) |*slot| {
+            if (slot.* == null) break slot;
+        } else return null;
+        const pool = objc.push();
+        defer objc.pop(pool);
+        const screen = msg(Id, w.win, "screen", .{}) orelse msg(Id, objc.class("NSScreen"), "mainScreen", .{}) orelse return null;
+        const pos = placement.positioner(.{ w.width, w.height }).place(w.viewRectOf(objc.msgRect(screen, "visibleFrame")));
+        const width: objc.CGFloat = @floatFromInt(@max(placement.size[0], 1));
+        const height: objc.CGFloat = @floatFromInt(@max(placement.size[1], 1));
+        const top_left = w.screenPointOf(.{ .x = @floatFromInt(pos[0]), .y = @floatFromInt(pos[1]) });
+        const frame: objc.Rect = .{ .origin = .{ .x = top_left.x, .y = top_left.y - height }, .size = .{ .width = width, .height = height } };
+
+        // Borderless (0), and not activating the app when used (1 << 7).
+        const panel = msg(Id, msg(Id, objc.class("NSPanel"), "alloc", .{}), "initWithContentRect:styleMask:backing:defer:", .{ frame, @as(u64, 1 << 7), @as(u64, 2), objc.no }) orelse return null;
+        msg(void, panel, "setReleasedWhenClosed:", .{objc.no});
+        msg(void, panel, "setOpaque:", .{objc.no});
+        msg(void, panel, "setBackgroundColor:", .{msg(Id, objc.class("NSColor"), "clearColor", .{})});
+        // Facet draws the shadow (in the popup's own pixels).
+        msg(void, panel, "setHasShadow:", .{objc.no});
+        msg(void, panel, "setLevel:", .{@as(isize, 101)}); // NSPopUpMenuWindowLevel
+        msg(void, panel, "setAcceptsMouseMovedEvents:", .{objc.yes});
+        if (placement.kind == .tooltip) msg(void, panel, "setIgnoresMouseEvents:", .{objc.yes});
+
+        const bounds: objc.Rect = .{ .origin = .{ .x = 0, .y = 0 }, .size = frame.size };
+        const view = msg(Id, msg(Id, viewClass(), "alloc", .{}), "initWithFrame:", .{bounds});
+        objc.setOwner(view, w);
+        const layer = objc.retain(msg(Id, objc.class("CALayer"), "layer", .{}));
+        keepTopLeft(layer);
+        msg(void, view, "setLayer:", .{layer});
+        msg(void, view, "setWantsLayer:", .{objc.yes});
+        const tracking = msg(Id, objc.class("NSTrackingArea"), "alloc", .{});
+        const opts: u64 = 0x01 | 0x02 | 0x80 | 0x200; // entered/exited, moved, always, in visible rect
+        const area = msg(Id, tracking, "initWithRect:options:owner:userInfo:", .{ bounds, opts, view, @as(Id, null) });
+        msg(void, view, "addTrackingArea:", .{area});
+        msg(void, area, "release", .{});
+        msg(void, panel, "setContentView:", .{view});
+        // Over the window, moving with it.
+        msg(void, w.win, "addChildWindow:ordered:", .{ panel, @as(isize, 1) }); // NSWindowAbove
+
+        const id = w.next_popup_id;
+        w.next_popup_id +%= 1;
+        slot.* = .{
+            .id = id,
+            .placement = placement,
+            .panel = panel,
+            .view = view,
+            .layer = layer,
+            .position = pos,
+            .pixel_size = .{ @max(placement.size[0], 1) * w.scale, @max(placement.size[1], 1) * w.scale },
+        };
+        return id;
+    }
+
+    /// `r` (in screen coordinates) in the view's (top left at 0, 0).
+    fn viewRectOf(w: *const MacWindow, r: objc.Rect) window.positioner_mod.Rect {
+        const tl = w.viewPointOf(.{ .x = r.origin.x, .y = r.origin.y + r.size.height });
+        const br = w.viewPointOf(.{ .x = r.origin.x + r.size.width, .y = r.origin.y });
+        const x0: i32 = @intFromFloat(@ceil(tl.x));
+        const y0: i32 = @intFromFloat(@ceil(tl.y));
+        const x1: i32 = @intFromFloat(@floor(br.x));
+        const y1: i32 = @intFromFloat(@floor(br.y));
+        return .{ x0, y0, @max(x1 - x0, 1), @max(y1 - y0, 1) };
+    }
+
+    fn viewPointOf(w: *const MacWindow, on_screen: objc.Point) objc.Point {
+        const in_window = msg(objc.Point, w.win, "convertPointFromScreen:", .{on_screen});
+        return msg(objc.Point, w.view, "convertPoint:fromView:", .{ in_window, @as(Id, null) });
+    }
+
+    fn screenPointOf(w: *const MacWindow, in_view: objc.Point) objc.Point {
+        const in_window = msg(objc.Point, w.view, "convertPoint:toView:", .{ in_view, @as(Id, null) });
+        return msg(objc.Point, w.win, "convertPointToScreen:", .{in_window});
+    }
+
+    fn popupOf(w: *MacWindow, id: u32) ?*Popup {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) return pop;
+        return null;
+    }
+
+    pub fn closePopup(w: *MacWindow, id: u32) void {
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.id == id) {
+            const pool = objc.push();
+            defer objc.pop(pool);
+            w.destroyPopup(pop);
+            slot.* = null;
+            return;
+        };
+    }
+
+    fn destroyPopup(w: *MacWindow, pop: *Popup) void {
+        msg(void, w.win, "removeChildWindow:", .{pop.panel});
+        msg(void, pop.panel, "orderOut:", .{@as(Id, null)});
+        objc.setOwner(pop.view, null);
+        msg(void, pop.panel, "setContentView:", .{@as(Id, null)});
+        msg(void, pop.view, "release", .{});
+        objc.release(pop.layer);
+        msg(void, pop.panel, "release", .{});
+        w.gpa.free(pop.pixels);
+    }
+
+    /// Where the popup is, in the window's coordinates (known as soon as
+    /// it is opened: facet places it).
+    pub fn popupPosition(w: *MacWindow, id: u32) ?[2]i32 {
+        const pop = w.popupOf(id) orelse return null;
+        return pop.position;
+    }
+
+    /// The buffer to draw the popup in, all of it, at the window's scale.
+    pub fn beginSoftwarePopupFrame(w: *MacWindow, id: u32) !?gfx.software.Image {
+        const pop = w.popupOf(id) orelse return null;
+        const len = @as(usize, pop.pixel_size[0]) * pop.pixel_size[1];
+        if (pop.pixels.len != len) {
+            w.gpa.free(pop.pixels);
+            pop.pixels = &.{};
+            pop.pixels = try w.gpa.alloc(u32, len);
+        }
+        return .{ .pixels = pop.pixels, .width = pop.pixel_size[0], .height = pop.pixel_size[1] };
+    }
+
+    /// Shows what was drawn in the popup (and the popup, the first time).
+    pub fn showPopup(w: *MacWindow, id: u32) !void {
+        const pop = w.popupOf(id) orelse return;
+        const pool = objc.push();
+        defer objc.pop(pool);
+        const cg = cgFunctions() orelse return error.NoCoreGraphics;
+        if (w.color_space == null) w.color_space = cg.colorSpace();
+        // An image of its own (Core Animation keeps it as long as it
+        // likes), premultiplied, as Core Graphics wants.
+        const px = try Pixels.create(pop.pixels.len);
+        premultiply(px.mem, pop.pixels);
+        const provider = cg.provider(px, px.mem.ptr, px.mem.len * 4, &Pixels.released) orelse {
+            px.unref();
+            return error.NoCoreGraphics;
+        };
+        defer cg.releaseProvider(provider);
+        // 0xAARRGGBB in memory, little-endian: BGRA, premultiplied.
+        const info: u32 = (2 << 12) | 2;
+        const image = cg.image(pop.pixel_size[0], pop.pixel_size[1], 8, 32, @as(usize, pop.pixel_size[0]) * 4, w.color_space, info, provider, null, false, 0);
+        defer cg.releaseImage(image);
+        const transaction = objc.class("CATransaction");
+        msg(void, transaction, "begin", .{});
+        msg(void, transaction, "setDisableActions:", .{objc.yes});
+        msg(void, pop.layer, "setContentsScale:", .{@as(objc.CGFloat, @floatFromInt(w.scale))});
+        msg(void, pop.layer, "setContents:", .{image});
+        msg(void, transaction, "commit", .{});
+        if (msg(objc.Bool, pop.panel, "isVisible", .{}) == 0) msg(void, pop.panel, "orderFront:", .{@as(Id, null)});
+    }
+
+    /// The window stopped being where its menus were for (it lost the
+    /// keyboard, or began to be moved or resized): they are done, as a
+    /// compositor ends a popup whose grab broke.
+    fn endMenus(w: *MacWindow) void {
+        for (w.popups) |slot| if (slot) |pop| {
+            if (pop.placement.kind == .menu) w.push(.{ .popup_done = pop.id });
+        };
+    }
+
     // --- Watching sources -------------------------------------------------------------
 
     /// Waits on `source` too (or stops, if not `on`): `wait` returns when
@@ -638,11 +831,33 @@ pub const MacWindow = struct {
         return objc.owner(MacWindow, view);
     }
 
-    /// Where an event happened, in the view (top left at 0, 0).
+    /// Where an event happened, in the view (top left at 0, 0): on a popup,
+    /// by way of the screen (so in the window's coordinates still).
     fn locate(w: *const MacWindow, event: Id) [2]f32 {
-        const in_window = msg(objc.Point, event, "locationInWindow", .{});
+        var in_window = msg(objc.Point, event, "locationInWindow", .{});
+        const from = msg(Id, event, "window", .{});
+        if (from != null and from != w.win) {
+            const on_screen = msg(objc.Point, from, "convertPointToScreen:", .{in_window});
+            in_window = msg(objc.Point, w.win, "convertPointFromScreen:", .{on_screen});
+        }
         const p = msg(objc.Point, w.view, "convertPoint:fromView:", .{ in_window, @as(Id, null) });
         return .{ @floatCast(p.x), @floatCast(p.y) };
+    }
+
+    /// Whether the pointer is over the window or one of its popups (where
+    /// leaving one for another is not leaving).
+    fn pointerOver(w: *const MacWindow) bool {
+        const at = msg(objc.Point, objc.class("NSEvent"), "mouseLocation", .{});
+        const inside = struct {
+            fn f(r: objc.Rect, p: objc.Point) bool {
+                return p.x >= r.origin.x and p.x < r.origin.x + r.size.width and p.y >= r.origin.y and p.y < r.origin.y + r.size.height;
+            }
+        }.f;
+        if (inside(objc.msgRect(w.win, "frame"), at)) return true;
+        for (w.popups) |slot| if (slot) |pop| {
+            if (pop.placement.kind == .menu and inside(objc.msgRect(pop.panel, "frame"), at)) return true;
+        };
+        return false;
     }
 
     fn mouse(view: Id, event: Id, code: u32, pressed: bool) void {
@@ -699,6 +914,8 @@ pub const MacWindow = struct {
         }
         fn mouseExited(v: Id, _: objc.Sel, _: Id) callconv(.c) void {
             const w = ofView(v) orelse return;
+            // From the window onto a popup (or back) it has not left.
+            if (w.pointerOver()) return;
             w.push(.leave);
         }
         fn scrollWheel(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
@@ -743,6 +960,14 @@ pub const MacWindow = struct {
             // let go.
             if (msg(objc.Bool, w.view, "inLiveResize", .{}) != 0) return w.drawNow();
             w.zoom_known = false;
+        }
+        /// The window lost the keyboard (the app went to the back, or
+        /// another of its windows came forward), or began to be moved or
+        /// resized: its menus are done.
+        fn endMenus(d: Id, _: objc.Sel, _: Id) callconv(.c) void {
+            const w = objc.owner(MacWindow, d) orelse return;
+            w.endMenus();
+            postWake();
         }
         fn modeChanged(d: Id, sel: objc.Sel, n: Id) callconv(.c) void {
             // Out of a live resize, or to or from full screen.
@@ -804,6 +1029,9 @@ pub const MacWindow = struct {
             .{ .sel = "windowShouldClose:", .imp = &m.windowShouldClose, .types = b },
             .{ .sel = "windowDidResize:", .imp = &m.resized, .types = "v@:@" },
             .{ .sel = "windowDidEndLiveResize:", .imp = &m.modeChanged, .types = "v@:@" },
+            .{ .sel = "windowDidResignKey:", .imp = &m.endMenus, .types = "v@:@" },
+            .{ .sel = "windowWillMove:", .imp = &m.endMenus, .types = "v@:@" },
+            .{ .sel = "windowWillStartLiveResize:", .imp = &m.endMenus, .types = "v@:@" },
             .{ .sel = "holdTick:", .imp = &m.holdTick, .types = "v@:@" },
             .{ .sel = "displayTick:", .imp = &m.displayTick, .types = "v@:@" },
             .{ .sel = "windowDidChangeBackingProperties:", .imp = &m.changed, .types = "v@:@" },
@@ -812,6 +1040,23 @@ pub const MacWindow = struct {
         });
     }
 };
+
+/// `src` (straight alpha, as facet draws) premultiplied into `dst`.
+fn premultiply(dst: []u32, src: []const u32) void {
+    for (dst, src) |*d, p| {
+        const a = p >> 24;
+        if (a == 0xff) {
+            d.* = p;
+            continue;
+        }
+        const mul = struct {
+            fn f(c: u32, alpha: u32) u32 {
+                return (c * alpha + 127) / 255;
+            }
+        }.f;
+        d.* = (a << 24) | (mul((p >> 16) & 0xff, a) << 16) | (mul((p >> 8) & 0xff, a) << 8) | mul(p & 0xff, a);
+    }
+}
 
 /// A frame shown in `layer` stays at its top left corner, as big as it
 /// was drawn, until one is drawn at the layer's new size (rather than
@@ -1062,4 +1307,44 @@ test "macOS keys become the Linux ones the toolkit has" {
     try std.testing.expectEqual(@as(?u32, keymap.left), linuxKey(123));
     try std.testing.expectEqual(@as(?u32, 46), linuxKey(8)); // C, for Command and C
     try std.testing.expect(linuxKey(200) == null);
+}
+
+test "straight alpha is premultiplied" {
+    var out: [3]u32 = undefined;
+    premultiply(&out, &.{ 0xffff8000, 0x80ff8000, 0x00ffffff });
+    try std.testing.expectEqual(@as(u32, 0xffff8000), out[0]);
+    try std.testing.expectEqual(@as(u32, 0x80804000), out[1]);
+    try std.testing.expectEqual(@as(u32, 0x00000000), out[2]);
+}
+
+test "a menu popup opens where the positioner puts it, on the screen, and shows what is drawn" {
+    if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
+    const testing = std.testing;
+    const w = MacWindow.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 300, 200 } }) catch return error.SkipZigTest;
+    defer w.close();
+    _ = try w.applyConfigure();
+    const pool = objc.push();
+    defer objc.pop(pool);
+
+    // At the window's bottom right corner, bigger than the room below it
+    // on most screens: it goes where the positioner says.
+    const placement: window.PopupPlacement = .{ .kind = .menu, .anchor = .{ 299, 199, 1, 1 }, .size = .{ 240, 4000 }, .side = .below_right, .gap = 2 };
+    const id = w.openPopup(placement) orelse return error.NoPopup;
+    defer w.closePopup(id);
+    const screen = msg(Id, w.win, "screen", .{}).?;
+    const bounds = w.viewRectOf(objc.msgRect(screen, "visibleFrame"));
+    const at = w.popupPosition(id).?;
+    try testing.expectEqual(placement.positioner(.{ w.width, w.height }).place(bounds), at);
+    // Taller than the screen: against its top, within it across.
+    try testing.expectEqual(bounds[1], at[1]);
+    try testing.expect(at[0] >= bounds[0] and at[0] + 240 <= bounds[0] + bounds[2]);
+
+    const img = (try w.beginSoftwarePopupFrame(id)).?;
+    try testing.expectEqual(@as(u32, 240 * w.scale), img.width);
+    @memset(img.pixels, 0x80ff0000);
+    try w.showPopup(id);
+    const pop = w.popupOf(id).?;
+    try testing.expect(msg(objc.Bool, pop.panel, "isVisible", .{}) != 0);
+    // Over the window, not taking its keyboard.
+    try testing.expect(msg(objc.Bool, pop.panel, "canBecomeKeyWindow", .{}) == 0);
 }

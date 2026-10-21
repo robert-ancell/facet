@@ -211,7 +211,7 @@ pub fn owner(comptime T: type, obj: Id) ?*T {
     return @ptrCast(@alignCast(rt().getIvar(obj, ivar)));
 }
 
-pub fn setOwner(obj: Id, ptr: *anyopaque) void {
+pub fn setOwner(obj: Id, ptr: ?*anyopaque) void {
     const cls = msg(Class, obj, "class", .{});
     const ivar = rt().getInstanceVariable(cls, "facet");
     rt().setIvar(obj, ivar, ptr);
