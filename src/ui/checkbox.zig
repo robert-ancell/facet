@@ -23,6 +23,9 @@ const target = control.target;
 /// it (`CheckboxRow` has one), so name it for assistive technologies with
 /// `Accessible`.
 pub const Checkbox = struct {
+    /// Whether it is checked. The app holds it: the checkbox reports a
+    /// change through `on_changed` and shows the new value from the next
+    /// build.
     value: bool,
     /// Called with the new value; without it the checkbox is disabled.
     on_changed: ?ValueCallback(bool) = null,
@@ -46,9 +49,12 @@ pub const Checkbox = struct {
 
 /// A checkbox with its label beside it: pressing either toggles it.
 pub const CheckboxRow = struct {
+    /// Whether it is checked (see `Checkbox.value`).
     value: bool,
     /// Called with the new value; without it the checkbox is disabled.
     on_changed: ?ValueCallback(bool) = null,
+    /// The text beside the checkbox, which also names it for assistive
+    /// technologies.
     label: []const u8,
 
     pub const State = Checkbox.State;

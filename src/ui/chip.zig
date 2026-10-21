@@ -27,6 +27,7 @@ const Color = gfx.Color;
 pub const Chip = struct {
     label: []const u8,
     icon: ?icons.Icon = null,
+    /// Whether it is shown as selected (and reported as pressed).
     selected: bool = false,
     on_press: ?Callback = null,
     /// When set, a trailing close button is shown that invokes `on_remove`.

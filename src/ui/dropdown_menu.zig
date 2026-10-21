@@ -17,12 +17,17 @@ const Node = widget.Node;
 const ValueCallback = widget.ValueCallback;
 
 pub const DropdownMenu = struct {
+    /// The text of each choice.
     options: []const []const u8,
+    /// The index in `options` of the choice made, or null for none (the
+    /// `placeholder` shows). The app holds it and shows a change from the
+    /// next build.
     selected: ?usize = 0,
     /// Optional button label override (for example, a shorter summary).
     label: ?[]const u8 = null,
     /// Called with the chosen index; without it the dropdown is disabled.
     on_selected: ?ValueCallback(usize) = null,
+    /// What the button shows when no choice is made.
     placeholder: []const u8 = "",
     icon: ?icons.Icon = null,
     width: ?f32 = null,
@@ -97,10 +102,16 @@ pub fn Select(comptime T: type) type {
             label: []const u8,
         };
 
+        /// The choices, each with the text it shows.
         options: []const Option,
+        /// The value of the choice made, or null for none (the `placeholder`
+        /// shows). The app holds it and shows a change from the next build.
         value: ?T = null,
+        /// Optional button label override (for example, a shorter summary).
         label: ?[]const u8 = null,
+        /// What the button shows when no choice is made.
         placeholder: []const u8 = "",
+        /// Called with the value chosen; without it the dropdown is disabled.
         on_changed: ?ValueCallback(T) = null,
         icon: ?icons.Icon = null,
         width: ?f32 = null,

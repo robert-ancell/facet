@@ -34,6 +34,8 @@ pub const Tab = struct {
 
 pub const TabBar = struct {
     tabs: []const Tab,
+    /// The index of the tab shown as selected. The app holds it and shows a
+    /// change from the next build.
     selected: usize = 0,
     on_select: ?ValueCallback(usize) = null,
     /// When true, each tab takes an equal share of the bar's width; when

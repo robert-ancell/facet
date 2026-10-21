@@ -19,8 +19,13 @@ const ValueCallback = widget.ValueCallback;
 const Painter = painter.Painter;
 
 pub const Slider = struct {
+    /// Where the handle is, from `min` to `max`. The app holds it: the
+    /// slider reports a change through `on_changed` and shows the new value
+    /// from the next build.
     value: f32,
+    /// The value at the start of the track...
     min: f32 = 0,
+    /// ...and at its end.
     max: f32 = 1,
     /// When set and greater than 0, snaps to `divisions` equal steps and
     /// draws tick marks along the track.

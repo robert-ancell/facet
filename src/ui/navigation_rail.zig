@@ -32,6 +32,8 @@ pub const NavigationRail = struct {
     };
 
     items: []const Item,
+    /// The index of the item shown as selected. The app holds it and shows a
+    /// change from the next build.
     selected: usize = 0,
     on_select: ?ValueCallback(usize) = null,
     /// When true, renders full-width horizontal pill rows (like a navigation

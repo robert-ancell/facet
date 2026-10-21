@@ -32,6 +32,8 @@ pub const IconButton = struct {
     size: f32 = 40,
     /// Defaults to 60% of `size` (24px for a 40px button).
     icon_size: ?f32 = null,
+    /// Whether it is shown as selected, for a button that toggles (and
+    /// reported as pressed).
     selected: bool = false,
     variant: Variant = .standard,
 

@@ -26,6 +26,7 @@ pub const Card = struct {
     variant: Variant = .filled,
     padding: Insets = .all(16),
     radius: f32 = 12,
+    /// Whether it is shown as selected.
     selected: bool = false,
     on_press: ?Callback = null,
     child: ?Widget = null,

@@ -31,6 +31,7 @@ pub const ListItem = struct {
     trailing_text: []const u8 = "",
     trailing_icon: ?icons.Icon = null,
     trailing: ?Widget = null,
+    /// Whether it is shown as selected (a coloured background).
     selected: bool = false,
     radius: f32 = 8,
     on_press: ?Callback = null,

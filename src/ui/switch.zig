@@ -26,6 +26,8 @@ const Color = gfx.Color;
 /// (`SwitchRow` has one), so name it for assistive technologies with
 /// `Accessible`.
 pub const Switch = struct {
+    /// Whether it is on. The app holds it: the switch reports a change
+    /// through `on_changed` and shows the new value from the next build.
     value: bool,
     /// Called with the new value; without it the switch is disabled.
     on_changed: ?ValueCallback(bool) = null,
@@ -55,9 +57,12 @@ pub const Switch = struct {
 
 /// A switch with its label beside it: pressing either toggles it.
 pub const SwitchRow = struct {
+    /// Whether it is on (see `Switch.value`).
     value: bool,
     /// Called with the new value; without it the switch is disabled.
     on_changed: ?ValueCallback(bool) = null,
+    /// The text beside the switch, which also names it for assistive
+    /// technologies.
     label: []const u8,
 
     pub const State = Switch.State;

@@ -30,7 +30,10 @@ pub fn Radio(comptime T: type) type {
     return struct {
         const Self = @This();
 
+        /// What selecting this button reports.
         value: T,
+        /// The group's value, which the app holds: this button is selected when
+        /// `value` equals it, and shows a change from the next build.
         group_value: T,
         /// Called with `value` when it is selected; without it the button is
         /// disabled.
@@ -59,11 +62,16 @@ pub fn RadioRow(comptime T: type) type {
     return struct {
         const Self = @This();
 
+        /// What selecting this button reports.
         value: T,
+        /// The group's value: this button is selected when `value` equals it
+        /// (see `Radio.group_value`).
         group_value: T,
         /// Called with `value` when it is selected; without it the button is
         /// disabled.
         on_changed: ?ValueCallback(T) = null,
+        /// The text beside the button, which also names it for assistive
+        /// technologies.
         label: []const u8,
 
         pub const State = Radio(T).State;
