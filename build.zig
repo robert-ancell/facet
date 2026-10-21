@@ -257,6 +257,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mod })).step);
     }
 
+    // API reference generated from the doc comments, installed to zig-out/docs.
+    const docs_lib = b.addLibrary(.{ .name = "facet", .root_module = mods.facet });
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = docs_lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    b.step("docs", "Generate the API reference into zig-out/docs").dependOn(&install_docs.step);
+
     for ([_]*std.Build.Module{
         mods.font,
         mods.icons,
