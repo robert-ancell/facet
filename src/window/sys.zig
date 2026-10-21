@@ -24,6 +24,19 @@ fn close(fd: fd_t) void {
     _ = if (is_linux) linux.close(fd) else c.close(fd);
 }
 
+/// Now, in nanoseconds on the monotonic clock (for a thread of facet's
+/// own, outside the app's `Io`, to time what it does).
+pub fn monotonicNs() u64 {
+    if (is_linux) {
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
+        return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+    }
+    var ts: c.timespec = undefined;
+    _ = c.clock_gettime(.MONOTONIC, &ts);
+    return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.nsec));
+}
+
 /// Waits (on a thread of facet's own, outside the app's `Io`) up to
 /// `timeout_ms` (-1: as long as it takes) for `fd` to be readable; whether
 /// it is.

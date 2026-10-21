@@ -47,6 +47,10 @@ pub const Presenter = struct {
     inflight: gfx.Frame = undefined,
     inflight_job: FrameJob = undefined,
     inflight_win: ?Window = null,
+    /// For tracing: how long the UI's thread has waited for the render
+    /// thread (since this was last reset), and the last frame took to draw.
+    waited_ns: u64 = 0,
+    rendered_ns: u64 = 0,
 
     /// Where a frame is drawn.
     pub const Target = union(enum) {
@@ -193,6 +197,7 @@ pub const Presenter = struct {
         const win = p.inflight_win.?;
         defer p.inflight_win = null;
         const failed = t.result;
+        p.rendered_ns = t.render_ns;
         t.state.store(.idle, .release);
         if (failed) |e| {
             if (p.inflight_job.target == .cpu) return e;
@@ -212,6 +217,8 @@ pub const Presenter = struct {
     /// given.
     fn waitDone(p: *Presenter) !void {
         const t = p.thread orelse return;
+        const start = window_mod.nowNs(p.io);
+        defer p.waited_ns += window_mod.nowNs(p.io) - start;
         while (t.state.load(.acquire) == .queued) {
             _ = p.io.operateTimeout(t.done.readOperation(), .{ .duration = .{ .raw = .fromSeconds(1), .clock = .awake } }) catch |e| switch (e) {
                 error.Timeout => {},
@@ -333,8 +340,9 @@ const RenderThread = struct {
     done: sys.Wake,
     state: std.atomic.Value(State) = .init(.idle),
     job: Job = .none,
-    /// How what it did went.
+    /// How what it did went, and how long the last frame took to draw.
     result: ?anyerror = null,
+    render_ns: u64 = 0,
 
     const State = enum(u8) { idle, queued, done };
 
@@ -382,9 +390,11 @@ const RenderThread = struct {
                 .none => {},
                 .quit => return,
                 .frame => |job| if (t.presenter.renderer) |r| {
+                    const began = sys.monotonicNs();
                     Presenter.render(r, job) catch |e| {
                         t.result = e;
                     };
+                    t.render_ns = sys.monotonicNs() - began;
                 } else {
                     t.result = error.NoRenderer;
                 },

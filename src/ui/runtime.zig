@@ -145,6 +145,9 @@ pub const Ui = struct {
     sent: gfx.frame.Residency = .{},
     atlas_sent: bool = false,
     layers: std.AutoHashMapUnmanaged(u64, Layer) = .empty,
+    /// For tracing: how long making the last frame's packet own what it
+    /// needs (drawing its GPU draws' layers) took.
+    own_ns: u64 = 0,
     pointer: ?Point = null,
     /// Event handlers under the pointer, deepest first.
     hovered: std.ArrayList(*Node) = .empty,
@@ -1191,7 +1194,11 @@ pub const Ui = struct {
         const popups = try ui.presentPopups(w);
         if (!ui.changed()) return popups;
         var f = ui.framePacket(clear);
-        if (ui.presenter.owned_frames) try ui.ownFrame(&f);
+        if (ui.presenter.owned_frames) {
+            const start = ui.clockNs();
+            try ui.ownFrame(&f);
+            ui.own_ns = ui.clockNs() - start;
+        }
         try ui.presenter.present(w, &f);
         return true;
     }
@@ -1727,6 +1734,13 @@ pub const App = struct {
     watching_wake: bool = false,
     watching_a11y: bool = false,
     watching_presenter: bool = false,
+    /// Each frame's timings written to stderr (`FACET_TRACE=1`), and when
+    /// the last was begun.
+    trace: bool = false,
+    last_frame_ns: u64 = 0,
+    /// A frame is being drawn because the window asked (from inside the
+    /// window system's loop, which holds the app's).
+    held: bool = false,
     /// The last `draw` showed nothing, so `step` waits rather than going
     /// straight on to draw again.
     idle: bool = false,
@@ -1774,6 +1788,7 @@ pub const App = struct {
         const a = try openIn(gpa, io, win, options);
         a.owns_window = true;
         a.ui.enableAccessibility(environ);
+        if (environ.getPosix("FACET_TRACE")) |v| a.trace = std.mem.eql(u8, v, "1");
         const env = environ.getPosix("FACET_RENDER_THREAD");
         const threaded = options.render_thread orelse if (env) |v| std.mem.eql(u8, v, "1") else window_mod.NativeWindow.wants_render_thread;
         if (threaded) a.ui.useRenderThread() catch {};
@@ -1929,10 +1944,43 @@ pub const App = struct {
         a.dirty = false;
         const size = a.win.size();
         const target_ns = a.win.nextPresentationNs(now_ns);
+        const begun = a.ui.clockNs();
         a.ui.frame(size[0], size[1], target_ns, root);
+        const built = a.ui.clockNs();
         a.win.setPresentationTime(target_ns);
         const clear = a.clear_color orelse a.ui.theme.surface.toArgb();
-        if (try a.ui.present(a.win, clear)) a.idle = false;
+        a.ui.own_ns = 0;
+        const shown = try a.ui.present(a.win, clear);
+        if (shown) a.idle = false;
+        if (a.trace) a.traceFrame(begun, built, shown);
+    }
+
+    /// Writes how the frame just drawn went (`FACET_TRACE=1`): since the
+    /// last began, whether AppKit was holding the loop (the window asked
+    /// for it), how long it took to build, to draw its GPU draws' layers,
+    /// and to present (and of that, waiting for the render thread), and
+    /// how long the render thread took to draw the last.
+    fn traceFrame(a: *App, begun: u64, built: u64, shown: bool) void {
+        const done = a.ui.clockNs();
+        const ms = struct {
+            fn f(ns: u64) f64 {
+                return @as(f64, @floatFromInt(ns)) / std.time.ns_per_ms;
+            }
+        }.f;
+        const p = &a.ui.presenter;
+        std.debug.print("facet: frame {d}: +{d:.1} ms{s}{s} build {d:.1} layers {d:.1} present {d:.1} (waited {d:.1}) render {d:.1}\n", .{
+            a.ui.frame_no,
+            ms(begun -| a.last_frame_ns),
+            if (a.held) " held" else "",
+            if (shown) "" else " (nothing shown)",
+            ms(built - begun),
+            ms(a.ui.own_ns),
+            ms(done - built -| a.ui.own_ns),
+            ms(p.waited_ns),
+            ms(p.rendered_ns),
+        });
+        p.waited_ns = 0;
+        a.last_frame_ns = begun;
     }
 
     fn keepRoot(a: *App, root: anytype) void {
@@ -1971,6 +2019,8 @@ pub const App = struct {
         // Not while the render thread draws the last (shown first).
         a.ui.presenter.flush() catch {};
         a.ui.syncWindow(a.win);
+        a.held = true;
+        defer a.held = false;
         k.draw(a, k.ptr) catch {};
     }
 };
