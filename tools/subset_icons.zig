@@ -28,7 +28,7 @@ pub fn main(init: std.process.Init) !void {
     const names = try cwd.readFileAlloc(init.io, args[2], arena, .limited(1 << 20));
 
     var map: std.StringHashMapUnmanaged(u21) = .empty;
-    var lines = std.mem.tokenizeScalar(u8, names, '\n');
+    var lines = std.mem.tokenizeAny(u8, names, "\r\n");
     while (lines.next()) |line| {
         var f = std.mem.tokenizeScalar(u8, line, ' ');
         const name = f.next() orelse continue;

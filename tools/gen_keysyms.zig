@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
 
     var names: std.ArrayList(Name) = .empty;
     var chars: std.ArrayList(Char) = .empty;
-    var lines = std.mem.tokenizeScalar(u8, header, '\n');
+    var lines = std.mem.tokenizeAny(u8, header, "\r\n");
     while (lines.next()) |line| {
         // #define XK_name 0xvalue  /* U+XXXX DESCRIPTION */
         const prefix = "#define XK_";
