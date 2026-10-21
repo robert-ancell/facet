@@ -301,6 +301,8 @@ pub const Ui = struct {
             } else |_| {
                 ui.renderer = ui.software_renderer.renderer();
             }
+        } else if (comptime builtin.os.tag == .windows) {
+            ui.renderer = ui.software_renderer.renderer();
         } else if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
             ui.vulkan_renderer = vk;
             ui.renderer = ui.vulkan_renderer.?.renderer();
@@ -626,7 +628,7 @@ pub const Ui = struct {
     pub fn enableAccessibility(ui: *Ui, environ: std.process.Environ) void {
         if (!has_atspi) return;
         if (ui.a11y != null) return;
-        if (environ.getPosix("NO_AT_BRIDGE")) |v| if (std.mem.eql(u8, v, "1")) return;
+        if (envIs(environ, "NO_AT_BRIDGE", "1")) return;
         const title = if (ui.win) |w| w.title() else "";
         ui.a11y = atspi.Bridge.connect(ui.gpa, ui.io, environ, title) catch null;
         ui.needs_frame = true;
@@ -1503,6 +1505,18 @@ pub const Ui = struct {
 /// given (the app's, as from `std.process.Init`), so other tasks on it go
 /// on while `step` waits: a fetch started with `io.async`, which wakes
 /// the UI (`Ui.waker`) when it is done.
+/// Whether environment variable `key` is `value` (both ASCII).
+fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value: []const u8) bool {
+    if (builtin.os.tag == .windows) {
+        const v = environ.getWindows(std.unicode.utf8ToUtf16LeStringLiteral(key)) orelse return false;
+        if (v.len != value.len) return false;
+        for (v, value) |a, b| if (a != b) return false;
+        return true;
+    }
+    const v = environ.getPosix(key) orelse return false;
+    return std.mem.eql(u8, v, value);
+}
+
 pub const App = struct {
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -1573,7 +1587,7 @@ pub const App = struct {
         const a = try openIn(gpa, io, win, options);
         a.owns_window = true;
         a.ui.enableAccessibility(environ);
-        if (environ.getPosix("FACET_TRACE")) |v| a.trace = std.mem.eql(u8, v, "1");
+        a.trace = envIs(environ, "FACET_TRACE", "1");
         return a;
     }
 

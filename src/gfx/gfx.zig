@@ -28,6 +28,8 @@ pub const metal = @import("metal.zig");
 /// Objective-C and Apple's frameworks, loaded at run time (for the Metal
 /// renderer, and macOS windows).
 pub const objc = @import("objc.zig");
+/// The Windows API, its DLLs loaded when first used (as `objc` is on macOS).
+pub const winapi = @import("winapi.zig");
 pub const png = @import("png.zig");
 pub const jpeg = @import("jpeg.zig");
 pub const gif = @import("gif.zig");
@@ -68,10 +70,15 @@ test {
     _ = renderer;
     _ = frame;
     _ = software;
-    _ = opengl;
-    _ = vulkan;
-    _ = metal;
+    // Vulkan and OpenGL are Linux's (and macOS's, for its tests), Metal
+    // macOS's.
+    if (@import("builtin").os.tag != .windows) {
+        _ = opengl;
+        _ = vulkan;
+        _ = metal;
+    }
     _ = objc;
+    _ = winapi;
     _ = png;
     _ = jpeg;
     _ = gif;

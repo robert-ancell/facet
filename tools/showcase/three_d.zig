@@ -54,17 +54,18 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .four, .label = "4× MSAA" },
         .{ .value = .eight, .label = "8× MSAA" },
     };
-    const scenes = if (builtin.os.tag == .macos)
-        common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{
+    const scenes = switch (builtin.os.tag) {
+        .macos => common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{
             area(cx, s, facet.MetalArea, .metal, "Metal"),
-        })
-    else
-        common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", &.{
+        }),
+        .windows => common.section(cx, "Direct3D 11", "No 3D scene on Windows yet", &.{}),
+        else => common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", &.{
             cx.make(facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = &.{
                 cx.make(facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") }),
                 cx.make(facet.Expanded{ .child = area(cx, s, facet.OpenGlArea, .opengl, "OpenGL") }),
             } }),
-        });
+        }),
+    };
     return common.page(cx, &.{
         scenes,
         common.section(cx, "Drawing", "How it moves, and how its edges are smoothed", &.{

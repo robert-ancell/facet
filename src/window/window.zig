@@ -1,8 +1,9 @@
 //! Window abstraction (`Window` vtable interface), input events (`InputEvent`),
 //! text input state (`TextInputState`), window controls (`Controls`), keyboard
 //! layout (`Layout`) and keymaps (`xkb`), and the built-in window backends:
-//! a Wayland client (`WaylandWindow`) and a macOS one (`MacWindow`).
-//! `NativeWindow` is the one for the system being built for.
+//! a Wayland client (`WaylandWindow`), a macOS one (`MacWindow`) and a
+//! Windows one (`Win32Window`). `NativeWindow` is the one for the system
+//! being built for.
 //!
 //! Apps can either use a backend directly or implement custom window
 //! backends (e.g. X11, SDL, GLFW, Windows) via `Window.of(&impl)`.
@@ -26,9 +27,15 @@ pub const DroppedData = clipboard.DroppedData;
 pub const WaylandWindow = wayland.WaylandWindow;
 pub const macos = @import("macos.zig");
 pub const MacWindow = macos.MacWindow;
+pub const win32 = @import("win32.zig");
+pub const Win32Window = win32.Win32Window;
 /// The window backend for the system being built for: AppKit's on macOS,
-/// Wayland's elsewhere.
-pub const NativeWindow = if (@import("builtin").os.tag == .macos) MacWindow else WaylandWindow;
+/// Win32's on Windows, Wayland's elsewhere.
+pub const NativeWindow = switch (@import("builtin").os.tag) {
+    .macos => MacWindow,
+    .windows => Win32Window,
+    else => WaylandWindow,
+};
 
 /// Now, in nanoseconds on the clock frames and input are timed on (the
 /// monotonic one: `std.Io.Clock.awake`).
@@ -1016,12 +1023,17 @@ test "sources are waited on through io, with a timeout" {
 }
 
 test {
-    _ = clipboard;
     _ = present;
-    _ = wayland;
-    _ = xkb;
-    _ = compose;
-    _ = dbus;
     _ = sys;
-    _ = macos;
+    switch (@import("builtin").os.tag) {
+        .windows => _ = win32,
+        else => {
+            _ = clipboard;
+            _ = wayland;
+            _ = xkb;
+            _ = compose;
+            _ = dbus;
+            _ = macos;
+        },
+    }
 }

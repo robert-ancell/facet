@@ -2,6 +2,7 @@
 //! what is painted (drawn on the CPU with the real shaders).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const gfx = @import("gfx");
 const font = @import("font");
 const window = @import("window");
@@ -1502,47 +1503,56 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     try testing.expectEqual(window.BufferTransport.memory, info.buffer_transport);
     try testing.expectEqual(expected_renderer, info.renderer);
 
-    var wl_win: window.WaylandWindow = .{
-        .gpa = testing.allocator,
-        .io = testing.io,
-        .conn = undefined,
-        .clipboard = .{ .gpa = testing.allocator, .io = testing.io },
-        .wm_base = .{ .id = 2 },
-        .presentation = .{ .id = 3 },
-        .fifo = .{ .id = 4 },
-        .width = 800,
-        .height = 600,
-        .min_size = .{ 1, 1 },
-        .scale = 2,
-    };
-    wl_win.updateExtensions();
-    u.attachWindow(&wl_win, null);
-    u.frame(800, 600, 1, Probe{ .out = &info });
-    try testing.expectEqual(window.Platform.wayland, info.platform);
-    try testing.expectEqual(window.Decorations.client, info.decorations);
-    try testing.expectEqual(window.BufferTransport.wl_shm, info.buffer_transport);
-    try testing.expectEqual(window.BufferSync.none, info.buffer_sync);
-    try testing.expect(info.frame_sync.vsync);
-    try testing.expect(info.frame_sync.frame_callback);
-    try testing.expect(info.frame_sync.presentation_time);
-    try testing.expect(info.frame_sync.fifo_v1);
-    try testing.expect(!info.frame_sync.commit_timing_v1);
-    try testing.expect(info.hasExtension("xdg_wm_base"));
-    try testing.expect(info.hasExtension("wp_presentation"));
-    try testing.expect(info.hasExtension("wp_fifo_manager_v1"));
-    try testing.expect(!info.hasExtension("wp_commit_timing_manager_v1"));
-    try testing.expectEqual(expected_renderer, info.renderer);
-    try testing.expectEqual([2]u32{ 800, 600 }, info.logical_size);
-    try testing.expectEqual([2]u32{ 1600, 1200 }, info.physical_size);
-    try testing.expectEqual(@as(u32, 2), info.scale);
+    // A Wayland window (Linux and macOS, where its code builds).
+    if (comptime builtin.os.tag != .windows) {
+        var wl_win: window.WaylandWindow = .{
+            .gpa = testing.allocator,
+            .io = testing.io,
+            .conn = undefined,
+            .clipboard = .{ .gpa = testing.allocator, .io = testing.io },
+            .wm_base = .{ .id = 2 },
+            .presentation = .{ .id = 3 },
+            .fifo = .{ .id = 4 },
+            .width = 800,
+            .height = 600,
+            .min_size = .{ 1, 1 },
+            .scale = 2,
+        };
+        wl_win.updateExtensions();
+        u.attachWindow(&wl_win, null);
+        u.frame(800, 600, 1, Probe{ .out = &info });
+        try testing.expectEqual(window.Platform.wayland, info.platform);
+        try testing.expectEqual(window.Decorations.client, info.decorations);
+        try testing.expectEqual(window.BufferTransport.wl_shm, info.buffer_transport);
+        try testing.expectEqual(window.BufferSync.none, info.buffer_sync);
+        try testing.expect(info.frame_sync.vsync);
+        try testing.expect(info.frame_sync.frame_callback);
+        try testing.expect(info.frame_sync.presentation_time);
+        try testing.expect(info.frame_sync.fifo_v1);
+        try testing.expect(!info.frame_sync.commit_timing_v1);
+        try testing.expect(info.hasExtension("xdg_wm_base"));
+        try testing.expect(info.hasExtension("wp_presentation"));
+        try testing.expect(info.hasExtension("wp_fifo_manager_v1"));
+        try testing.expect(!info.hasExtension("wp_commit_timing_manager_v1"));
+        try testing.expectEqual(expected_renderer, info.renderer);
+        try testing.expectEqual([2]u32{ 800, 600 }, info.logical_size);
+        try testing.expectEqual([2]u32{ 1600, 1200 }, info.physical_size);
+        try testing.expectEqual(@as(u32, 2), info.scale);
 
-    wl_win.server_decorations = true;
-    u.attachWindow(&wl_win, null);
-    u.frame(800, 600, 2, Probe{ .out = &info });
-    try testing.expectEqual(window.Decorations.server, info.decorations);
+        wl_win.server_decorations = true;
+        u.attachWindow(&wl_win, null);
+        u.frame(800, 600, 2, Probe{ .out = &info });
+        try testing.expectEqual(window.Decorations.server, info.decorations);
+    }
 }
 
 test "VulkanRenderer, OpenGlRenderer, and SoftwareRenderer render UI widgets and text" {
+    // Vulkan and OpenGL are not built for Windows.
+    if (comptime builtin.os.tag == .windows) return error.SkipZigTest;
+    try vulkanOpenGlAndSoftware();
+}
+
+fn vulkanOpenGlAndSoftware() !void {
     const u = try ui.Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     u.theme = .light;
