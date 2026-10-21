@@ -107,16 +107,15 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
-        .title = "Fetch in the background",
-        .size = .{ 560, 320 },
-        .on_close_request = .close,
-    });
     var fetch: Fetch = .{ .io = init.io, .gpa = init.gpa, .waker = app.shared.waker() };
     defer fetch.deinit();
 
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(FetchView{ .fetch = &fetch });
-    }
+    const root = FetchView{ .fetch = &fetch };
+    _ = try app.openWindow(.{
+        .title = "Fetch in the background",
+        .root = .of(&root),
+        .size = .{ 560, 320 },
+        .on_close_request = .close,
+    });
+    try app.run();
 }

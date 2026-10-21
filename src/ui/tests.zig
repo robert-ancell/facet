@@ -2804,14 +2804,16 @@ test "an app's windows are closed as their options say, and it quits as its own 
     });
     defer app.deinit();
     app.shared.attachRenderer(app.shared.software_renderer.renderer(), false);
-    const main = try app.openWindow(.{ .title = "main" });
-    const kept = try app.openWindow(.{ .title = "kept", .parent = main, .on_close_request = .{ .call = .of(&seen, Seen.closeAsked) } });
-    const closing = try app.openWindow(.{ .title = "closing", .on_close_request = .close });
+    const box: ui.SizedBox = .{ .width = 10, .height = 10 };
+    const main = try app.openWindow(.{ .title = "main", .root = .of(&box) });
+    const kept = try app.openWindow(.{ .title = "kept", .root = .of(&box), .parent = main, .on_close_request = .{ .call = .of(&seen, Seen.closeAsked) } });
+    const closing = try app.openWindow(.{ .title = "closing", .root = .of(&box), .on_close_request = .close });
     try testing.expectEqual(&display.windows[0], display.windows[1].parent.?);
 
+    // Each window is drawn by the app, once (until something changes).
     try testing.expect(try app.step(0));
-    try main.draw(ui.SizedBox{ .width = 10, .height = 10 });
-    try kept.draw(ui.SizedBox{ .width = 10, .height = 10 });
+    for (display.windows[0..3]) |w| try testing.expectEqual(@as(u32, 1), w.shown);
+    try testing.expect(try app.step(0));
     try testing.expectEqual(@as(u32, 1), display.windows[0].shown);
 
     // By default, a request to close is the app's to act on: nothing is
@@ -2823,9 +2825,10 @@ test "an app's windows are closed as their options say, and it quits as its own 
     try testing.expect(!kept.isClosed());
     try testing.expect(closing.isClosed());
     try testing.expect(display.windows[2].closed);
-    // A closed window's handle stays, and drawing it does nothing.
-    try closing.draw(ui.SizedBox{ .width = 10, .height = 10 });
-    try testing.expectEqual(@as(u32, 0), display.windows[2].shown);
+    // A closed window's handle stays (until it is destroyed), and it is
+    // drawn no more.
+    try testing.expect(try app.step(0));
+    try testing.expectEqual(@as(u32, 1), display.windows[2].shown);
     closing.destroy();
 
     // The system's request to quit is told; the app goes on until it quits.
@@ -2845,7 +2848,7 @@ test "an app's windows are closed as their options say, and it quits as its own 
 
     // A window opened again; told to, it quits once that is closed.
     app.on_last_window_closed = .quit;
-    const again = try app.openWindow(.{ .title = "again" });
+    const again = try app.openWindow(.{ .title = "again", .root = .of(&box) });
     try testing.expect(try app.step(0));
     again.close();
     try testing.expect(!try app.step(0));

@@ -212,22 +212,21 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
-        .title = "Facet Showcase",
-        .size = .{ 1120, 760 },
-        .min_size = .{ 800, 480 },
-        .on_close_request = .close,
-    });
 
     var notes = try facet.TextDocument.init(init.gpa, text.initial_notes);
     defer notes.deinit();
     var code = try facet.TextDocument.init(init.gpa, text.initial_code);
     defer code.deinit();
 
-    while (try app.step(60 * std.time.ns_per_s)) {
-        app.takeInput();
-        try win.draw(Showcase{ .notes = &notes, .code = &code });
-    }
+    const root = Showcase{ .notes = &notes, .code = &code };
+    _ = try app.openWindow(.{
+        .title = "Facet Showcase",
+        .root = .of(&root),
+        .size = .{ 1120, 760 },
+        .min_size = .{ 800, 480 },
+        .on_close_request = .close,
+    });
+    try app.run();
 }
 
 test "every page fits the smallest window and lays out without overflowing, at it and a large size, in both themes" {

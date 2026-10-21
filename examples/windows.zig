@@ -1,6 +1,7 @@
 //! An app with more than one window (`zig build run-windows`): the main
 //! window opens others, each with a counter of its own; closing the main
-//! window quits.
+//! window quits. Each window's handle is kept (closed or not) until the
+//! app ends.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -17,6 +18,7 @@ const Windows = struct {
         w.opened += 1;
         const win = w.app.openWindow(.{
             .title = "Another window",
+            .root = .of(&counter),
             .size = .{ 360, 240 },
             .parent = w.main,
             .on_close_request = .close,
@@ -28,19 +30,13 @@ const Windows = struct {
         w.app.quit();
     }
 
-    /// Draws each window opened, and lets go of those closed.
-    fn draw(w: *Windows) !void {
-        var i: usize = 0;
-        while (i < w.others.items.len) {
-            const win = w.others.items[i];
-            if (win.isClosed()) {
-                win.destroy();
-                _ = w.others.orderedRemove(i);
-                continue;
-            }
-            try win.draw(Counter{});
-            i += 1;
+    /// How many of those it opened are open.
+    fn openCount(w: *const Windows) usize {
+        var n: usize = 0;
+        for (w.others.items) |win| {
+            if (!win.isClosed()) n += 1;
         }
+        return n;
     }
 };
 
@@ -55,7 +51,7 @@ const MainView = struct {
                 .spacing = 16,
                 .children = &.{
                     cx.make(facet.Text{
-                        .text = cx.fmt("{d} open of {d} opened", .{ self.windows.others.items.len, self.windows.opened }),
+                        .text = cx.fmt("{d} open of {d} opened", .{ self.windows.openCount(), self.windows.opened }),
                     }),
                     cx.make(facet.FilledButton{
                         .label = "Open a window",
@@ -68,7 +64,10 @@ const MainView = struct {
     }
 };
 
-/// A window's own count (its state is its window's UI's).
+/// What each window opened draws: a count of its own (its state is its
+/// window's UI's).
+const counter: Counter = .{};
+
 const Counter = struct {
     pub const State = struct {
         count: i32 = 0,
@@ -103,15 +102,12 @@ pub fn main(init: std.process.Init) !void {
     defer app.deinit();
     var windows: Windows = .{ .gpa = init.gpa, .app = app };
     defer windows.others.deinit(init.gpa);
+    const root: MainView = .{ .windows = &windows };
     windows.main = try app.openWindow(.{
         .title = "Windows",
+        .root = .of(&root),
         .size = .{ 480, 320 },
         .on_close_request = .{ .call = .of(&windows, Windows.closeMain) },
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try windows.main.draw(MainView{ .windows = &windows });
-        try windows.draw();
-    }
+    try app.run();
 }

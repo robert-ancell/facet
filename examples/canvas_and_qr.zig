@@ -156,14 +156,13 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root = CanvasAndQrDemo{};
+    _ = try app.openWindow(.{
         .title = "Facet Canvas & QR",
+        .root = .of(&root),
         .size = .{ 740, 460 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(CanvasAndQrDemo{});
-    }
+    try app.run();
 }

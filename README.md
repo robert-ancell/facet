@@ -88,16 +88,15 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root: Counter = .{};
+    _ = try app.openWindow(.{
         .title = "Hello Facet",
+        .root = .of(&root),
         .size = .{ 480, 320 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(Counter{});
-    }
+    try app.run();
 }
 ```
 

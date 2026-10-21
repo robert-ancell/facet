@@ -133,14 +133,13 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root = EditorView{ .doc = &doc };
+    _ = try app.openWindow(.{
         .title = "Facet Editor",
+        .root = .of(&root),
         .size = .{ 720, 520 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(EditorView{ .doc = &doc });
-    }
+    try app.run();
 }

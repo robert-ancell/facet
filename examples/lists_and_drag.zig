@@ -159,14 +159,13 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root = ListsAndDragDemo{};
+    _ = try app.openWindow(.{
         .title = "Facet Lists & Drag",
+        .root = .of(&root),
         .size = .{ 820, 540 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(ListsAndDragDemo{});
-    }
+    try app.run();
 }

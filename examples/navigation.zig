@@ -169,14 +169,13 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root = NavigationDemo{};
+    _ = try app.openWindow(.{
         .title = "Facet Navigation",
+        .root = .of(&root),
         .size = .{ 800, 520 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(NavigationDemo{});
-    }
+    try app.run();
 }

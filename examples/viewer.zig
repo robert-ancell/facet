@@ -369,14 +369,12 @@ pub fn run(init: std.process.Init, title: []const u8, root: anytype) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    _ = try app.openWindow(.{
         .title = title,
+        .root = .of(&root),
         .size = .{ 920, 660 },
         .on_close_request = .close,
     });
-
-    while (try app.step(std.math.maxInt(u64))) {
-        app.takeInput();
-        try win.draw(root);
-    }
+    try app.run();
 }

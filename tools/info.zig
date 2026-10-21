@@ -368,15 +368,14 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    const win = try app.openWindow(.{
+
+    const root = Info{};
+    _ = try app.openWindow(.{
         .title = "Facet Info",
+        .root = .of(&root),
         .size = .{ 1000, 720 },
         .min_size = .{ 640, 400 },
         .on_close_request = .close,
     });
-
-    while (try app.step(60 * std.time.ns_per_s)) {
-        app.takeInput();
-        try win.draw(Info{});
-    }
+    try app.run();
 }
