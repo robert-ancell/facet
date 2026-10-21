@@ -584,10 +584,14 @@ pub const MetalRenderer = struct {
             msg(void, blit, "endEncoding", .{});
             if (msg(objc.Bool, layer, "presentsWithTransaction", .{}) != 0) {
                 // Shown in the window's transaction (as it is resized):
-                // once the GPU has it.
+                // once the GPU has it, by the window if it would present
+                // it itself (on its thread, in its transaction).
                 msg(void, cmd, "commit", .{});
                 msg(void, cmd, "waitUntilScheduled", .{});
-                msg(void, drawable, "present", .{});
+                if (t.held) |held| {
+                    objc.release(held.*);
+                    held.* = objc.retain(drawable);
+                } else msg(void, drawable, "present", .{});
                 r.slots[r.slot].cmd = objc.retain(cmd);
                 return;
             }

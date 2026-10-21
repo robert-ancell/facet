@@ -140,6 +140,9 @@ pub const Presenter = struct {
             p.inflight_job = try p.acquire(win, &p.inflight);
             p.inflight_win = win;
             t.submit(.{ .frame = &p.inflight_job });
+            // Shown in the window's transaction (as it is resized), so
+            // drawn and shown now, on this thread.
+            if (p.inflight_job.target == .metal and p.inflight_job.target.metal.held != null) try p.flush();
             return;
         }
         var job = try p.acquire(win, frame);

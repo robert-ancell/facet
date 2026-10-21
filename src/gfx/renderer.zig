@@ -148,6 +148,11 @@ pub const MetalTarget = struct {
     layer: *anyopaque,
     width: u32,
     height: u32,
+    /// Where to put the drawable (kept: retained), once the GPU has it in
+    /// hand, instead of presenting it, when the layer presents with its
+    /// transaction (as a window is resized by its edge): for the window to
+    /// present it in its own, on its own thread. Null: presented here.
+    held: ?*?*anyopaque = null,
 };
 
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.

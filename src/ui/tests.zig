@@ -603,6 +603,7 @@ test "a GPU draw in an owned frame is drawn into a layer, and again only when it
     Spot.draws = 0;
     u.frame(100, 100, 0, Spot{ .key = 1 });
     try testing.expect(try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), Spot.draws);
     try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
     try testing.expectEqual(@as(u32, 0xff000000), win.pixels[5 * 100 + 5]);
@@ -611,12 +612,14 @@ test "a GPU draw in an owned frame is drawn into a layer, and again only when it
     @memset(&win.pixels, 0);
     u.frame(100, 100, 1, Spot{ .key = 1, .moved = 10 });
     try testing.expect(try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), Spot.draws);
     try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
     try testing.expectEqual(@as(u32, 0xff00ff00), win.pixels[52 * 100 + 62]);
     // Another key: drawn again.
     u.frame(100, 100, 2, Spot{ .key = 2, .moved = 10 });
     try testing.expect(try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 2), Spot.draws);
     try testing.expectEqual(@as(u32, 0xffff0000), win.pixels[15 * 100 + 15]);
 }
@@ -1677,11 +1680,13 @@ test "any window can show frames and give the clipboard, not only Wayland's" {
     u.attachWindow(&win, null);
     u.frame(win.width, win.height, 0, ui.SizedBox{ .width = 10, .height = 10 });
     try testing.expect(try u.present(&win, 0xff112233));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), win.shown);
     try testing.expectEqual(@as(u32, 0xff112233), win.pixels[0]);
     // Nothing changed: nothing to show.
     u.frame(win.width, win.height, 1, ui.SizedBox{ .width = 10, .height = 10 });
     try testing.expect(!try u.present(&win, 0xff112233));
+    try u.presenter.flush();
 
     u.copyText("hello");
     try testing.expectEqualStrings("hello", win.copied[0..win.copied_len]);
@@ -1769,6 +1774,7 @@ test "menus and tooltips go in popups of their own when the window has them" {
     // request another frame so the popup is drawn once configured.
     u.frame(win.width, win.height, 0, HelpRoot{});
     _ = try u.present(&win, 0xff000000);
+    try u.presenter.flush();
     win.configured = false;
     u.pointerMotion(.{ 50, 20 });
     u.frame(win.width, win.height, 1, HelpRoot{});
@@ -1779,6 +1785,7 @@ test "menus and tooltips go in popups of their own when the window has them" {
     try testing.expectEqual([4]i32{ 0, 0, 100, 40 }, tip.anchor);
     try testing.expect(!u.needs_frame);
     try testing.expect(!try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 0), win.shown);
     try testing.expect(u.needs_frame);
 
@@ -1787,10 +1794,12 @@ test "menus and tooltips go in popups of their own when the window has them" {
     win.configured = true;
     u.frame(win.width, win.height, 1, HelpRoot{});
     try testing.expect(try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), win.shown);
     try testing.expect(!u.needs_frame);
     u.frame(win.width, win.height, 1, HelpRoot{});
     try testing.expect(!try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), win.shown);
 
     // A menu: the tooltip's popup closes before the menu's opens.
@@ -1807,6 +1816,7 @@ test "menus and tooltips go in popups of their own when the window has them" {
     try testing.expectEqual(ui.Point{ 350, 40 }, u.menu_root.?.offset);
     @memset(&win.pixels, 0);
     try testing.expect(try u.present(&win, 0xff000000));
+    try u.presenter.flush();
     try testing.expect(win.shown > 0);
     const surface = u.theme.surface_container.toArgb();
     try testing.expectEqual(surface, win.popup_pixels[10 * win.popup_size[0] + 10]);
@@ -1889,6 +1899,7 @@ test "frames are drawn straight into dmabufs when the renderer can, and the CPU 
     // mapped for the CPU.
     u.frame(win.width, win.height, 0, content);
     try testing.expect(try u.present(&win, 0xff102030));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), r.direct);
     try testing.expectEqual(@as(usize, 1), r.clears);
     try testing.expectEqual(@as(u32, 0), win.cpu_frames);
@@ -1900,12 +1911,14 @@ test "frames are drawn straight into dmabufs when the renderer can, and the CPU 
     u.frame(win.width, win.height, 1, content);
     u.damage.invalidate();
     try testing.expect(try u.present(&win, 0xff102030));
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), win.cpu_frames);
     try testing.expectEqual(@as(u32, 0xff102030), win.pixels[0]);
     r.fail = false;
     u.frame(win.width, win.height, 2, content);
     u.damage.invalidate();
     _ = try u.present(&win, 0xff102030);
+    try u.presenter.flush();
     try testing.expectEqual(@as(u32, 1), r.direct);
     try testing.expectEqual(@as(u32, 2), win.cpu_frames);
 }
@@ -2414,6 +2427,7 @@ test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
         lines.sizes[f % lines.sizes.len] = 24 + @as(f32, @floatFromInt(f * 37 % 71));
         u.frame(TwoBufferWin.w, TwoBufferWin.h, f, lines);
         _ = try u.present(&win, 0xff000000);
+        try u.presenter.flush();
         @memset(&want, 0xff000000);
         var want_img: gfx.software.Image = .{ .pixels = &want, .width = TwoBufferWin.w, .height = TwoBufferWin.h };
         try u.render(&want_img, null);

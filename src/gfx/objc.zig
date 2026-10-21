@@ -32,6 +32,7 @@ const Runtime = struct {
     graphics: ?*anyopaque,
     core: ?*anyopaque,
     metal: ?*anyopaque,
+    quartz: ?*anyopaque,
     msgSend: *const anyopaque,
     msgSend_stret: ?*const anyopaque,
     getClass: *const fn ([*:0]const u8) callconv(.c) Class,
@@ -62,7 +63,7 @@ pub fn load() Error!void {
     const foundation = dlopen("/System/Library/Frameworks/Foundation.framework/Foundation", RTLD_NOW);
     const graphics = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW);
     const core = dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", RTLD_NOW);
-    _ = dlopen("/System/Library/Frameworks/QuartzCore.framework/QuartzCore", RTLD_NOW);
+    const quartz = dlopen("/System/Library/Frameworks/QuartzCore.framework/QuartzCore", RTLD_NOW);
     const metal = dlopen("/System/Library/Frameworks/Metal.framework/Metal", RTLD_NOW);
     const sym = struct {
         fn f(comptime T: type, h: ?*anyopaque, name: [*:0]const u8) Error!T {
@@ -76,6 +77,7 @@ pub fn load() Error!void {
         .graphics = graphics,
         .core = core,
         .metal = metal,
+        .quartz = quartz,
         .msgSend = try sym(*const anyopaque, objc, "objc_msgSend"),
         .msgSend_stret = if (builtin.cpu.arch == .x86_64) try sym(*const anyopaque, objc, "objc_msgSend_stret") else null,
         .getClass = try sym(@FieldType(Runtime, "getClass"), objc, "objc_getClass"),
@@ -178,7 +180,7 @@ pub fn pop(pool: ?*anyopaque) void {
 /// A symbol of the frameworks (a C function, or a constant's address).
 pub fn symbol(comptime T: type, name: [*:0]const u8) ?T {
     const r = rt();
-    for ([_]?*anyopaque{ r.appkit, r.foundation, r.graphics, r.core, r.metal, r.objc }) |h| {
+    for ([_]?*anyopaque{ r.appkit, r.foundation, r.graphics, r.core, r.metal, r.quartz, r.objc }) |h| {
         if (dlsym(h, name)) |p| return @ptrCast(@alignCast(p));
     }
     return null;
