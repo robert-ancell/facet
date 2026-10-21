@@ -463,6 +463,9 @@ pub const MacWindow = struct {
         const transaction = objc.class("CATransaction");
         msg(void, transaction, "begin", .{});
         msg(void, transaction, "setDisableActions:", .{objc.yes});
+        // Its pixels the view's at its scale (the layer keeps them at its
+        // top left corner, not stretched to fit).
+        msg(void, w.plain_layer, "setContentsScale:", .{@as(objc.CGFloat, @floatFromInt(w.scale))});
         msg(void, msg(Id, w.view, "layer", .{}), "setContents:", .{image});
         msg(void, transaction, "commit", .{});
         w.frames += 1;
