@@ -402,6 +402,10 @@ pub const Window = struct {
         return if (@TypeOf(win) == Window) win else of(win);
     }
 
+    /// A `Window` for any backend: `impl` is a pointer to a struct that has
+    /// what it supports as declarations (`poll`, `beginFrame`, ...) or fields
+    /// (`width`, `height`, ...). What it leaves out gets a default (no input,
+    /// not maximized, no popups, ...), and it must outlive the `Window`.
     pub fn of(impl: anytype) Window {
         const Ptr = @TypeOf(impl);
         const T = @typeInfo(Ptr).pointer.child;
@@ -697,18 +701,23 @@ pub const Window = struct {
         return .{ .ptr = @ptrCast(@constCast(impl)), .vtable = &gen.vt };
     }
 
+    /// The windowing system the window is on (`.custom` if the backend does not say).
     pub fn platform(w: Window) Platform {
         return w.vtable.platform(w.ptr);
     }
+    /// How frames reach the window system: shared memory, dmabufs or a swapchain.
     pub fn bufferTransport(w: Window) BufferTransport {
         return w.vtable.bufferTransport(w.ptr);
     }
+    /// How the window system knows a GPU frame is finished being drawn.
     pub fn bufferSync(w: Window) BufferSync {
         return w.vtable.bufferSync(w.ptr);
     }
+    /// The frame pacing protocols the window uses.
     pub fn frameSync(w: Window) FrameSync {
         return w.vtable.frameSync(w.ptr);
     }
+    /// The display's refresh rate in hertz, or 0 if unknown (see `refreshNs`).
     pub fn refreshHz(w: Window) f32 {
         return w.vtable.refreshHz(w.ptr);
     }
@@ -717,39 +726,61 @@ pub const Window = struct {
     pub fn extensions(w: Window) []const []const u8 {
         return w.vtable.extensions(w.ptr);
     }
+    /// Who draws the window's title bar and borders: the toolkit, the window system
+    /// or no one.
     pub fn decorations(w: Window) Decorations {
         return w.vtable.decorations(w.ptr);
     }
+    /// The window's title, or "" if it has none.
     pub fn title(w: Window) []const u8 {
         return w.vtable.title(w.ptr);
     }
+    /// Handles the events that have already come, without waiting. Read the
+    /// input they made with `takeInput`.
     pub fn poll(w: Window) !void {
         return w.vtable.poll(w.ptr);
     }
+    /// Handles events as `poll` does, but first waits up to `timeout_ns` (forever
+    /// if `std.math.maxInt(u64)`) for something to come: an event, a paste, a read
+    /// of a source added with `watch`, or a held key to repeat. Returns early when
+    /// any of these arrives.
     pub fn wait(w: Window, timeout_ns: u64) !void {
         return w.vtable.wait(w.ptr, timeout_ns);
     }
+    /// The input events since the last call, in order. The slice is valid until the
+    /// next `poll`, `wait` or `takeInput`.
     pub fn takeInput(w: Window) []const InputEvent {
         return w.vtable.takeInput(w.ptr);
     }
+    /// The window's size, `[width, height]` in logical pixels (multiply by `scale`
+    /// for the pixels of the buffer).
     pub fn size(w: Window) [2]u32 {
         return w.vtable.size(w.ptr);
     }
+    /// How many buffer pixels there are to a logical pixel (2 on a high density
+    /// display), at least 1.
     pub fn scale(w: Window) u32 {
         return w.vtable.scale(w.ptr);
     }
+    /// Whether the window system has closed the window (the user asked it to end).
     pub fn isClosed(w: Window) bool {
         return w.vtable.isClosed(w.ptr);
     }
+    /// Whether the window is not shown (minimized or hidden), so drawing frames
+    /// would be wasted.
     pub fn isSuspended(w: Window) bool {
         return w.vtable.isSuspended(w.ptr);
     }
+    /// Whether the window fills the screen (see `setMaximized`).
     pub fn isMaximized(w: Window) bool {
         return w.vtable.isMaximized(w.ptr);
     }
+    /// Whether the window covers the whole display (see `setFullscreen`).
     pub fn isFullscreen(w: Window) bool {
         return w.vtable.isFullscreen(w.ptr);
     }
+    /// Whether the window is tiled against other windows or the screen's edges, so it
+    /// has no rounded corners or shadow of its own.
     pub fn isTiled(w: Window) bool {
         return w.vtable.isTiled(w.ptr);
     }
@@ -758,9 +789,11 @@ pub const Window = struct {
     pub fn isFramePending(w: Window) bool {
         return w.vtable.isFramePending(w.ptr);
     }
+    /// Sets the shape the pointer shows over the window.
     pub fn setCursor(w: Window, cursor: Cursor) void {
         w.vtable.setCursor(w.ptr, cursor);
     }
+    /// Sets the smallest size, in logical pixels, the user can resize the window to.
     pub fn setMinSize(w: Window, width: u32, height: u32) void {
         w.vtable.setMinSize(w.ptr, width, height);
     }
@@ -775,28 +808,42 @@ pub const Window = struct {
     pub fn setMinimized(w: Window) void {
         w.vtable.setMinimized(w.ptr);
     }
-    /// Whether the window system can maximize (or minimize) the window.
+    /// Whether the window system can maximize the window (`canMinimize`: minimize
+    /// it), for a title bar to show the buttons or not.
     pub fn canMaximize(w: Window) bool {
         return w.vtable.canMaximize(w.ptr);
     }
+    /// Whether the window system can minimize the window (see `canMaximize`).
     pub fn canMinimize(w: Window) bool {
         return w.vtable.canMinimize(w.ptr);
     }
+    /// Makes the window fill the screen (`on`), or go back to its own size.
     pub fn setMaximized(w: Window, on: bool) void {
         w.vtable.setMaximized(w.ptr, on);
     }
+    /// Makes the window cover the whole display (`on`), or go back to its own size.
     pub fn setFullscreen(w: Window, on: bool) void {
         w.vtable.setFullscreen(w.ptr, on);
     }
+    /// Starts moving the window with the pointer, for a title bar pressed by the
+    /// user. Does nothing unless a button is held.
     pub fn startMove(w: Window) void {
         w.vtable.startMove(w.ptr);
     }
+    /// Tells the input method about the focused text widget (for composing text,
+    /// an on-screen keyboard and where to put its candidates), or that none is
+    /// focused if null. Commits come back as `text_commit` and `text_preedit` events.
     pub fn setTextInput(w: Window, state: ?TextInputState) void {
         w.vtable.setTextInput(w.ptr, state);
     }
+    /// Starts dragging `bytes` of type `mime_type`, to be dropped on this window or
+    /// another. `actions` is a bit set of what the receiver may do with it (the
+    /// Wayland `dnd_action`s: copy 1, move 2, ask 4). Returns false if it could not
+    /// start (it has to follow a press).
     pub fn startDrag(w: Window, mime_type: []const u8, bytes: []const u8, actions: u32) bool {
         return w.vtable.startDrag(w.ptr, mime_type, bytes, actions);
     }
+    /// The data dropped on the window since the last call, or null if there is none.
     pub fn takeDrop(w: Window) ?DroppedData {
         return w.vtable.takeDrop(w.ptr);
     }
@@ -806,6 +853,8 @@ pub const Window = struct {
     pub fn setPresentationTime(w: Window, target_ns: u64) void {
         w.vtable.setPresentationTime(w.ptr, target_ns);
     }
+    /// The time of the first display refresh after `now_ns` (the monotonic clock),
+    /// for drawing a frame to be shown then. `now_ns` itself if it is not known.
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
@@ -860,13 +909,13 @@ pub const Window = struct {
     pub fn showDamaged(w: Window, damage: ?[]const gfx.Viewport) !void {
         return w.vtable.showDamaged(w.ptr, damage);
     }
-    /// Closes the window and frees it.
-    /// Opens a surface of its own over the window (and maybe beyond it),
-    /// placed as `placement` says: its id, or null if the window cannot.
-    /// A frame is drawn in it with `beginPopupFrame` and `showPopup`.
+    /// Whether the window can open popups (`openPopup`).
     pub fn supportsPopups(w: Window) bool {
         return w.vtable.supportsPopups(w.ptr);
     }
+    /// Opens a surface of its own over the window (and maybe beyond it), placed as
+    /// `placement` says: its id, or null if the window cannot. A frame is drawn in
+    /// it with `beginPopupFrame` and `showPopup`.
     pub fn openPopup(w: Window, placement: PopupPlacement) ?u32 {
         return w.vtable.openPopup(w.ptr, placement);
     }
@@ -884,9 +933,11 @@ pub const Window = struct {
     pub fn beginPopupFrame(w: Window, id: u32) !?gfx.software.Image {
         return w.vtable.beginPopupFrame(w.ptr, id);
     }
+    /// Shows the popup's frame drawn into `beginPopupFrame`'s buffer.
     pub fn showPopup(w: Window, id: u32) !void {
         return w.vtable.showPopup(w.ptr, id);
     }
+    /// Closes the window and frees it.
     pub fn close(w: Window) void {
         w.vtable.close(w.ptr);
     }
@@ -894,9 +945,12 @@ pub const Window = struct {
     pub fn hasClipboard(w: Window) bool {
         return w.vtable.copy != null and w.vtable.paste != null;
     }
+    /// Puts `text` on the system clipboard (if `hasClipboard`).
     pub fn copy(w: Window, text: []const u8) void {
         if (w.vtable.copy) |f| f(w.ptr, text);
     }
+    /// Asks for the clipboard's text, which `sink` is called with when it comes (null
+    /// if there is none, or the window has no clipboard).
     pub fn paste(w: Window, sink: clipboard.Sink) void {
         if (w.vtable.paste) |f| f(w.ptr, sink) else sink.f(sink.ctx, null);
     }
