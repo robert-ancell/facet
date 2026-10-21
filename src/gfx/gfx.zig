@@ -30,6 +30,7 @@ pub const metal = @import("metal.zig");
 pub const objc = @import("objc.zig");
 /// The Windows API, its DLLs loaded when first used (as `objc` is on macOS).
 pub const winapi = @import("winapi.zig");
+pub const d3d11 = @import("d3d11.zig");
 pub const png = @import("png.zig");
 pub const jpeg = @import("jpeg.zig");
 pub const gif = @import("gif.zig");
@@ -61,6 +62,8 @@ pub const VulkanRenderer = vulkan.VulkanRenderer;
 pub const VulkanContext = vulkan.OffscreenContext;
 pub const MetalRenderer = metal.MetalRenderer;
 pub const MetalContext = metal.OffscreenContext;
+pub const D3D11Renderer = d3d11.D3D11Renderer;
+pub const D3D11Target = renderer.D3D11Target;
 
 test {
     _ = geometry;
@@ -79,6 +82,7 @@ test {
     }
     _ = objc;
     _ = winapi;
+    _ = d3d11;
     _ = png;
     _ = jpeg;
     _ = gif;

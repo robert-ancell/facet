@@ -109,6 +109,18 @@ pub const glsl_image_fs: [:0]const u8 = @embedFile("shaders/image.frag");
 /// `solid_fs`, `text_vs`, `text_fs` and `image_fs`.
 pub const msl: [:0]const u8 = @embedFile("shaders/canvas.metal");
 
+/// The DXBC (Direct3D 11) shaders, compiled from `shaders/canvas.hlsl` by
+/// fxc when facet is built on Windows (empty with `-Dwindows-check`).
+pub const dxbc = if (@import("builtin").os.tag == .windows) struct {
+    pub const shape_vs = @embedFile("shape_vs.dxbc");
+    pub const solid_vs = @embedFile("solid_vs.dxbc");
+    pub const text_vs = @embedFile("text_vs.dxbc");
+    pub const shape_ps = @embedFile("shape_ps.dxbc");
+    pub const solid_ps = @embedFile("solid_ps.dxbc");
+    pub const text_ps = @embedFile("text_ps.dxbc");
+    pub const image_ps = @embedFile("image_ps.dxbc");
+} else struct {};
+
 test "vertex layouts match float counts and SPIR-V / GLSL shaders are valid" {
     for ([_]Layout{ shape_layout, solid_layout, text_layout }, [_]u32{ shape_floats, solid_floats, text_floats }) |layout, floats| {
         var total: u32 = 0;

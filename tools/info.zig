@@ -57,6 +57,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
         .opengl => "OpenGL 3.3+ / 4.6 SPIR-V GPU renderer",
         .vulkan => "Vulkan 1.1+ SPIR-V GPU renderer",
         .metal => "Metal GPU renderer",
+        .d3d11 => "Direct3D 11 GPU renderer",
         .custom => "Custom 2D rendering backend",
     };
 
@@ -287,6 +288,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                     cx.make(facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl }),
                     cx.make(facet.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan }),
                     cx.make(facet.Chip{ .label = "Metal", .selected = info.renderer == .metal }),
+                    cx.make(facet.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 }),
                 },
             }),
             cx.make(facet.Divider{}),

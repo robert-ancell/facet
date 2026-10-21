@@ -1479,7 +1479,9 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     const u = try ui.Ui.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
-    const expected_renderer: gfx.RenderBackend = if (u.metal_renderer != null)
+    const expected_renderer: gfx.RenderBackend = if (u.d3d11_renderer != null)
+        .d3d11
+    else if (u.metal_renderer != null)
         .metal
     else if (u.vulkan_renderer != null)
         .vulkan

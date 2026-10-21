@@ -119,6 +119,7 @@ pub const Ui = struct {
     vulkan_renderer: ?gfx.VulkanRenderer = null,
     opengl_renderer: ?gfx.OpenGlRenderer = null,
     metal_renderer: ?gfx.MetalRenderer = null,
+    d3d11_renderer: ?gfx.D3D11Renderer = null,
     software_renderer: gfx.SoftwareRenderer = .{},
     renderer: ?gfx.Renderer = null,
     owns_renderer: bool = false,
@@ -276,8 +277,9 @@ pub const Ui = struct {
 
     /// Creates a `Ui` with the given `font` (`null` for no text font; icons
     /// still use the bundled Material Icons font).
-    /// Tries initializing the Metal 2D renderer (on macOS), or the Vulkan
-    /// one first, then OpenGL (elsewhere), before falling back to Software.
+    /// Tries initializing the Metal 2D renderer (on macOS), the Direct3D 11
+    /// one (on Windows), or the Vulkan one first, then OpenGL (elsewhere),
+    /// before falling back to Software.
     ///
     /// It does its I/O, and tells the time, through `io`: the app's (as
     /// from `std.process.Init`).
@@ -302,7 +304,13 @@ pub const Ui = struct {
                 ui.renderer = ui.software_renderer.renderer();
             }
         } else if (comptime builtin.os.tag == .windows) {
-            ui.renderer = ui.software_renderer.renderer();
+            if (gfx.D3D11Renderer.initDefault(gpa)) |dx| {
+                ui.d3d11_renderer = dx;
+                ui.renderer = ui.d3d11_renderer.?.renderer();
+                ui.owns_renderer = true;
+            } else |_| {
+                ui.renderer = ui.software_renderer.renderer();
+            }
         } else if (gfx.VulkanRenderer.initDefault(gpa)) |vk| {
             ui.vulkan_renderer = vk;
             ui.renderer = ui.vulkan_renderer.?.renderer();
@@ -386,6 +394,7 @@ pub const Ui = struct {
         ui.vulkan_renderer = null;
         ui.opengl_renderer = null;
         ui.metal_renderer = null;
+        ui.d3d11_renderer = null;
         ui.renderer = r;
         ui.owns_renderer = take_ownership;
         ui.presenter = .{ .renderer = r };

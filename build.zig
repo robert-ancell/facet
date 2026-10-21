@@ -55,6 +55,92 @@ fn addSpirv(b: *std.Build, name: []const u8, source: []const u8, os_tag: std.Tar
     return obj.getEmittedBin();
 }
 
+/// The Direct3D 11 renderer's shaders (`src/gfx/shaders/canvas.hlsl`),
+/// compiled to DXBC by fxc and embedded in `gfx` as `<entry>.dxbc`.
+fn addCanvasDxbc(b: *std.Build, gfx: *std.Build.Module) void {
+    const shaders = [_]struct { entry: []const u8, profile: []const u8 }{
+        .{ .entry = "shape_vs", .profile = "vs_5_0" },
+        .{ .entry = "solid_vs", .profile = "vs_5_0" },
+        .{ .entry = "text_vs", .profile = "vs_5_0" },
+        .{ .entry = "shape_ps", .profile = "ps_5_0" },
+        .{ .entry = "solid_ps", .profile = "ps_5_0" },
+        .{ .entry = "text_ps", .profile = "ps_5_0" },
+        .{ .entry = "image_ps", .profile = "ps_5_0" },
+    };
+    for (shaders) |s| {
+        const out = addDxbc(b, b.fmt("{s}.dxbc", .{s.entry}), "src/gfx/shaders/canvas.hlsl", s.entry, s.profile);
+        gfx.addAnonymousImport(b.fmt("{s}.dxbc", .{s.entry}), .{ .root_source_file = out });
+    }
+}
+
+/// HLSL compiled to DXBC (shader model 5.0, for Direct3D 11) by fxc, the
+/// Windows SDK's compiler, when building on Windows (`-Dfxc=` says where it
+/// is, if it is not on PATH or in the SDK). Facet is built for Windows on
+/// Windows: without fxc the build fails. `-Dwindows-check` gives empty
+/// shaders instead, only to check that the code compiles elsewhere (the
+/// renderer then refuses to start).
+pub fn addDxbc(b: *std.Build, name: []const u8, source: []const u8, entry: []const u8, profile: []const u8) std.Build.LazyPath {
+    if (windowsCheck(b)) return b.addWriteFiles().add(name, "");
+    const fxc = findFxc(b) orelse {
+        const fail = b.addFail("fxc (the Windows SDK's HLSL compiler) was not found on PATH or in C:\\Program Files (x86)\\Windows Kits\\10\\bin: install the Windows SDK, or say where fxc.exe is with -Dfxc=");
+        const wf = b.addWriteFiles();
+        wf.step.dependOn(&fail.step);
+        return wf.add(name, "");
+    };
+    const run = b.addSystemCommand(&.{ fxc, "/nologo", "/O3", "/T", profile, "/E", entry, "/Fo" });
+    const out = run.addOutputFileArg(name);
+    run.addFileArg(b.path(source));
+    return out;
+}
+
+fn windowsCheck(b: *std.Build) bool {
+    const S = struct {
+        var looked = false;
+        var on = false;
+    };
+    if (!S.looked) {
+        S.looked = true;
+        S.on = b.option(bool, "windows-check", "Only check that the Windows code compiles (empty D3D11 shaders, no fxc)") orelse false;
+    }
+    return S.on;
+}
+
+/// Where fxc is: `-Dfxc=`, on PATH, or in the newest Windows 10/11 SDK.
+fn findFxc(b: *std.Build) ?[]const u8 {
+    const S = struct {
+        var looked = false;
+        var found: ?[]const u8 = null;
+    };
+    if (S.looked) return S.found;
+    S.looked = true;
+    if (b.option([]const u8, "fxc", "Path to fxc.exe, the Windows SDK's HLSL compiler (for the D3D11 shaders)")) |p| {
+        S.found = p;
+        return p;
+    }
+    var names: std.ArrayList([]const u8) = .empty;
+    names.append(b.allocator, "fxc") catch return null;
+    if (b.graph.host.result.os.tag == .windows) sdk: {
+        const io = b.graph.io;
+        const bin = "C:\\Program Files (x86)\\Windows Kits\\10\\bin";
+        var dir = std.Io.Dir.openDirAbsolute(io, bin, .{ .iterate = true }) catch break :sdk;
+        defer dir.close(io);
+        var versions: std.ArrayList([]const u8) = .empty;
+        var it = dir.iterate();
+        while (it.next(io) catch null) |e| {
+            if (e.kind == .directory and std.mem.startsWith(u8, e.name, "10.")) versions.append(b.allocator, b.dupe(e.name)) catch {};
+        }
+        // The newest first.
+        std.mem.sort([]const u8, versions.items, {}, struct {
+            fn newer(_: void, a: []const u8, c: []const u8) bool {
+                return std.mem.order(u8, a, c) == .gt;
+            }
+        }.newer);
+        for (versions.items) |v| names.append(b.allocator, b.pathJoin(&.{ bin, v, "x64", "fxc.exe" })) catch {};
+    }
+    S.found = b.findProgram(.{ .names = names.items });
+    return S.found;
+}
+
 pub const Modules = struct {
     facet: *std.Build.Module,
     ui: *std.Build.Module,
@@ -110,6 +196,7 @@ pub fn createModules(
             .{ .name = "font", .module = font },
         },
     });
+    if (target.result.os.tag == .windows) addCanvasDxbc(b, gfx);
     for ([_][]const u8{ "shape", "solid", "text", "image", "window" }) |shader_name| {
         const spv = addSpirv(b, shader_name, b.fmt("src/gfx/shaders/{s}.zig", .{shader_name}), .vulkan);
         gfx.addAnonymousImport(b.fmt("{s}.spv", .{shader_name}), .{ .root_source_file = spv });

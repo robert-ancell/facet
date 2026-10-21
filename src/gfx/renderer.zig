@@ -6,6 +6,7 @@
 //! * `opengl.OpenGlRenderer` (`gfx.opengl`)
 //! * `vulkan.VulkanRenderer` (`gfx.vulkan`)
 //! * `metal.MetalRenderer` (`gfx.metal`, on macOS)
+//! * `d3d11.D3D11Renderer` (`gfx.d3d11`, on Windows)
 //!
 //! Any custom backend (e.g., Direct3D, or WebGPU) can
 //! implement `prepare`, `record`, and optional `deinit` and wrap itself via
@@ -145,6 +146,15 @@ pub const MetalTarget = struct {
     height: u32,
 };
 
+/// A window's swap chain's back buffer (an `ID3D11Texture2D`) that the GPU
+/// draws a frame into on Windows, for the window to present: see
+/// `Renderer.renderD3D11`.
+pub const D3D11Target = struct {
+    texture: *anyopaque,
+    width: u32,
+    height: u32,
+};
+
 /// One layer of a painted frame: either a 2D `Canvas` or a custom `GpuDraw`.
 pub const Segment = union(enum) {
     canvas: *Canvas,
@@ -232,6 +242,7 @@ pub const RenderBackend = enum {
     opengl,
     vulkan,
     metal,
+    d3d11,
     custom,
 
     pub fn name(b: RenderBackend) []const u8 {
@@ -240,6 +251,7 @@ pub const RenderBackend = enum {
             .opengl => "OpenGL",
             .vulkan => "Vulkan",
             .metal => "Metal",
+            .d3d11 => "Direct3D 11",
             .custom => "Custom",
         };
     }
@@ -278,6 +290,9 @@ pub const Renderer = struct {
         /// Renders a frame into a window's Metal layer, if the backend can
         /// (see `renderMetal`).
         render_metal: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const MetalTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
+        /// Renders a frame into a window's swap chain's back buffer, if the
+        /// backend can (see `renderD3D11`).
+        render_d3d11: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
     };
 
     /// Wraps any backend pointer `*T` that implements:
@@ -302,7 +317,12 @@ pub const Renderer = struct {
                     .deinit = if (@hasDecl(T, "deinit")) deinitFn else null,
                     .render_dmabuf = if (@hasDecl(T, "renderDmabuf")) renderDmabufFn else null,
                     .render_metal = if (@hasDecl(T, "renderMetal")) renderMetalFn else null,
+                    .render_d3d11 = if (@hasDecl(T, "renderD3D11")) renderD3D11Fn else null,
                 };
+                fn renderD3D11Fn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
+                    const self: *T = @ptrCast(@alignCast(ptr));
+                    return self.renderD3D11(canvases, segments, target, clear, clear_rects, damage);
+                }
                 fn renderMetalFn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const MetalTarget, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
                     const self: *T = @ptrCast(@alignCast(ptr));
                     return self.renderMetal(canvases, segments, target, clear, clear_rects, damage);
@@ -406,6 +426,18 @@ pub const Renderer = struct {
     /// Whether the backend may render into a window's Metal layer.
     pub fn hasMetal(r: Renderer) bool {
         return r.vtable.render_metal != null;
+    }
+
+    pub fn hasD3D11(r: Renderer) bool {
+        return r.vtable.render_d3d11 != null;
+    }
+
+    /// Renders a frame into a swap chain's back buffer on the GPU (the
+    /// window presents it): as `renderMetal`. An error leaves the frame to
+    /// be drawn the CPU way.
+    pub fn renderD3D11(r: Renderer, canvases: []const *const Canvas, segments: []const Segment, target: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) !void {
+        const f = r.vtable.render_d3d11 orelse return error.Unsupported;
+        return f(r.ptr, canvases, segments, target, clear, clear_rects, damage);
     }
 
     /// Renders a frame into `target`'s next drawable on the GPU, and
