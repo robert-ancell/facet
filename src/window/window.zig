@@ -931,23 +931,25 @@ pub const Window = struct {
     pub fn releaseSpareBuffers(w: Window) void {
         w.vtable.releaseSpareBuffers(w.ptr);
     }
-    /// The buffer to draw the next frame into.
+    /// The buffer to draw the next frame into, in CPU memory for the software
+    /// renderer to draw into, or an error if the window cannot give one.
     pub fn beginSoftwareFrame(w: Window) !gfx.software.Image {
         return w.vtable.beginSoftwareFrame(w.ptr);
     }
     /// The buffer to draw the next frame into, as a dmabuf for the GPU to
-    /// draw into directly (instead of `beginSoftwareFrame`), or null if it is not
-    /// one (not Linux, or the frame is in shared memory).
+    /// draw into directly, or null if the window cannot give one (not Linux, or
+    /// the frame is in shared memory).
     pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
         return w.vtable.beginDmabufFrame(w.ptr);
     }
-    /// The next frame drawn on the GPU into the window's Metal layer
-    /// (instead of `beginSoftwareFrame`), or null if it has none (not macOS).
+    /// The next frame drawn on the GPU into the window's Metal layer, or null
+    /// if the window cannot give one (not macOS).
     pub fn beginMetalFrame(w: Window) ?gfx.MetalTarget {
         return w.vtable.beginMetalFrame(w.ptr);
     }
-    /// How many frames ago `beginSoftwareFrame`'s buffer was last drawn: 1 if in
-    /// the frame before, 0 if never.
+    /// How many frames ago the buffer of the frame begun (by `beginSoftwareFrame`,
+    /// `beginDmabufFrame` or `beginMetalFrame`) was last drawn: 1 if in the frame
+    /// before, 0 if never.
     pub fn bufferAge(w: Window) u32 {
         return w.vtable.bufferAge(w.ptr);
     }
