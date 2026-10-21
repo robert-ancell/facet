@@ -8,8 +8,10 @@
 //! Apps can either use a backend directly or implement custom window
 //! backends (e.g. X11, SDL, GLFW, Windows) via `Window.of(&impl)`.
 //!
-//! Windows do their I/O, and wait, through the app's `std.Io` (given when
-//! they are opened): what they wait on (their connection, and the
+//! Windows are opened on a `Display` (the app's connection to the windowing
+//! system: `NativeDisplay` is the system's), and wait through it together.
+//! They do their I/O, and wait, through the app's `std.Io` (given when
+//! the display is opened): what they wait on (their connection, and the
 //! `Source`s watched with theirs) is read in one `std.Io.Batch`, so that
 //! other tasks on the `Io` go on while the UI waits.
 
@@ -38,6 +40,16 @@ pub const NativeWindow = switch (@import("builtin").os.tag) {
     .macos => MacWindow,
     .windows => Win32Window,
     else => WaylandWindow,
+};
+pub const WaylandDisplay = wayland.WaylandDisplay;
+pub const MacDisplay = macos.MacDisplay;
+pub const Win32Display = win32.Win32Display;
+/// The display for the system being built for (that `NativeWindow`s are
+/// opened on).
+pub const NativeDisplay = switch (@import("builtin").os.tag) {
+    .macos => MacDisplay,
+    .windows => Win32Display,
+    else => WaylandDisplay,
 };
 
 /// Now, in nanoseconds on the clock frames and input are timed on (the
@@ -777,6 +789,13 @@ pub const Window = struct {
         return .{ .ptr = @ptrCast(@constCast(impl)), .vtable = &gen.vt };
     }
 
+    /// The backend `T` behind it (it was made by `of` from a `*T`), or null.
+    pub fn as(w: Window, comptime T: type) ?*T {
+        const probe: *T = @ptrFromInt(@max(@alignOf(T), 1));
+        if (w.vtable != of(probe).vtable) return null;
+        return @ptrCast(@alignCast(w.ptr));
+    }
+
     /// The windowing system the window is on (`.custom` if the backend does not say).
     pub fn platform(w: Window) Platform {
         return w.vtable.platform(w.ptr);
@@ -1054,6 +1073,178 @@ pub fn premultiply(dst: []u32, src: []const u32) void {
 /// A popup opened in a window (`Window.openPopup`): a menu or tooltip in a
 /// surface of its own. Draw it with `beginSoftwareFrame` and `show`, and
 /// `close` it when done (popups are closed newest first).
+/// How a window opened by `Display.openWindow` starts out.
+pub const WindowOptions = struct {
+    title: []const u8,
+    /// What the system knows the app by (Wayland's app id), if not the
+    /// display's.
+    app_id: ?[]const u8 = null,
+    /// Its size in logical pixels (null: the backend's default).
+    size: ?[2]u32 = null,
+    min_size: ?[2]u32 = null,
+    maximized: bool = false,
+    /// A window it belongs to (a dialog's, a tool window's), opened on the
+    /// same display: it stays above it.
+    parent: ?Window = null,
+};
+
+/// The app's connection to the windowing system: what its windows are
+/// opened on (`openWindow`), and wait through together (`wait`, `poll`,
+/// `watch`), so that one wait covers all of them. `NativeDisplay` is the
+/// system's; a custom backend's one window gets one of its own with
+/// `single`.
+pub const Display = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        platform: *const fn (ptr: *anyopaque) Platform,
+        /// Null if it cannot open windows (`single`'s).
+        openWindow: ?*const fn (ptr: *anyopaque, options: WindowOptions) anyerror!Window,
+        poll: *const fn (ptr: *anyopaque) anyerror!void,
+        wait: *const fn (ptr: *anyopaque, timeout_ns: u64) anyerror!void,
+        watch: *const fn (ptr: *anyopaque, source: Source, on: bool) void,
+        takeQuitRequest: *const fn (ptr: *anyopaque) bool,
+        close: *const fn (ptr: *anyopaque) void,
+    };
+
+    /// A `Display` for any backend: `impl` is a pointer to a struct that has
+    /// what it supports as declarations (`openWindow`, `wait`, `poll`,
+    /// `watch`, `takeQuitRequest`, `close`, `platform`). Its `openWindow`
+    /// takes its windows' own options (those of `WindowOptions` it has are
+    /// filled in), and returns a pointer to one of them.
+    pub fn of(impl: anytype) Display {
+        const T = @typeInfo(@TypeOf(impl)).pointer.child;
+        const gen = struct {
+            fn self(p: *anyopaque) *T {
+                return @ptrCast(@alignCast(p));
+            }
+            fn platformFn(_: *anyopaque) Platform {
+                if (@hasDecl(T, "platform")) return T.platform;
+                return .custom;
+            }
+            const open_fn = if (@hasDecl(T, "openWindow")) @typeInfo(@TypeOf(T.openWindow)).@"fn" else undefined;
+            fn openWindowFn(p: *anyopaque, options: WindowOptions) anyerror!Window {
+                const Opts = open_fn.param_types[1].?;
+                const W = @typeInfo(@typeInfo(open_fn.return_type.?).error_union.payload).pointer.child;
+                var o: Opts = .{ .title = options.title };
+                inline for (@typeInfo(Opts).@"struct".field_names) |name| {
+                    if (comptime std.mem.eql(u8, name, "title")) continue;
+                    if (comptime std.mem.eql(u8, name, "parent")) {
+                        if (options.parent) |parent| o.parent = parent.as(W) orelse return error.ParentNotOnDisplay;
+                    } else if (comptime std.mem.eql(u8, name, "size")) {
+                        if (options.size) |size| o.size = size;
+                    } else if (@hasField(WindowOptions, name)) {
+                        @field(o, name) = @field(options, name);
+                    }
+                }
+                return Window.of(try self(p).openWindow(o));
+            }
+            fn pollFn(p: *anyopaque) anyerror!void {
+                if (@hasDecl(T, "poll")) return self(p).poll();
+            }
+            fn waitFn(p: *anyopaque, timeout_ns: u64) anyerror!void {
+                if (@hasDecl(T, "wait")) return self(p).wait(timeout_ns);
+            }
+            fn watchFn(p: *anyopaque, source: Source, on: bool) void {
+                if (@hasDecl(T, "watch")) self(p).watch(source, on);
+            }
+            fn takeQuitRequestFn(p: *anyopaque) bool {
+                if (@hasDecl(T, "takeQuitRequest")) return self(p).takeQuitRequest();
+                return false;
+            }
+            fn closeFn(p: *anyopaque) void {
+                if (@hasDecl(T, "close")) self(p).close();
+            }
+            const vt = VTable{
+                .platform = platformFn,
+                .openWindow = if (@hasDecl(T, "openWindow")) openWindowFn else null,
+                .poll = pollFn,
+                .wait = waitFn,
+                .watch = watchFn,
+                .takeQuitRequest = takeQuitRequestFn,
+                .close = closeFn,
+            };
+        };
+        return .{ .ptr = @ptrCast(impl), .vtable = &gen.vt };
+    }
+
+    /// A display of `win`'s own, for a backend with one window that waits
+    /// for itself (`Window.wait`, `poll`, `watch`): it opens no others, and
+    /// closing it leaves the window be. `win` is a pointer `Window.of`
+    /// takes, and must outlive it.
+    pub fn single(win: anytype) Display {
+        const T = @typeInfo(@TypeOf(win)).pointer.child;
+        const gen = struct {
+            fn w(p: *anyopaque) Window {
+                return Window.of(@as(*T, @ptrCast(@alignCast(p))));
+            }
+            fn platformFn(p: *anyopaque) Platform {
+                return w(p).platform();
+            }
+            fn pollFn(p: *anyopaque) anyerror!void {
+                return w(p).poll();
+            }
+            fn waitFn(p: *anyopaque, timeout_ns: u64) anyerror!void {
+                return w(p).wait(timeout_ns);
+            }
+            fn watchFn(p: *anyopaque, source: Source, on: bool) void {
+                w(p).watch(source, on);
+            }
+            fn takeQuitRequestFn(_: *anyopaque) bool {
+                return false;
+            }
+            fn closeFn(_: *anyopaque) void {}
+            const vt = VTable{
+                .platform = platformFn,
+                .openWindow = null,
+                .poll = pollFn,
+                .wait = waitFn,
+                .watch = watchFn,
+                .takeQuitRequest = takeQuitRequestFn,
+                .close = closeFn,
+            };
+        };
+        return .{ .ptr = @ptrCast(@constCast(win)), .vtable = &gen.vt };
+    }
+
+    /// The windowing system it is on (`.custom` if the backend does not say).
+    pub fn platform(d: Display) Platform {
+        return d.vtable.platform(d.ptr);
+    }
+    /// Whether it can open windows (`openWindow`).
+    pub fn canOpenWindows(d: Display) bool {
+        return d.vtable.openWindow != null;
+    }
+    /// Opens a window on it (closed with `Window.close`).
+    pub fn openWindow(d: Display, options: WindowOptions) !Window {
+        const f = d.vtable.openWindow orelse return error.Unsupported;
+        return f(d.ptr, options);
+    }
+    /// Handles what has come for its windows, without waiting.
+    pub fn poll(d: Display) !void {
+        return d.vtable.poll(d.ptr);
+    }
+    /// Waits up to `timeout_ns` (forever if `maxInt(u64)`) for something to
+    /// come for its windows, or a watched source, and handles it.
+    pub fn wait(d: Display, timeout_ns: u64) !void {
+        return d.vtable.wait(d.ptr, timeout_ns);
+    }
+    /// Waits on `source` too (or stops, if not `on`).
+    pub fn watch(d: Display, source: Source, on: bool) void {
+        d.vtable.watch(d.ptr, source, on);
+    }
+    /// Takes the system's request for the app to quit (the session ending,
+    /// macOS's Quit), if there was one.
+    pub fn takeQuitRequest(d: Display) bool {
+        return d.vtable.takeQuitRequest(d.ptr);
+    }
+    /// Lets it go (its windows must be closed first).
+    pub fn close(d: Display) void {
+        d.vtable.close(d.ptr);
+    }
+};
+
 pub const Popup = struct {
     win: Window,
     /// What `InputEvent.popup_done` says when the window system closes it.
@@ -1240,7 +1431,74 @@ test "sources are waited on through io, with a timeout" {
     try std.testing.expect(!b.drain());
 }
 
+test "a display opens its windows with their own options, on it" {
+    const testing = std.testing;
+    const Win = struct {
+        const Win = @This();
+        title: []const u8,
+        size: [2]u32,
+        parent: ?*Win,
+        closed: bool = false,
+        width: u32 = 1,
+        height: u32 = 1,
+
+        pub const Options = struct {
+            title: []const u8,
+            size: [2]u32 = .{ 100, 50 },
+            parent: ?*Win = null,
+        };
+        pub fn close(w: *@This()) void {
+            w.closed = true;
+        }
+    };
+    const Disp = struct {
+        windows: [2]Win = undefined,
+        len: usize = 0,
+        waited: u64 = 0,
+
+        pub fn openWindow(d: *@This(), o: Win.Options) !*Win {
+            d.windows[d.len] = .{ .title = o.title, .size = o.size, .parent = o.parent };
+            d.len += 1;
+            return &d.windows[d.len - 1];
+        }
+        pub fn wait(d: *@This(), ns: u64) !void {
+            d.waited = ns;
+        }
+    };
+    var impl: Disp = .{};
+    const d = Display.of(&impl);
+    try testing.expect(d.canOpenWindows());
+    try testing.expectEqual(Platform.custom, d.platform());
+    const a = try d.openWindow(.{ .title = "a" });
+    const b = try d.openWindow(.{ .title = "b", .size = .{ 30, 20 }, .parent = a });
+    try testing.expectEqualStrings("a", impl.windows[0].title);
+    try testing.expectEqual([2]u32{ 100, 50 }, impl.windows[0].size);
+    try testing.expectEqual([2]u32{ 30, 20 }, impl.windows[1].size);
+    try testing.expectEqual(&impl.windows[0], impl.windows[1].parent.?);
+    try testing.expectEqual(&impl.windows[1], b.as(Win).?);
+    try d.wait(5);
+    try testing.expectEqual(@as(u64, 5), impl.waited);
+    try testing.expect(!d.takeQuitRequest());
+
+    // A parent from elsewhere is not one of its windows.
+    var other: struct { width: u32 = 1, height: u32 = 1 } = .{};
+    try testing.expectError(error.ParentNotOnDisplay, d.openWindow(.{ .title = "c", .parent = .of(&other) }));
+
+    // A window of its own waits for itself.
+    const single = Display.single(&impl.windows[0]);
+    try testing.expect(!single.canOpenWindows());
+    try testing.expectError(error.Unsupported, single.openWindow(.{ .title = "d" }));
+    single.close();
+    try testing.expect(!impl.windows[0].closed);
+}
+
 test {
+    // The system's display is one `Display.of` takes.
+    _ = &struct {
+        fn f(d: *NativeDisplay) Display {
+            return .of(d);
+        }
+    }.f;
     _ = present;
     _ = sys;
     _ = @import("win32_keys.zig");

@@ -137,6 +137,133 @@ const SIZE_MINIMIZED = 1;
 const frame_timer_id: usize = 1;
 const max_watched = 8;
 
+/// The app's connection to Windows, which its windows are opened on
+/// (`openWindow`) and wait through together (`wait`, `poll`, `watch`): the
+/// thread's messages (for all its windows), the swap chains' waitable
+/// objects, and the watched sources' handles, in one wait.
+pub const Win32Display = struct {
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    windows: std.ArrayList(*Win32Window) = .empty,
+    /// What `wait` waits on as well as the windows' messages, and the
+    /// high-resolution timer for its deadline.
+    watched: [max_watched]?window.Source = @splat(null),
+    timer: ?w32.HANDLE = null,
+    /// The app was asked to quit (the session ending).
+    quit_requested: bool = false,
+
+    pub const platform: window.Platform = .windows;
+    const max_windows = 32;
+
+    /// Ready to open windows (each monitor's own DPI told as it changes,
+    /// Windows 10 1703 on), doing its I/O through `io`.
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ) !*Win32Display {
+        _ = environ;
+        const u = w32.user32() orelse return error.NoUser32;
+        _ = u.SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        Win32Window.registerClass(u, @ptrCast(w32.GetModuleHandleW(null)));
+        const d = try gpa.create(Win32Display);
+        d.* = .{ .gpa = gpa, .io = io };
+        d.timer = w32.CreateWaitableTimerExW(null, null, w32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, w32.TIMER_ALL_ACCESS);
+        return d;
+    }
+
+    /// Lets it go (its windows must be closed first).
+    pub fn close(d: *Win32Display) void {
+        std.debug.assert(d.windows.items.len == 0);
+        if (d.timer) |t| _ = w32.CloseHandle(t);
+        d.windows.deinit(d.gpa);
+        d.gpa.destroy(d);
+    }
+
+    /// Opens a window on it (closed with `Win32Window.close`).
+    pub fn openWindow(d: *Win32Display, options: Win32Window.Options) !*Win32Window {
+        if (d.windows.items.len == max_windows) return error.TooManyWindows;
+        try d.windows.ensureUnusedCapacity(d.gpa, 1);
+        const w = try Win32Window.openOn(d, options);
+        d.windows.appendAssumeCapacity(w);
+        return w;
+    }
+
+    fn forget(d: *Win32Display, w: *Win32Window) void {
+        if (std.mem.indexOfScalar(*Win32Window, d.windows.items, w)) |i| _ = d.windows.orderedRemove(i);
+    }
+
+    /// Takes the request to quit, if there was one.
+    pub fn takeQuitRequest(d: *Win32Display) bool {
+        defer d.quit_requested = false;
+        return d.quit_requested;
+    }
+
+    /// Handles the messages that have come, without waiting.
+    pub fn poll(d: *Win32Display) !void {
+        Win32Window.pump();
+        for (d.windows.items) |w| w.updatePending();
+    }
+
+    /// Waits up to `timeout_ns` for a message or a watched source (and not
+    /// past when a window's next frame can be drawn: a buffer of its swap
+    /// chain is free, or its deadline), and handles what came.
+    pub fn wait(d: *Win32Display, timeout_ns: u64) !void {
+        const u = w32.user32() orelse return;
+        var ns = timeout_ns;
+        var handles: [max_watched + max_windows + 1]w32.HANDLE = undefined;
+        // Which window each swap chain's object is of.
+        var swap_of: [max_windows]*Win32Window = undefined;
+        var n: w32.DWORD = 0;
+        const now_ns = window.nowNs(d.io);
+        for (d.windows.items) |w| {
+            if (w.on_gpu and w.swap != null) {
+                // The swap chain says when a buffer is free.
+                if (!w.swap_ready) {
+                    swap_of[n] = w;
+                    handles[n] = w.swap.?.waitable;
+                    n += 1;
+                }
+            } else if (w.frame_pending) ns = @min(ns, w.presented_ns -| now_ns);
+            // Out of sight, it is asked again now and then whether it shows.
+            if (w.occluded) ns = @min(ns, 100 * std.time.ns_per_ms);
+        }
+        const swaps = n;
+        for (d.watched) |slot| if (slot) |s| {
+            handles[n] = s.fd;
+            n += 1;
+        };
+        // A deadline to the 100 ns, on a high-resolution timer, rather than
+        // to the millisecond (and the scheduler's tick).
+        var ms: w32.DWORD = w32.INFINITE;
+        if (ns != std.math.maxInt(u64)) {
+            if (d.timer) |t| {
+                const due: i64 = -@as(i64, @intCast(@max(ns / 100, 1)));
+                if (w32.SetWaitableTimer(t, &due, 0, null, null, w32.FALSE) != 0) {
+                    handles[n] = t;
+                    n += 1;
+                } else ms = Win32Window.msCeil(ns);
+            } else ms = Win32Window.msCeil(ns);
+        }
+        const woke = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        if (d.timer) |t| _ = w32.CancelWaitableTimer(t);
+        // A swap chain's object, if it woke the wait, was taken by it.
+        if (woke >= w32.WAIT_OBJECT_0 and woke < w32.WAIT_OBJECT_0 + swaps) swap_of[woke - w32.WAIT_OBJECT_0].swap_ready = true;
+        Win32Window.pump();
+        for (d.windows.items) |w| w.updatePending();
+    }
+
+    /// Waits on `source` too (or stops, if not `on`): signalled, it wakes
+    /// `wait` (a `sys.Wake` is an event, taken by the wait itself).
+    pub fn watch(d: *Win32Display, source: window.Source, on: bool) void {
+        for (&d.watched) |*slot| if (slot.*) |s| if (s.eql(source)) {
+            if (!on) slot.* = null;
+            return;
+        };
+        if (!on) return;
+        for (&d.watched) |*slot| if (slot.* == null) {
+            slot.* = source;
+            return;
+        };
+    }
+};
+
 pub const Win32Window = struct {
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -201,9 +328,10 @@ pub const Win32Window = struct {
     pixels: []u32 = &.{},
     pixels_size: [2]u32 = .{ 0, 0 },
     pixels_shown: bool = false,
-    /// What `wait` waits on as well as the window's messages, and the
-    /// high-resolution timer for its deadline.
-    watched: [max_watched]?window.Source = @splat(null),
+    /// The display it is on (its own, if it was opened by `open`), and the
+    /// high-resolution timer for frames' deadlines in Windows' modal loops.
+    display: *Win32Display,
+    owns_display: bool = false,
     timer: ?w32.HANDLE = null,
     /// The pending high surrogate of a character `WM_CHAR` gives in two.
     high_surrogate: u16 = 0,
@@ -242,24 +370,34 @@ pub const Win32Window = struct {
         size: [2]u32 = .{ 960, 640 },
         min_size: ?[2]u32 = null,
         maximized: bool = false,
+        /// A window it belongs to (a dialog's, a tool window's): it owns
+        /// it, so that it stays above it, and is minimized with it.
+        parent: ?*Win32Window = null,
     };
 
     const class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetWindow");
     const popup_class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetPopup");
 
+    /// Opens a window on a display of its own.
     pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*Win32Window {
-        _ = environ;
+        const d = try Win32Display.open(gpa, io, environ);
+        errdefer d.close();
+        const w = try d.openWindow(options);
+        w.owns_display = true;
+        return w;
+    }
+
+    fn openOn(d: *Win32Display, options: Options) !*Win32Window {
+        const gpa = d.gpa;
         const u = w32.user32() orelse return error.NoUser32;
-        // Each monitor's own DPI, told as it changes (Windows 10 1703 on).
-        _ = u.SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         const instance: ?w32.HINSTANCE = @ptrCast(w32.GetModuleHandleW(null));
-        registerClass(u, instance);
 
         const w = try gpa.create(Win32Window);
         errdefer gpa.destroy(w);
         w.* = .{
             .gpa = gpa,
-            .io = io,
+            .io = d.io,
+            .display = d,
             .hwnd = undefined,
             .title_buf = try gpa.dupe(u8, options.title),
             .width = options.size[0],
@@ -270,7 +408,8 @@ pub const Win32Window = struct {
 
         var title_w: [256]u16 = undefined;
         // Sized for its DPI once it has one (WM_DPICHANGED, or below).
-        const hwnd = u.CreateWindowExW(0, class_name, w32.wide(&title_w, options.title).ptr, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, null, null, instance, w) orelse return error.CreateWindowFailed;
+        const owner: ?w32.HWND = if (options.parent) |parent| parent.hwnd else null;
+        const hwnd = u.CreateWindowExW(0, class_name, w32.wide(&title_w, options.title).ptr, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, owner, null, instance, w) orelse return error.CreateWindowFailed;
         w.hwnd = hwnd;
         w.updateScale(u);
         w.resizeTo(u, options.size);
@@ -324,7 +463,10 @@ pub const Win32Window = struct {
         w.input.deinit(w.gpa);
         w.taken.deinit(w.gpa);
         w.gpa.free(w.title_buf);
+        const d = w.display;
+        d.forget(w);
         w.gpa.destroy(w);
+        if (w.owns_display) d.close();
     }
 
     pub fn getTitle(w: *const Win32Window) []const u8 {
@@ -684,59 +826,24 @@ pub const Win32Window = struct {
 
     // --- Waiting -------------------------------------------------------------------
 
-    /// Handles the messages that have come, without waiting.
+    /// Handles the messages that have come (for any of the display's
+    /// windows), without waiting.
     pub fn poll(w: *Win32Window) !void {
-        w.pump();
-        w.updatePending();
+        return w.display.poll();
     }
 
-    /// Waits up to `timeout_ns` for a message or a watched source (and not
-    /// past when the next frame can be drawn), and handles what came.
+    /// Waits up to `timeout_ns` for a message or a watched source (see
+    /// `Win32Display.wait`).
     pub fn wait(w: *Win32Window, timeout_ns: u64) !void {
-        const u = w32.user32() orelse return;
-        var ns = timeout_ns;
-        var handles: [max_watched + 2]w32.HANDLE = undefined;
-        var n: w32.DWORD = 0;
-        if (w.on_gpu and w.swap != null) {
-            // The swap chain says when a buffer is free.
-            if (!w.swap_ready) {
-                handles[n] = w.swap.?.waitable;
-                n += 1;
-            }
-        } else if (w.frame_pending) ns = @min(ns, w.presented_ns -| w.now());
-        // Out of sight, it is asked again now and then whether it shows.
-        if (w.occluded) ns = @min(ns, 100 * std.time.ns_per_ms);
-        for (w.watched) |slot| if (slot) |s| {
-            handles[n] = s.fd;
-            n += 1;
-        };
-        // A deadline to the 100 ns, on a high-resolution timer, rather than
-        // to the millisecond (and the scheduler's tick).
-        var ms: w32.DWORD = w32.INFINITE;
-        if (ns != std.math.maxInt(u64)) {
-            if (w.timer) |t| {
-                const due: i64 = -@as(i64, @intCast(@max(ns / 100, 1)));
-                if (w32.SetWaitableTimer(t, &due, 0, null, null, w32.FALSE) != 0) {
-                    handles[n] = t;
-                    n += 1;
-                } else ms = msCeil(ns);
-            } else ms = msCeil(ns);
-        }
-        const woke = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-        if (w.timer) |t| _ = w32.CancelWaitableTimer(t);
-        // The swap chain's object, if it was first, was taken by the wait.
-        if (w.on_gpu and !w.swap_ready and n > 0 and woke == w32.WAIT_OBJECT_0 and w.swap != null and handles[0] == w.swap.?.waitable) w.swap_ready = true;
-        w.pump();
-        w.updatePending();
+        return w.display.wait(timeout_ns);
     }
 
     fn msCeil(ns: u64) w32.DWORD {
         return @intCast(@min((ns + std.time.ns_per_ms - 1) / std.time.ns_per_ms, w32.INFINITE - 1));
     }
 
-    /// Dispatches the messages there are.
-    fn pump(w: *Win32Window) void {
-        _ = w;
+    /// Dispatches the messages there are (for all the thread's windows).
+    fn pump() void {
         const u = w32.user32() orelse return;
         var m: w32.MSG = undefined;
         while (u.PeekMessageW(&m, null, 0, 0, PM_REMOVE) != 0) {
@@ -745,18 +852,9 @@ pub const Win32Window = struct {
         }
     }
 
-    /// Waits on `source` too (or stops, if not `on`): signalled, it wakes
-    /// `wait` (a `sys.Wake` is an event, taken by the wait itself).
+    /// Waits on `source` too (see `Win32Display.watch`).
     pub fn watch(w: *Win32Window, source: window.Source, on: bool) void {
-        for (&w.watched) |*slot| if (slot.*) |s| if (s.eql(source)) {
-            if (!on) slot.* = null;
-            return;
-        };
-        if (!on) return;
-        for (&w.watched) |*slot| if (slot.* == null) {
-            slot.* = source;
-            return;
-        };
+        w.display.watch(source, on);
     }
 
     fn now(w: *const Win32Window) u64 {

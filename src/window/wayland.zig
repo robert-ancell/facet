@@ -548,6 +548,137 @@ const PopupSurface = struct {
 
 pub const max_popups = 4;
 
+/// The app's connection to the compositor, which its windows are opened on
+/// (`openWindow`) and wait through together (`wait`, `poll`, `watch`). Each
+/// window binds what it needs of the compositor's globals, its seat's
+/// pointer and keyboard among them, and heeds only what happens on its own
+/// surfaces.
+pub const WaylandDisplay = struct {
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    conn: *client.Display,
+    compose_env: compose.Env = .{},
+    /// Its windows, and what they wait on as well as the compositor.
+    windows: std.ArrayList(*WaylandWindow) = .empty,
+    watched: [8]?window_mod.Source = @splat(null),
+    /// A read of the connection, through `io`, that failed.
+    read_error: ?wire.Error = null,
+
+    pub const platform: window_mod.Platform = .wayland;
+
+    /// Connects to the compositor named in `environ` (`WAYLAND_DISPLAY`
+    /// under `XDG_RUNTIME_DIR`), doing its I/O (and waiting) through `io`.
+    pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ) !*WaylandDisplay {
+        var path_buf: [256]u8 = undefined;
+        const path = try client.environSocketPath(&path_buf, environ);
+        const conn = try client.Display.connect(gpa, io, path);
+        errdefer conn.disconnect();
+        const d = try gpa.create(WaylandDisplay);
+        d.* = .{ .gpa = gpa, .io = io, .conn = conn, .compose_env = .from(environ) };
+        return d;
+    }
+
+    /// Disconnects (its windows must be closed first).
+    pub fn close(d: *WaylandDisplay) void {
+        std.debug.assert(d.windows.items.len == 0);
+        d.windows.deinit(d.gpa);
+        d.conn.disconnect();
+        d.gpa.destroy(d);
+    }
+
+    /// Opens a window on it (closed with `WaylandWindow.close`).
+    pub fn openWindow(d: *WaylandDisplay, options: WaylandWindow.Options) !*WaylandWindow {
+        try d.windows.ensureUnusedCapacity(d.gpa, 1);
+        const w = try WaylandWindow.openOn(d.gpa, d.conn, options);
+        w.display = d;
+        w.compose_env = d.compose_env;
+        d.windows.appendAssumeCapacity(w);
+        return w;
+    }
+
+    /// A window of its is closing.
+    fn forget(d: *WaylandDisplay, w: *WaylandWindow) void {
+        if (std.mem.indexOfScalar(*WaylandWindow, d.windows.items, w)) |i| _ = d.windows.orderedRemove(i);
+    }
+
+    /// Waits on `source` too in `wait` (`on`), or no longer (for as many as
+    /// `watched` has room for).
+    pub fn watch(d: *WaylandDisplay, source: window_mod.Source, on: bool) void {
+        for (&d.watched) |*slot| if (slot.*) |x| if (x.eql(source)) {
+            if (!on) slot.* = null;
+            return;
+        };
+        if (!on) return;
+        for (&d.watched) |*slot| if (slot.* == null) {
+            slot.* = source;
+            return;
+        };
+    }
+
+    /// Handles what has come, without waiting.
+    pub fn poll(d: *WaylandDisplay) !void {
+        _ = try d.conn.dispatchPending();
+        d.service();
+    }
+
+    /// Handles what has come, waiting (through `io`, with whatever else
+    /// is waiting on it) up to `timeout_ns` for something: an event, a
+    /// paste's text, a watched source's read, or a key to repeat.
+    pub fn wait(d: *WaylandDisplay, timeout_ns: u64) !void {
+        try d.conn.flush();
+        if (try d.conn.dispatchPending() == 0) {
+            const now_ns = window_mod.nowNs(d.io);
+            var ns = timeout_ns;
+            var sources: [window_mod.max_sources]window_mod.Source = undefined;
+            sources[0] = .{ .ctx = d, .fd = d.conn.conn.fd, .read = connRead, .done = connDone };
+            var n: usize = 1;
+            for (d.watched) |slot| if (slot) |x| if (n < sources.len) {
+                sources[n] = x;
+                n += 1;
+            };
+            for (d.windows.items) |w| {
+                if (w.repeatTimeoutMs(now_ns)) |ms| ns = @min(ns, ms *| std.time.ns_per_ms);
+                if (w.clipboard.pasteTimeoutMs()) |ms| ns = @min(ns, ms *| std.time.ns_per_ms);
+                if (w.clipboard.pasteFd() != null and n < sources.len) {
+                    sources[n] = .{ .ctx = w, .fd = -1, .read = WaylandWindow.pasteRead, .done = WaylandWindow.pasteDone };
+                    n += 1;
+                }
+            }
+            try window_mod.waitSources(d.io, sources[0..n], ns);
+            if (d.read_error) |e| {
+                d.read_error = null;
+                return e;
+            }
+            _ = try d.conn.dispatchPending();
+        }
+        d.service();
+    }
+
+    /// Reads what has come of pastes, and repeats keys held.
+    fn service(d: *WaylandDisplay) void {
+        const now_ns = window_mod.nowNs(d.io);
+        for (d.windows.items) |w| {
+            w.clipboard.service();
+            w.serviceRepeat(now_ns);
+        }
+    }
+
+    fn connRead(ctx: *anyopaque) ?std.Io.Operation {
+        const d: *WaylandDisplay = @ptrCast(@alignCast(ctx));
+        return d.conn.conn.readOperation() catch |e| {
+            d.read_error = e;
+            return null;
+        };
+    }
+
+    fn connDone(ctx: *anyopaque, result: std.Io.Operation.Result) void {
+        const d: *WaylandDisplay = @ptrCast(@alignCast(ctx));
+        _ = d.conn.conn.readDone(result) catch |e| {
+            d.read_error = e;
+        };
+    }
+};
+
 pub const WaylandWindow = struct {
     pub const platform: window_mod.Platform = .wayland;
 
@@ -719,6 +850,16 @@ pub const WaylandWindow = struct {
     /// The pointer left a surface; unless it enters another of the
     /// window's in the same frame, it has left the window.
     leave_pending: bool = false,
+    /// The display it is on, with others, if it was opened on one (see
+    /// `WaylandDisplay`): then each window's seat objects hear of what
+    /// happens on all the app's surfaces, and each heeds only its own.
+    /// The pointer is on another window's surface; whether the keyboard's
+    /// focus is on one of this window's (null until it is said); and the
+    /// touches on other windows' surfaces.
+    display: ?*WaylandDisplay = null,
+    pointer_away: bool = false,
+    keyboard_focused: ?bool = null,
+    away_touches: [8]?i32 = @splat(null),
     commit_timing_manager: ?client.Proxy = null,
     commit_timer: ?client.Proxy = null,
     extensions_buf: [16][]const u8 = undefined,
@@ -787,6 +928,9 @@ pub const WaylandWindow = struct {
         size: [2]u32 = default_size,
         min_size: ?[2]u32 = null,
         maximized: bool = false,
+        /// A window it belongs to (a dialog's, a tool window's), on the
+        /// same display.
+        parent: ?*WaylandWindow = null,
     };
 
     /// Connects to the compositor named in `environ` (`WAYLAND_DISPLAY`
@@ -913,6 +1057,10 @@ pub const WaylandWindow = struct {
             m = try w.toplevel.request(p.xdg_toplevel.request.set_app_id);
             m.string(app_id).end();
         }
+        if (options.parent) |parent| {
+            m = try w.toplevel.request(p.xdg_toplevel.request.set_parent);
+            m.uint(parent.toplevel.id).end();
+        }
         if (options.min_size) |ms| {
             m = try w.toplevel.request(p.xdg_toplevel.request.set_min_size);
             m.int(@intCast(ms[0])).int(@intCast(ms[1])).end();
@@ -1013,8 +1161,28 @@ pub const WaylandWindow = struct {
             w.conn.forget(timer.id);
         }
         if (w.dmabuf_dev) |*dev| dev.close();
-        w.conn.flush() catch {};
-        w.conn.disconnect();
+        if (w.display) |d| {
+            // The connection stays (the display's), with the other windows
+            // on it: this one's surface goes, and nothing more of it is
+            // told what comes.
+            for ([_]?client.Proxy{ w.toplevel_decoration, w.toplevel, w.xdg_surface, w.surface }, [_]u16{
+                p.zxdg_toplevel_decoration_v1.request.destroy,
+                p.xdg_toplevel.request.destroy,
+                p.xdg_surface.request.destroy,
+                p.wl_surface.request.destroy,
+            }) |obj, opcode| if (obj) |o| if (o.id != 0) {
+                if (o.request(opcode)) |m0| {
+                    var m = m0;
+                    m.end();
+                } else |_| {}
+            };
+            w.conn.forgetAll(w);
+            w.conn.flush() catch {};
+            d.forget(w);
+        } else {
+            w.conn.flush() catch {};
+            w.conn.disconnect();
+        }
         w.gpa.destroy(w);
     }
 
@@ -1033,6 +1201,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn poll(w: *WaylandWindow) !void {
+        if (w.display) |d| return d.poll();
         _ = try w.conn.dispatchPending();
         w.clipboard.service();
         w.serviceRepeat(w.now());
@@ -1487,6 +1656,7 @@ pub const WaylandWindow = struct {
     /// Waits on `source` too in `wait` (`on`), or no longer (for as many
     /// as `watched` has room for).
     pub fn watch(w: *WaylandWindow, source: window_mod.Source, on: bool) void {
+        if (w.display) |d| return d.watch(source, on);
         for (&w.watched) |*slot| if (slot.*) |x| if (x.eql(source)) {
             if (!on) slot.* = null;
             return;
@@ -1502,6 +1672,7 @@ pub const WaylandWindow = struct {
     /// is waiting on it) up to `timeout_ns` for something: an event, a
     /// paste's text, a watched source's read, or a key to repeat.
     pub fn wait(w: *WaylandWindow, timeout_ns: u64) !void {
+        if (w.display) |d| return d.wait(timeout_ns);
         try w.conn.flush();
         if (try w.conn.dispatchPending() == 0) {
             const now_ns = w.now();
@@ -2226,6 +2397,23 @@ pub const WaylandWindow = struct {
 
     /// A position on `surface` (the window's, or a popup's) in the window's
     /// coordinates.
+    /// Whether `surface` is one of this window's (its own, or a popup's).
+    fn ownsSurface(w: *const WaylandWindow, surface: u32) bool {
+        if (surface == w.surface.id) return true;
+        for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.surface.id == surface) return true;
+        return false;
+    }
+
+    /// Whether touch `id` is on another window's surface (and, if `ending`,
+    /// forgets it).
+    fn touchAway(w: *WaylandWindow, id: i32, ending: bool) bool {
+        for (&w.away_touches) |*slot| if (slot.* == id) {
+            if (ending) slot.* = null;
+            return true;
+        };
+        return false;
+    }
+
     fn toWindow(w: *const WaylandWindow, surface: u32, pos: [2]f32) [2]f32 {
         for (&w.popups) |*slot| if (slot.*) |*pop| if (pop.surface.id == surface) {
             const at = pop.position orelse return pos;
@@ -2289,14 +2477,14 @@ pub const WaylandWindow = struct {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
         switch (opcode) {
             p.zwp_text_input_v3.event.enter => {
-                _ = r.uint() catch return;
+                if (!w.ownsSurface(r.uint() catch return)) return;
                 w.text_input_entered = true;
                 if (w.text_input_enabled) if (w.text_input) |ti| {
                     w.sendTextInputState(ti, true);
                 };
             },
             p.zwp_text_input_v3.event.leave => {
-                _ = r.uint() catch return;
+                if (!w.ownsSurface(r.uint() catch return)) return;
                 w.text_input_entered = false;
                 w.text_input_pending_preedit = null;
                 w.text_input_pending_commit = null;
@@ -2409,11 +2597,19 @@ pub const WaylandWindow = struct {
 
     fn pointerEvent(ptr: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
+        // On another window's surface: for it.
+        if (w.pointer_away and opcode != p.wl_pointer.event.enter) {
+            if (opcode == p.wl_pointer.event.leave) w.pointer_away = false;
+            return;
+        }
         switch (opcode) {
             p.wl_pointer.event.enter, p.wl_pointer.event.motion => {
                 const first = r.uint() catch return;
                 if (opcode == p.wl_pointer.event.enter) {
                     const surface = r.uint() catch return;
+                    // Another window's.
+                    w.pointer_away = !w.ownsSurface(surface);
+                    if (w.pointer_away) return;
                     w.enter_serial = first;
                     w.cursor_shape = p.wp_cursor_shape_device_v1.shape.default;
                     // Moving between the window's surfaces is not leaving.
@@ -2481,8 +2677,16 @@ pub const WaylandWindow = struct {
             p.wl_touch.event.down => {
                 const serial = r.uint() catch return;
                 _ = r.uint() catch return;
-                w.touch_surface = r.uint() catch return;
+                const surface = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
+                if (!w.ownsSurface(surface)) {
+                    for (&w.away_touches) |*slot| if (slot.* == null) {
+                        slot.* = id;
+                        break;
+                    };
+                    return;
+                }
+                w.touch_surface = surface;
                 const pos = w.toWindow(w.touch_surface, .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.press_serial = serial;
                 w.grab_serial = serial;
@@ -2501,16 +2705,20 @@ pub const WaylandWindow = struct {
             p.wl_touch.event.motion => {
                 _ = r.uint() catch return;
                 const id: i32 = @bitCast(r.uint() catch return);
+                if (w.touchAway(id, false)) return;
                 const pos = w.toWindow(w.touch_surface, .{ @floatCast(r.fixed() catch return), @floatCast(r.fixed() catch return) });
                 w.pushInput(.{ .touch_motion = .{ .id = id, .pos = pos } });
             },
             p.wl_touch.event.up => {
                 _ = r.uint() catch return;
                 _ = r.uint() catch return;
+                const id: i32 = @bitCast(r.uint() catch return);
+                if (w.touchAway(id, true)) return;
                 w.press_serial = 0;
-                w.pushInput(.{ .touch_up = @bitCast(r.uint() catch return) });
+                w.pushInput(.{ .touch_up = id });
             },
             p.wl_touch.event.cancel => {
+                w.away_touches = @splat(null);
                 w.press_serial = 0;
                 w.pushInput(.touch_cancel);
             },
@@ -2541,7 +2749,13 @@ pub const WaylandWindow = struct {
                 const group = r.uint() catch return;
                 w.xkb_state = .{ .depressed = depressed, .latched = latched, .locked = locked, .group = group };
             },
+            p.wl_keyboard.event.enter => {
+                _ = r.uint() catch return;
+                w.keyboard_focused = w.ownsSurface(r.uint() catch return);
+            },
             p.wl_keyboard.event.key => {
+                // Typed in another window.
+                if (w.keyboard_focused == false) return;
                 const serial = r.uint() catch return;
                 _ = r.uint() catch return;
                 const code = r.uint() catch return;
@@ -2565,6 +2779,10 @@ pub const WaylandWindow = struct {
                 w.pushKey(code, pressed, false);
             },
             p.wl_keyboard.event.leave => {
+                _ = r.uint() catch return;
+                const surface = r.uint() catch return;
+                if (!w.ownsSurface(surface)) return;
+                w.keyboard_focused = false;
                 w.repeat = null;
                 w.compose_state.reset();
                 var it = w.keys_down.iterator(.{});
@@ -2745,13 +2963,47 @@ test "held keys repeat after the delay, except modifiers, and stop on release or
     try std.testing.expect(win.repeat == null);
     _ = win.takeInput();
 
-    const leave_msg = [_]u32{ 4, 1 };
+    const leave_msg = [_]u32{ 4, win.surface.id };
     var r_leave = wire.Reader{ .data = std.mem.sliceAsBytes(&leave_msg), .c = undefined };
     WaylandWindow.keyboardEvent(&win, &disp, 1, p.wl_keyboard.event.leave, &r_leave);
     const left = win.takeInput();
     try std.testing.expectEqual(@as(usize, 1), left.len);
     try std.testing.expectEqual(@as(u32, 42), left[0].key.code);
     try std.testing.expect(!left[0].key.pressed);
+}
+
+test "windows on one display heed only what happens on their own surfaces" {
+    var disp: client.Display = undefined;
+    var wins: [2]WaylandWindow = undefined;
+    for (&wins, [_]u32{ 10, 20 }) |*w, id| w.* = .{
+        .gpa = std.testing.allocator,
+        .io = std.testing.io,
+        .conn = &disp,
+        .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
+        .surface = .{ .id = id },
+    };
+    const send = struct {
+        fn f(ws: *[2]WaylandWindow, d: *client.Display, comptime handler: anytype, opcode: u16, words: []const u32) void {
+            for (ws) |*w| {
+                var r = wire.Reader{ .data = std.mem.sliceAsBytes(words), .c = undefined };
+                handler(w, d, 1, opcode, &r);
+            }
+        }
+    }.f;
+    // The pointer enters the first window, and moves: only it is told.
+    send(&wins, &disp, WaylandWindow.pointerEvent, p.wl_pointer.event.enter, &.{ 1, 10, 5 << 8, 5 << 8 });
+    send(&wins, &disp, WaylandWindow.pointerEvent, p.wl_pointer.event.motion, &.{ 2, 6 << 8, 6 << 8 });
+    try std.testing.expect(wins[0].takeInput().len > 0);
+    try std.testing.expectEqual(@as(usize, 0), wins[1].takeInput().len);
+    // The keyboard's focus goes to the second: only it hears the key.
+    send(&wins, &disp, WaylandWindow.keyboardEvent, p.wl_keyboard.event.enter, &.{ 3, 20, 0 });
+    send(&wins, &disp, WaylandWindow.keyboardEvent, p.wl_keyboard.event.key, &.{ 4, 0, 30, p.wl_keyboard.key_state.pressed });
+    try std.testing.expectEqual(@as(usize, 0), wins[0].takeInput().len);
+    try std.testing.expectEqual(@as(usize, 1), wins[1].takeInput().len);
+    // A touch on the first is not the second's.
+    send(&wins, &disp, WaylandWindow.touchEvent, p.wl_touch.event.down, &.{ 5, 0, 10, 7, 1 << 8, 1 << 8 });
+    send(&wins, &disp, WaylandWindow.touchEvent, p.wl_touch.event.up, &.{ 6, 0, 7 });
+    try std.testing.expectEqual(@as(usize, 0), wins[1].takeInput().len);
 }
 
 test "setMinSize clamps non-maximized window dimensions" {

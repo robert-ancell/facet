@@ -102,6 +102,23 @@ pub const Display = struct {
         _ = d.listeners.remove(id);
     }
 
+    /// Stops delivering events to listeners with `ptr` (whatever they
+    /// listen to), before what it points to goes.
+    pub fn forgetAll(d: *Display, ptr: *anyopaque) void {
+        var stale: [64]u32 = undefined;
+        while (true) {
+            var n: usize = 0;
+            var it = d.listeners.iterator();
+            while (it.next()) |e| if (e.value_ptr.ptr == ptr) {
+                stale[n] = e.key_ptr.*;
+                n += 1;
+                if (n == stale.len) break;
+            };
+            for (stale[0..n]) |id| _ = d.listeners.remove(id);
+            if (n < stale.len) return;
+        }
+    }
+
     pub fn flush(d: *Display) Error!void {
         return d.conn.flush();
     }
