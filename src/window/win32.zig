@@ -284,6 +284,15 @@ pub const Win32Window = struct {
         return w.title_buf;
     }
 
+    pub fn setTitle(w: *Win32Window, title: []const u8) void {
+        const owned = w.gpa.dupe(u8, title) catch return;
+        w.gpa.free(w.title_buf);
+        w.title_buf = owned;
+        const u = w32.user32() orelse return;
+        var buf: [256]u16 = undefined;
+        _ = u.SetWindowTextW(w.hwnd, w32.wide(&buf, title).ptr);
+    }
+
     pub fn size(w: *const Win32Window) [2]u32 {
         return .{ w.width, w.height };
     }
