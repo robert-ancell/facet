@@ -293,7 +293,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
         back: usize = 0,
         rng: std.Random.DefaultPrng = .init(7),
 
-        pub fn beginFrame(win: *@This()) !facet.gfx.software.Image {
+        pub fn beginSoftwareFrame(win: *@This()) !facet.gfx.software.Image {
             win.back = win.rng.random().uintLessThan(usize, win.pixels.len);
             return .{ .pixels = win.pixels[win.back], .width = w, .height = h };
         }

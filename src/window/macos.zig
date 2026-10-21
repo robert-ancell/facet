@@ -401,7 +401,7 @@ pub const MacWindow = struct {
     }
 
     /// The next buffer to draw a frame in, as big as the view in pixels.
-    pub fn beginFrame(w: *MacWindow) !gfx.software.Image {
+    pub fn beginSoftwareFrame(w: *MacWindow) !gfx.software.Image {
         if (w.on_gpu) {
             // Back to the CPU (the GPU could not draw).
             msg(void, w.view, "setLayer:", .{w.plain_layer});
@@ -421,7 +421,7 @@ pub const MacWindow = struct {
         return .{ .pixels = b.pixels.?.mem, .width = pw, .height = ph };
     }
 
-    /// How many frames ago the buffer `beginFrame` gave was last shown (0:
+    /// How many frames ago the buffer `beginSoftwareFrame` gave was last shown (0:
     /// never).
     pub fn bufferAge(w: *const MacWindow) u32 {
         // The renderer keeps the GPU's frame, while it is the same size.

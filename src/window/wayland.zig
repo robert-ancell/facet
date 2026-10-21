@@ -1201,7 +1201,7 @@ pub const WaylandWindow = struct {
 
     /// A free buffer the popup's size, once it is configured; null until
     /// then, or while both its buffers are being shown.
-    pub fn beginPopupFrame(w: *WaylandWindow, id: u32) !?gfx.software.Image {
+    pub fn beginSoftwarePopupFrame(w: *WaylandWindow, id: u32) !?gfx.software.Image {
         const pop = w.findPopup(id) orelse return null;
         if (!pop.configured) return null;
         const bw = @max(pop.placement.size[0], 1) * pop.scale;
@@ -1662,7 +1662,7 @@ pub const WaylandWindow = struct {
     /// Acquires a free `linux_dmabuf` (or `wl_shm` fallback) buffer of the
     /// window's current size and returns its inner content CPU pixel slice as
     /// a `gfx.software.Image`.
-    pub fn beginFrame(w: *WaylandWindow) !gfx.software.Image {
+    pub fn beginSoftwareFrame(w: *WaylandWindow) !gfx.software.Image {
         const i = w.back orelse try w.pickBack();
         w.back = i;
         w.frame_corners_applied = false;
@@ -1733,7 +1733,7 @@ pub const WaylandWindow = struct {
         w.frame_corners_applied = true;
     }
 
-    /// How many frames ago the buffer `beginFrame` gave was last drawn: 1
+    /// How many frames ago the buffer `beginSoftwareFrame` gave was last drawn: 1
     /// if in the frame before, 0 if never.
     pub fn bufferAge(w: *const WaylandWindow) u32 {
         const i = w.back orelse return 0;

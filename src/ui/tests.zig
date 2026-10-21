@@ -1609,7 +1609,7 @@ test "any window can show frames and give the clipboard, not only Wayland's" {
         shown: u32 = 0,
         copied: [16]u8 = undefined,
         copied_len: usize = 0,
-        pub fn beginFrame(w: *@This()) !gfx.software.Image {
+        pub fn beginSoftwareFrame(w: *@This()) !gfx.software.Image {
             return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
         }
         pub fn showDamaged(w: *@This(), _: ?[]const gfx.Viewport) !void {
@@ -1663,7 +1663,7 @@ const PopupWin = struct {
         w.opened.deinit(testing.allocator);
         w.log.deinit(testing.allocator);
     }
-    pub fn beginFrame(w: *PopupWin) !gfx.software.Image {
+    pub fn beginSoftwareFrame(w: *PopupWin) !gfx.software.Image {
         return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
     }
     pub fn showDamaged(_: *PopupWin, _: ?[]const gfx.Viewport) !void {}
@@ -1680,7 +1680,7 @@ const PopupWin = struct {
     pub fn popupPosition(_: *PopupWin, _: u32) ?[2]i32 {
         return at;
     }
-    pub fn beginPopupFrame(w: *PopupWin, _: u32) !?gfx.software.Image {
+    pub fn beginSoftwarePopupFrame(w: *PopupWin, _: u32) !?gfx.software.Image {
         if (!w.configured) return null;
         return .{ .pixels = w.popup_pixels[0 .. w.popup_size[0] * w.popup_size[1]], .width = w.popup_size[0], .height = w.popup_size[1] };
     }
@@ -1715,7 +1715,7 @@ test "menus and tooltips go in popups of their own when the window has them" {
 
     // Hovering the widget opens its tooltip in a popup above it.
     // On Wayland, a newly opened xdg_popup is not yet configured on the
-    // frame it opens (`beginPopupFrame` returns `null`); `present` must
+    // frame it opens (`beginSoftwarePopupFrame` returns `null`); `present` must
     // request another frame so the popup is drawn once configured.
     u.frame(win.width, win.height, 0, HelpRoot{});
     _ = try u.present(&win, 0xff000000);
@@ -1809,7 +1809,7 @@ const DmabufWin = struct {
     pixels: [200 * 100]u32 = @splat(0),
     cpu_frames: u32 = 0,
     shown: u32 = 0,
-    pub fn beginFrame(w: *DmabufWin) !gfx.software.Image {
+    pub fn beginSoftwareFrame(w: *DmabufWin) !gfx.software.Image {
         w.cpu_frames += 1;
         return .{ .pixels = &w.pixels, .width = w.width, .height = w.height };
     }
@@ -2326,7 +2326,7 @@ const TwoBufferWin = struct {
     frames: u64 = 0,
     back: usize = 0,
 
-    pub fn beginFrame(win: *TwoBufferWin) !gfx.software.Image {
+    pub fn beginSoftwareFrame(win: *TwoBufferWin) !gfx.software.Image {
         win.back = @intCast(win.frames % 2);
         return .{ .pixels = &win.pixels[win.back], .width = w, .height = h };
     }

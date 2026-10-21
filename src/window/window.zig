@@ -377,7 +377,7 @@ pub const Window = struct {
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
         releaseSpareBuffers: *const fn (ptr: *anyopaque) void,
-        beginFrame: *const fn (ptr: *anyopaque) anyerror!gfx.software.Image,
+        beginSoftwareFrame: *const fn (ptr: *anyopaque) anyerror!gfx.software.Image,
         beginDmabufFrame: *const fn (ptr: *anyopaque) ?gfx.DmabufTarget,
         beginMetalFrame: *const fn (ptr: *anyopaque) ?gfx.MetalTarget,
         bufferAge: *const fn (ptr: *anyopaque) u32,
@@ -388,7 +388,7 @@ pub const Window = struct {
         openPopup: *const fn (ptr: *anyopaque, placement: PopupPlacement) ?u32,
         closePopup: *const fn (ptr: *anyopaque, id: u32) void,
         popupPosition: *const fn (ptr: *anyopaque, id: u32) ?[2]i32,
-        beginPopupFrame: *const fn (ptr: *anyopaque, id: u32) anyerror!?gfx.software.Image,
+        beginSoftwarePopupFrame: *const fn (ptr: *anyopaque, id: u32) anyerror!?gfx.software.Image,
         showPopup: *const fn (ptr: *anyopaque, id: u32) anyerror!void,
         copy: ?*const fn (ptr: *anyopaque, text: []const u8) void = null,
         paste: ?*const fn (ptr: *anyopaque, sink: clipboard.Sink) void = null,
@@ -403,7 +403,7 @@ pub const Window = struct {
     }
 
     /// A `Window` for any backend: `impl` is a pointer to a struct that has
-    /// what it supports as declarations (`poll`, `beginFrame`, ...) or fields
+    /// what it supports as declarations (`poll`, `beginSoftwareFrame`, ...) or fields
     /// (`width`, `height`, ...). What it leaves out gets a default (no input,
     /// not maximized, no popups, ...), and it must outlive the `Window`.
     pub fn of(impl: anytype) Window {
@@ -583,8 +583,8 @@ pub const Window = struct {
             fn releaseSpareBuffersFn(p: *anyopaque) void {
                 if (@hasDecl(T, "releaseSpareBuffers")) self(p).releaseSpareBuffers();
             }
-            fn beginFrameFn(p: *anyopaque) anyerror!gfx.software.Image {
-                if (@hasDecl(T, "beginFrame")) return self(p).beginFrame();
+            fn beginSoftwareFrameFn(p: *anyopaque) anyerror!gfx.software.Image {
+                if (@hasDecl(T, "beginSoftwareFrame")) return self(p).beginSoftwareFrame();
                 return error.Unsupported;
             }
             fn beginDmabufFrameFn(p: *anyopaque) ?gfx.DmabufTarget {
@@ -620,8 +620,8 @@ pub const Window = struct {
                 if (@hasDecl(T, "popupPosition")) return self(p).popupPosition(id);
                 return null;
             }
-            fn beginPopupFrameFn(p: *anyopaque, id: u32) anyerror!?gfx.software.Image {
-                if (@hasDecl(T, "beginPopupFrame")) return self(p).beginPopupFrame(id);
+            fn beginSoftwarePopupFrameFn(p: *anyopaque, id: u32) anyerror!?gfx.software.Image {
+                if (@hasDecl(T, "beginSoftwarePopupFrame")) return self(p).beginSoftwarePopupFrame(id);
                 return null;
             }
             fn showPopupFn(p: *anyopaque, id: u32) anyerror!void {
@@ -680,7 +680,7 @@ pub const Window = struct {
                 .refreshNs = refreshNsFn,
                 .applyConfigure = applyConfigureFn,
                 .releaseSpareBuffers = releaseSpareBuffersFn,
-                .beginFrame = beginFrameFn,
+                .beginSoftwareFrame = beginSoftwareFrameFn,
                 .beginDmabufFrame = beginDmabufFrameFn,
                 .beginMetalFrame = beginMetalFrameFn,
                 .bufferAge = bufferAgeFn,
@@ -691,7 +691,7 @@ pub const Window = struct {
                 .openPopup = openPopupFn,
                 .closePopup = closePopupFn,
                 .popupPosition = popupPositionFn,
-                .beginPopupFrame = beginPopupFrameFn,
+                .beginSoftwarePopupFrame = beginSoftwarePopupFrameFn,
                 .showPopup = showPopupFn,
                 .copy = if (@hasDecl(T, "copy") or @hasField(T, "clipboard")) copyFn else null,
                 .paste = if (@hasDecl(T, "paste") or @hasField(T, "clipboard")) pasteFn else null,
@@ -881,20 +881,20 @@ pub const Window = struct {
         w.vtable.releaseSpareBuffers(w.ptr);
     }
     /// The buffer to draw the next frame into.
-    pub fn beginFrame(w: Window) !gfx.software.Image {
-        return w.vtable.beginFrame(w.ptr);
+    pub fn beginSoftwareFrame(w: Window) !gfx.software.Image {
+        return w.vtable.beginSoftwareFrame(w.ptr);
     }
     /// The buffer to draw the next frame into, as a dmabuf for the GPU to
-    /// draw into directly (instead of `beginFrame`), or null if it is not one.
+    /// draw into directly (instead of `beginSoftwareFrame`), or null if it is not one.
     pub fn beginDmabufFrame(w: Window) ?gfx.DmabufTarget {
         return w.vtable.beginDmabufFrame(w.ptr);
     }
     /// The next frame drawn on the GPU into the window's Metal layer
-    /// (instead of `beginFrame`), or null if it has none (not macOS).
+    /// (instead of `beginSoftwareFrame`), or null if it has none (not macOS).
     pub fn beginMetalFrame(w: Window) ?gfx.MetalTarget {
         return w.vtable.beginMetalFrame(w.ptr);
     }
-    /// How many frames ago `beginFrame`'s buffer was last drawn: 1 if in
+    /// How many frames ago `beginSoftwareFrame`'s buffer was last drawn: 1 if in
     /// the frame before, 0 if never.
     pub fn bufferAge(w: Window) u32 {
         return w.vtable.bufferAge(w.ptr);
@@ -915,7 +915,7 @@ pub const Window = struct {
     }
     /// Opens a surface of its own over the window (and maybe beyond it), placed as
     /// `placement` says: its id, or null if the window cannot. A frame is drawn in
-    /// it with `beginPopupFrame` and `showPopup`.
+    /// it with `beginSoftwarePopupFrame` and `showPopup`.
     pub fn openPopup(w: Window, placement: PopupPlacement) ?u32 {
         return w.vtable.openPopup(w.ptr, placement);
     }
@@ -930,10 +930,10 @@ pub const Window = struct {
     }
     /// The buffer to draw the popup's next frame into (all of it), or null
     /// if it cannot be drawn yet.
-    pub fn beginPopupFrame(w: Window, id: u32) !?gfx.software.Image {
-        return w.vtable.beginPopupFrame(w.ptr, id);
+    pub fn beginSoftwarePopupFrame(w: Window, id: u32) !?gfx.software.Image {
+        return w.vtable.beginSoftwarePopupFrame(w.ptr, id);
     }
-    /// Shows the popup's frame drawn into `beginPopupFrame`'s buffer.
+    /// Shows the popup's frame drawn into `beginSoftwarePopupFrame`'s buffer.
     pub fn showPopup(w: Window, id: u32) !void {
         return w.vtable.showPopup(w.ptr, id);
     }

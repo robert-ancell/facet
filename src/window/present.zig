@@ -46,7 +46,7 @@ pub const Presenter = struct {
             break :blk false;
         } else false;
         if (!direct) {
-            var img = try win.beginFrame();
+            var img = try win.beginSoftwareFrame();
             const vps = frame.repaint(win.bufferAge());
             img.clearViewports(frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments));
             try r.renderSegments(frame.canvases, frame.segments, &img, vps);
@@ -59,7 +59,7 @@ pub const Presenter = struct {
     /// false if the popup has no buffer to draw into yet.
     pub fn presentPopup(p: *Presenter, win: Window, id: u32, frame: *const gfx.Frame) !bool {
         const r = p.renderer orelse return error.NoRenderer;
-        var img = (try win.beginPopupFrame(id)) orelse return false;
+        var img = (try win.beginSoftwarePopupFrame(id)) orelse return false;
         img.clear(frame.clear);
         try r.prepare(frame.canvases);
         try r.render(frame.segments, &img, null);
@@ -88,7 +88,7 @@ test "a frame is drawn where its buffer's age says, and what changed is shown" {
         shown: [4]Viewport = undefined,
         shown_len: usize = 0,
 
-        pub fn beginFrame(win: *@This()) !gfx.software.Image {
+        pub fn beginSoftwareFrame(win: *@This()) !gfx.software.Image {
             return .{ .pixels = &win.pixels, .width = w, .height = h };
         }
         pub fn bufferAge(_: *const @This()) u32 {
