@@ -52,15 +52,15 @@ pub const Presenter = struct {
         try f.show(frame.damage.slice());
     }
 
-    /// Draws `frame` whole into popup `id`'s next buffer, and shows it;
-    /// false if the popup has no buffer to draw into yet.
-    pub fn presentPopup(p: *Presenter, win: Window, id: u32, frame: *const gfx.Frame) !bool {
+    /// Draws `frame` whole into `popup`'s next buffer, and shows it; false if
+    /// the popup has no buffer to draw into yet.
+    pub fn presentPopup(p: *Presenter, popup: window_mod.Popup, frame: *const gfx.Frame) !bool {
         const r = p.renderer orelse return error.NoRenderer;
-        var img = (try win.beginSoftwarePopupFrame(id)) orelse return false;
+        var img = (try popup.beginSoftwareFrame()) orelse return false;
         img.clear(frame.clear);
         try r.prepare(frame.canvases);
         try r.render(frame.segments, &img, null);
-        try win.showPopup(id);
+        try popup.show();
         return true;
     }
 

@@ -908,7 +908,8 @@ pub const Window = struct {
         w.vtable.setPresentationTime(w.ptr, target_ns);
     }
     /// The time of the first display refresh after `now_ns`, both in nanoseconds on
-    /// the monotonic clock (as `nowNs` gives), for drawing a frame to be shown then. `now_ns` itself if it is not known.
+    /// the monotonic clock (as `nowNs` gives), for drawing a frame to be shown then.
+    /// `now_ns` itself if it is not known.
     pub fn nextPresentationNs(w: Window, now_ns: u64) u64 {
         return w.vtable.nextPresentationNs(w.ptr, now_ns);
     }
@@ -960,28 +961,10 @@ pub const Window = struct {
         return w.vtable.supportsPopups(w.ptr);
     }
     /// Opens a surface of its own over the window (and maybe beyond it), placed as
-    /// `placement` says: its id, or null if the window cannot. A frame is drawn in
-    /// it with `beginSoftwarePopupFrame` and `showPopup`.
-    pub fn openPopup(w: Window, placement: PopupPlacement) ?u32 {
-        return w.vtable.openPopup(w.ptr, placement);
-    }
-    /// Closes the popup (popups are closed newest first).
-    pub fn closePopup(w: Window, id: u32) void {
-        w.vtable.closePopup(w.ptr, id);
-    }
-    /// Where the window system put the popup (`[x, y]` of its top left in the
-    /// window's coordinates, in logical pixels), once it has.
-    pub fn popupPosition(w: Window, id: u32) ?[2]i32 {
-        return w.vtable.popupPosition(w.ptr, id);
-    }
-    /// The buffer to draw the popup's next frame into (all of it), or null
-    /// if it cannot be drawn yet.
-    pub fn beginSoftwarePopupFrame(w: Window, id: u32) !?gfx.software.Image {
-        return w.vtable.beginSoftwarePopupFrame(w.ptr, id);
-    }
-    /// Shows the popup's frame drawn into `beginSoftwarePopupFrame`'s buffer.
-    pub fn showPopup(w: Window, id: u32) !void {
-        return w.vtable.showPopup(w.ptr, id);
+    /// `placement` says, or null if the window cannot.
+    pub fn openPopup(w: Window, placement: PopupPlacement) ?Popup {
+        const id = w.vtable.openPopup(w.ptr, placement) orelse return null;
+        return .{ .win = w, .id = id };
     }
     /// Closes the window and frees it.
     pub fn close(w: Window) void {
@@ -1005,6 +988,37 @@ pub const Window = struct {
     pub fn prefersDark(w: Window) ?bool {
         const f = w.vtable.prefersDark orelse return null;
         return f(w.ptr);
+    }
+};
+
+/// A popup opened in a window (`Window.openPopup`): a menu or tooltip in a
+/// surface of its own. Draw it with `beginSoftwareFrame` and `show`, and
+/// `close` it when done (popups are closed newest first).
+pub const Popup = struct {
+    win: Window,
+    /// What `InputEvent.popup_done` says when the window system closes it.
+    id: u32,
+
+    /// Closes the popup.
+    pub fn close(p: Popup) void {
+        p.win.vtable.closePopup(p.win.ptr, p.id);
+    }
+
+    /// Where the window system put the popup (`[x, y]` of its top left in the
+    /// window's coordinates, in logical pixels), once it has.
+    pub fn position(p: Popup) ?[2]i32 {
+        return p.win.vtable.popupPosition(p.win.ptr, p.id);
+    }
+
+    /// The buffer to draw the popup's next frame into (all of it), or null
+    /// if it cannot be drawn yet.
+    pub fn beginSoftwareFrame(p: Popup) !?gfx.software.Image {
+        return p.win.vtable.beginSoftwarePopupFrame(p.win.ptr, p.id);
+    }
+
+    /// Shows the frame drawn into `beginSoftwareFrame`'s buffer.
+    pub fn show(p: Popup) !void {
+        return p.win.vtable.showPopup(p.win.ptr, p.id);
     }
 };
 
