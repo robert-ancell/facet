@@ -474,6 +474,10 @@ pub const SwapChain = struct {
     width: u32,
     height: u32,
     device: Obj,
+    /// Whether a frame has been presented at this size (DXGI requires the
+    /// first present after creation or resize to present the whole buffer,
+    /// with `DirtyRectsCount = 0`).
+    presented: bool = false,
 
     pub const Shown = enum { shown, occluded, failed };
 
@@ -512,6 +516,7 @@ pub const SwapChain = struct {
         if (!w32.succeeded(w32.call(sc.swap, 13, ResizeBuffers, .{ @as(u32, 0), width, height, @as(u32, 0), swap_flags }))) return error.SwapChainFailed;
         sc.width = width;
         sc.height = height;
+        sc.presented = false;
     }
 
     /// The buffer to draw the next frame in (an `ID3D11Texture2D`, released
@@ -524,22 +529,28 @@ pub const SwapChain = struct {
 
     /// Presents the frame drawn, at the next refresh, saying what changed
     /// (`dirty`, in pixels; null: all of it) so that DWM composes only that.
-    pub fn present(sc: *const SwapChain, dirty: ?[]const Viewport) Shown {
+    pub fn present(sc: *SwapChain, dirty: ?[]const Viewport) Shown {
         var rects: [16]w32.RECT = undefined;
         var n: u32 = 0;
-        if (dirty) |list| for (list) |d| {
+        if (sc.presented) if (dirty) |list| for (list) |d| {
             if (n == rects.len) {
                 n = 0;
                 break;
             }
             const v = d.intersect(.{ .width = sc.width, .height = sc.height }) orelse continue;
+            if (v.x == 0 and v.y == 0 and v.width == sc.width and v.height == sc.height) {
+                n = 0;
+                break;
+            }
             rects[n] = .{ .left = v.x, .top = v.y, .right = v.x + @as(i32, @intCast(v.width)), .bottom = v.y + @as(i32, @intCast(v.height)) };
             n += 1;
         };
         const params: PresentParameters = .{ .DirtyRectsCount = n, .pDirtyRects = if (n == 0) null else &rects };
         const hr = w32.call(sc.swap, 22, Present1, .{ @as(u32, 1), @as(u32, 0), &params });
         if (hr == dxgi_status_occluded) return .occluded;
-        return if (w32.succeeded(hr)) .shown else .failed;
+        if (!w32.succeeded(hr)) return .failed;
+        sc.presented = true;
+        return .shown;
     }
 
     /// Whether the window is still covered or out of sight (frames would

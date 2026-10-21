@@ -1312,8 +1312,9 @@ test "frames are presented to a window through its swap chain, on WARP" {
         canvas.begin(pw, ph);
         canvas.fillRect(.{ .x = 0, .y = 0, .w = @floatFromInt(pw), .h = @floatFromInt(ph) }, .rgb(@intCast(0x203040 + i)));
         var f: gfx.Frame = .{ .canvases = &.{&canvas}, .segments = &.{.{ .canvas = &canvas }}, .clear = 0xff000000 };
-        f.repaints[0].add(.{ .width = pw, .height = ph });
-        f.damage.add(.{ .width = pw, .height = ph });
+        const rect: gfx.Viewport = if (i == 0) .{ .width = pw, .height = ph } else .{ .x = 8, .y = 8, .width = 32, .height = 24 };
+        f.repaints[0].add(rect);
+        f.damage.add(rect);
         try p.present(.from(w), &f);
         // Into the swap chain, on the GPU (not on the CPU).
         try testing.expect(w.on_gpu);
