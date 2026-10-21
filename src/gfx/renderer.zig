@@ -293,6 +293,9 @@ pub const Renderer = struct {
         /// Renders a frame into a window's swap chain's back buffer, if the
         /// backend can (see `renderD3D11`).
         render_d3d11: ?*const fn (ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void = null,
+        /// The backend's `ID3D11Device`, for the window to make its swap
+        /// chain on (with `render_d3d11`).
+        d3d11_device: ?*const fn (ptr: *anyopaque) *anyopaque = null,
     };
 
     /// Wraps any backend pointer `*T` that implements:
@@ -318,7 +321,12 @@ pub const Renderer = struct {
                     .render_dmabuf = if (@hasDecl(T, "renderDmabuf")) renderDmabufFn else null,
                     .render_metal = if (@hasDecl(T, "renderMetal")) renderMetalFn else null,
                     .render_d3d11 = if (@hasDecl(T, "renderD3D11")) renderD3D11Fn else null,
+                    .d3d11_device = if (@hasDecl(T, "d3d11Device")) d3d11DeviceFn else null,
                 };
+                fn d3d11DeviceFn(ptr: *anyopaque) *anyopaque {
+                    const self: *T = @ptrCast(@alignCast(ptr));
+                    return self.d3d11Device();
+                }
                 fn renderD3D11Fn(ptr: *anyopaque, canvases: []const *const Canvas, segments: []const Segment, target: *const D3D11Target, clear: u32, clear_rects: []const Viewport, damage: []const Viewport) anyerror!void {
                     const self: *T = @ptrCast(@alignCast(ptr));
                     return self.renderD3D11(canvases, segments, target, clear, clear_rects, damage);
@@ -429,7 +437,12 @@ pub const Renderer = struct {
     }
 
     pub fn hasD3D11(r: Renderer) bool {
-        return r.vtable.render_d3d11 != null;
+        return r.vtable.render_d3d11 != null and r.vtable.d3d11_device != null;
+    }
+
+    /// The `ID3D11Device` it draws with (if `hasD3D11`).
+    pub fn d3d11Device(r: Renderer) *anyopaque {
+        return r.vtable.d3d11_device.?(r.ptr);
     }
 
     /// Renders a frame into a swap chain's back buffer on the GPU (the

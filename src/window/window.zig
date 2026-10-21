@@ -422,6 +422,7 @@ pub const Window = struct {
         beginSoftwareFrame: *const fn (ptr: *anyopaque) anyerror!gfx.software.Image,
         beginDmabufFrame: *const fn (ptr: *anyopaque) ?gfx.DmabufTarget,
         beginMetalFrame: *const fn (ptr: *anyopaque) ?gfx.MetalTarget,
+        beginD3D11Frame: *const fn (ptr: *anyopaque, device: *anyopaque) ?gfx.D3D11Target,
         bufferAge: *const fn (ptr: *anyopaque) u32,
         finishFrame: *const fn (ptr: *anyopaque, repainted: ?[]const gfx.Viewport) void,
         showDamaged: *const fn (ptr: *anyopaque, damage: ?[]const gfx.Viewport) anyerror!void,
@@ -640,6 +641,10 @@ pub const Window = struct {
                 if (@hasDecl(T, "beginDmabufFrame")) return self(p).beginDmabufFrame();
                 return null;
             }
+            fn beginD3D11FrameFn(p: *anyopaque, device: *anyopaque) ?gfx.D3D11Target {
+                if (@hasDecl(T, "beginD3D11Frame")) return self(p).beginD3D11Frame(device);
+                return null;
+            }
             fn beginMetalFrameFn(p: *anyopaque) ?gfx.MetalTarget {
                 if (@hasDecl(T, "beginMetalFrame")) return self(p).beginMetalFrame();
                 return null;
@@ -734,6 +739,7 @@ pub const Window = struct {
                 .beginSoftwareFrame = beginSoftwareFrameFn,
                 .beginDmabufFrame = beginDmabufFrameFn,
                 .beginMetalFrame = beginMetalFrameFn,
+                .beginD3D11Frame = beginD3D11FrameFn,
                 .bufferAge = bufferAgeFn,
                 .finishFrame = finishFrameFn,
                 .showDamaged = showDamagedFn,
@@ -959,6 +965,13 @@ pub const Window = struct {
         const target = w.vtable.beginDmabufFrame(w.ptr) orelse return null;
         return .{ .win = w, .target = target, .age = w.vtable.bufferAge(w.ptr) };
     }
+    /// Begins the next frame, to be drawn on the GPU into the window's swap
+    /// chain's back buffer (the swap chain made on `device`, an
+    /// `ID3D11Device`), or null if the window cannot give one (not Windows).
+    pub fn beginD3D11Frame(w: Window, device: *anyopaque) ?D3D11Frame {
+        const target = w.vtable.beginD3D11Frame(w.ptr, device) orelse return null;
+        return .{ .win = w, .target = target, .age = w.vtable.bufferAge(w.ptr) };
+    }
     /// Begins the next frame, to be drawn on the GPU into the window's Metal
     /// layer, or null if the window cannot give one (not macOS).
     pub fn beginMetalFrame(w: Window) ?MetalFrame {
@@ -1065,6 +1078,8 @@ pub const SoftwareFrame = WindowFrame(gfx.software.Image);
 pub const DmabufFrame = WindowFrame(gfx.DmabufTarget);
 /// A frame drawn by the GPU, in a Metal layer.
 pub const MetalFrame = WindowFrame(gfx.MetalTarget);
+/// A frame drawn by the GPU, in a Direct3D 11 swap chain's back buffer.
+pub const D3D11Frame = WindowFrame(gfx.D3D11Target);
 
 /// What an app's title bar does to its window (for the toolkit's TitleBar:
 /// `.on_close = .of(&controls, Controls.close)`, and so on).

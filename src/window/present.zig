@@ -34,6 +34,15 @@ pub const Presenter = struct {
                 f.finish(vps);
                 return f.show(frame.damage.slice());
             };
+            if (dr.hasD3D11()) if (win.beginD3D11Frame(dr.d3d11Device())) |f| {
+                const vps = frame.repaint(f.age);
+                dr.renderD3D11(frame.canvases, frame.segments, &f.target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
+                    p.no_direct = true;
+                    break :direct;
+                };
+                f.finish(vps);
+                return f.show(frame.damage.slice());
+            };
             if (dr.hasMetal()) if (win.beginMetalFrame()) |f| {
                 const vps = frame.repaint(f.age);
                 dr.renderMetal(frame.canvases, frame.segments, &f.target, frame.clear, gfx.renderer.uncovered(&uncovered_buf, vps, frame.segments), vps) catch {
@@ -65,11 +74,11 @@ pub const Presenter = struct {
     }
 
     /// The renderer, if it may draw frames straight into the window's
-    /// dmabufs or Metal layer (it has not failed to).
+    /// dmabufs, Metal layer or swap chain (it has not failed to).
     fn directRenderer(p: *const Presenter) ?gfx.Renderer {
         if (p.no_direct) return null;
         const r = p.renderer orelse return null;
-        return if (r.hasDmabuf() or r.hasMetal()) r else null;
+        return if (r.hasDmabuf() or r.hasMetal() or r.hasD3D11()) r else null;
     }
 };
 

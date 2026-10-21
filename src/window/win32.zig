@@ -11,8 +11,16 @@
 //!   the window's messages, the watched sources' handles, and a
 //!   high-resolution waitable timer for the frame's deadline (not the
 //!   default 15.6 ms tick).
+//! * Frames drawn on the GPU go to a flip-model swap chain with a frame
+//!   latency waitable object (see `gfx.d3d11.SwapChain`), which the wait
+//!   includes: a frame is drawn as soon as a buffer is free (just after a
+//!   refresh), with the input read just before, and `Present` never
+//!   blocks. The frames say what changed (dirty rectangles), so that DWM
+//!   composes only that; out of sight (occluded or minimized), none are
+//!   drawn.
 //! * Frames are timed by the display: DWM's composition timing says when
-//!   the next refresh is, and how long each is.
+//!   the next refresh is, and how long each is (for frames drawn on the
+//!   CPU, which have no swap chain to say).
 //! * Windows' modal loops (resizing or moving the window, holding its
 //!   title bar, the system menu) hold the app's loop until they end; while
 //!   they run, frames are drawn from inside them (`Window.setRedraw`): at
@@ -166,6 +174,18 @@ pub const Win32Window = struct {
     /// Events since the last `takeInput`, and those it gave.
     input: std.ArrayList(InputEvent) = .empty,
     taken: std.ArrayList(InputEvent) = .empty,
+    /// The swap chain the GPU's frames go to (made on the renderer's device
+    /// when it first draws), its back buffer while a frame is drawn in it,
+    /// whether it has a buffer free (its waitable object signalled, and so
+    /// taken), and the size of the last frame drawn there (0 by 0: none
+    /// yet), which the renderer keeps from one to the next. And whether
+    /// the window is out of sight (its frames would not be seen).
+    swap: ?gfx.d3d11.SwapChain = null,
+    back: ?*anyopaque = null,
+    swap_ready: bool = false,
+    on_gpu: bool = false,
+    gpu_size: [2]u32 = .{ 0, 0 },
+    occluded: bool = false,
     /// The CPU's frame (pixels a row at a time, top first, 0xAARRGGBB),
     /// shown with GDI; and whether it has been shown at this size.
     pixels: []u32 = &.{},
@@ -251,6 +271,8 @@ pub const Win32Window = struct {
             _ = u.DestroyWindow(w.hwnd);
         }
         if (w.timer) |t| _ = w32.CloseHandle(t);
+        w32.release(w.back);
+        if (w.swap) |*sc| sc.deinit();
         w.gpa.free(w.pixels);
         w.input.deinit(w.gpa);
         w.taken.deinit(w.gpa);
@@ -275,7 +297,7 @@ pub const Win32Window = struct {
     }
 
     pub fn isSuspended(w: *const Win32Window) bool {
-        return w.minimized;
+        return w.minimized or w.occluded;
     }
 
     pub fn prefersDark(w: *const Win32Window) ?bool {
@@ -311,6 +333,9 @@ pub const Win32Window = struct {
         var r: w32.RECT = .{};
         _ = u.GetClientRect(w.hwnd, &r);
         w.minimized = u.IsIconic(w.hwnd) != 0;
+        if (w.occluded) if (w.swap) |*sc| {
+            w.occluded = sc.occluded();
+        };
         if (w.minimized) return null;
         w.maximized = !w.fullscreen and u.IsZoomed(w.hwnd) != 0;
         const old_scale = w.scale;
@@ -363,8 +388,9 @@ pub const Win32Window = struct {
             WM_PAINT => {
                 var ps: w32.PAINTSTRUCT = undefined;
                 if (u.BeginPaint(w.hwnd, &ps)) |hdc| {
-                    // What was shown is shown again (it has not changed).
-                    if (w.pixels_shown) w.blit(hdc);
+                    // What was shown is shown again (it has not changed):
+                    // DWM keeps the swap chain's, the CPU's is drawn again.
+                    if (!w.on_gpu and w.pixels_shown) w.blit(hdc);
                     _ = u.EndPaint(w.hwnd, &ps);
                 }
                 return 0;
@@ -593,9 +619,17 @@ pub const Win32Window = struct {
     pub fn wait(w: *Win32Window, timeout_ns: u64) !void {
         const u = w32.user32() orelse return;
         var ns = timeout_ns;
-        if (w.frame_pending) ns = @min(ns, w.presented_ns -| w.now());
-        var handles: [max_watched + 1]w32.HANDLE = undefined;
+        var handles: [max_watched + 2]w32.HANDLE = undefined;
         var n: w32.DWORD = 0;
+        if (w.on_gpu and w.swap != null) {
+            // The swap chain says when a buffer is free.
+            if (!w.swap_ready) {
+                handles[n] = w.swap.?.waitable;
+                n += 1;
+            }
+        } else if (w.frame_pending) ns = @min(ns, w.presented_ns -| w.now());
+        // Out of sight, it is asked again now and then whether it shows.
+        if (w.occluded) ns = @min(ns, 100 * std.time.ns_per_ms);
         for (w.watched) |slot| if (slot) |s| {
             handles[n] = s.fd;
             n += 1;
@@ -612,8 +646,10 @@ pub const Win32Window = struct {
                 } else ms = msCeil(ns);
             } else ms = msCeil(ns);
         }
-        _ = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        const woke = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         if (w.timer) |t| _ = w32.CancelWaitableTimer(t);
+        // The swap chain's object, if it was first, was taken by the wait.
+        if (w.on_gpu and !w.swap_ready and n > 0 and woke == w32.WAIT_OBJECT_0 and w.swap != null and handles[0] == w.swap.?.waitable) w.swap_ready = true;
         w.pump();
         w.updatePending();
     }
@@ -652,6 +688,12 @@ pub const Win32Window = struct {
     }
 
     fn updatePending(w: *Win32Window) void {
+        if (w.on_gpu) if (w.swap) |sc| {
+            // Taken now if it is signalled (and so kept as `swap_ready`).
+            if (!w.swap_ready and w32.WaitForSingleObject(sc.waitable, 0) == w32.WAIT_OBJECT_0) w.swap_ready = true;
+            w.frame_pending = !w.swap_ready;
+            return;
+        };
         if (w.frame_pending and w.now() >= w.presented_ns) w.frame_pending = false;
     }
 
@@ -719,24 +761,35 @@ pub const Win32Window = struct {
 
     /// In a modal loop: waits for the next refresh (returning at once for
     /// input, which the loop then handles), draws a frame if one is wanted,
-    /// and posts itself again for the next, unless input waits.
+    /// and posts itself again for the next, unless input waits. It waits
+    /// whether or not the last drew anything, so that a loop with nothing
+    /// to draw does not spin.
     fn modalFrame(w: *Win32Window, u: *const w32.User32) void {
         if (u.GetQueueStatus(QS_INPUT) >> 16 == 0) {
-            const ns = if (w.frame_pending) w.presented_ns -| w.now() else 0;
-            if (ns > 0) {
-                var handles: [1]w32.HANDLE = undefined;
-                var n: w32.DWORD = 0;
-                var ms: w32.DWORD = msCeil(ns);
-                if (w.timer) |t| {
-                    const due: i64 = -@as(i64, @intCast(@max(ns / 100, 1)));
-                    if (w32.SetWaitableTimer(t, &due, 0, null, null, w32.FALSE) != 0) {
-                        handles[0] = t;
-                        n = 1;
-                        ms = w32.INFINITE;
-                    }
+            const gpu_wait = w.on_gpu and w.swap != null and !w.swap_ready;
+            // Until a buffer is free, on the GPU; else the next refresh.
+            const ns = if (gpu_wait) 2 * w.refresh_ns else w.nextPresentationNs(w.now()) -| w.now();
+            var handles: [2]w32.HANDLE = undefined;
+            var n: w32.DWORD = 0;
+            if (gpu_wait) {
+                handles[n] = w.swap.?.waitable;
+                n += 1;
+            }
+            var ms: w32.DWORD = msCeil(ns);
+            if (!gpu_wait and ns > 0) if (w.timer) |t| {
+                const due: i64 = -@as(i64, @intCast(@max(ns / 100, 1)));
+                if (w32.SetWaitableTimer(t, &due, 0, null, null, w32.FALSE) != 0) {
+                    handles[n] = t;
+                    n += 1;
+                    ms = w32.INFINITE;
                 }
-                _ = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-                if (w.timer) |t| _ = w32.CancelWaitableTimer(t);
+            };
+            if (ns > 0) {
+                const woke = u.MsgWaitForMultipleObjectsEx(n, &handles, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+                if (gpu_wait and woke == w32.WAIT_OBJECT_0) w.swap_ready = true;
+                if (!gpu_wait) if (w.timer) |t| {
+                    _ = w32.CancelWaitableTimer(t);
+                };
             }
         }
         w.updatePending();
@@ -832,14 +885,50 @@ pub const Win32Window = struct {
 
     // --- Frames (on the CPU) -----------------------------------------------------------
 
-    /// The frame drawn on the CPU (into memory), shown with GDI.
-    pub fn bufferTransport(_: *const Win32Window) window.BufferTransport {
-        return .memory;
+    /// Frames drawn on the GPU go to the swap chain; the CPU's, in memory,
+    /// are shown with GDI.
+    pub fn bufferTransport(w: *const Win32Window) window.BufferTransport {
+        return if (w.on_gpu) .swapchain else .memory;
+    }
+
+    /// The swap chain's back buffer, as big as the client area in pixels
+    /// (made on `device` the first time), for the GPU to draw the next
+    /// frame in.
+    pub fn beginD3D11Frame(w: *Win32Window, device: *anyopaque) ?gfx.D3D11Target {
+        const pw = w.width * w.scale;
+        const ph = w.height * w.scale;
+        if (w.swap) |*sc| if (sc.device != device) {
+            sc.deinit();
+            w.swap = null;
+        };
+        if (w.swap == null) {
+            w.swap = gfx.d3d11.SwapChain.create(device, w.hwnd, pw, ph) catch return null;
+            w.swap_ready = false;
+            w.gpu_size = .{ 0, 0 };
+        }
+        const sc = &w.swap.?;
+        // A frame drawn before a buffer is free (at a new size, as the
+        // window is resized) waits for one, so that `Present` does not.
+        if (!w.swap_ready and w32.WaitForSingleObject(sc.waitable, msCeil(2 * w.refresh_ns)) == w32.WAIT_OBJECT_0) w.swap_ready = true;
+        sc.resize(pw, ph) catch return null;
+        w32.release(w.back);
+        w.back = sc.backBuffer() catch return null;
+        w.on_gpu = true;
+        return .{ .texture = w.back.?, .width = pw, .height = ph };
     }
 
     /// The buffer to draw the next frame in, as big as the client area in
     /// pixels (its logical size at its scale).
-    pub fn beginFrame(w: *Win32Window) !gfx.software.Image {
+    pub fn beginSoftwareFrame(w: *Win32Window) !gfx.software.Image {
+        // Back to the CPU (the GPU could not draw): the swap chain goes, or
+        // it would be shown over what GDI draws.
+        if (w.swap) |*sc| {
+            w32.release(w.back);
+            w.back = null;
+            sc.deinit();
+            w.swap = null;
+        }
+        w.on_gpu = false;
         const pw = w.width * w.scale;
         const ph = w.height * w.scale;
         if (w.pixels_size[0] != pw or w.pixels_size[1] != ph) {
@@ -853,13 +942,29 @@ pub const Win32Window = struct {
         return .{ .pixels = w.pixels, .width = pw, .height = ph };
     }
 
-    /// The one buffer is drawn in again each frame: it has the last.
+    /// The one buffer is drawn in again each frame: it has the last (as the
+    /// renderer's frame does, while it is the same size).
     pub fn bufferAge(w: *const Win32Window) u32 {
+        if (w.on_gpu) return if (w.gpu_size[0] == w.width * w.scale and w.gpu_size[1] == w.height * w.scale) 1 else 0;
         return if (w.pixels_shown) 1 else 0;
     }
 
-    /// Shows the buffer drawn.
-    pub fn showDamaged(w: *Win32Window, _: ?[]const gfx.Viewport) !void {
+    /// Shows the frame drawn: the swap chain's (presented at the next
+    /// refresh, what changed said), or the CPU's buffer.
+    pub fn showDamaged(w: *Win32Window, damage: ?[]const gfx.Viewport) !void {
+        if (w.on_gpu) if (w.swap) |*sc| {
+            w32.release(w.back);
+            w.back = null;
+            switch (sc.present(damage)) {
+                .shown => {},
+                .occluded => w.occluded = true,
+                .failed => return error.PresentFailed,
+            }
+            w.gpu_size = .{ sc.width, sc.height };
+            w.swap_ready = false;
+            w.shown();
+            return;
+        };
         const u = w32.user32() orelse return error.NoUser32;
         const hdc = u.GetDC(w.hwnd) orelse return error.NoDeviceContext;
         defer _ = u.ReleaseDC(w.hwnd, hdc);
@@ -925,4 +1030,34 @@ pub const Win32Window = struct {
 
 test {
     _ = keys;
+}
+
+test "frames are presented to a window through its swap chain, on WARP" {
+    if (@import("builtin").os.tag != .windows) return error.SkipZigTest;
+    const testing = std.testing;
+    var dx = gfx.D3D11Renderer.initWarp(testing.allocator) catch |e| {
+        if (e == error.NoShaders) return error.SkipZigTest;
+        return e;
+    };
+    defer dx.deinit();
+    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 200, 120 } });
+    defer w.close();
+    var canvas = gfx.Canvas.init(testing.allocator);
+    defer canvas.deinit();
+    var p: window.Presenter = .{ .renderer = dx.renderer() };
+    for (0..3) |i| {
+        try w.wait(std.time.ns_per_s / 10);
+        _ = try w.applyConfigure();
+        const pw = w.width * w.scale;
+        const ph = w.height * w.scale;
+        canvas.begin(pw, ph);
+        canvas.fillRect(.{ .x = 0, .y = 0, .w = @floatFromInt(pw), .h = @floatFromInt(ph) }, .rgb(@intCast(0x203040 + i)));
+        var f: gfx.Frame = .{ .canvases = &.{&canvas}, .segments = &.{.{ .canvas = &canvas }}, .clear = 0xff000000 };
+        f.repaints[0].add(.{ .width = pw, .height = ph });
+        f.damage.add(.{ .width = pw, .height = ph });
+        try p.present(.from(w), &f);
+        // Into the swap chain, on the GPU (not on the CPU).
+        try testing.expect(w.on_gpu);
+        try testing.expectEqual([2]u32{ pw, ph }, w.gpu_size);
+    }
 }

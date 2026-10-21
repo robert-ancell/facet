@@ -174,6 +174,11 @@ pub fn query(obj: anytype, iid: *const GUID) ?*anyopaque {
     return out;
 }
 
+/// IUnknown's `AddRef` (slot 1).
+pub fn addRef(obj: anytype) void {
+    _ = call(obj, 1, AddRefRelease, .{});
+}
+
 /// IUnknown's `Release` (slot 2), if there is an object.
 pub fn release(obj: anytype) void {
     const o: ?*anyopaque = @ptrCast(obj);

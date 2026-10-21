@@ -416,6 +416,139 @@ pub const DirectFrame = struct {
     height: u32,
 };
 
+// --- DXGI: a window's swap chain ------------------------------------------------------
+
+const iid_dxgi_device = w32.GUID.parse("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
+const iid_dxgi_factory2 = w32.GUID.parse("50c83a1c-e072-4c48-87b0-3630fa36a6d0");
+const iid_swap_chain2 = w32.GUID.parse("a8be2ac4-199f-4946-b331-79599fb98de7");
+const iid_texture2d = w32.GUID.parse("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
+
+const SwapChainDesc1 = extern struct {
+    Width: u32,
+    Height: u32,
+    Format: u32 = format_bgra8,
+    Stereo: w32.BOOL = w32.FALSE,
+    SampleCount: u32 = 1,
+    SampleQuality: u32 = 0,
+    BufferUsage: u32 = 0x20, // DXGI_USAGE_RENDER_TARGET_OUTPUT
+    BufferCount: u32 = 2,
+    Scaling: u32 = 1, // DXGI_SCALING_NONE
+    SwapEffect: u32 = 4, // DXGI_SWAP_EFFECT_FLIP_DISCARD
+    AlphaMode: u32 = 3, // DXGI_ALPHA_MODE_IGNORE
+    Flags: u32 = swap_flags,
+};
+
+const PresentParameters = extern struct {
+    DirtyRectsCount: u32,
+    pDirtyRects: ?[*]const w32.RECT,
+    pScrollRect: ?*const w32.RECT = null,
+    pScrollOffset: ?*const w32.POINT = null,
+};
+
+/// DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.
+const swap_flags: u32 = 0x40;
+const dxgi_status_occluded: HRESULT = 0x087a0001;
+const present_test: u32 = 0x1;
+const mwa_no_alt_enter: u32 = 0x2;
+
+const GetParent = fn (Obj, *const w32.GUID, *?Obj) callconv(cc) HRESULT;
+const GetAdapter = fn (Obj, *?Obj) callconv(cc) HRESULT;
+const CreateSwapChainForHwnd = fn (Obj, Obj, w32.HWND, *const SwapChainDesc1, ?*const anyopaque, ?Obj, *?Obj) callconv(cc) HRESULT;
+const MakeWindowAssociation = fn (Obj, w32.HWND, u32) callconv(cc) HRESULT;
+const Present = fn (Obj, u32, u32) callconv(cc) HRESULT;
+const Present1 = fn (Obj, u32, u32, *const PresentParameters) callconv(cc) HRESULT;
+const GetBuffer = fn (Obj, u32, *const w32.GUID, *?Obj) callconv(cc) HRESULT;
+const ResizeBuffers = fn (Obj, u32, u32, u32, u32, u32) callconv(cc) HRESULT;
+const SetMaximumFrameLatency = fn (Obj, u32) callconv(cc) HRESULT;
+const GetFrameLatencyWaitableObject = fn (Obj) callconv(cc) ?w32.HANDLE;
+
+/// A window's flip-model swap chain: two BGRA8 buffers, never stretched
+/// (`DXGI_SCALING_NONE`), with a frame-latency waitable object and a latency
+/// of one. The object (`waitable`) is signalled when a buffer is free: a
+/// frame drawn then is presented without `Present` blocking, and shown at
+/// the next refresh, so a window that waits on it (with its messages)
+/// draws each frame as late as it can, with its input read just before.
+pub const SwapChain = struct {
+    swap: Obj,
+    waitable: w32.HANDLE,
+    width: u32,
+    height: u32,
+    device: Obj,
+
+    pub const Shown = enum { shown, occluded, failed };
+
+    pub fn create(device: Obj, hwnd: w32.HWND, width: u32, height: u32) !SwapChain {
+        const dxgi_device = w32.query(device, &iid_dxgi_device) orelse return error.NoDxgi;
+        defer w32.release(dxgi_device);
+        var adapter: ?Obj = null;
+        if (!w32.succeeded(w32.call(dxgi_device, 7, GetAdapter, .{&adapter}))) return error.NoDxgi;
+        defer w32.release(adapter);
+        var factory: ?Obj = null;
+        if (!w32.succeeded(w32.call(adapter.?, 6, GetParent, .{ &iid_dxgi_factory2, &factory }))) return error.NoDxgiFactory2;
+        defer w32.release(factory);
+        const desc: SwapChainDesc1 = .{ .Width = width, .Height = height };
+        var swap1: ?Obj = null;
+        if (!w32.succeeded(w32.call(factory.?, 15, CreateSwapChainForHwnd, .{ device, hwnd, &desc, null, null, &swap1 }))) return error.SwapChainFailed;
+        defer w32.release(swap1);
+        // Alt+Enter is the app's (its full screen is borderless).
+        _ = w32.call(factory.?, 8, MakeWindowAssociation, .{ hwnd, mwa_no_alt_enter });
+        const swap = w32.query(swap1.?, &iid_swap_chain2) orelse return error.SwapChainFailed;
+        errdefer w32.release(swap);
+        _ = w32.call(swap, 31, SetMaximumFrameLatency, .{@as(u32, 1)});
+        const waitable = w32.call(swap, 33, GetFrameLatencyWaitableObject, .{}) orelse return error.SwapChainFailed;
+        w32.addRef(device);
+        return .{ .swap = swap, .waitable = waitable, .width = width, .height = height, .device = device };
+    }
+
+    pub fn deinit(sc: *SwapChain) void {
+        _ = w32.CloseHandle(sc.waitable);
+        w32.release(sc.swap);
+        w32.release(sc.device);
+    }
+
+    /// Makes its buffers `width` by `height` (none may be held).
+    pub fn resize(sc: *SwapChain, width: u32, height: u32) !void {
+        if (sc.width == width and sc.height == height) return;
+        if (!w32.succeeded(w32.call(sc.swap, 13, ResizeBuffers, .{ @as(u32, 0), width, height, @as(u32, 0), swap_flags }))) return error.SwapChainFailed;
+        sc.width = width;
+        sc.height = height;
+    }
+
+    /// The buffer to draw the next frame in (an `ID3D11Texture2D`, released
+    /// once presented).
+    pub fn backBuffer(sc: *const SwapChain) !Obj {
+        var tex: ?Obj = null;
+        if (!w32.succeeded(w32.call(sc.swap, 9, GetBuffer, .{ @as(u32, 0), &iid_texture2d, &tex }))) return error.SwapChainFailed;
+        return tex orelse error.SwapChainFailed;
+    }
+
+    /// Presents the frame drawn, at the next refresh, saying what changed
+    /// (`dirty`, in pixels; null: all of it) so that DWM composes only that.
+    pub fn present(sc: *const SwapChain, dirty: ?[]const Viewport) Shown {
+        var rects: [16]w32.RECT = undefined;
+        var n: u32 = 0;
+        if (dirty) |list| for (list) |d| {
+            if (n == rects.len) {
+                n = 0;
+                break;
+            }
+            const v = d.intersect(.{ .width = sc.width, .height = sc.height }) orelse continue;
+            rects[n] = .{ .left = v.x, .top = v.y, .right = v.x + @as(i32, @intCast(v.width)), .bottom = v.y + @as(i32, @intCast(v.height)) };
+            n += 1;
+        };
+        const params: PresentParameters = .{ .DirtyRectsCount = n, .pDirtyRects = if (n == 0) null else &rects };
+        const hr = w32.call(sc.swap, 22, Present1, .{ @as(u32, 1), @as(u32, 0), &params });
+        if (hr == dxgi_status_occluded) return .occluded;
+        return if (w32.succeeded(hr)) .shown else .failed;
+    }
+
+    /// Whether the window is still covered or out of sight (frames would
+    /// not be seen), asked without presenting.
+    pub fn occluded(sc: *const SwapChain) bool {
+        return w32.call(sc.swap, 8, Present, .{ @as(u32, 0), present_test }) == dxgi_status_occluded;
+    }
+};
+
 pub const D3D11Renderer = struct {
     gpa: std.mem.Allocator,
     device: ?Obj,
@@ -543,6 +676,11 @@ pub const D3D11Renderer = struct {
 
     pub fn renderer(r: *D3D11Renderer) renderer_mod.Renderer {
         return .of(r);
+    }
+
+    /// Its `ID3D11Device`, for a window's swap chain.
+    pub fn d3d11Device(r: *D3D11Renderer) *anyopaque {
+        return r.device.?;
     }
 
     /// The renderer's GPU, for 3D scenes drawn straight into its frames
