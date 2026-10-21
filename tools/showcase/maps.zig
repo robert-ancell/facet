@@ -96,7 +96,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     // The sun now (or as many hours from now as chosen).
     const wall: f64 = @floatFromInt(std.Io.Clock.real.now(cx.ui.io).nanoseconds);
     const unix = wall / std.time.ns_per_s + s.hours * 3600;
-    const night: ?facet.MapNight = if (s.night) .{ .sun = facet.subsolarPoint(unix) } else null;
+    const night: ?facet.MapNight = if (s.night) .at(unix) else null;
     const c = s.camera.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
         @abs(c.lat),   if (c.lat >= 0) "N" else "S",

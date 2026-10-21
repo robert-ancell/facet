@@ -51,7 +51,6 @@ pub const VectorTile = tiles.VectorTile;
 pub const MapStyle = style_mod.MapStyle;
 pub const TilePainter = tile_painter.TilePainter;
 pub const LabelStyle = tile_painter.LabelStyle;
-pub const subsolarPoint = projection.subsolarPoint;
 
 /// How night is shaded on a map.
 pub const Night = struct {
@@ -61,6 +60,12 @@ pub const Night = struct {
     /// How dark it is where the sun is well below the horizon (and less
     /// in twilight, as it sets).
     opacity: f32 = 0.55,
+
+    /// Night with the sun where it is overhead at `unix_seconds` (seconds
+    /// since 1970 UTC), the rest of it at its defaults.
+    pub fn at(unix_seconds: f64) Night {
+        return .{ .sun = projection.subsolarPoint(unix_seconds) };
+    }
 };
 
 /// The most tiles drawn at once.
@@ -94,7 +99,7 @@ pub const MapView = struct {
     atmosphere: bool = true,
     atmosphere_color: ?Color = null,
     /// Night where the sun has set, from where it is overhead
-    /// (`subsolarPoint` gives it for a time), shaded on the globe (fading
+    /// (`MapNight.at` gives it for a time), shaded on the globe (fading
     /// as the globe becomes the flat map); none if null.
     night: ?Night = null,
     /// Its size, if not told how big to be.

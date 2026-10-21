@@ -133,7 +133,6 @@ pub const LatLon = ui.LatLon;
 pub const TilePainter = ui.TilePainter;
 pub const MapLabelStyle = ui.MapLabelStyle;
 pub const MapNight = ui.MapNight;
-pub const subsolarPoint = ui.subsolarPoint;
 pub const AnimatedWidget = ui.AnimatedWidget;
 /// Easing functions and interpolation for `AnimatedWidget`.
 pub const tween = ui.tween;
