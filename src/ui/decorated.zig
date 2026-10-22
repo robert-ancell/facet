@@ -20,7 +20,7 @@ pub const Border = struct {
 pub const Decorated = struct {
     color: ?gfx.Color = null,
     border: ?Border = null,
-    radius: gfx.Radii = .{},
+    radius: gfx.CornerRadii = .{},
     child: ?Widget = null,
 
     pub fn paint(self: *const Decorated, n: *Node, p: *Painter) void {

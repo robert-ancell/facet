@@ -96,17 +96,17 @@ pub const Rect = struct {
 };
 
 /// Corner radii: top left, top right, bottom right, bottom left.
-pub const Radii = struct {
+pub const CornerRadii = struct {
     tl: f32 = 0,
     tr: f32 = 0,
     br: f32 = 0,
     bl: f32 = 0,
 
-    pub fn all(r: f32) Radii {
+    pub fn all(r: f32) CornerRadii {
         return .{ .tl = r, .tr = r, .br = r, .bl = r };
     }
 
-    fn max(r: Radii) f32 {
+    fn max(r: CornerRadii) f32 {
         return @max(@max(r.tl, r.tr), @max(r.br, r.bl));
     }
 };
@@ -314,12 +314,12 @@ pub const Canvas = struct {
         c.roundedRect(r, .{}, width, color);
     }
 
-    pub fn fillRoundedRect(c: *Canvas, r: Rect, radii: Radii, color: Color) void {
+    pub fn fillRoundedRect(c: *Canvas, r: Rect, radii: CornerRadii, color: Color) void {
         c.roundedRect(r, radii, fill_stroke, color);
     }
 
     /// Strokes the outline inside the rectangle, `width` pixels wide.
-    pub fn strokeRoundedRect(c: *Canvas, r: Rect, radii: Radii, width: f32, color: Color) void {
+    pub fn strokeRoundedRect(c: *Canvas, r: Rect, radii: CornerRadii, width: f32, color: Color) void {
         c.roundedRect(r, radii, width, color);
     }
 
@@ -537,7 +537,7 @@ pub const Canvas = struct {
 
     // --- Rounded rectangles --------------------------------------------------
 
-    fn roundedRect(c: *Canvas, r_in: Rect, radii_in: Radii, stroke_in: f32, color: Color) void {
+    fn roundedRect(c: *Canvas, r_in: Rect, radii_in: CornerRadii, stroke_in: f32, color: Color) void {
         const s = c.scale;
         const r = c.moved(r_in);
         if (r.w <= 0 or r.h <= 0 or color.a <= 0) return;
@@ -547,7 +547,7 @@ pub const Canvas = struct {
         const hw = r.w / 2;
         const hh = r.h / 2;
         const limit = @min(hw, hh);
-        const radii: Radii = .{
+        const radii: CornerRadii = .{
             .tl = std.math.clamp(radii_in.tl * s, 0, limit),
             .tr = std.math.clamp(radii_in.tr * s, 0, limit),
             .br = std.math.clamp(radii_in.br * s, 0, limit),

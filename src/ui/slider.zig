@@ -108,7 +108,7 @@ pub const Slider = struct {
         const track_y = cy - track_height / 2;
         const k = self.normalized();
         const thumb_x = ends[0] + k * track_w;
-        const r: gfx.Radii = .all(track_height / 2);
+        const r: gfx.CornerRadii = .all(track_height / 2);
 
         const active_color = if (enabled) t.primary else t.on_surface.withAlpha(0.38);
         const inactive_color = if (enabled) t.surface_container_highest else t.on_surface.withAlpha(0.12);

@@ -28,7 +28,7 @@ pub fn VulkanArea(comptime Scene: type) type {
         scene: Scene,
         samples: u8 = 4,
         clear_color: ?gfx.Color = null,
-        radius: gfx.Radii = .all(12),
+        radius: gfx.CornerRadii = .all(12),
         border: ?Border = null,
         on_drag: ?ValueCallback(Point) = null,
         min_width: f32 = 280,

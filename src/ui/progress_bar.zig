@@ -44,7 +44,7 @@ pub const ProgressBar = struct {
         const w = n.size.w;
         const h = n.size.h;
         if (w <= 0 or h <= 0) return;
-        const radius: gfx.Radii = .all(h / 2);
+        const radius: gfx.CornerRadii = .all(h / 2);
         const active_color = self.color orelse t.primary;
         const track = self.track_color orelse t.surface_container_highest;
         c.fillRoundedRect(.{ .x = 0, .y = 0, .w = w, .h = h }, radius, track);
