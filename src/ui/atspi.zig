@@ -445,7 +445,7 @@ pub const Bridge = struct {
                 }
             }.f;
             switch (target) {
-                .app => pair(w, "toolkit", "facet"),
+                .app => pair(w, "toolkit", "kete"),
                 .object => |o| {
                     // ARIA's role (as browsers give it), and its properties
                     // that are attributes in AT-SPI.
@@ -592,7 +592,7 @@ pub const Bridge = struct {
         }
         if (eq(u8, iface, "org.a11y.atspi.Application")) {
             if (target != .app) return false;
-            if (eq(u8, name, "ToolkitName")) return out.s("facet");
+            if (eq(u8, name, "ToolkitName")) return out.s("kete");
             if (eq(u8, name, "Version")) return out.s("0.1");
             if (eq(u8, name, "AtspiVersion")) return out.s("2.1");
             if (eq(u8, name, "Id")) return out.i(b.app_id);

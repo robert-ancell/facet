@@ -1,14 +1,14 @@
 //! Interactive 3D Platonic solid viewer rendered with Metal, on macOS (`zig build run-metal`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const solids = @import("solids.zig");
 const viewer = @import("viewer.zig");
 
 pub const MetalDemo = viewer.Viewer(struct {
     pub const name = "Metal";
-    pub const Context = facet.gfx.MetalContext;
-    pub const Area = facet.MetalArea;
+    pub const Context = kete.gfx.MetalContext;
+    pub const Area = kete.MetalArea;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {
         return ctx.createPipeline(.{
@@ -24,5 +24,5 @@ pub const MetalDemo = viewer.Viewer(struct {
 });
 
 pub fn main(init: std.process.Init) !void {
-    try viewer.run(init, "Facet Metal 3D Widget", MetalDemo{});
+    try viewer.run(init, "Kete Metal 3D Widget", MetalDemo{});
 }

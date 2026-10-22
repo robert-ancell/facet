@@ -1,9 +1,9 @@
-//! A tour of every widget in facet, grouped into pages by what they are
+//! A tour of every widget in kete, grouped into pages by what they are
 //! for (`zig build run-showcase`): buttons, selection, text, feedback,
 //! containers, layout, images (and QR codes), icons, maps, animation, 2D and 3D.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const buttons = @import("showcase/buttons.zig");
 const selection = @import("showcase/selection.zig");
 const text = @import("showcase/text.zig");
@@ -48,7 +48,7 @@ pub const Page = enum {
         };
     }
 
-    fn icon(p: Page) facet.IconName {
+    fn icon(p: Page) kete.IconName {
         return switch (p) {
             .buttons => .smart_button,
             .selection => .toggle_on,
@@ -84,8 +84,8 @@ pub const Page = enum {
 };
 
 pub const Showcase = struct {
-    notes: *facet.TextDocument,
-    code: *facet.TextDocument,
+    notes: *kete.TextDocument,
+    code: *kete.TextDocument,
 
     pub const State = struct {
         page: Page = .buttons,
@@ -123,7 +123,7 @@ pub const Showcase = struct {
         }
     };
 
-    pub fn build(self: *const Showcase, cx: *facet.BuildContext, s: *State) facet.Widget {
+    pub fn build(self: *const Showcase, cx: *kete.BuildContext, s: *State) kete.Widget {
         // Start with the system's theme, and follow it when it changes.
         const ui_light = cx.ui.theme.brightness == .light;
         if (s.system_light == null or ui_light != s.system_light.? and ui_light != s.light_theme) {
@@ -134,7 +134,7 @@ pub const Showcase = struct {
         const t = cx.theme();
 
         const pages = comptime std.enums.values(Page);
-        var rail_items: [pages.len]facet.NavigationRail.Item = undefined;
+        var rail_items: [pages.len]kete.NavigationRail.Item = undefined;
         for (&rail_items, pages) |*item, p| item.* = .{ .label = p.title(), .icon = p.icon() };
 
         const content = switch (s.page) {
@@ -152,50 +152,50 @@ pub const Showcase = struct {
             .three_d => three_d.build(cx, &s.three_d),
         };
 
-        const header = cx.make(facet.Padding{
+        const header = cx.make(kete.Padding{
             .padding = .symmetric(24, 12),
-            .child = cx.make(facet.Row{
+            .child = cx.make(kete.Row{
                 .spacing = 16,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Expanded{ .child = cx.make(facet.Column{
+                    kete.Expanded{ .child = cx.make(kete.Column{
                         .fill = false,
                         .cross_axis_alignment = .start,
                         .spacing = 2,
                         .children = cx.makeAll(.{
-                            facet.Text{ .text = s.page.title(), .style = .{ .size = t.title_size, .color = t.on_surface }, .wrap = false, .ellipsis = true },
-                            facet.Text{ .text = s.page.description(), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true },
+                            kete.Text{ .text = s.page.title(), .style = .{ .size = t.title_size, .color = t.on_surface }, .wrap = false, .ellipsis = true },
+                            kete.Text{ .text = s.page.description(), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true },
                         }),
                     }) },
-                    facet.SwitchRow{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" },
-                    facet.Tooltip{
+                    kete.SwitchRow{ .value = s.extended_rail, .on_changed = .of(s, State.setExtendedRail), .label = "Labels" },
+                    kete.Tooltip{
                         .text = if (s.light_theme) "Use the dark theme" else "Use the light theme",
-                        .child = cx.make(facet.IconButton{ .icon = if (s.light_theme) .dark_mode else .light_mode, .on_press = .of(s, State.toggleTheme) }),
+                        .child = cx.make(kete.IconButton{ .icon = if (s.light_theme) .dark_mode else .light_mode, .on_press = .of(s, State.toggleTheme) }),
                     },
                 }),
             }),
         });
 
-        const body = cx.make(facet.Row{
+        const body = cx.make(kete.Row{
             .cross_axis_alignment = .stretch,
             .children = cx.makeAll(.{
-                facet.NavigationRail{
+                kete.NavigationRail{
                     .items = &rail_items,
                     .selected = @backingInt(s.page),
                     .on_select = .of(s, State.selectPage),
                     .extended = s.extended_rail,
                 },
-                facet.Divider{ .axis = .vertical },
-                facet.Expanded{
-                    .child = cx.make(facet.Column{
+                kete.Divider{ .axis = .vertical },
+                kete.Expanded{
+                    .child = cx.make(kete.Column{
                         .cross_axis_alignment = .stretch,
                         .children = cx.makeAll(.{
                             header,
-                            facet.Divider{},
-                            facet.Expanded{
+                            kete.Divider{},
+                            kete.Expanded{
                                 // A view for each page, so each starts at the top.
-                                .child = cx.make(facet.ScrollView{
-                                    .child = cx.make(facet.Padding{ .padding = .all(24), .child = content }),
+                                .child = cx.make(kete.ScrollView{
+                                    .child = cx.make(kete.Padding{ .padding = .all(24), .child = content }),
                                 }).withKey(@backingInt(s.page)),
                             },
                         }),
@@ -204,7 +204,7 @@ pub const Showcase = struct {
             }),
         });
 
-        return cx.make(facet.RoundedBox{
+        return cx.make(kete.RoundedBox{
             .color = t.surface,
             .child = feedback.wrap(cx, &s.feedback, body),
         });
@@ -212,21 +212,21 @@ pub const Showcase = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
-        .app_id = "facet-showcase",
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
+        .app_id = "kete-showcase",
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
 
-    var notes = try facet.TextDocument.init(init.gpa, text.initial_notes);
+    var notes = try kete.TextDocument.init(init.gpa, text.initial_notes);
     defer notes.deinit();
-    var code = try facet.TextDocument.init(init.gpa, text.initial_code);
+    var code = try kete.TextDocument.init(init.gpa, text.initial_code);
     defer code.deinit();
 
     const root = Showcase{ .notes = &notes, .code = &code };
     _ = try app.openWindow(.{
-        .title = "Facet Showcase",
+        .title = "Kete Showcase",
         .root = .of(&root),
         .size = .{ 1120, 760 },
         .min_size = .{ 800, 480 },
@@ -236,16 +236,16 @@ pub fn main(init: std.process.Init) !void {
 }
 
 test "every page fits the smallest window and lays out without overflowing, at it and a large size, in both themes" {
-    const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
+    const fira = try kete.font.Font.init(kete.font.default_font_data);
+    const u = try kete.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
-    var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
+    var notes = try kete.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
-    var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);
+    var code = try kete.TextDocument.init(std.testing.allocator, text.initial_code);
     defer code.deinit();
     const root: Showcase = .{ .notes = &notes, .code = &code };
 
-    for ([_]facet.Theme{ .dark, .light }) |theme| {
+    for ([_]kete.Theme{ .dark, .light }) |theme| {
         for ([_][2]u32{ .{ 800, 480 }, .{ 1400, 1000 } }) |size| {
             for ([_]bool{ true, false }) |labels| for (std.enums.values(Page), 0..) |p, i| {
                 u.theme = theme;
@@ -266,7 +266,7 @@ test "every page fits the smallest window and lays out without overflowing, at i
 }
 
 /// Everything got a finite size, and fits in the space it was given.
-fn expectSane(n: *facet.WidgetNode) !void {
+fn expectSane(n: *kete.WidgetNode) !void {
     try std.testing.expect(std.math.isFinite(n.size.w) and n.size.w >= 0);
     try std.testing.expect(std.math.isFinite(n.size.h) and n.size.h >= 0);
     std.testing.expect(n.overflow.right < 0.5 and n.overflow.bottom < 0.5) catch |err| {
@@ -281,13 +281,13 @@ test {
 }
 
 test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
-    const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
+    const fira = try kete.font.Font.init(kete.font.default_font_data);
+    const u = try kete.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.shared.software_renderer.renderer(), false);
-    var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
+    var notes = try kete.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
-    var code = try facet.TextDocument.init(std.testing.allocator, text.initial_code);
+    var code = try kete.TextDocument.init(std.testing.allocator, text.initial_code);
     defer code.deinit();
     const root: Showcase = .{ .notes = &notes, .code = &code };
     const w = 900;
@@ -303,7 +303,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
         back: usize = 0,
         rng: std.Random.DefaultPrng = .init(7),
 
-        pub fn beginSoftwareFrame(win: *@This()) !facet.gfx.software.Image {
+        pub fn beginSoftwareFrame(win: *@This()) !kete.gfx.software.Image {
             win.back = win.rng.random().uintLessThan(usize, win.pixels.len);
             return .{ .pixels = win.pixels[win.back], .width = w, .height = h };
         }
@@ -311,7 +311,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
             const d = win.drawn[win.back];
             return if (d == 0) 0 else @intCast(win.frames + 1 - d);
         }
-        pub fn showDamaged(win: *@This(), _: ?[]const facet.gfx.Viewport) !void {
+        pub fn showDamaged(win: *@This(), _: ?[]const kete.gfx.Viewport) !void {
             win.frames += 1;
             win.drawn[win.back] = win.frames;
         }
@@ -330,7 +330,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
     u.frame(w, h, t, root);
     for (std.enums.values(Page)) |page| for (0..40) |f| {
         if (f == 0) u.root.?.state(Showcase.State).page = page;
-        const pos: facet.Point = .{ @floatFromInt(rng.random().uintLessThan(u32, w)), @floatFromInt(rng.random().uintLessThan(u32, h)) };
+        const pos: kete.Point = .{ @floatFromInt(rng.random().uintLessThan(u32, w)), @floatFromInt(rng.random().uintLessThan(u32, h)) };
         switch (rng.random().uintLessThan(u8, 12)) {
             0, 1, 2 => u.pointerMotion(pos),
             // Not on the rail, which would change the page.
@@ -347,7 +347,7 @@ test "what is drawn again on every page matches drawing it all, in buffers given
         u.frame(w, h, t, root);
         if (!try u.present(&win, 0xff000000)) continue;
         @memset(want, 0xff000000);
-        var img: facet.gfx.software.Image = .{ .pixels = want, .width = w, .height = h };
+        var img: kete.gfx.software.Image = .{ .pixels = want, .width = w, .height = h };
         try u.render(&img, null);
         std.testing.expectEqualSlices(u32, want, win.pixels[win.back]) catch |err| {
             std.debug.print("on the {s} page, frame {d}\n", .{ @tagName(page), f });

@@ -2,7 +2,7 @@
 //! fields, and multi-line text areas, plain and with code highlighted.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 pub const initial_notes =
@@ -20,7 +20,7 @@ pub const initial_code =
     \\}
 ;
 
-const lorem = "Facet lays text out with its own font engine: it is shaped, wrapped at word boundaries to fit the space it is given, and drawn with subpixel positioning.";
+const lorem = "Kete lays text out with its own font engine: it is shaped, wrapped at word boundaries to fit the space it is given, and drawn with subpixel positioning.";
 
 pub const State = struct {
     name: Buffer = .{},
@@ -59,28 +59,28 @@ const Buffer = struct {
     }
 };
 
-pub fn build(cx: *facet.BuildContext, s: *State, notes: *facet.TextDocument, code: *facet.TextDocument) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State, notes: *kete.TextDocument, code: *kete.TextDocument) kete.Widget {
     const t = cx.theme();
     return common.page(cx, &.{
         common.section(cx, "Text", "Text in the theme's sizes and colours", cx.makeAll(.{
-            facet.Text{ .text = "Title text", .style = .{ .size = t.title_size, .color = t.on_surface } },
-            facet.Text{ .text = "Body text, the size most text is", .style = .{ .size = t.body_size, .color = t.on_surface } },
-            facet.Text{ .text = "Supporting text, quieter than the body", .style = .{ .size = 13, .color = t.on_surface_variant } },
-            facet.Text{ .text = "Primary colour for emphasis", .style = .{ .size = t.body_size, .color = t.primary } },
-            facet.Text{ .text = "Error colour for problems", .style = .{ .size = t.body_size, .color = t.@"error" } },
-            facet.Text{ .text = "Accents and emoji: Grüße, café, naïve 🎉", .style = .{ .size = t.body_size, .color = t.on_surface } },
+            kete.Text{ .text = "Title text", .style = .{ .size = t.title_size, .color = t.on_surface } },
+            kete.Text{ .text = "Body text, the size most text is", .style = .{ .size = t.body_size, .color = t.on_surface } },
+            kete.Text{ .text = "Supporting text, quieter than the body", .style = .{ .size = 13, .color = t.on_surface_variant } },
+            kete.Text{ .text = "Primary colour for emphasis", .style = .{ .size = t.body_size, .color = t.primary } },
+            kete.Text{ .text = "Error colour for problems", .style = .{ .size = t.body_size, .color = t.@"error" } },
+            kete.Text{ .text = "Accents and emoji: Grüße, café, naïve 🎉", .style = .{ .size = t.body_size, .color = t.on_surface } },
         })),
         common.section(cx, "Layout", "Text wrapped to its width, cut short with an ellipsis, and aligned", &.{
-            common.labelled(cx, "Wrapped", cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .style = .{ .color = t.on_surface } }) }})),
-            common.labelled(cx, "Ellipsis", cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Text{ .text = lorem, .wrap = false, .ellipsis = true, .style = .{ .color = t.on_surface } }) }})),
+            common.labelled(cx, "Wrapped", cx.makeAll(.{kete.Expanded{ .child = cx.make(kete.Text{ .text = lorem, .style = .{ .color = t.on_surface } }) }})),
+            common.labelled(cx, "Ellipsis", cx.makeAll(.{kete.Expanded{ .child = cx.make(kete.Text{ .text = lorem, .wrap = false, .ellipsis = true, .style = .{ .color = t.on_surface } }) }})),
             common.labelled(cx, "Start", &.{aligned(cx, .start)}),
             common.labelled(cx, "Center", &.{aligned(cx, .center)}),
             common.labelled(cx, "End", &.{aligned(cx, .end)}),
         }),
         common.section(cx, "Text fields", "Single lines of text: typed, hidden, submitted with Enter, or unavailable", &.{
             common.labelled(cx, "Name", cx.makeAll(.{
-                facet.TextField{ .placeholder = "Your name", .initial = s.name.text(), .on_changed = .of(s, State.setName) },
-                facet.Text{
+                kete.TextField{ .placeholder = "Your name", .initial = s.name.text(), .on_changed = .of(s, State.setName) },
+                kete.Text{
                     .text = if (s.name.len == 0) "" else cx.fmt("Hello, {s}!", .{s.name.text()}),
                     .style = .{ .size = 13, .color = t.primary },
                     .wrap = false,
@@ -88,24 +88,24 @@ pub fn build(cx: *facet.BuildContext, s: *State, notes: *facet.TextDocument, cod
                 },
             })),
             common.labelled(cx, "Password", cx.makeAll(.{
-                facet.TextField{ .placeholder = "Password", .obscure = true, .initial = s.password.text(), .on_changed = .of(s, State.setPassword) },
-                facet.Text{ .text = cx.fmt("{d} characters", .{std.unicode.utf8CountCodepoints(s.password.text()) catch 0}), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                kete.TextField{ .placeholder = "Password", .obscure = true, .initial = s.password.text(), .on_changed = .of(s, State.setPassword) },
+                kete.Text{ .text = cx.fmt("{d} characters", .{std.unicode.utf8CountCodepoints(s.password.text()) catch 0}), .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
             })),
             common.labelled(cx, "Search", cx.makeAll(.{
-                facet.TextField{ .placeholder = "Type and press Enter", .initial = s.search.text(), .on_changed = .of(s, State.setSearch), .on_submit = .of(s, State.submitSearch) },
+                kete.TextField{ .placeholder = "Type and press Enter", .initial = s.search.text(), .on_changed = .of(s, State.setSearch), .on_submit = .of(s, State.submitSearch) },
                 common.status(cx, s.submitted.text("")),
             })),
             common.labelled(cx, "Large", cx.makeAll(.{
-                facet.TextField{ .placeholder = "Larger text", .size = 20, .width = 320 },
+                kete.TextField{ .placeholder = "Larger text", .size = 20, .width = 320 },
             })),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.TextField{ .initial = "Can't be edited", .enabled = false },
+                kete.TextField{ .initial = "Can't be edited", .enabled = false },
             })),
         }),
         common.section(cx, "Text areas", "Many lines of text in a shared document, plain or with code highlighted", cx.makeAll(.{
             area(cx, notes, null, 96),
             area(cx, code, highlightZig, 160),
-            facet.Text{
+            kete.Text{
                 .text = cx.fmt("The code is {d} lines, {d} bytes, with the cursor at {d}", .{ 1 + std.mem.count(u8, code.text(), "\n"), code.text().len, code.cursor }),
                 .style = .{ .size = 13, .color = t.on_surface_variant },
             },
@@ -113,40 +113,40 @@ pub fn build(cx: *facet.BuildContext, s: *State, notes: *facet.TextDocument, cod
     });
 }
 
-fn aligned(cx: *facet.BuildContext, a: facet.TextAlign) facet.Widget {
+fn aligned(cx: *kete.BuildContext, a: kete.TextAlign) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.Expanded{ .child = cx.make(facet.RoundedBox{
+    return cx.make(kete.Expanded{ .child = cx.make(kete.RoundedBox{
         .color = t.surface_container,
         .radius = .all(6),
-        .child = cx.make(facet.Padding{
+        .child = cx.make(kete.Padding{
             .padding = .symmetric(10, 6),
-            .child = cx.make(facet.Text{ .text = cx.fmt("Aligned to the {s}", .{@tagName(a)}), .text_align = a, .style = .{ .color = t.on_surface } }),
+            .child = cx.make(kete.Text{ .text = cx.fmt("Aligned to the {s}", .{@tagName(a)}), .text_align = a, .style = .{ .color = t.on_surface } }),
         }),
     }) });
 }
 
-fn area(cx: *facet.BuildContext, doc: *facet.TextDocument, highlighter: ?facet.TextArea.Highlighter, height: f32) facet.Widget {
+fn area(cx: *kete.BuildContext, doc: *kete.TextDocument, highlighter: ?kete.TextArea.Highlighter, height: f32) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.SizedBox{
+    return cx.make(kete.SizedBox{
         .height = height,
-        .child = cx.make(facet.RoundedBox{
+        .child = cx.make(kete.RoundedBox{
             .color = t.surface_container,
             .border_color = t.outline_variant,
             .radius = .all(8),
-            .child = cx.make(facet.TextArea{ .doc = doc, .highlighter = highlighter }),
+            .child = cx.make(kete.TextArea{ .doc = doc, .highlighter = highlighter }),
         }),
     });
 }
 
 /// Colours a little of Zig: comments, strings, builtins, numbers, keywords
 /// and types.
-fn highlightZig(text: []const u8, out: []facet.SyntaxHighlight) void {
+fn highlightZig(text: []const u8, out: []kete.SyntaxHighlight) void {
     const keywords = [_][]const u8{ "const", "var", "fn", "pub", "return", "if", "else", "for", "while", "struct", "enum" };
     const types = [_][]const u8{ "u8", "u16", "u32", "u64", "usize", "i32", "f32", "bool", "void" };
     var i: usize = 0;
     while (i < text.len) {
         const start = i;
-        const kind: facet.SyntaxHighlight = if (std.mem.startsWith(u8, text[i..], "//")) blk: {
+        const kind: kete.SyntaxHighlight = if (std.mem.startsWith(u8, text[i..], "//")) blk: {
             i = std.mem.indexOfScalarPos(u8, text, i, '\n') orelse text.len;
             break :blk .comment;
         } else if (text[i] == '"') blk: {

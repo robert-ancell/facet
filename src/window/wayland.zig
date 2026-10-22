@@ -1295,7 +1295,7 @@ pub const WaylandWindow = struct {
         const positioner = try w.conn.newObject(null);
         var m = try w.wm_base.request(p.xdg_wm_base.request.create_positioner);
         m.uint(positioner.id).end();
-        // As facet means its placements everywhere (the compositor places
+        // As kete means its placements everywhere (the compositor places
         // it by these here; `Positioner.place` does elsewhere).
         const pos = pl.positioner(.{ w.width, w.height });
         m = try positioner.request(pos_p.request.set_size);
@@ -2282,7 +2282,7 @@ pub const WaylandWindow = struct {
     fn allocShmBuffer(w: *WaylandWindow, slot: *?Buffer, bw: u32, bh: u32, cw: u32, ch: u32, m_px: u32, s: u32, alpha: bool) !Buffer {
         const stride = bw * 4;
         const size: usize = @as(usize, stride) * @as(usize, bh);
-        const rc = linux.memfd_create("facet-shm", linux.MFD.CLOEXEC);
+        const rc = linux.memfd_create("kete-shm", linux.MFD.CLOEXEC);
         if (linux.errno(rc) != .SUCCESS) return error.OutOfMemory;
         const fd: linux.fd_t = @intCast(rc);
         errdefer _ = linux.close(fd);

@@ -1,4 +1,4 @@
-//! 2D graphics for Facet's widget toolkit: anti-aliased rectangles with
+//! 2D graphics for Kete's widget toolkit: anti-aliased rectangles with
 //! rounded corners (and circles), polygons and polylines, filled or stroked,
 //! paths with holes, text from a glyph `Atlas`, and images (stretched to a
 //! rectangle, or bent onto triangles), blended source-over.

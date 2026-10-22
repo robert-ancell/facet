@@ -1,7 +1,7 @@
 //! Inbox application with navigation rail, tabs, confirmation dialog, and undo snackbar (`zig build run-navigation`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 pub const NavigationDemo = struct {
     pub const State = struct {
@@ -50,57 +50,57 @@ pub const NavigationDemo = struct {
         }
     };
 
-    pub fn build(_: *const NavigationDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
-        const rail_items = [_]facet.NavigationRail.Item{
+    pub fn build(_: *const NavigationDemo, cx: *kete.BuildContext, state: *State) kete.Widget {
+        const rail_items = [_]kete.NavigationRail.Item{
             .{ .label = "Inbox", .icon = .chat, .badge = state.unread },
             .{ .label = "Files", .icon = .folder },
             .{ .label = "Settings", .icon = .settings },
         };
-        const tabs = [_]facet.Tab{
+        const tabs = [_]kete.Tab{
             .{ .label = "Primary", .icon = .apps, .badge = state.unread },
             .{ .label = "Updates", .icon = .info },
         };
 
-        const body = cx.make(facet.Row{
+        const body = cx.make(kete.Row{
             .cross_axis_alignment = .stretch,
             .children = cx.makeAll(.{
-                facet.NavigationRail{
+                kete.NavigationRail{
                     .items = &rail_items,
                     .selected = state.section,
                     .on_select = .of(state, State.selectSection),
                 },
-                facet.Divider{ .axis = .vertical },
-                facet.Expanded{
-                    .child = cx.make(facet.Column{
+                kete.Divider{ .axis = .vertical },
+                kete.Expanded{
+                    .child = cx.make(kete.Column{
                         .cross_axis_alignment = .stretch,
                         .children = cx.makeAll(.{
-                            facet.TabBar{
+                            kete.TabBar{
                                 .tabs = &tabs,
                                 .selected = state.tab,
                                 .on_select = .of(state, State.selectTab),
                             },
-                            facet.Expanded{
-                                .child = cx.make(facet.Padding{
+                            kete.Expanded{
+                                .child = cx.make(kete.Padding{
                                     .padding = .all(24),
-                                    .child = cx.make(facet.Column{
+                                    .child = cx.make(kete.Column{
                                         .cross_axis_alignment = .stretch,
                                         .spacing = 12,
                                         .children = cx.makeAll(.{
-                                            facet.Row{
+                                            kete.Row{
                                                 .spacing = 12,
                                                 .cross_axis_alignment = .center,
                                                 .children = cx.makeAll(.{
-                                                    facet.Badge{
+                                                    kete.Badge{
                                                         .count = state.unread,
-                                                        .child = cx.make(facet.Icon{ .icon = .forum, .size = 28 }),
+                                                        .child = cx.make(kete.Icon{ .icon = .forum, .size = 28 }),
                                                     },
-                                                    facet.Text{
+                                                    kete.Text{
                                                         .text = cx.fmt("Section {d} · Tab {d} ({d} unread)", .{ state.section + 1, state.tab + 1, state.unread }),
                                                         .style = .{ .size = 18 },
                                                     },
-                                                    facet.Tooltip{
+                                                    kete.Tooltip{
                                                         .text = "Clear all unread items",
-                                                        .child = cx.make(facet.IconButton{
+                                                        .child = cx.make(kete.IconButton{
                                                             .icon = .delete_sweep,
                                                             .variant = .tonal,
                                                             .on_press = .of(state, State.openClearDialog),
@@ -108,21 +108,21 @@ pub const NavigationDemo = struct {
                                                     },
                                                 }),
                                             },
-                                            facet.Card{
+                                            kete.Card{
                                                 .variant = .outlined,
                                                 .padding = .all(8),
-                                                .child = cx.make(facet.Column{
+                                                .child = cx.make(kete.Column{
                                                     .cross_axis_alignment = .stretch,
                                                     .children = cx.makeAll(.{
-                                                        facet.ListItem{
-                                                            .headline = "Welcome to Facet",
+                                                        kete.ListItem{
+                                                            .headline = "Welcome to Kete",
                                                             .supporting_text = "Click to mark one message as read",
                                                             .leading_icon = .chat,
                                                             .trailing_icon = .chevron_right,
                                                             .on_press = .of(state, State.markOneRead),
                                                         },
-                                                        facet.Divider{},
-                                                        facet.ListItem{
+                                                        kete.Divider{},
+                                                        kete.ListItem{
                                                             .headline = "System Status",
                                                             .supporting_text = "All rendering backends healthy",
                                                             .leading_icon = .memory,
@@ -141,7 +141,7 @@ pub const NavigationDemo = struct {
             }),
         });
 
-        const with_snackbar = cx.make(facet.Snackbar{
+        const with_snackbar = cx.make(kete.Snackbar{
             .message = state.snackbar_msg,
             .action_label = "Undo",
             .on_action = .of(state, State.undoRead),
@@ -149,7 +149,7 @@ pub const NavigationDemo = struct {
             .child = body,
         });
 
-        return cx.make(facet.Dialog{
+        return cx.make(kete.Dialog{
             .open = state.confirm_open,
             .icon = .warning,
             .title = "Clear all messages?",
@@ -164,7 +164,7 @@ pub const NavigationDemo = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -172,7 +172,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = NavigationDemo{};
     _ = try app.openWindow(.{
-        .title = "Facet Navigation",
+        .title = "Kete Navigation",
         .root = .of(&root),
         .size = .{ 800, 520 },
         .on_close_request = .close,

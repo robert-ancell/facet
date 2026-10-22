@@ -1,15 +1,15 @@
 //! 2D: a widget of the app's own, painting shapes and lines on the canvas.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 pub const State = struct {};
 
-pub fn build(cx: *facet.BuildContext, _: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, _: *State) kete.Widget {
     const painting = common.section(cx, "Custom painting", "A widget of its own, painting shapes and lines on the canvas each frame", &.{
         // Described to screen readers as what it is.
-        cx.make(facet.Accessible{ .role = .img, .label = "A Lissajous figure", .roledescription = "animation", .description = "Lines and circles tracing a figure that turns", .child = cx.make(Lissajous{}) }),
+        cx.make(kete.Accessible{ .role = .img, .label = "A Lissajous figure", .roledescription = "animation", .description = "Lines and circles tracing a figure that turns", .child = cx.make(Lissajous{}) }),
     });
     return common.page(cx, &.{painting});
 }
@@ -22,11 +22,11 @@ const Lissajous = struct {
         last_ns: ?u64 = null,
     };
 
-    pub fn layout(_: *const Lissajous, _: *facet.WidgetNode, c: facet.Constraints) facet.Size {
+    pub fn layout(_: *const Lissajous, _: *kete.WidgetNode, c: kete.Constraints) kete.Size {
         return c.constrain(.{ .w = if (c.boundedWidth()) c.max_w else 480, .h = 220 });
     }
 
-    pub fn paint(_: *const Lissajous, n: *facet.WidgetNode, p: *facet.Painter) void {
+    pub fn paint(_: *const Lissajous, n: *kete.WidgetNode, p: *kete.Painter) void {
         const st = n.state(@This().State);
         if (st.last_ns) |prev| {
             const dt: f32 = @floatCast(@as(f64, @floatFromInt(n.ui.now_ns -| prev)) / std.time.ns_per_s);
@@ -48,7 +48,7 @@ const Lissajous = struct {
         while (y < h) : (y += 24) c.fillRect(.{ .x = 0, .y = y, .w = w, .h = 1 }, t.outline_variant.withAlpha(0.5));
 
         const steps = 400;
-        var points: [steps]facet.Point = undefined;
+        var points: [steps]kete.Point = undefined;
         const cx_ = w / 2;
         const cy = h / 2;
         const rx = @min(w, h * 2) * 0.4;
@@ -62,7 +62,7 @@ const Lissajous = struct {
         // Dots travelling along it.
         for (0..6) |i| {
             const a = st.phase * 2 + @as(f32, @floatFromInt(i)) * std.math.tau / 6;
-            const pt: facet.Point = .{ cx_ + rx * @sin(3 * a + st.phase), cy + ry * @sin(2 * a) };
+            const pt: kete.Point = .{ cx_ + rx * @sin(3 * a + st.phase), cy + ry * @sin(2 * a) };
             c.fillCircle(pt, 6, t.@"error");
             c.strokeCircle(pt, 10, 2, t.@"error".withAlpha(0.4));
         }

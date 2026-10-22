@@ -17,7 +17,7 @@ const Color = gfx.Color;
 /// ![The ProgressBar example](images/ProgressBar.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.ProgressBar{ .value = 0.6 }) });
+/// return cx.make(kete.SizedBox{ .width = 240, .child = cx.make(kete.ProgressBar{ .value = 0.6 }) });
 /// ```
 pub const ProgressBar = struct {
     /// From 0 to 1, or null for an indeterminate animation.

@@ -3,7 +3,7 @@
 //! shape, shading, anti-aliasing and speed.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const solids = @import("solids.zig");
 
 const Shape = solids.Shape;
@@ -11,7 +11,7 @@ const Look = solids.Look;
 const Vertex = solids.Vertex;
 
 /// How the solid's vertices are laid out, for `createPipeline`.
-pub const vertex_attributes = [_]facet.gfx.shaders.Attribute{
+pub const vertex_attributes = [_]kete.gfx.shaders.Attribute{
     .{ .location = 0, .components = 3, .offset = @offsetOf(Vertex, "pos") },
     .{ .location = 1, .components = 2, .offset = @offsetOf(Vertex, "uv") },
     .{ .location = 2, .components = 3, .offset = @offsetOf(Vertex, "tint") },
@@ -20,8 +20,8 @@ pub const vertex_attributes = [_]facet.gfx.shaders.Attribute{
 
 /// The viewer, drawing the solid with `Backend`, which gives:
 /// * `name`, shown over the solid;
-/// * `BuildContext`, the 3D widget's context (`facet.gfx.OpenGlContext`, ...);
-/// * `Area`, the 3D widget (`facet.OpenGlArea`, ...);
+/// * `BuildContext`, the 3D widget's context (`kete.gfx.OpenGlContext`, ...);
+/// * `Area`, the 3D widget (`kete.OpenGlArea`, ...);
 /// * `createPipeline(ctx)`, the solid's pipeline (see `vertex_attributes`);
 /// * optionally `finish(ctx)`, which waits for drawing to finish before
 ///   the solid's buffers are freed.
@@ -170,13 +170,13 @@ pub fn Viewer(comptime Backend: type) type {
                 s.roll = 0.0;
             }
 
-            pub fn orbit(s: *State, delta: facet.Point) void {
+            pub fn orbit(s: *State, delta: kete.Point) void {
                 s.yaw = @mod(s.yaw + delta[0] * 0.012, std.math.tau);
                 s.pitch = std.math.clamp(s.pitch + delta[1] * 0.012, -1.45, 1.45);
             }
         };
 
-        pub fn build(_: *const @This(), cx: *facet.BuildContext, state: *State) facet.Widget {
+        pub fn build(_: *const @This(), cx: *kete.BuildContext, state: *State) kete.Widget {
             const now = cx.now();
             if (!state.paused) {
                 if (state.last_ns) |prev| {
@@ -192,9 +192,9 @@ pub fn Viewer(comptime Backend: type) type {
             }
 
             const t = cx.theme();
-            var radios: [solids.shapes.len]facet.Widget = undefined;
+            var radios: [solids.shapes.len]kete.Widget = undefined;
             for (&radios, solids.shapes) |*w, sh| {
-                w.* = cx.make(facet.RadioRow(Shape){
+                w.* = cx.make(kete.RadioRow(Shape){
                     .value = sh,
                     .group_value = state.shape,
                     .on_changed = .of(state, State.chooseShape),
@@ -208,17 +208,17 @@ pub fn Viewer(comptime Backend: type) type {
                 8 => "8× MSAA",
                 else => "4× MSAA",
             };
-            const badge = cx.make(facet.Align{
+            const badge = cx.make(kete.Align{
                 .alignment = .top_left,
-                .child = cx.make(facet.Padding{
+                .child = cx.make(kete.Padding{
                     .padding = .all(12),
-                    .child = cx.make(facet.RoundedBox{
+                    .child = cx.make(kete.RoundedBox{
                         .color = t.surface_container_highest.withAlpha(0.88),
                         .radius = .all(8),
                         .border_color = t.outline_variant,
-                        .child = cx.make(facet.Padding{
+                        .child = cx.make(kete.Padding{
                             .padding = .symmetric(12, 6),
-                            .child = cx.make(facet.Text{
+                            .child = cx.make(kete.Text{
                                 .text = cx.fmt(Backend.name ++ "  ·  {s}  ·  {s}  ·  {s} ({d} triangles)  ·  Drag to orbit", .{
                                     if (state.paused) "Paused" else if (state.fps == 0) "– FPS" else cx.fmt("{d:.0} FPS", .{state.fps}),
                                     msaa_label,
@@ -232,16 +232,16 @@ pub fn Viewer(comptime Backend: type) type {
                 }),
             });
 
-            return cx.make(facet.Padding{
+            return cx.make(kete.Padding{
                 .padding = .all(20),
-                .child = cx.make(facet.Row{
+                .child = cx.make(kete.Row{
                     .cross_axis_alignment = .stretch,
                     .spacing = 20,
                     .children = cx.makeAll(.{
-                        facet.Expanded{
-                            .child = cx.make(facet.RoundedBox{
+                        kete.Expanded{
+                            .child = cx.make(kete.RoundedBox{
                                 .border_color = t.outline_variant,
-                                .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Backend.Area(Scene){
+                                .child = cx.make(kete.Padding{ .padding = .all(1), .child = cx.make(Backend.Area(Scene){
                                     .scene = .{
                                         .shape = state.shape,
                                         .yaw = state.yaw,
@@ -255,17 +255,17 @@ pub fn Viewer(comptime Backend: type) type {
                                 }) }),
                             }),
                         },
-                        facet.Card{
+                        kete.Card{
                             .variant = .outlined,
                             .padding = .all(14),
-                            .child = cx.make(facet.SizedBox{
+                            .child = cx.make(kete.SizedBox{
                                 .width = 264,
-                                .child = cx.make(facet.Column{
+                                .child = cx.make(kete.Column{
                                     .fill = false,
                                     .cross_axis_alignment = .start,
                                     .spacing = 4,
                                     .children = cx.makeAll(.{
-                                        facet.Text{
+                                        kete.Text{
                                             .text = "Platonic Solid",
                                             .style = .{ .size = 16 },
                                         },
@@ -274,45 +274,45 @@ pub fn Viewer(comptime Backend: type) type {
                                         radios[2],
                                         radios[3],
                                         radios[4],
-                                        facet.Divider{},
-                                        facet.Text{
+                                        kete.Divider{},
+                                        kete.Text{
                                             .text = "Shader Options",
                                             .style = .{ .size = 16 },
                                         },
-                                        facet.SwitchRow{
+                                        kete.SwitchRow{
                                             .value = state.look.lighting,
                                             .on_changed = .of(state, State.setLighting),
                                             .label = "Directional Lighting",
                                         },
-                                        facet.SwitchRow{
+                                        kete.SwitchRow{
                                             .value = state.look.texturing,
                                             .on_changed = .of(state, State.setTexturing),
                                             .label = "Checkerboard Texture",
                                         },
-                                        facet.Divider{},
-                                        facet.Text{
+                                        kete.Divider{},
+                                        kete.Text{
                                             .text = "Anti-Aliasing (MSAA)",
                                             .style = .{ .size = 14, .color = t.on_surface_variant },
                                         },
-                                        facet.PillBar{
+                                        kete.PillBar{
                                             .children = cx.makeAll(.{
-                                                facet.PillButton{
+                                                kete.PillButton{
                                                     .label = "Off",
                                                     .selected = state.samples == 1,
                                                     .first = true,
                                                     .on_press = .of(state, State.setSamples1),
                                                 },
-                                                facet.PillButton{
+                                                kete.PillButton{
                                                     .label = "2×",
                                                     .selected = state.samples == 2,
                                                     .on_press = .of(state, State.setSamples2),
                                                 },
-                                                facet.PillButton{
+                                                kete.PillButton{
                                                     .label = "4×",
                                                     .selected = state.samples == 4,
                                                     .on_press = .of(state, State.setSamples4),
                                                 },
-                                                facet.PillButton{
+                                                kete.PillButton{
                                                     .label = "8×",
                                                     .selected = state.samples == 8,
                                                     .last = true,
@@ -320,33 +320,33 @@ pub fn Viewer(comptime Backend: type) type {
                                                 },
                                             }),
                                         },
-                                        facet.Divider{},
-                                        facet.Text{
+                                        kete.Divider{},
+                                        kete.Text{
                                             .text = cx.fmt("Rotation Speed ({d:.1}×)", .{state.speed}),
                                             .style = .{ .size = 14, .color = t.on_surface_variant },
                                         },
-                                        facet.SizedBox{
+                                        kete.SizedBox{
                                             .width = 264,
-                                            .child = cx.make(facet.Slider{
+                                            .child = cx.make(kete.Slider{
                                                 .value = state.speed,
                                                 .min = 0.2,
                                                 .max = 4.0,
                                                 .on_changed = .of(state, State.setSpeed),
                                             }),
                                         },
-                                        facet.Row{
+                                        kete.Row{
                                             .fill = false,
                                             .spacing = 8,
                                             .children = cx.makeAll(.{
-                                                facet.ConstrainedBox{
+                                                kete.ConstrainedBox{
                                                     .constraints = .{ .min_w = 136 },
-                                                    .child = cx.make(facet.TonalButton{
+                                                    .child = cx.make(kete.TonalButton{
                                                         .label = if (state.paused) "Resume" else "Pause",
                                                         .icon = if (state.paused) .play_arrow else .pause,
                                                         .on_press = .of(state, State.togglePause),
                                                     }),
                                                 },
-                                                facet.OutlinedButton{
+                                                kete.OutlinedButton{
                                                     .label = "Reset",
                                                     .icon = .refresh,
                                                     .on_press = .of(state, State.resetView),
@@ -366,7 +366,7 @@ pub fn Viewer(comptime Backend: type) type {
 
 /// Runs the viewer in a window titled `title`.
 pub fn run(init: std.process.Init, title: []const u8, root: anytype) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });

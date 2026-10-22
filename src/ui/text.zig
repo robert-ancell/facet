@@ -47,9 +47,9 @@ pub const Line = struct {
 ///
 /// ```zig
 /// const t = cx.theme();
-/// return cx.make(facet.SizedBox{ .width = 280, .child = cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
-///     facet.Text{ .text = "Headline", .style = .{ .size = 28, .color = t.primary }, .wrap = false },
-///     facet.Text{ .text = "Text wraps to the width it is given, and can be aligned in it." },
+/// return cx.make(kete.SizedBox{ .width = 280, .child = cx.make(kete.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
+///     kete.Text{ .text = "Headline", .style = .{ .size = 28, .color = t.primary }, .wrap = false },
+///     kete.Text{ .text = "Text wraps to the width it is given, and can be aligned in it." },
 /// }) }) });
 /// ```
 pub const Text = struct {

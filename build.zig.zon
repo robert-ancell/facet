@@ -1,7 +1,7 @@
 .{
-    .name = .facet,
+    .name = .kete,
     .version = "0.1.0",
-    .fingerprint = 0x56b9ba28fbc6b202,
+    .fingerprint = 0xf5f48ff0eae19db6,
     .minimum_zig_version = "0.17.0",
     .paths = .{
         "build.zig",

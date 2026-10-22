@@ -5,21 +5,21 @@
 //! server's would). Zoomed out, it is a globe.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 const gpa = std.heap.smp_allocator;
-const Color = facet.Color;
-const MapVectorTile = facet.MapVectorTile;
+const Color = kete.Color;
+const MapVectorTile = kete.MapVectorTile;
 const Point = MapVectorTile.Point;
 
 pub const Kind = enum { vector, images };
 pub const Look = enum { atlas, night, blueprint };
 
-const world_view: facet.MapPosition = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
+const world_view: kete.MapPosition = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
 
 pub const State = struct {
-    position: facet.MapPosition = world_view,
+    position: kete.MapPosition = world_view,
     kind: Kind = .vector,
     look: Look = .atlas,
     globe: bool = true,
@@ -69,19 +69,19 @@ pub const State = struct {
 
 const max_zoom = 18;
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     const t = cx.theme();
-    const kinds = [_]facet.Select(Kind).Option{
+    const kinds = [_]kete.Select(Kind).Option{
         .{ .value = .vector, .item = .{ .label = "Vector" } },
         .{ .value = .images, .item = .{ .label = "Images" } },
     };
-    const looks = [_]facet.Select(Look).Option{
+    const looks = [_]kete.Select(Look).Option{
         .{ .value = .atlas, .item = .{ .label = "Atlas" } },
         .{ .value = .night, .item = .{ .label = "Night" } },
         .{ .value = .blueprint, .item = .{ .label = "Blueprint" } },
     };
     const palette = paletteOf(s.look);
-    const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.SizedBox.empty);
+    const style = cx.arena.create(kete.MapStyle) catch return cx.make(kete.SizedBox.empty);
     style.* = styleOf(cx, palette);
     // Images are drawn in the style too (those drawn in another are
     // dropped, and drawn again).
@@ -89,14 +89,14 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     // They tell the time on the app's clock.
     s.vector.io = cx.ui.io;
     s.images.io = cx.ui.io;
-    const source: facet.MapSource = switch (s.kind) {
+    const source: kete.MapSource = switch (s.kind) {
         .vector => .of(&s.vector, .{ .max_level = max_zoom, .attribution = "Vector tiles made by the showcase" }),
         .images => .of(&s.images, .{ .max_level = max_zoom, .attribution = "Images drawn by the showcase" }),
     };
     // The sun now (or as many hours from now as chosen).
     const wall: f64 = @floatFromInt(std.Io.Clock.real.now(cx.ui.io).nanoseconds);
     const unix = wall / std.time.ns_per_s + s.hours * 3600;
-    const night: ?facet.MapNight = if (s.night) .at(unix) else null;
+    const night: ?kete.MapNight = if (s.night) .at(unix) else null;
     const c = s.position.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
         @abs(c.lat),     if (c.lat >= 0) "N" else "S",
@@ -106,10 +106,10 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 
     return common.page(cx, &.{
         common.section(cx, "A slippy map", "Drag it, and zoom with the wheel or a double click; zoomed out, it is a globe", cx.makeAll(.{
-            facet.SizedBox{ .height = 400, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
-                facet.RoundedBox{
+            kete.SizedBox{ .height = 400, .child = cx.make(kete.Overlay{ .children = cx.makeAll(.{
+                kete.RoundedBox{
                     .border_color = t.outline_variant,
-                    .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(facet.MapView{
+                    .child = cx.make(kete.Padding{ .padding = .all(1), .child = cx.make(kete.MapView{
                         .source = source,
                         .style = style,
                         .position = &s.position,
@@ -119,12 +119,12 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                         .max_zoom = max_zoom,
                     }) }),
                 },
-                facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.RoundedBox{
+                kete.Align{ .alignment = .top_right, .child = cx.make(kete.Padding{ .padding = .all(10), .child = cx.make(kete.RoundedBox{
                     .color = t.surface.withAlpha(0.9),
                     .radius = .all(20),
-                    .child = cx.make(facet.Column{ .fill = false, .children = cx.makeAll(.{
-                        facet.Accessible{ .label = "Zoom in", .child = cx.make(facet.IconButton{ .icon = .add, .on_press = .of(s, State.zoomIn) }) },
-                        facet.Accessible{ .label = "Zoom out", .child = cx.make(facet.IconButton{ .icon = .remove, .on_press = .of(s, State.zoomOut) }) },
+                    .child = cx.make(kete.Column{ .fill = false, .children = cx.makeAll(.{
+                        kete.Accessible{ .label = "Zoom in", .child = cx.make(kete.IconButton{ .icon = .add, .on_press = .of(s, State.zoomIn) }) },
+                        kete.Accessible{ .label = "Zoom out", .child = cx.make(kete.IconButton{ .icon = .remove, .on_press = .of(s, State.zoomOut) }) },
                     }) }),
                 }) }) },
             }) }) },
@@ -132,26 +132,26 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         })),
         common.section(cx, "Tiles", "Made here: vector tiles drawn in a style, or images drawn from them in the same style", &.{
             common.labelled(cx, "Tiles", cx.makeAll(.{
-                facet.Select(Kind){ .options = &kinds, .value = s.kind, .on_changed = .of(s, State.setKind), .width = 180 },
+                kete.Select(Kind){ .options = &kinds, .value = s.kind, .on_changed = .of(s, State.setKind), .width = 180 },
             })),
             common.labelled(cx, "Style", cx.makeAll(.{
-                facet.Select(Look){ .options = &looks, .value = s.look, .on_changed = .of(s, State.setLook), .width = 180 },
+                kete.Select(Look){ .options = &looks, .value = s.look, .on_changed = .of(s, State.setLook), .width = 180 },
             })),
             common.labelled(cx, "Go to", cx.makeAll(.{
-                facet.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) },
-                facet.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) },
+                kete.TextButton{ .label = "The world", .icon = .public, .on_press = .of(s, State.goWorld) },
+                kete.TextButton{ .label = "0°, 0°", .icon = .my_location, .on_press = .of(s, State.goNullIsland) },
             })),
         }),
         common.section(cx, "The globe", "Zoomed out, a globe with a glow, and night where the sun has set (fading as it becomes the flat map)", &.{
             common.labelled(cx, "Globe", cx.makeAll(.{
-                facet.SwitchRow{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" },
-                facet.SwitchRow{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" },
+                kete.SwitchRow{ .value = s.globe, .on_changed = .of(s, State.setGlobe), .label = "Show globe" },
+                kete.SwitchRow{ .value = s.atmosphere, .on_changed = .of(s, State.setAtmosphere), .label = "Atmosphere" },
             })),
             common.labelled(cx, "Night", cx.makeAll(.{
-                facet.SwitchRow{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" },
+                kete.SwitchRow{ .value = s.night, .on_changed = .of(s, State.setNight), .label = "Day and night" },
             })),
             common.labelled(cx, if (s.hours == 0) "Now" else cx.fmt("{s}{d:.1} hours", .{ if (s.hours > 0) "+" else "", s.hours }), cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) },
+                kete.Expanded{ .child = cx.make(kete.Slider{ .value = s.hours, .min = -12, .max = 12, .divisions = 24, .on_changed = .of(s, State.setHours) }) },
             })),
         }),
     });
@@ -209,8 +209,8 @@ fn paletteOf(look: Look) Palette {
 
 /// The style for the tiles made here (with its layers in the frame's
 /// arena, or `gpa` for a lasting one).
-fn styleOf(cx: ?*facet.BuildContext, p: Palette) facet.MapStyle {
-    const layers = [_]facet.MapStyle.Layer{
+fn styleOf(cx: ?*kete.BuildContext, p: Palette) kete.MapStyle {
+    const layers = [_]kete.MapStyle.Layer{
         .{ .source_layer = "zones", .filter = kindIs("tropics"), .draw = .{ .fill = p.tropics } },
         .{ .source_layer = "zones", .filter = kindIs("polar"), .draw = .{ .fill = p.polar } },
         .{ .source_layer = "grid", .filter = .{ .not_equals = .{ .key = "major", .value = .{ .boolean = true } } }, .draw = .{ .line = .{ .color = p.line, .width = 1 } } },
@@ -220,11 +220,11 @@ fn styleOf(cx: ?*facet.BuildContext, p: Palette) facet.MapStyle {
         .{ .source_layer = "labels", .filter = kindIs("parallel"), .draw = .{ .label = .{ .style = .{ .size = 12, .color = p.text, .halo = p.halo, .anchor = .bottom, .offset = .{ 0, -2 } } } } },
         .{ .source_layer = "labels", .filter = kindIs("meridian"), .draw = .{ .label = .{ .style = .{ .size = 12, .color = p.text, .halo = p.halo, .anchor = .left, .offset = .{ 4, 0 } } } } },
     };
-    const copy = if (cx) |c| c.arena.dupe(facet.MapStyle.Layer, &layers) catch &.{} else gpa.dupe(facet.MapStyle.Layer, &layers) catch &.{};
+    const copy = if (cx) |c| c.arena.dupe(kete.MapStyle.Layer, &layers) catch &.{} else gpa.dupe(kete.MapStyle.Layer, &layers) catch &.{};
     return .{ .background = p.background, .layers = copy };
 }
 
-fn kindIs(comptime kind: []const u8) facet.MapStyle.Filter {
+fn kindIs(comptime kind: []const u8) kete.MapStyle.Filter {
     return .{ .equals = .{ .key = "kind", .value = .{ .string = kind } } };
 }
 
@@ -259,7 +259,7 @@ fn degrees(buf: []u8, v: f64, pos: []const u8, neg: []const u8) []const u8 {
 }
 
 /// Makes the shapes of tile `id` in `arena`.
-fn makeTile(arena: std.mem.Allocator, id: facet.MapTileId) !MapVectorTile {
+fn makeTile(arena: std.mem.Allocator, id: kete.MapTileId) !MapVectorTile {
     const n = std.math.exp2(@as(f64, @floatFromInt(id.z)));
     const fx: f64 = @floatFromInt(id.x);
     const fy: f64 = @floatFromInt(id.y);
@@ -372,19 +372,19 @@ fn makeTile(arena: std.mem.Allocator, id: facet.MapTileId) !MapVectorTile {
 /// Tiles kept while they are being shown, and a while after.
 fn Cache(comptime Entry: type) type {
     return struct {
-        entries: std.AutoHashMapUnmanaged(facet.MapTileId, *Entry) = .empty,
+        entries: std.AutoHashMapUnmanaged(kete.MapTileId, *Entry) = .empty,
 
         const Self = @This();
         const keep = 400;
         const unused_ns = 2 * std.time.ns_per_s;
 
-        fn get(c: *Self, id: facet.MapTileId, now: u64) ?*Entry {
+        fn get(c: *Self, id: kete.MapTileId, now: u64) ?*Entry {
             const e = c.entries.get(id) orelse return null;
             e.used_ns = now;
             return e;
         }
 
-        fn put(c: *Self, id: facet.MapTileId, e: *Entry, now: u64) void {
+        fn put(c: *Self, id: kete.MapTileId, e: *Entry, now: u64) void {
             c.trim(now);
             c.entries.put(gpa, id, e) catch e.deinit();
         }
@@ -392,7 +392,7 @@ fn Cache(comptime Entry: type) type {
         /// Lets go of tiles not shown for a while, when there are many.
         fn trim(c: *Self, now: u64) void {
             if (c.entries.count() < keep) return;
-            var stale: std.ArrayList(facet.MapTileId) = .empty;
+            var stale: std.ArrayList(kete.MapTileId) = .empty;
             defer stale.deinit(gpa);
             var it = c.entries.iterator();
             while (it.next()) |kv| if (now -| kv.value_ptr.*.used_ns > unused_ns) stale.append(gpa, kv.key_ptr.*) catch break;
@@ -423,8 +423,8 @@ const VectorTiles = struct {
         }
     };
 
-    pub fn tile(s: *VectorTiles, req: facet.MapSource.Request) facet.MapTile {
-        const now = facet.window.nowNs(s.io);
+    pub fn tile(s: *VectorTiles, req: kete.MapSource.Request) kete.MapTile {
+        const now = kete.window.nowNs(s.io);
         if (s.cache.get(req.id, now)) |e| return .{ .vector = &e.tile };
         const e = gpa.create(Shapes) catch return .none;
         e.* = .{ .arena = .init(gpa), .tile = undefined, .used_ns = now };
@@ -448,7 +448,7 @@ const ImageTiles = struct {
     io: std.Io = undefined,
     drawing: ?Drawing = null,
     /// The style they are drawn in (its layers `gpa`'s), and its colours.
-    style: ?facet.MapStyle = null,
+    style: ?kete.MapStyle = null,
     palette: ?Palette = null,
     /// When this frame's drawing started, and how long it has taken.
     window_ns: u64 = 0,
@@ -459,7 +459,7 @@ const ImageTiles = struct {
 
     const Picture = struct {
         pixels: []u32,
-        image: facet.gfx.Image,
+        image: kete.gfx.Image,
         used_ns: u64,
 
         fn deinit(e: *Picture) void {
@@ -470,9 +470,9 @@ const ImageTiles = struct {
 
     /// What drawing them needs.
     const Drawing = struct {
-        font: facet.font.Font,
-        atlas: facet.gfx.Atlas,
-        canvas: facet.gfx.Canvas,
+        font: kete.font.Font,
+        atlas: kete.gfx.Atlas,
+        canvas: kete.gfx.Canvas,
     };
 
     /// Draws them in a style of these colours from now on: those drawn
@@ -487,8 +487,8 @@ const ImageTiles = struct {
         p.palette = palette;
     }
 
-    pub fn tile(p: *ImageTiles, req: facet.MapSource.Request) facet.MapTile {
-        const now = facet.window.nowNs(p.io);
+    pub fn tile(p: *ImageTiles, req: kete.MapSource.Request) kete.MapTile {
+        const now = kete.window.nowNs(p.io);
         if (p.cache.get(req.id, now)) |e| return .{ .image = .{ .image = &e.image } };
         if (now -| p.window_ns > 12 * std.time.ns_per_ms) {
             p.window_ns = now;
@@ -498,19 +498,19 @@ const ImageTiles = struct {
             req.waker.wake();
             return .pending;
         }
-        defer p.spent_ns += facet.window.nowNs(p.io) -| now;
+        defer p.spent_ns += kete.window.nowNs(p.io) -| now;
         const e = p.draw(req.id, now) catch return .none;
         p.cache.put(req.id, e, now);
         return .{ .image = .{ .image = &e.image } };
     }
 
-    fn draw(p: *ImageTiles, id: facet.MapTileId, now: u64) !*Picture {
+    fn draw(p: *ImageTiles, id: kete.MapTileId, now: u64) !*Picture {
         const style = &(p.style orelse return error.NoStyle);
         if (p.drawing == null) {
             p.drawing = .{
-                .font = try facet.font.Font.init(facet.font.default_font_data),
-                .atlas = try facet.gfx.Atlas.init(gpa),
-                .canvas = facet.gfx.Canvas.init(gpa),
+                .font = try kete.font.Font.init(kete.font.default_font_data),
+                .atlas = try kete.gfx.Atlas.init(gpa),
+                .canvas = kete.gfx.Canvas.init(gpa),
             };
         }
         const d = &p.drawing.?;
@@ -520,7 +520,7 @@ const ImageTiles = struct {
         d.canvas.begin(size, size);
         // The tiles around, made too, for their labels that reach into it.
         const Around = struct {
-            fn get(ctx: *anyopaque, other: facet.MapTileId) ?*const MapVectorTile {
+            fn get(ctx: *anyopaque, other: kete.MapTileId) ?*const MapVectorTile {
                 const a: *std.heap.ArenaAllocator = @ptrCast(@alignCast(ctx));
                 const t = a.allocator().create(MapVectorTile) catch return null;
                 t.* = makeTile(a.allocator(), other) catch return null;
@@ -533,7 +533,7 @@ const ImageTiles = struct {
         const pixels = try gpa.alloc(u32, size * size);
         errdefer gpa.free(pixels);
         @memset(pixels, 0xff000000);
-        try facet.gfx.software.render(&d.canvas, .{ .pixels = pixels, .width = size, .height = size });
+        try kete.gfx.software.render(&d.canvas, .{ .pixels = pixels, .width = size, .height = size });
         e.* = .{ .pixels = pixels, .image = .init(pixels, size, size), .used_ns = now };
         return e;
     }

@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 const cube = @import("cube.zig");
 
@@ -28,7 +28,7 @@ pub const State = struct {
     fn setSamples(s: *State, v: Samples) void {
         s.samples = v;
     }
-    fn turn(s: *State, delta: facet.Point) void {
+    fn turn(s: *State, delta: kete.Point) void {
         s.angle = @mod(s.angle + delta[0] * 0.012, std.math.tau);
         s.tilt = std.math.clamp(s.tilt + delta[1] * 0.012, -1.45, 1.45);
     }
@@ -38,7 +38,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     if (s.spinning) {
         const now = cx.now();
         if (s.last_ns) |prev| {
@@ -48,7 +48,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         s.last_ns = now;
         cx.requestFrame();
     }
-    const samples = [_]facet.Select(Samples).Option{
+    const samples = [_]kete.Select(Samples).Option{
         .{ .value = .one, .item = .{ .label = "None" } },
         .{ .value = .two, .item = .{ .label = "2× MSAA" } },
         .{ .value = .four, .item = .{ .label = "4× MSAA" } },
@@ -56,15 +56,15 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     };
     const scenes = switch (builtin.os.tag) {
         .macos => common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{
-            area(cx, s, facet.MetalArea, .metal, "Metal"),
+            area(cx, s, kete.MetalArea, .metal, "Metal"),
         }),
         .windows => common.section(cx, "Direct3D 11", "The scene drawn with Direct3D 11, on the renderer's GPU where it can be; drag it to turn it", &.{
-            area(cx, s, facet.D3D11Area, .d3d11, "Direct3D 11"),
+            area(cx, s, kete.D3D11Area, .d3d11, "Direct3D 11"),
         }),
         else => common.section(cx, "Vulkan and OpenGL", "The same scene drawn by each, on the renderer's GPU where it can be; drag either to turn it", cx.makeAll(.{
-            facet.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = cx.makeAll(.{
-                facet.Expanded{ .child = area(cx, s, facet.VulkanArea, .vulkan, "Vulkan") },
-                facet.Expanded{ .child = area(cx, s, facet.OpenGlArea, .opengl, "OpenGL") },
+            kete.Row{ .spacing = 16, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+                kete.Expanded{ .child = area(cx, s, kete.VulkanArea, .vulkan, "Vulkan") },
+                kete.Expanded{ .child = area(cx, s, kete.OpenGlArea, .opengl, "OpenGL") },
             }) },
         })),
     };
@@ -72,25 +72,25 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         scenes,
         common.section(cx, "Drawing", "How it moves, and how its edges are smoothed", &.{
             common.labelled(cx, "Spin", cx.makeAll(.{
-                facet.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning) },
-                facet.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.reset) },
+                kete.Switch{ .value = s.spinning, .on_changed = .of(s, State.setSpinning) },
+                kete.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.reset) },
             })),
             common.labelled(cx, cx.fmt("Speed {d:.1}×", .{s.speed}), cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.speed, .min = 0.1, .max = 4, .on_changed = .of(s, State.setSpeed) }) },
+                kete.Expanded{ .child = cx.make(kete.Slider{ .value = s.speed, .min = 0.1, .max = 4, .on_changed = .of(s, State.setSpeed) }) },
             })),
             common.labelled(cx, "Anti-aliasing", cx.makeAll(.{
-                facet.Select(Samples){ .options = &samples, .value = s.samples, .on_changed = .of(s, State.setSamples), .width = 180 },
+                kete.Select(Samples){ .options = &samples, .value = s.samples, .on_changed = .of(s, State.setSamples), .width = 180 },
             })),
         }),
     });
 }
 
-/// The cube, drawn with `api` by its widget (`Area`, as `facet.VulkanArea`).
-fn area(cx: *facet.BuildContext, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
+/// The cube, drawn with `api` by its widget (`Area`, as `kete.VulkanArea`).
+fn area(cx: *kete.BuildContext, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.RoundedBox{
+    return cx.make(kete.RoundedBox{
         .border_color = t.outline_variant,
-        .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Area(cube.Scene(api)){
+        .child = cx.make(kete.Padding{ .padding = .all(1), .child = cx.make(Area(cube.Scene(api)){
             .scene = .{ .angle = s.angle, .tilt = s.tilt },
             .samples = @backingInt(s.samples),
             .on_drag = .of(s, State.turn),
@@ -101,14 +101,14 @@ fn area(cx: *facet.BuildContext, s: *State, comptime Area: fn (type) type, compt
     });
 }
 
-fn label(cx: *facet.BuildContext, text: []const u8) facet.Widget {
+fn label(cx: *kete.BuildContext, text: []const u8) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
+    return cx.make(kete.Align{ .alignment = .top_left, .child = cx.make(kete.Padding{
         .padding = .all(10),
-        .child = cx.make(facet.RoundedBox{
+        .child = cx.make(kete.RoundedBox{
             .color = t.surface_container_highest.withAlpha(0.88),
             .radius = .all(6),
-            .child = cx.make(facet.Padding{ .padding = .symmetric(10, 4), .child = cx.make(facet.Text{
+            .child = cx.make(kete.Padding{ .padding = .symmetric(10, 4), .child = cx.make(kete.Text{
                 .text = text,
                 .style = .{ .size = 13, .color = t.on_surface },
                 .wrap = false,

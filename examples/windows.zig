@@ -4,14 +4,14 @@
 //! app ends.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 /// The app's windows: the main one, and those it opened.
 const Windows = struct {
     gpa: std.mem.Allocator,
-    app: *facet.App,
-    main: *facet.App.Window = undefined,
-    others: std.ArrayList(*facet.App.Window) = .empty,
+    app: *kete.App,
+    main: *kete.App.Window = undefined,
+    others: std.ArrayList(*kete.App.Window) = .empty,
     opened: u32 = 0,
 
     fn open(w: *Windows) void {
@@ -26,7 +26,7 @@ const Windows = struct {
         w.others.append(w.gpa, win) catch win.destroy();
     }
 
-    fn closeMain(w: *Windows, _: *facet.App.Window) void {
+    fn closeMain(w: *Windows, _: *kete.App.Window) void {
         w.app.quit();
     }
 
@@ -43,16 +43,16 @@ const Windows = struct {
 const MainView = struct {
     windows: *Windows,
 
-    pub fn build(self: *const MainView, cx: *facet.BuildContext) facet.Widget {
-        return cx.make(facet.Align.center(cx.make(facet.Column{
+    pub fn build(self: *const MainView, cx: *kete.BuildContext) kete.Widget {
+        return cx.make(kete.Align.center(cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
-                facet.Text{
+                kete.Text{
                     .text = cx.fmt("{d} open of {d} opened", .{ self.windows.openCount(), self.windows.opened }),
                 },
-                facet.FilledButton{
+                kete.FilledButton{
                     .label = "Open a window",
                     .icon = .add,
                     .on_press = .of(self.windows, Windows.open),
@@ -75,14 +75,14 @@ const Counter = struct {
         }
     };
 
-    pub fn build(_: *const Counter, cx: *facet.BuildContext, state: *State) facet.Widget {
-        return cx.make(facet.Align.center(cx.make(facet.Column{
+    pub fn build(_: *const Counter, cx: *kete.BuildContext, state: *State) kete.Widget {
+        return cx.make(kete.Align.center(cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
-                facet.Text{ .text = cx.fmt("Count: {d}", .{state.count}) },
-                facet.OutlinedButton{
+                kete.Text{ .text = cx.fmt("Count: {d}", .{state.count}) },
+                kete.OutlinedButton{
                     .label = "Count",
                     .on_press = .of(state, State.increment),
                 },
@@ -92,7 +92,7 @@ const Counter = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
     });
     defer app.deinit();

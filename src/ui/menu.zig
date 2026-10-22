@@ -129,7 +129,7 @@ pub fn cloneItems(a: std.mem.Allocator, items: []const Item) std.mem.Allocator.E
 ///     .{ .label = "Cut", .leading_icon = .content_cut, .shortcut = "Ctrl+X", .on_press = .of(state, State.save) },
 ///     .{ .label = "Copy", .leading_icon = .content_copy, .shortcut = "Ctrl+C", .on_press = .of(state, State.save) },
 ///     .{ .label = "Paste", .leading_icon = .content_paste, .shortcut = "Ctrl+V" },
-///     facet.MenuItem.divider,
+///     kete.MenuItem.divider,
 ///     .{ .label = "Sort by", .leading_icon = .sort, .submenu = &.{
 ///         .{ .label = "Name", .kind = .radio, .checked = true, .on_press = .of(state, State.save) },
 ///         .{ .label = "Date", .kind = .radio, .on_press = .of(state, State.save) },

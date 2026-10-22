@@ -1,7 +1,7 @@
 //! Vertex layouts, SPIR-V shader blobs (compiled at build time from the Zig
 //! shaders in `src/gfx/shaders/*.zig`), GLSL 330 fallback shader sources
 //! (`src/gfx/shaders/*.vert` and `*.frag`), and the Metal Shading Language
-//! source (`src/gfx/shaders/canvas.metal`) for Facet's 2D canvas batches:
+//! source (`src/gfx/shaders/canvas.metal`) for Kete's 2D canvas batches:
 //!
 //! * `shape`: anti-aliased rounded rectangles, filled or stroked. Each
 //!   vertex carries the rectangle: the fragment's position relative to its
@@ -110,7 +110,7 @@ pub const glsl_image_fs: [:0]const u8 = @embedFile("shaders/image.frag");
 pub const msl: [:0]const u8 = @embedFile("shaders/canvas.metal");
 
 /// The DXBC (Direct3D 11) shaders, compiled from `shaders/canvas.hlsl` by
-/// fxc when facet is built on Windows (empty with `-Dwindows-check`).
+/// fxc when kete is built on Windows (empty with `-Dwindows-check`).
 pub const dxbc = if (@import("builtin").os.tag == .windows) struct {
     pub const shape_vs = @embedFile("shape_vs.dxbc");
     pub const solid_vs = @embedFile("solid_vs.dxbc");

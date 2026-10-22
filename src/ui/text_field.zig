@@ -33,9 +33,9 @@ const Size = geometry.Size;
 /// ![The TextField example](images/TextField.png)
 ///
 /// ```zig
-/// return cx.make(facet.Column{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
-///     facet.TextField{ .placeholder = "Search", .on_changed = .of(state, State.setText) },
-///     facet.TextField{ .initial = "Ada Lovelace", .on_changed = .of(state, State.setText) },
+/// return cx.make(kete.Column{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     kete.TextField{ .placeholder = "Search", .on_changed = .of(state, State.setText) },
+///     kete.TextField{ .initial = "Ada Lovelace", .on_changed = .of(state, State.setText) },
 /// }) });
 /// ```
 pub const TextField = struct {
@@ -1198,7 +1198,7 @@ test "double click selects current word, triple click selects all, and selection
                     .cross_axis_alignment = .start,
                     .children = cx.makeAll(.{
                         TextField{
-                            .initial = "https://github.com/robert-ancell/facet",
+                            .initial = "https://github.com/robert-ancell/kete",
                             .width = 160,
                         },
                     }),

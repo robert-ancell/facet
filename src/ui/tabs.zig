@@ -41,7 +41,7 @@ pub const Tab = struct {
 /// ![The TabBar example](images/TabBar.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 480, .child = cx.make(facet.TabBar{
+/// return cx.make(kete.SizedBox{ .width = 480, .child = cx.make(kete.TabBar{
 ///     .tabs = &.{
 ///         .{ .label = "Flights", .icon = .flight },
 ///         .{ .label = "Hotels", .icon = .hotel, .badge = 2 },

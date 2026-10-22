@@ -28,7 +28,7 @@ const Callback = widget.Callback;
 /// ![The Snackbar example](images/Snackbar.png)
 ///
 /// ```zig
-/// return cx.make(facet.Snackbar{
+/// return cx.make(kete.Snackbar{
 ///     .message = "Message archived",
 ///     .action_label = "Undo",
 ///     .on_action = .of(state, State.save),

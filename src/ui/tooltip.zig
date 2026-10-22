@@ -23,9 +23,9 @@ const Event = widget.Event;
 /// ![The Tooltip example](images/Tooltip.png)
 ///
 /// ```zig
-/// return cx.make(facet.Tooltip{
+/// return cx.make(kete.Tooltip{
 ///     .text = "Add to favourites",
-///     .child = cx.make(facet.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) }),
+///     .child = cx.make(kete.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) }),
 /// });
 /// ```
 pub const Tooltip = struct {

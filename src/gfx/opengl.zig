@@ -1,4 +1,4 @@
-//! OpenGL 3.3+ Core / OpenGL 4.6 SPIR-V rendering backend for Facet's 2D `Canvas`
+//! OpenGL 3.3+ Core / OpenGL 4.6 SPIR-V rendering backend for Kete's 2D `Canvas`
 //! and `OpenGlArea` offscreen 3D widget.
 //!
 //! Uses a runtime `GetProcAddress` loader (compatible with `eglGetProcAddress`,

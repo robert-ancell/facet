@@ -1,12 +1,12 @@
-# Facet
+# Kete
 
-**Facet** is a fast, efficient, and beautiful declarative UI toolkit for Zig.
+**Kete** (KEH-teh) is a fast, efficient, and beautiful declarative UI toolkit for Zig.
 
 It makes building modern desktop applications simple: describe your interface in clean Zig code and get a responsive, native Material 3 look and feel out of the box.
 
-- [API Documentation](https://robert-ancell.github.io/facet/docs/)
+- [API Documentation](https://robert-ancell.github.io/kete/docs/)
 
-![Facet Showcase](screenshot.png)
+![Kete Showcase](screenshot.png)
 
 ## Features
 
@@ -17,24 +17,24 @@ It makes building modern desktop applications simple: describe your interface in
 
 ## Example
 
-Add Facet to your project:
+Add Kete to your project:
 
 ```sh
-zig fetch --save git+https://github.com/robert-ancell/facet
+zig fetch --save git+https://github.com/robert-ancell/kete
 ```
 
-Import the `facet` module in your `build.zig`:
+Import the `kete` module in your `build.zig`:
 
 ```zig
-const facet_dep = b.dependency("facet", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("facet", facet_dep.module("facet"));
+const kete_dep = b.dependency("kete", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("kete", kete_dep.module("kete"));
 ```
 
 Then build your UI in `src/main.zig`:
 
 ```zig
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 pub const Counter = struct {
     pub const State = struct {
@@ -49,27 +49,27 @@ pub const Counter = struct {
         }
     };
 
-    pub fn build(_: *const Counter, cx: *facet.BuildContext, state: *State) facet.Widget {
-        return cx.make(facet.Align.center(cx.make(facet.Column{
+    pub fn build(_: *const Counter, cx: *kete.BuildContext, state: *State) kete.Widget {
+        return cx.make(kete.Align.center(cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
-                facet.Text{
-                    .text = "Hello, Facet!",
+                kete.Text{
+                    .text = "Hello, Kete!",
                 },
-                facet.Text{
+                kete.Text{
                     .text = cx.fmt("Count: {d}", .{state.count}),
                 },
-                facet.Row{
+                kete.Row{
                     .fill = false,
                     .spacing = 12,
                     .children = cx.makeAll(.{
-                        facet.OutlinedButton{
+                        kete.OutlinedButton{
                             .icon = .remove,
                             .on_press = .of(state, State.decrement),
                         },
-                        facet.FilledButton{
+                        kete.FilledButton{
                             .icon = .add,
                             .on_press = .of(state, State.increment),
                         },
@@ -81,7 +81,7 @@ pub const Counter = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -89,7 +89,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root: Counter = .{};
     _ = try app.openWindow(.{
-        .title = "Hello Facet",
+        .title = "Hello Kete",
         .root = .of(&root),
         .size = .{ 480, 320 },
         .on_close_request = .close,
@@ -108,7 +108,7 @@ zig build run-showcase
 
 ## Special Thanks ❤️
 
-Facet is built on the foundations of these great projects:
+Kete is built on the foundations of these great projects:
 
 - [Zig](https://ziglang.org/)
 - [Material Design](https://m3.material.io/)

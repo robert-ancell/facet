@@ -17,9 +17,9 @@ const Node = widget.WidgetNode;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 200, .height = 120, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
-///     facet.Align{ .alignment = .top_left, .child = box(cx, "Behind", 120, 72) },
-///     facet.Align{ .alignment = .bottom_right, .child = box(cx, "In front", 120, 72) },
+/// return cx.make(kete.SizedBox{ .width = 200, .height = 120, .child = cx.make(kete.Overlay{ .children = cx.makeAll(.{
+///     kete.Align{ .alignment = .top_left, .child = box(cx, "Behind", 120, 72) },
+///     kete.Align{ .alignment = .bottom_right, .child = box(cx, "In front", 120, 72) },
 /// }) }) });
 /// ```
 pub const Overlay = struct {

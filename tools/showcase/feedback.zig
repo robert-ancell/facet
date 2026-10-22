@@ -1,7 +1,7 @@
 //! Feedback: progress indicators, badges, dialogs and snackbars.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 pub const Ringtone = enum { classic, chime, pulse };
@@ -64,7 +64,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     const t = cx.theme();
     if (s.running) {
         const now = cx.now();
@@ -79,56 +79,56 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "Progress indicators", "How far along work is, or that it is happening when that is not known", &.{
             common.labelled(cx, cx.fmt("Determinate {d:.0}%", .{s.progress * 100}), cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = s.progress }) },
-                facet.SwitchRow{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" },
+                kete.Expanded{ .child = cx.make(kete.ProgressBar{ .value = s.progress }) },
+                kete.SwitchRow{ .value = s.running, .on_changed = .of(s, State.setRunning), .label = "Run" },
             })),
             common.labelled(cx, "Indeterminate", cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.ProgressBar{}) },
+                kete.Expanded{ .child = cx.make(kete.ProgressBar{}) },
             })),
             common.labelled(cx, "Styled", cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.ProgressBar{ .value = 0.7, .height = 12, .color = t.@"error", .track_color = t.surface_container_highest }) },
+                kete.Expanded{ .child = cx.make(kete.ProgressBar{ .value = 0.7, .height = 12, .color = t.@"error", .track_color = t.surface_container_highest }) },
             })),
             common.labelled(cx, "Spinners", cx.makeAll(.{
-                facet.Spinner{ .size = 24 },
-                facet.Spinner{},
-                facet.Spinner{ .size = 64, .color = t.@"error" },
+                kete.Spinner{ .size = 24 },
+                kete.Spinner{},
+                kete.Spinner{ .size = 64, .color = t.@"error" },
             })),
         }),
         common.section(cx, "Badges", "Counts and labels on icons, or on their own", &.{
             common.labelled(cx, "On icons", cx.makeAll(.{
-                facet.Badge{ .child = cx.make(facet.Icon{ .icon = .notifications, .size = 28 }) },
-                facet.Badge{ .count = s.unread, .show = s.unread > 0, .child = cx.make(facet.Icon{ .icon = .mail, .size = 28 }) },
-                facet.Badge{ .label = "NEW", .child = cx.make(facet.Icon{ .icon = .star, .size = 28 }) },
+                kete.Badge{ .child = cx.make(kete.Icon{ .icon = .notifications, .size = 28 }) },
+                kete.Badge{ .count = s.unread, .show = s.unread > 0, .child = cx.make(kete.Icon{ .icon = .mail, .size = 28 }) },
+                kete.Badge{ .label = "NEW", .child = cx.make(kete.Icon{ .icon = .star, .size = 28 }) },
             })),
             common.labelled(cx, "On their own", cx.makeAll(.{
-                facet.Badge{ .count = 7 },
-                facet.Badge{ .count = 1234 },
-                facet.Badge{ .label = "Beta", .color = t.primary, .text_color = t.on_primary },
+                kete.Badge{ .count = 7 },
+                kete.Badge{ .count = 1234 },
+                kete.Badge{ .label = "Beta", .color = t.primary, .text_color = t.on_primary },
             })),
             common.labelled(cx, cx.fmt("{d} unread", .{s.unread}), cx.makeAll(.{
-                facet.OutlinedButton{ .label = "Add one", .icon = .add, .on_press = .of(s, State.addUnread) },
-                facet.OutlinedButton{ .label = "Add 50", .on_press = .of(s, State.addManyUnread) },
-                facet.TextButton{ .label = "Read all", .on_press = .of(s, State.readAll) },
+                kete.OutlinedButton{ .label = "Add one", .icon = .add, .on_press = .of(s, State.addUnread) },
+                kete.OutlinedButton{ .label = "Add 50", .on_press = .of(s, State.addManyUnread) },
+                kete.TextButton{ .label = "Read all", .on_press = .of(s, State.readAll) },
             })),
         }),
         common.section(cx, "Dialogs", "A question over the app that must be answered before going on", cx.makeAll(.{
-            facet.Row{
+            kete.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.FilledButton{ .label = "Simple dialog", .on_press = .of(s, State.openSimple) },
-                    facet.TonalButton{ .label = "Dialog with content", .icon = .notifications, .on_press = .of(s, State.openContent) },
+                    kete.FilledButton{ .label = "Simple dialog", .on_press = .of(s, State.openSimple) },
+                    kete.TonalButton{ .label = "Dialog with content", .icon = .notifications, .on_press = .of(s, State.openContent) },
                     common.status(cx, s.log.text("")),
                 }),
             },
         })),
         common.section(cx, "Snackbars", "A brief message at the bottom of the window, with an optional action", cx.makeAll(.{
-            facet.Row{
+            kete.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.TonalButton{ .label = "Save", .icon = .save, .on_press = .of(s, State.showSaved) },
-                    facet.OutlinedButton{ .label = "Delete", .icon = .delete, .on_press = .of(s, State.showDeleted) },
+                    kete.TonalButton{ .label = "Save", .icon = .save, .on_press = .of(s, State.showSaved) },
+                    kete.OutlinedButton{ .label = "Delete", .icon = .delete, .on_press = .of(s, State.showDeleted) },
                     common.status(cx, cx.fmt("{d} messages deleted", .{s.deleted})),
                 }),
             },
@@ -137,13 +137,13 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 }
 
 /// `child` with the page's dialog and snackbar over it.
-pub fn wrap(cx: *facet.BuildContext, s: *State, child: facet.Widget) facet.Widget {
+pub fn wrap(cx: *kete.BuildContext, s: *State, child: kete.Widget) kete.Widget {
     const ringtones = [_]struct { Ringtone, []const u8 }{ .{ .classic, "Classic" }, .{ .chime, "Chime" }, .{ .pulse, "Pulse" } };
-    var radios: [ringtones.len]facet.Widget = undefined;
+    var radios: [ringtones.len]kete.Widget = undefined;
     for (&radios, ringtones) |*w, r| {
-        w.* = cx.make(facet.RadioRow(Ringtone){ .value = r[0], .group_value = s.ringtone, .on_changed = .of(s, State.setRingtone), .label = r[1] });
+        w.* = cx.make(kete.RadioRow(Ringtone){ .value = r[0], .group_value = s.ringtone, .on_changed = .of(s, State.setRingtone), .label = r[1] });
     }
-    const with_snackbar = cx.make(facet.Snackbar{
+    const with_snackbar = cx.make(kete.Snackbar{
         .message = s.snackbar,
         .action_label = if (std.mem.eql(u8, s.snackbar, "Message deleted")) "Undo" else "",
         .on_action = .of(s, State.undo),
@@ -151,8 +151,8 @@ pub fn wrap(cx: *facet.BuildContext, s: *State, child: facet.Widget) facet.Widge
         .child = child,
     });
     return switch (s.dialog) {
-        .none => cx.make(facet.Dialog{ .open = false, .title = "", .child = with_snackbar }),
-        .simple => cx.make(facet.Dialog{
+        .none => cx.make(kete.Dialog{ .open = false, .title = "", .child = with_snackbar }),
+        .simple => cx.make(kete.Dialog{
             .title = "Discard draft?",
             .description = "The message you were writing will be lost.",
             .confirm_label = "Discard",
@@ -161,11 +161,11 @@ pub fn wrap(cx: *facet.BuildContext, s: *State, child: facet.Widget) facet.Widge
             .on_dismiss = .of(s, State.closeDialog),
             .child = with_snackbar,
         }),
-        .content => cx.make(facet.Dialog{
+        .content => cx.make(kete.Dialog{
             .icon = .notifications,
             .title = "Ringtone",
             .description = "Choose the sound played for incoming calls.",
-            .content = cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = &radios }),
+            .content = cx.make(kete.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = &radios }),
             .confirm_label = "OK",
             .on_confirm = .of(s, State.confirmDialog),
             .dismiss_label = "Cancel",

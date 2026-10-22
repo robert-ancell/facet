@@ -208,7 +208,7 @@ const Line = struct { start: usize, end: usize };
 /// ![The TextArea example](images/TextArea.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 320, .height = 96, .child = cx.make(facet.TextArea{ .doc = &document }) });
+/// return cx.make(kete.SizedBox{ .width = 320, .height = 96, .child = cx.make(kete.TextArea{ .doc = &document }) });
 /// ```
 pub const TextArea = struct {
     /// The text being edited (the app's: it is kept as long as it is edited).

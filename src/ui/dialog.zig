@@ -30,7 +30,7 @@ const Callback = widget.Callback;
 /// ![The Dialog example](images/Dialog.png)
 ///
 /// ```zig
-/// return cx.make(facet.Dialog{
+/// return cx.make(kete.Dialog{
 ///     .icon = .delete,
 ///     .title = "Delete the file?",
 ///     .description = "It will be removed from every device.",
@@ -38,7 +38,7 @@ const Callback = widget.Callback;
 ///     .on_confirm = .of(state, State.save),
 ///     .dismiss_label = "Cancel",
 ///     .on_dismiss = .of(state, State.save),
-///     .child = cx.make(facet.SizedBox{}),
+///     .child = cx.make(kete.SizedBox{}),
 /// });
 /// ```
 pub const Dialog = struct {

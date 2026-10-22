@@ -5,7 +5,7 @@
 //! URL or bytes, loaded in the background as an `Image` is) or shapes (a
 //! `MapVectorTile`, drawn in the map's style).
 //!
-//! Facet has no source of its own: an app gives the view one, which may
+//! Kete has no source of its own: an app gives the view one, which may
 //! make tiles, fetch them from a tile server, or read them from files.
 //!
 //!     const Osm = struct {

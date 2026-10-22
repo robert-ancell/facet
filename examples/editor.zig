@@ -1,10 +1,10 @@
 //! Multi-line code editor with Zig syntax highlighting (`zig build run-editor`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 const sample_code =
-    \\// Edit this Zig snippet right in Facet!
+    \\// Edit this Zig snippet right in Kete!
     \\const std = @import("std");
     \\
     \\pub fn fibonacci(n: u32) u64 {
@@ -20,7 +20,7 @@ const sample_code =
     \\}
 ;
 
-pub fn highlightZig(text: []const u8, out: []facet.SyntaxHighlight) void {
+pub fn highlightZig(text: []const u8, out: []kete.SyntaxHighlight) void {
     const keywords = [_][]const u8{
         "const", "var", "fn", "pub", "return", "if", "else", "for", "while", "struct", "enum",
     };
@@ -81,30 +81,30 @@ pub fn highlightZig(text: []const u8, out: []facet.SyntaxHighlight) void {
 }
 
 pub const EditorView = struct {
-    doc: *facet.TextDocument,
+    doc: *kete.TextDocument,
 
-    pub fn build(self: *const EditorView, cx: *facet.BuildContext) facet.Widget {
+    pub fn build(self: *const EditorView, cx: *kete.BuildContext) kete.Widget {
         const t = cx.theme();
         const bytes = self.doc.text();
         const lines = 1 + std.mem.count(u8, bytes, "\n");
 
-        return cx.make(facet.Padding{
+        return cx.make(kete.Padding{
             .padding = .all(16),
-            .child = cx.make(facet.Column{
+            .child = cx.make(kete.Column{
                 .cross_axis_alignment = .stretch,
                 .spacing = 10,
                 .children = cx.makeAll(.{
-                    facet.Expanded{
-                        .child = cx.make(facet.TextArea{
+                    kete.Expanded{
+                        .child = cx.make(kete.TextArea{
                             .doc = self.doc,
                             .autofocus = true,
                             .highlighter = highlightZig,
                         }),
                     },
-                    facet.Row{
+                    kete.Row{
                         .main_axis_alignment = .space_between,
                         .children = cx.makeAll(.{
-                            facet.Text{
+                            kete.Text{
                                 .text = cx.fmt("{d} lines · {d} bytes · cursor at {d}", .{
                                     lines,
                                     bytes.len,
@@ -112,7 +112,7 @@ pub const EditorView = struct {
                                 }),
                                 .style = .{ .size = 13, .color = t.on_surface_variant },
                             },
-                            facet.Text{
+                            kete.Text{
                                 .text = "Ctrl+A / Ctrl+C / Ctrl+V or Right-Click for menu",
                                 .style = .{ .size = 13, .color = t.on_surface_variant },
                             },
@@ -125,10 +125,10 @@ pub const EditorView = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    var doc = try facet.TextDocument.init(init.gpa, sample_code);
+    var doc = try kete.TextDocument.init(init.gpa, sample_code);
     defer doc.deinit();
 
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -136,7 +136,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = EditorView{ .doc = &doc };
     _ = try app.openWindow(.{
-        .title = "Facet Editor",
+        .title = "Kete Editor",
         .root = .of(&root),
         .size = .{ 720, 520 },
         .on_close_request = .close,

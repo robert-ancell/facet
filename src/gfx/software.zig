@@ -606,8 +606,8 @@ test "text matches the font renderer's own drawing" {
     defer c.deinit();
     c.begin(120, 40);
     const style: font.Style = .{ .font = &f, .size = 20 };
-    const end = c.drawText(&atlas, style, 4.25, 28, "Facet", Color.rgb(0xffffff));
-    try testing.expectApproxEqAbs(4.25 + font.measure(style, "Facet"), end, 0.001);
+    const end = c.drawText(&atlas, style, 4.25, 28, "Kete", Color.rgb(0xffffff));
+    try testing.expectApproxEqAbs(4.25 + font.measure(style, "Kete"), end, 0.001);
     var pixels: [120 * 40]u32 = @splat(0xff000000);
     const img: Image = .{ .pixels = &pixels, .width = 120, .height = 40 };
     try render(&c, img);
@@ -615,7 +615,7 @@ test "text matches the font renderer's own drawing" {
     var cache = font.GlyphCache.init(testing.allocator);
     defer cache.deinit();
     var want: [120 * 40]u32 = @splat(0xff000000);
-    _ = try font.draw(.{ .pixels = &want, .width = 120, .height = 40, .stride = 120 }, &cache, style, 4.25, 28, "Facet");
+    _ = try font.draw(.{ .pixels = &want, .width = 120, .height = 40, .stride = 120 }, &cache, style, 4.25, 28, "Kete");
     var lit: u32 = 0;
     for (want, pixels) |w, g| {
         try expectNear(w, g, 1);

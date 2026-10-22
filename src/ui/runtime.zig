@@ -1781,7 +1781,7 @@ pub const App = struct {
     watching_wake: bool = false,
     /// Whether the display waits on the accessibility bus.
     watching_a11y: bool = false,
-    /// Each frame's timings written to stderr (`FACET_TRACE=1`).
+    /// Each frame's timings written to stderr (`KETE_TRACE=1`).
     trace: bool = false,
 
     /// What is done when the system asks the app to quit (macOS's Quit,
@@ -1889,7 +1889,7 @@ pub const App = struct {
             .on_quit_request = options.on_quit_request,
             .on_last_window_closed = options.on_last_window_closed,
             .appearance = theme_mod.loadSettings(io),
-            .trace = envIs(environ, "FACET_TRACE", "1"),
+            .trace = envIs(environ, "KETE_TRACE", "1"),
         };
         _ = a.theme_watch.changed(io);
         return a;
@@ -2154,7 +2154,7 @@ pub const App = struct {
         suspended: bool = false,
         /// A frame is being drawn.
         drawing: bool = false,
-        /// When the last frame (`FACET_TRACE=1`) was begun.
+        /// When the last frame (`KETE_TRACE=1`) was begun.
         last_frame_ns: u64 = 0,
 
         /// Closes it (its UI too): its handle stays valid, until it is
@@ -2240,7 +2240,7 @@ pub const App = struct {
             if (w.app.trace) w.traceFrame(begun, built, shown);
         }
 
-        /// Writes how the frame just drawn went (`FACET_TRACE=1`): since the
+        /// Writes how the frame just drawn went (`KETE_TRACE=1`): since the
         /// last began, whether the window system was holding the loop (the
         /// window asked for it), and how long it took to build and to present.
         fn traceFrame(w: *Window, begun: u64, built: u64, shown: bool) void {
@@ -2251,7 +2251,7 @@ pub const App = struct {
                 }
             }.f;
             const index = std.mem.indexOfScalar(*Window, w.app.windows.items, w) orelse 0;
-            std.debug.print("facet: window {d} frame {d}: +{d:.1} ms{s}{s} build {d:.1} present {d:.1}\n", .{
+            std.debug.print("kete: window {d} frame {d}: +{d:.1} ms{s}{s} build {d:.1} present {d:.1}\n", .{
                 index,
                 w.ui.frame_no,
                 ms(begun -| w.last_frame_ns),

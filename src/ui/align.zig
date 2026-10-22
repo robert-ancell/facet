@@ -18,9 +18,9 @@ const Node = widget.WidgetNode;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 240, .height = 120, .child = cx.make(facet.RoundedBox{
+/// return cx.make(kete.SizedBox{ .width = 240, .height = 120, .child = cx.make(kete.RoundedBox{
 ///     .border_color = cx.theme().outline,
-///     .child = cx.make(facet.Align{ .alignment = .bottom_right, .child = box(cx, "Corner", 72, 36) }),
+///     .child = cx.make(kete.Align{ .alignment = .bottom_right, .child = box(cx, "Corner", 72, 36) }),
 /// }) });
 /// ```
 pub const Align = struct {

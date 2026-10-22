@@ -2,7 +2,7 @@
 
 const std = @import("std");
 
-/// The name of one of the Material icons Facet has: draw it with `Icon`.
+/// The name of one of the Material icons Kete has: draw it with `Icon`.
 pub const IconName = enum {
     @"10k",
     @"10mp",
@@ -2239,7 +2239,7 @@ pub const IconName = enum {
     zoom_out_map,
 
     /// The icon with this name (the spelling in the enum, ignoring white
-    /// space around it), if it is one of Facet's.
+    /// space around it), if it is one of Kete's.
     pub fn fromName(name: []const u8) ?IconName {
         @setEvalBranchQuota(100_000);
         return std.meta.stringToEnum(IconName, std.mem.trim(u8, name, " \t\r\n"));

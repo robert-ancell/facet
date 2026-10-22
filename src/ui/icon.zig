@@ -24,10 +24,10 @@ const Size = geometry.Size;
 /// ![The Icon example](images/Icon.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
-///     facet.Icon{ .icon = .home },
-///     facet.Icon{ .icon = .settings, .size = 32 },
-///     facet.Icon{ .icon = .favorite, .size = 40, .color = cx.theme().primary },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     kete.Icon{ .icon = .home },
+///     kete.Icon{ .icon = .settings, .size = 32 },
+///     kete.Icon{ .icon = .favorite, .size = 40, .color = cx.theme().primary },
 /// }) });
 /// ```
 pub const Icon = struct {

@@ -23,10 +23,10 @@ const Color = gfx.Color;
 /// ![The Badge example](images/Badge.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 24, .children = cx.makeAll(.{
-///     facet.Badge{ .count = 3, .child = cx.make(facet.Icon{ .icon = .mail }) },
-///     facet.Badge{ .count = 128, .child = cx.make(facet.Icon{ .icon = .notifications }) },
-///     facet.Badge{ .label = "", .child = cx.make(facet.Icon{ .icon = .chat }) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 24, .children = cx.makeAll(.{
+///     kete.Badge{ .count = 3, .child = cx.make(kete.Icon{ .icon = .mail }) },
+///     kete.Badge{ .count = 128, .child = cx.make(kete.Icon{ .icon = .notifications }) },
+///     kete.Badge{ .label = "", .child = cx.make(kete.Icon{ .icon = .chat }) },
 /// }) });
 /// ```
 pub const Badge = struct {

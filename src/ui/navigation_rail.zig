@@ -30,7 +30,7 @@ const ValueCallback = widget.ValueCallback;
 /// ![The NavigationRail example](images/NavigationRail.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .height = 180, .child = cx.make(facet.NavigationRail{
+/// return cx.make(kete.SizedBox{ .height = 180, .child = cx.make(kete.NavigationRail{
 ///     .items = &.{
 ///         .{ .label = "Home", .icon = .home },
 ///         .{ .label = "Inbox", .icon = .mail, .badge = 4 },

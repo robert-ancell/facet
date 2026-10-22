@@ -1,5 +1,5 @@
 //! Windows keys as Linux key codes (`KEY_A`, ...), which `window.evdev`
-//! makes `KeyboardKey`s of for facet's input events: from the scan code
+//! makes `KeyboardKey`s of for kete's input events: from the scan code
 //! Windows gives with each key message (set 1, with its extended flag),
 //! which for most keys is the Linux code itself.
 

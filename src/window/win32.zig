@@ -1,5 +1,5 @@
 //! Win32Window: a native Windows window (a Win32 `HWND`, with the system's
-//! own title bar, buttons, resizing and full screen), and facet's
+//! own title bar, buttons, resizing and full screen), and kete's
 //! `InputEvent`s from its messages: Windows' scan codes become `KeyboardKey`s,
 //! and each key's character is the `WM_CHAR`
 //! that `TranslateMessage` makes of it (so dead keys and the keyboard's
@@ -265,7 +265,7 @@ pub const Win32Window = struct {
     title_buf: []u8,
     /// The client area in logical pixels (its pixels over `scale`, rounded
     /// up), and how many pixels each is (the monitor's DPI over 96, rounded:
-    /// facet's scales are whole).
+    /// kete's scales are whole).
     width: u32,
     height: u32,
     scale: u32 = 1,
@@ -347,7 +347,7 @@ pub const Win32Window = struct {
         position: [2]i32,
         screen_at: w32.POINT,
         pixel_size: [2]u32,
-        /// What is drawn in it (straight alpha, as facet draws), and the
+        /// What is drawn in it (straight alpha, as kete draws), and the
         /// DIB section it is shown from (premultiplied), in a memory DC.
         pixels: []u32 = &.{},
         dc: ?w32.HDC = null,
@@ -370,8 +370,8 @@ pub const Win32Window = struct {
         parent: ?*Win32Window = null,
     };
 
-    const class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetWindow");
-    const popup_class_name = std.unicode.utf8ToUtf16LeStringLiteral("FacetPopup");
+    const class_name = std.unicode.utf8ToUtf16LeStringLiteral("KeteWindow");
+    const popup_class_name = std.unicode.utf8ToUtf16LeStringLiteral("KetePopup");
 
     /// Opens a window on a display of its own.
     pub fn open(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ, options: Options) !*Win32Window {
@@ -508,7 +508,7 @@ pub const Win32Window = struct {
 
     fn updateScale(w: *Win32Window, u: *const w32.User32) void {
         const dpi = u.GetDpiForWindow(w.hwnd);
-        // 125% is 1, 150% and 175% are 2: facet's scales are whole.
+        // 125% is 1, 150% and 175% are 2: kete's scales are whole.
         w.scale = if (dpi == 0) 1 else @max(1, (dpi + 48) / 96);
     }
 
@@ -867,7 +867,7 @@ pub const Win32Window = struct {
     }
 
     /// When a frame drawn now would be shown: at the display's next refresh
-    /// (as DWM says it is), on facet's clock.
+    /// (as DWM says it is), on kete's clock.
     pub fn nextPresentationNs(w: *const Win32Window, now_ns: u64) u64 {
         if (w32.CompositionTiming.get()) |t| {
             const period = w32.qpcToNs(@intCast(t.refresh_qpc));
@@ -876,7 +876,7 @@ pub const Win32Window = struct {
             const qnow = w32.qpcToNs(qpc_now);
             if (period > 0) {
                 // The next refresh after now, on the performance counter,
-                // moved to facet's clock.
+                // moved to kete's clock.
                 const ahead = if (vblank > qnow) vblank - qnow else period - ((qnow - vblank) % period);
                 return now_ns + ahead;
             }
@@ -1231,7 +1231,7 @@ pub const Win32Window = struct {
     }
 
     /// Where the popup is, in the window's coordinates (known as soon as
-    /// it is opened: facet places it).
+    /// it is opened: kete places it).
     pub fn popupPosition(w: *Win32Window, id: u32) ?[2]i32 {
         const pop = w.popupOf(id) orelse return null;
         return pop.position;
@@ -1392,7 +1392,7 @@ test "frames are presented to a window through its swap chain, on WARP" {
         return e;
     };
     defer dx.deinit();
-    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 200, 120 } });
+    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "kete test", .size = .{ 200, 120 } });
     defer w.close();
     var canvas = gfx.Canvas.init(testing.allocator);
     defer canvas.deinit();
@@ -1418,7 +1418,7 @@ test "frames are presented to a window through its swap chain, on WARP" {
 test "a menu popup opens where the positioner puts it, takes no keyboard, and its input is the window's" {
     if (@import("builtin").os.tag != .windows) return error.SkipZigTest;
     const testing = std.testing;
-    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 300, 200 } });
+    const w = try Win32Window.open(testing.allocator, testing.io, .empty, .{ .title = "kete test", .size = .{ 300, 200 } });
     defer w.close();
     _ = try w.applyConfigure();
     const u = w32.user32().?;

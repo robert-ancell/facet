@@ -21,7 +21,7 @@ const ValueCallback = widget.ValueCallback;
 /// ![The DropdownMenu example](images/DropdownMenu.png)
 ///
 /// ```zig
-/// return cx.make(facet.DropdownMenu{
+/// return cx.make(kete.DropdownMenu{
 ///     .options = &.{
 ///         .{ .label = "Light", .leading_icon = .light_mode },
 ///         .{ .label = "Dark", .leading_icon = .dark_mode },
@@ -141,7 +141,7 @@ pub const DropdownMenu = struct {
 /// ![The Select example](images/Select.png)
 ///
 /// ```zig
-/// return cx.make(facet.Select(Quality){
+/// return cx.make(kete.Select(Quality){
 ///     .options = &.{
 ///         .labeled(.low, "Low"),
 ///         .labeled(.medium, "Medium"),

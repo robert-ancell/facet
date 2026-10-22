@@ -60,7 +60,7 @@ pub const CrossAxisAlignment = enum {
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 320, .child = cx.make(facet.Row{
+/// return cx.make(kete.SizedBox{ .width = 320, .child = cx.make(kete.Row{
 ///     .main_axis_alignment = .space_between,
 ///     .cross_axis_alignment = .center,
 ///     .children = cx.makeAll(.{
@@ -100,7 +100,7 @@ pub const Row = struct {
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .height = 200, .child = cx.make(facet.Column{
+/// return cx.make(kete.SizedBox{ .height = 200, .child = cx.make(kete.Column{
 ///     .main_axis_alignment = .space_between,
 ///     .cross_axis_alignment = .start,
 ///     .children = cx.makeAll(.{

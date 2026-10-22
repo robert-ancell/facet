@@ -1,7 +1,7 @@
 //! Animated harmonic wave viewer and live QR code generator (`zig build run-canvas`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 /// Custom widget that draws an animated harmonic wave and orbiting circles.
 pub const WaveCanvas = struct {
@@ -13,11 +13,11 @@ pub const WaveCanvas = struct {
         last_ns: ?u64 = null,
     };
 
-    pub fn layout(_: *const WaveCanvas, _: *facet.WidgetNode, c: facet.Constraints) facet.Size {
+    pub fn layout(_: *const WaveCanvas, _: *kete.WidgetNode, c: kete.Constraints) kete.Size {
         return c.constrain(.{ .w = 340, .h = 200 });
     }
 
-    pub fn paint(self: *const WaveCanvas, n: *facet.WidgetNode, p: *facet.Painter) void {
+    pub fn paint(self: *const WaveCanvas, n: *kete.WidgetNode, p: *kete.Painter) void {
         const state = n.state(State);
         if (self.animate) {
             if (state.last_ns) |prev| {
@@ -41,7 +41,7 @@ pub const WaveCanvas = struct {
         c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = w - 1, .h = h - 1 }, .all(12), 1, t.outline_variant);
 
         const steps = 256;
-        var points: [steps]facet.Point = undefined;
+        var points: [steps]kete.Point = undefined;
         for (&points, 0..) |*pt, i| {
             const u = @as(f32, @floatFromInt(i)) / @as(f32, steps - 1);
             const x = 16 + u * (w - 32);
@@ -78,24 +78,24 @@ pub const CanvasAndQrDemo = struct {
         }
     };
 
-    pub fn build(_: *const CanvasAndQrDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
-        const default_url = "https://github.com/robert-ancell/facet";
+    pub fn build(_: *const CanvasAndQrDemo, cx: *kete.BuildContext, state: *State) kete.Widget {
+        const default_url = "https://github.com/robert-ancell/kete";
         const payload = if (state.payload_len > 0) state.payload_buf[0..state.payload_len] else default_url;
 
-        return cx.make(facet.Padding{
+        return cx.make(kete.Padding{
             .padding = .all(24),
-            .child = cx.make(facet.Row{
+            .child = cx.make(kete.Row{
                 .cross_axis_alignment = .start,
                 .spacing = 24,
                 .children = cx.makeAll(.{
-                    facet.Card{
+                    kete.Card{
                         .variant = .outlined,
-                        .child = cx.make(facet.Column{
+                        .child = cx.make(kete.Column{
                             .fill = false,
                             .cross_axis_alignment = .start,
                             .spacing = 12,
                             .children = cx.makeAll(.{
-                                facet.Text{
+                                kete.Text{
                                     .text = "Custom 2D Vector Widget",
                                     .style = .{ .size = 18 },
                                 },
@@ -103,16 +103,16 @@ pub const CanvasAndQrDemo = struct {
                                     .animate = state.animate,
                                     .frequency = state.frequency,
                                 },
-                                facet.SizedBox{
+                                kete.SizedBox{
                                     .width = 340,
-                                    .child = cx.make(facet.Slider{
+                                    .child = cx.make(kete.Slider{
                                         .value = state.frequency,
                                         .min = 0.5,
                                         .max = 5.0,
                                         .on_changed = .of(state, State.setFrequency),
                                     }),
                                 },
-                                facet.SwitchRow{
+                                kete.SwitchRow{
                                     .value = state.animate,
                                     .on_changed = .of(state, State.setAnimate),
                                     .label = "Animate wave",
@@ -120,22 +120,22 @@ pub const CanvasAndQrDemo = struct {
                             }),
                         }),
                     },
-                    facet.Card{
+                    kete.Card{
                         .variant = .outlined,
-                        .child = cx.make(facet.Column{
+                        .child = cx.make(kete.Column{
                             .fill = false,
                             .cross_axis_alignment = .center,
                             .spacing = 12,
                             .children = cx.makeAll(.{
-                                facet.Text{
+                                kete.Text{
                                     .text = "Live QR Code Generator",
                                     .style = .{ .size = 18 },
                                 },
-                                facet.QrCode{
+                                kete.QrCode{
                                     .text = payload,
                                     .size = 180,
                                 },
-                                facet.TextField{
+                                kete.TextField{
                                     .width = 240,
                                     .initial = default_url,
                                     .placeholder = "Text or URL to encode",
@@ -151,7 +151,7 @@ pub const CanvasAndQrDemo = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -159,7 +159,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = CanvasAndQrDemo{};
     _ = try app.openWindow(.{
-        .title = "Facet Canvas & QR",
+        .title = "Kete Canvas & QR",
         .root = .of(&root),
         .size = .{ 740, 460 },
         .on_close_request = .close,

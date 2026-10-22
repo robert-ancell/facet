@@ -28,16 +28,16 @@ const Painter = painter_mod.Painter;
 /// ![The ScrollView example](images/ScrollView.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 240, .height = 140, .child = cx.make(facet.ScrollView{ .child = cx.make(facet.Column{
+/// return cx.make(kete.SizedBox{ .width = 240, .height = 140, .child = cx.make(kete.ScrollView{ .child = cx.make(kete.Column{
 ///     .fill = false,
 ///     .cross_axis_alignment = .stretch,
 ///     .children = cx.makeAll(.{
-///         facet.ListItem{ .headline = "One" },
-///         facet.ListItem{ .headline = "Two" },
-///         facet.ListItem{ .headline = "Three" },
-///         facet.ListItem{ .headline = "Four" },
-///         facet.ListItem{ .headline = "Five" },
-///         facet.ListItem{ .headline = "Six" },
+///         kete.ListItem{ .headline = "One" },
+///         kete.ListItem{ .headline = "Two" },
+///         kete.ListItem{ .headline = "Three" },
+///         kete.ListItem{ .headline = "Four" },
+///         kete.ListItem{ .headline = "Five" },
+///         kete.ListItem{ .headline = "Six" },
 ///     }),
 /// }) }) });
 /// ```

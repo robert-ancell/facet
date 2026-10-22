@@ -506,8 +506,8 @@ test "drawing text into a canvas" {
     var pixels: [200 * 40]u32 = @splat(0xff000000);
     const canvas: Canvas = .{ .pixels = &pixels, .width = 200, .height = 40, .stride = 200 };
     const style: Style = .{ .font = &f, .size = 24 };
-    const end = try draw(canvas, &cache, style, 2, 28, "Facet AV");
-    try testing.expectApproxEqAbs(measure(style, "Facet AV") + 2, end, 0.001);
+    const end = try draw(canvas, &cache, style, 2, 28, "Kete AV");
+    try testing.expectApproxEqAbs(measure(style, "Kete AV") + 2, end, 0.001);
     // Kerning pulls "To" together (by 55/1000 em).
     try testing.expectApproxEqAbs(measure(style, "T") + measure(style, "o") - 24 * 0.055, measure(style, "To"), 0.001);
     var lit: u32 = 0;
@@ -519,7 +519,7 @@ test "drawing text into a canvas" {
     for (0..40) |y| for (end_px..200) |x| try testing.expectEqual(@as(u32, 0xff000000), pixels[y * 200 + x]);
     // Drawing again reuses the cached glyphs.
     const cached = cache.map.count();
-    _ = try draw(canvas, &cache, style, 2, 28, "Facet AV");
+    _ = try draw(canvas, &cache, style, 2, 28, "Kete AV");
     try testing.expectEqual(cached, cache.map.count());
 }
 

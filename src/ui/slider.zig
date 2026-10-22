@@ -23,7 +23,7 @@ const Painter = painter.Painter;
 /// ![The Slider example](images/Slider.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.Slider{ .value = 0.4, .on_changed = .of(state, State.setAmount) }) });
+/// return cx.make(kete.SizedBox{ .width = 240, .child = cx.make(kete.Slider{ .value = 0.4, .on_changed = .of(state, State.setAmount) }) });
 /// ```
 pub const Slider = struct {
     /// Where the handle is, from `min` to `max`.

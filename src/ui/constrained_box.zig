@@ -15,9 +15,9 @@ const Node = widget.WidgetNode;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.RoundedBox{
+/// return cx.make(kete.RoundedBox{
 ///     .border_color = cx.theme().outline,
-///     .child = cx.make(facet.ConstrainedBox{
+///     .child = cx.make(kete.ConstrainedBox{
 ///         .constraints = .{ .min_w = 200, .min_h = 56 },
 ///         .child = box(cx, "Small", 60, 24),
 ///     }),

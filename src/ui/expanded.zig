@@ -13,10 +13,10 @@ const Widget = widget.Widget;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 360, .child = cx.make(facet.Row{ .spacing = 8, .children = cx.makeAll(.{
+/// return cx.make(kete.SizedBox{ .width = 360, .child = cx.make(kete.Row{ .spacing = 8, .children = cx.makeAll(.{
 ///     box(cx, "Fixed", 72, 48),
-///     facet.Expanded{ .child = box(cx, "Expanded", 0, 48) },
-///     facet.Expanded{ .flex = 2, .child = box(cx, "Twice as much", 0, 48) },
+///     kete.Expanded{ .child = box(cx, "Expanded", 0, 48) },
+///     kete.Expanded{ .flex = 2, .child = box(cx, "Twice as much", 0, 48) },
 /// }) }) });
 /// ```
 pub const Expanded = struct {

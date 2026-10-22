@@ -29,9 +29,9 @@ const target = control.target;
 /// ![The Radio example](images/Radio.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
-///     facet.Radio(Quality){ .value = .low, .group_value = .low, .on_changed = .of(state, State.setQuality) },
-///     facet.Radio(Quality){ .value = .high, .group_value = .low, .on_changed = .of(state, State.setQuality) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     kete.Radio(Quality){ .value = .low, .group_value = .low, .on_changed = .of(state, State.setQuality) },
+///     kete.Radio(Quality){ .value = .high, .group_value = .low, .on_changed = .of(state, State.setQuality) },
 /// }) });
 /// ```
 pub fn Radio(comptime T: type) type {
@@ -69,10 +69,10 @@ pub fn Radio(comptime T: type) type {
 /// ![The RadioRow example](images/RadioRow.png)
 ///
 /// ```zig
-/// return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .children = cx.makeAll(.{
-///     facet.RadioRow(Quality){ .value = .low, .group_value = .medium, .label = "Low", .on_changed = .of(state, State.setQuality) },
-///     facet.RadioRow(Quality){ .value = .medium, .group_value = .medium, .label = "Medium", .on_changed = .of(state, State.setQuality) },
-///     facet.RadioRow(Quality){ .value = .high, .group_value = .medium, .label = "High", .on_changed = .of(state, State.setQuality) },
+/// return cx.make(kete.Column{ .fill = false, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+///     kete.RadioRow(Quality){ .value = .low, .group_value = .medium, .label = "Low", .on_changed = .of(state, State.setQuality) },
+///     kete.RadioRow(Quality){ .value = .medium, .group_value = .medium, .label = "Medium", .on_changed = .of(state, State.setQuality) },
+///     kete.RadioRow(Quality){ .value = .high, .group_value = .medium, .label = "High", .on_changed = .of(state, State.setQuality) },
 /// }) });
 /// ```
 pub fn RadioRow(comptime T: type) type {

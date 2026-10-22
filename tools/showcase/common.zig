@@ -2,16 +2,16 @@
 //! demos, and callbacks that remember which control was used.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 /// A page: its sections one above the other, with dividers between them.
-pub fn page(cx: *facet.BuildContext, sections: []const facet.Widget) facet.Widget {
-    const children = cx.arena.alloc(facet.Widget, sections.len * 2 -| 1) catch return cx.make(facet.SizedBox.empty);
+pub fn page(cx: *kete.BuildContext, sections: []const kete.Widget) kete.Widget {
+    const children = cx.arena.alloc(kete.Widget, sections.len * 2 -| 1) catch return cx.make(kete.SizedBox.empty);
     for (sections, 0..) |s, i| {
         children[i * 2] = s;
-        if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(facet.Divider{});
+        if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(kete.Divider{});
     }
-    return cx.make(facet.Column{
+    return cx.make(kete.Column{
         .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 20,
@@ -20,20 +20,20 @@ pub fn page(cx: *facet.BuildContext, sections: []const facet.Widget) facet.Widge
 }
 
 /// A section: a title, a line saying what it shows, and its demos.
-pub fn section(cx: *facet.BuildContext, title: []const u8, subtitle: []const u8, demos: []const facet.Widget) facet.Widget {
+pub fn section(cx: *kete.BuildContext, title: []const u8, subtitle: []const u8, demos: []const kete.Widget) kete.Widget {
     const t = cx.theme();
-    const children = cx.arena.alloc(facet.Widget, demos.len + 1) catch return cx.make(facet.SizedBox.empty);
-    children[0] = cx.make(facet.Column{
+    const children = cx.arena.alloc(kete.Widget, demos.len + 1) catch return cx.make(kete.SizedBox.empty);
+    children[0] = cx.make(kete.Column{
         .fill = false,
         .cross_axis_alignment = .start,
         .spacing = 4,
         .children = cx.makeAll(.{
-            facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
-            facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
+            kete.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
+            kete.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
         }),
     });
     @memcpy(children[1..], demos);
-    return cx.make(facet.Column{
+    return cx.make(kete.Column{
         .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 14,
@@ -42,15 +42,15 @@ pub fn section(cx: *facet.BuildContext, title: []const u8, subtitle: []const u8,
 }
 
 /// Widgets in a row, with a label at the left saying what they are.
-pub fn labelled(cx: *facet.BuildContext, label: []const u8, widgets: []const facet.Widget) facet.Widget {
+pub fn labelled(cx: *kete.BuildContext, label: []const u8, widgets: []const kete.Widget) kete.Widget {
     const t = cx.theme();
-    const children = cx.arena.alloc(facet.Widget, widgets.len + 1) catch return cx.make(facet.SizedBox.empty);
-    children[0] = cx.make(facet.SizedBox{
+    const children = cx.arena.alloc(kete.Widget, widgets.len + 1) catch return cx.make(kete.SizedBox.empty);
+    children[0] = cx.make(kete.SizedBox{
         .width = label_width,
-        .child = cx.make(facet.Text{ .text = label, .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true }),
+        .child = cx.make(kete.Text{ .text = label, .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true }),
     });
     @memcpy(children[1..], widgets);
-    return cx.make(facet.Row{
+    return cx.make(kete.Row{
         .spacing = 12,
         .cross_axis_alignment = .center,
         .children = children,
@@ -60,9 +60,9 @@ pub fn labelled(cx: *facet.BuildContext, label: []const u8, widgets: []const fac
 pub const label_width = 96;
 
 /// Text saying what was last done, under a demo.
-pub fn status(cx: *facet.BuildContext, text: []const u8) facet.Widget {
+pub fn status(cx: *kete.BuildContext, text: []const u8) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.Text{ .text = text, .style = .{ .size = 13, .color = t.primary }, .wrap = false, .ellipsis = true });
+    return cx.make(kete.Text{ .text = text, .style = .{ .size = 13, .color = t.primary }, .wrap = false, .ellipsis = true });
 }
 
 /// Where a page notes what was last done ("Pressed Filled").
@@ -81,7 +81,7 @@ pub const Log = struct {
 };
 
 /// A callback noting in `log` that `name` was pressed.
-pub fn pressed(cx: *facet.BuildContext, log: *Log, name: []const u8) facet.Callback {
+pub fn pressed(cx: *kete.BuildContext, log: *Log, name: []const u8) kete.Callback {
     const Press = struct {
         log: *Log,
         name: []const u8,

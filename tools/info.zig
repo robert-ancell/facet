@@ -1,16 +1,16 @@
 //! Reports the windowing, buffer, synchronization and rendering backends
-//! facet picks on this system, live from `cx.backend()` and `cx.window()`
+//! kete picks on this system, live from `cx.backend()` and `cx.window()`
 //! (`zig build run-info`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 const Info = struct {
-    pub fn build(_: *const Info, cx: *facet.BuildContext) facet.Widget {
-        return cx.make(facet.RoundedBox{
+    pub fn build(_: *const Info, cx: *kete.BuildContext) kete.Widget {
+        return cx.make(kete.RoundedBox{
             .color = cx.theme().surface,
-            .child = cx.make(facet.ScrollView{
-                .child = cx.make(facet.Padding{
+            .child = cx.make(kete.ScrollView{
+                .child = cx.make(kete.Padding{
                     .padding = .all(24),
                     .child = buildReport(cx),
                 }),
@@ -19,20 +19,20 @@ const Info = struct {
     }
 };
 
-fn sectionHeading(cx: *facet.BuildContext, title: []const u8, subtitle: []const u8) facet.Widget {
+fn sectionHeading(cx: *kete.BuildContext, title: []const u8, subtitle: []const u8) kete.Widget {
     const t = cx.theme();
-    return cx.make(facet.Column{
+    return cx.make(kete.Column{
         .fill = false,
         .cross_axis_alignment = .start,
         .spacing = 4,
         .children = cx.makeAll(.{
-            facet.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
-            facet.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
+            kete.Text{ .text = title, .style = .{ .size = 18, .color = t.on_surface }, .wrap = false },
+            kete.Text{ .text = subtitle, .style = .{ .size = 13, .color = t.on_surface_variant } },
         }),
     });
 }
 
-fn buildReport(cx: *facet.BuildContext) facet.Widget {
+fn buildReport(cx: *kete.BuildContext) kete.Widget {
     const t = cx.theme();
     const info = cx.backend();
     const win = cx.window();
@@ -97,18 +97,18 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
     else
         "VSync OFF";
 
-    const ext_section: facet.Widget = if (win.wayland_extensions.len > 0) blk: {
-        const rows_list = cx.arena.alloc(facet.Widget, win.wayland_extensions.len) catch unreachable;
+    const ext_section: kete.Widget = if (win.wayland_extensions.len > 0) blk: {
+        const rows_list = cx.arena.alloc(kete.Widget, win.wayland_extensions.len) catch unreachable;
         var row_count: usize = 0;
         var i: usize = 0;
         while (i < win.wayland_extensions.len) {
-            const row_chips = cx.arena.alloc(facet.Widget, 4) catch unreachable;
+            const row_chips = cx.arena.alloc(kete.Widget, 4) catch unreachable;
             var chip_count: usize = 0;
             var row_chars: usize = 0;
             while (i < win.wayland_extensions.len and chip_count < 4) {
                 const ext = win.wayland_extensions[i];
                 if (chip_count > 0 and row_chars + ext.len > 56) break;
-                row_chips[chip_count] = cx.make(facet.Chip{
+                row_chips[chip_count] = cx.make(kete.Chip{
                     .label = ext,
                     .selected = true,
                 });
@@ -116,7 +116,7 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                 row_chars += ext.len + 4;
                 i += 1;
             }
-            rows_list[row_count] = cx.make(facet.Row{
+            rows_list[row_count] = cx.make(kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
@@ -124,18 +124,18 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
             });
             row_count += 1;
         }
-        break :blk cx.make(facet.Column{
+        break :blk cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .start,
             .spacing = 8,
             .children = rows_list[0..row_count],
         });
-    } else cx.make(facet.Text{
+    } else cx.make(kete.Text{
         .text = "No Wayland extensions active (non-Wayland or headless backend)",
         .style = .{ .size = 13, .color = t.on_surface_variant },
     });
 
-    return cx.make(facet.Column{
+    return cx.make(kete.Column{
         .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 18,
@@ -145,198 +145,198 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                 "Active Runtime Backend",
                 "Live windowing platform, surface buffer transport, window decorations, and 2D renderer reported by cx.backend() and cx.window()",
             ),
-            facet.Row{
+            kete.Row{
                 .spacing = 16,
                 .cross_axis_alignment = .start,
                 .children = cx.makeAll(.{
-                    facet.Expanded{
-                        .child = cx.make(facet.Card{
+                    kete.Expanded{
+                        .child = cx.make(kete.Card{
                             .variant = .elevated,
-                            .child = cx.make(facet.Column{
+                            .child = cx.make(kete.Column{
                                 .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
-                                    facet.Row{
+                                    kete.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
                                         .children = cx.makeAll(.{
-                                            facet.Icon{ .icon = .computer, .size = 20, .color = t.primary },
-                                            facet.Text{ .text = "Windowing Platform", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                            kete.Icon{ .icon = .computer, .size = 20, .color = t.primary },
+                                            kete.Text{ .text = "Windowing Platform", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
                                         }),
                                     },
-                                    facet.Text{ .text = info.platform.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
-                                    facet.Text{ .text = platform_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                    kete.Text{ .text = info.platform.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    kete.Text{ .text = platform_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
                                 }),
                             }),
                         }),
                     },
-                    facet.Expanded{
-                        .child = cx.make(facet.Card{
+                    kete.Expanded{
+                        .child = cx.make(kete.Card{
                             .variant = .elevated,
-                            .child = cx.make(facet.Column{
+                            .child = cx.make(kete.Column{
                                 .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
-                                    facet.Row{
+                                    kete.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
                                         .children = cx.makeAll(.{
-                                            facet.Icon{ .icon = .layers, .size = 20, .color = t.primary },
-                                            facet.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                            kete.Icon{ .icon = .layers, .size = 20, .color = t.primary },
+                                            kete.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
                                         }),
                                     },
-                                    facet.Text{ .text = win.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
-                                    facet.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                    kete.Text{ .text = win.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    kete.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
                                 }),
                             }),
                         }),
                     },
-                    facet.Expanded{
-                        .child = cx.make(facet.Card{
+                    kete.Expanded{
+                        .child = cx.make(kete.Card{
                             .variant = .elevated,
-                            .child = cx.make(facet.Column{
+                            .child = cx.make(kete.Column{
                                 .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
-                                    facet.Row{
+                                    kete.Row{
                                         .spacing = 8,
                                         .cross_axis_alignment = .center,
                                         .children = cx.makeAll(.{
-                                            facet.Icon{ .icon = .memory, .size = 20, .color = t.primary },
-                                            facet.Text{ .text = "2D Renderer", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
+                                            kete.Icon{ .icon = .memory, .size = 20, .color = t.primary },
+                                            kete.Text{ .text = "2D Renderer", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
                                         }),
                                     },
-                                    facet.Text{ .text = info.renderer.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
-                                    facet.Text{ .text = renderer_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
+                                    kete.Text{ .text = info.renderer.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    kete.Text{ .text = renderer_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
                                 }),
                             }),
                         }),
                     },
                 }),
             },
-            facet.Divider{},
+            kete.Divider{},
             sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, synchronization, decoration mode, and rendering pipeline"),
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Wayland", .selected = info.platform == .wayland },
-                    facet.Chip{ .label = "Windows", .selected = info.platform == .windows },
-                    facet.Chip{ .label = "macOS", .selected = info.platform == .macos },
-                    facet.Chip{ .label = "Headless", .selected = info.platform == .headless },
+                    kete.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "Wayland", .selected = info.platform == .wayland },
+                    kete.Chip{ .label = "Windows", .selected = info.platform == .windows },
+                    kete.Chip{ .label = "macOS", .selected = info.platform == .macos },
+                    kete.Chip{ .label = "Headless", .selected = info.platform == .headless },
                 }),
             },
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "linux_dmabuf", .selected = win.buffer_transport == .linux_dmabuf },
-                    facet.Chip{ .label = "Swapchain", .selected = win.buffer_transport == .swapchain },
-                    facet.Chip{ .label = "CPU Memory", .selected = win.buffer_transport == .memory },
+                    kete.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "linux_dmabuf", .selected = win.buffer_transport == .linux_dmabuf },
+                    kete.Chip{ .label = "Swapchain", .selected = win.buffer_transport == .swapchain },
+                    kete.Chip{ .label = "CPU Memory", .selected = win.buffer_transport == .memory },
                 }),
             },
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Implicit", .selected = win.buffer_sync == .implicit },
-                    facet.Chip{ .label = "Explicit", .selected = win.buffer_sync == .explicit },
-                    facet.Chip{ .label = "None", .selected = win.buffer_sync == .none },
+                    kete.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "Implicit", .selected = win.buffer_sync == .implicit },
+                    kete.Chip{ .label = "Explicit", .selected = win.buffer_sync == .explicit },
+                    kete.Chip{ .label = "None", .selected = win.buffer_sync == .none },
                 }),
             },
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "wl_surface.frame", .selected = win.frame_sync.frame_callback },
-                    facet.Chip{ .label = "wp_presentation", .selected = win.frame_sync.presentation_time },
-                    facet.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo },
-                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.timed_presentation },
+                    kete.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "wl_surface.frame", .selected = win.frame_sync.frame_callback },
+                    kete.Chip{ .label = "wp_presentation", .selected = win.frame_sync.presentation_time },
+                    kete.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo },
+                    kete.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.timed_presentation },
                 }),
             },
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Client-side (CSD)", .selected = win.decorations == .client },
-                    facet.Chip{ .label = "Server-side (SSD)", .selected = win.decorations == .server },
-                    facet.Chip{ .label = "None", .selected = win.decorations == .none },
+                    kete.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "Client-side (CSD)", .selected = win.decorations == .client },
+                    kete.Chip{ .label = "Server-side (SSD)", .selected = win.decorations == .server },
+                    kete.Chip{ .label = "None", .selected = win.decorations == .none },
                 }),
             },
-            facet.Row{
+            kete.Row{
                 .spacing = 8,
                 .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
-                    facet.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Software", .selected = info.renderer == .software },
-                    facet.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl },
-                    facet.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan },
-                    facet.Chip{ .label = "Metal", .selected = info.renderer == .metal },
-                    facet.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 },
+                    kete.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
+                    kete.Chip{ .label = "Software", .selected = info.renderer == .software },
+                    kete.Chip{ .label = "OpenGL", .selected = info.renderer == .opengl },
+                    kete.Chip{ .label = "Vulkan", .selected = info.renderer == .vulkan },
+                    kete.Chip{ .label = "Metal", .selected = info.renderer == .metal },
+                    kete.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 },
                 }),
             },
-            facet.Divider{},
+            kete.Divider{},
             sectionHeading(
                 cx,
                 "Wayland Extensions",
                 cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{win.wayland_extensions.len}),
             ),
             ext_section,
-            facet.Divider{},
+            kete.Divider{},
             sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, VSync & synchronization, window decorations, window state, and input configuration"),
-            facet.Card{
+            kete.Card{
                 .variant = .outlined,
                 .padding = .all(4),
-                .child = cx.make(facet.Column{
+                .child = cx.make(kete.Column{
                     .fill = false,
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
-                        facet.ListItem{
+                        kete.ListItem{
                             .headline = "Windowing & Buffer Protocol",
                             .supporting_text = cx.fmt("{s}  ·  {s}", .{ platform_desc, transport_desc }),
                             .leading_icon = .computer,
-                            .trailing = cx.make(facet.Badge{
+                            .trailing = cx.make(kete.Badge{
                                 .label = cx.fmt("{s} ({s})", .{ info.platform.name(), win.buffer_transport.name() }),
                                 .color = t.primary,
                             }),
                         },
-                        facet.Divider{ .inset = 16 },
-                        facet.ListItem{
+                        kete.Divider{ .inset = 16 },
+                        kete.ListItem{
                             .headline = "VSync & Frame Synchronization",
                             .supporting_text = sync_text,
                             .leading_icon = .speed,
-                            .trailing = cx.make(facet.Badge{ .label = vsync_badge, .color = t.primary }),
+                            .trailing = cx.make(kete.Badge{ .label = vsync_badge, .color = t.primary }),
                         },
-                        facet.Divider{ .inset = 16 },
-                        facet.ListItem{
+                        kete.Divider{ .inset = 16 },
+                        kete.ListItem{
                             .headline = "Window Decorations",
                             .supporting_text = decorations_desc,
                             .leading_icon = .widgets,
-                            .trailing = cx.make(facet.Badge{ .label = win.decorations.name(), .color = t.primary }),
+                            .trailing = cx.make(kete.Badge{ .label = win.decorations.name(), .color = t.primary }),
                         },
-                        facet.Divider{ .inset = 16 },
-                        facet.ListItem{
+                        kete.Divider{ .inset = 16 },
+                        kete.ListItem{
                             .headline = "2D Rendering Pipeline",
                             .supporting_text = renderer_desc,
                             .leading_icon = .memory,
-                            .trailing = cx.make(facet.Badge{ .label = info.renderer.name(), .color = t.primary }),
+                            .trailing = cx.make(kete.Badge{ .label = info.renderer.name(), .color = t.primary }),
                         },
-                        facet.Divider{ .inset = 16 },
-                        facet.ListItem{
+                        kete.Divider{ .inset = 16 },
+                        kete.ListItem{
                             .headline = "Surface Resolution & HiDPI Scale",
                             .supporting_text = cx.fmt(
                                 "Logical: {d} × {d} px  ·  Physical buffer: {d} × {d} px",
@@ -345,8 +345,8 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                             .leading_icon = .fullscreen,
                             .trailing_text = cx.fmt("{d}x scale", .{win.scale}),
                         },
-                        facet.Divider{ .inset = 16 },
-                        facet.ListItem{
+                        kete.Divider{ .inset = 16 },
+                        kete.ListItem{
                             .headline = "Window State & Keyboard Layout",
                             .supporting_text = cx.fmt("State: {s}  ·  Keyboard: {s}", .{ window_state, info.keyboard.name() }),
                             .leading_icon = .keyboard,
@@ -360,8 +360,8 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
 }
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
-        .app_id = "facet-info",
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
+        .app_id = "kete-info",
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -369,7 +369,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = Info{};
     _ = try app.openWindow(.{
-        .title = "Facet Info",
+        .title = "Kete Info",
         .root = .of(&root),
         .size = .{ 1000, 720 },
         .min_size = .{ 640, 400 },

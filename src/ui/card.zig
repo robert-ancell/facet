@@ -20,10 +20,10 @@ const Color = gfx.Color;
 /// ![The Card example](images/Card.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
-///     facet.Card{ .child = cx.make(facet.Text{ .text = "Filled", .wrap = false }) },
-///     facet.Card{ .variant = .elevated, .child = cx.make(facet.Text{ .text = "Elevated", .wrap = false }) },
-///     facet.Card{ .variant = .outlined, .child = cx.make(facet.Text{ .text = "Outlined", .wrap = false }) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     kete.Card{ .child = cx.make(kete.Text{ .text = "Filled", .wrap = false }) },
+///     kete.Card{ .variant = .elevated, .child = cx.make(kete.Text{ .text = "Elevated", .wrap = false }) },
+///     kete.Card{ .variant = .outlined, .child = cx.make(kete.Text{ .text = "Outlined", .wrap = false }) },
 /// }) });
 /// ```
 pub const Card = struct {

@@ -1,4 +1,4 @@
-//! Vulkan 1.1+ rendering backend for Facet's 2D `Canvas`.
+//! Vulkan 1.1+ rendering backend for Kete's 2D `Canvas`.
 //!
 //! Uses a runtime `GetDeviceProcAddr` loader and the SPIR-V shaders compiled
 //! at build time from `src/gfx/shaders/*.zig` (`shaders.shape_spv`,
@@ -793,9 +793,9 @@ const DmabufProcs = struct {
 const VkApplicationInfo = extern struct {
     sType: VkStructureType = .application_info,
     pNext: ?*const anyopaque = null,
-    pApplicationName: ?[*:0]const u8 = "Facet",
+    pApplicationName: ?[*:0]const u8 = "Kete",
     applicationVersion: u32 = 1,
-    pEngineName: ?[*:0]const u8 = "Facet",
+    pEngineName: ?[*:0]const u8 = "Kete",
     engineVersion: u32 = 1,
     apiVersion: u32 = (1 << 22) | (1 << 12), // Vulkan 1.1
 };

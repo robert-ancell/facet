@@ -5,7 +5,7 @@
 //! to show it.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 const url = "https://ziglang.org/download/index.json";
 
@@ -13,7 +13,7 @@ const url = "https://ziglang.org/download/index.json";
 const Fetch = struct {
     io: std.Io,
     gpa: std.mem.Allocator,
-    waker: facet.Waker,
+    waker: kete.Waker,
     /// The task, while there is one (awaited once it says it is done).
     task: ?std.Io.Future(void) = null,
     /// What it found: written by the task, read by the UI.
@@ -76,7 +76,7 @@ const Fetch = struct {
 const FetchView = struct {
     fetch: *Fetch,
 
-    pub fn build(self: *const FetchView, cx: *facet.BuildContext) facet.Widget {
+    pub fn build(self: *const FetchView, cx: *kete.BuildContext) kete.Widget {
         const status = self.fetch.get();
         const text = switch (status) {
             .idle => "Not fetched yet",
@@ -84,14 +84,14 @@ const FetchView = struct {
             .fetched => |r| cx.fmt("{d} bytes, in {d} ms", .{ r.bytes, r.ms }),
             .failed => |why| cx.fmt("Failed: {s}", .{why}),
         };
-        return cx.make(facet.Align.center(cx.make(facet.Column{
+        return cx.make(kete.Align.center(cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
-                facet.Text{ .text = url },
-                facet.Text{ .text = text },
-                facet.FilledButton{
+                kete.Text{ .text = url },
+                kete.Text{ .text = text },
+                kete.FilledButton{
                     .label = "Fetch",
                     .icon = .download,
                     .on_press = if (status == .fetching) null else .of(self.fetch, Fetch.start),
@@ -102,7 +102,7 @@ const FetchView = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });

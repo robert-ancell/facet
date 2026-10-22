@@ -1,5 +1,5 @@
 // The canvas's shaders in HLSL, for the Direct3D 11 renderer (compiled to
-// DXBC by fxc when facet is built on Windows): the same as the Metal and
+// DXBC by fxc when kete is built on Windows): the same as the Metal and
 // GLSL ones (see shaders.zig), their vertices read with input layouts of
 // `shape_layout`, `solid_layout` and `text_layout`.
 

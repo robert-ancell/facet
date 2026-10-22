@@ -36,7 +36,7 @@ const Context = widget.BuildContext;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 260, .height = 140, .child = cx.make(facet.Grid.fixed(cx, &.{
+/// return cx.make(kete.SizedBox{ .width = 260, .height = 140, .child = cx.make(kete.Grid.fixed(cx, &.{
 ///     box(cx, "1", 0, 0),
 ///     box(cx, "2", 0, 0),
 ///     box(cx, "3", 0, 0),

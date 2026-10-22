@@ -1,5 +1,5 @@
-//! Makes Facet's icon font: the Material Icons font cut down to the icons
-//! Facet includes (`IconName`, in src/icons/names.zig), leaving out unused
+//! Makes Kete's icon font: the Material Icons font cut down to the icons
+//! Kete includes (`IconName`, in src/icons/names.zig), leaving out unused
 //! glyphs. The full font has over 2000 icons (350 KB); a few dozen are a
 //! few kilobytes.
 //!
@@ -8,7 +8,7 @@
 //! The codepoints file names each icon's codepoint ("folder e2c7"); an
 //! icon it does not name is an error. out.zig lists the codepoints, in the
 //! order of `IconName`. out.ttf has the icons' glyphs (and those they are made
-//! of), with the tables Facet's font reader needs: TrueType outlines,
+//! of), with the tables Kete's font reader needs: TrueType outlines,
 //! metrics and a character map. The ligatures that let the full font
 //! draw "folder" as the icon are left out: icons are drawn by codepoint.
 

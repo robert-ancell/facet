@@ -1,7 +1,7 @@
 //! Interactive 3D Platonic solid viewer rendered with OpenGL (`zig build run-opengl`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const solids = @import("solids.zig");
 const viewer = @import("viewer.zig");
 
@@ -9,8 +9,8 @@ const polyhedron_spv align(4) = @embedFile("polyhedron.spv").*;
 
 pub const OpenGlDemo = viewer.Viewer(struct {
     pub const name = "OpenGL";
-    pub const Context = facet.gfx.OpenGlContext;
-    pub const Area = facet.OpenGlArea;
+    pub const Context = kete.gfx.OpenGlContext;
+    pub const Area = kete.OpenGlArea;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {
         return ctx.createPipeline(.{
@@ -24,5 +24,5 @@ pub const OpenGlDemo = viewer.Viewer(struct {
 });
 
 pub fn main(init: std.process.Init) !void {
-    try viewer.run(init, "Facet OpenGL 3D Widget", OpenGlDemo{});
+    try viewer.run(init, "Kete OpenGL 3D Widget", OpenGlDemo{});
 }

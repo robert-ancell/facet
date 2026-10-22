@@ -1,4 +1,4 @@
-//! Metal rendering backend for Facet's 2D `Canvas`, on macOS: the canvas's
+//! Metal rendering backend for Kete's 2D `Canvas`, on macOS: the canvas's
 //! batches drawn on the GPU with the shaders in `shaders/canvas.metal`
 //! (compiled when the renderer starts), its glyph atlas and images in
 //! textures.

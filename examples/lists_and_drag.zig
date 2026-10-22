@@ -1,7 +1,7 @@
 //! Grid of 500 items that can be dragged and dropped into a pinned list (`zig build run-lists`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 pub const ListsAndDragDemo = struct {
     pub const item_count = 500;
@@ -35,32 +35,32 @@ pub const ListsAndDragDemo = struct {
         }
     };
 
-    fn buildGridItem(state: *State, cx: *facet.BuildContext, index: usize) facet.Widget {
+    fn buildGridItem(state: *State, cx: *kete.BuildContext, index: usize) kete.Widget {
         const t = cx.theme();
         const selected = state.selected_item == index;
         const press = cx.arena.create(ItemPress) catch unreachable;
         press.* = .{ .state = state, .index = index };
         const label = cx.fmt("Item #{d}", .{index + 1});
 
-        return cx.make(facet.Draggable{
+        return cx.make(kete.Draggable{
             .data = index,
             .label = label,
             .icon = .description,
             .on_press = .of(press, ItemPress.press),
-            .child = cx.make(facet.Card{
+            .child = cx.make(kete.Card{
                 .variant = if (selected) .filled else .outlined,
                 .selected = selected,
                 .padding = .all(12),
-                .child = cx.make(facet.Row{
+                .child = cx.make(kete.Row{
                     .spacing = 10,
                     .cross_axis_alignment = .center,
                     .children = cx.makeAll(.{
-                        facet.Icon{
+                        kete.Icon{
                             .icon = .description,
                             .size = 20,
                             .color = if (selected) t.primary else t.on_surface_variant,
                         },
-                        facet.Text{
+                        kete.Text{
                             .text = label,
                             .wrap = false,
                         },
@@ -70,37 +70,37 @@ pub const ListsAndDragDemo = struct {
         });
     }
 
-    pub fn build(_: *const ListsAndDragDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
+    pub fn build(_: *const ListsAndDragDemo, cx: *kete.BuildContext, state: *State) kete.Widget {
         const t = cx.theme();
 
-        var pinned_widgets: [6]facet.Widget = undefined;
+        var pinned_widgets: [6]kete.Widget = undefined;
         for (state.pinned[0..state.pinned_len], 0..) |idx, i| {
-            pinned_widgets[i] = cx.make(facet.Chip{
+            pinned_widgets[i] = cx.make(kete.Chip{
                 .label = cx.fmt("Item #{d}", .{idx + 1}),
                 .icon = .folder,
                 .selected = true,
             });
         }
 
-        return cx.make(facet.Padding{
+        return cx.make(kete.Padding{
             .padding = .all(20),
-            .child = cx.make(facet.Row{
+            .child = cx.make(kete.Row{
                 .cross_axis_alignment = .stretch,
                 .spacing = 20,
                 .children = cx.makeAll(.{
-                    facet.Expanded{
+                    kete.Expanded{
                         .flex = 2,
-                        .child = cx.make(facet.Column{
+                        .child = cx.make(kete.Column{
                             .cross_axis_alignment = .stretch,
                             .spacing = 8,
                             .children = cx.makeAll(.{
-                                facet.Text{
+                                kete.Text{
                                     .text = "Grid (500 items — drag any card to the right):",
                                     .style = .{ .size = t.body_size, .color = t.on_surface_variant },
                                 },
-                                facet.Expanded{
-                                    .child = cx.make(facet.ScrollView{
-                                        .child = cx.make(facet.Grid{
+                                kete.Expanded{
+                                    .child = cx.make(kete.ScrollView{
+                                        .child = cx.make(kete.Grid{
                                             .count = item_count,
                                             .cell = .{ .w = 150, .h = 52 },
                                             .spacing = 10,
@@ -111,34 +111,34 @@ pub const ListsAndDragDemo = struct {
                             }),
                         }),
                     },
-                    facet.SizedBox{
+                    kete.SizedBox{
                         .width = 240,
-                        .child = cx.make(facet.DropTarget{
+                        .child = cx.make(kete.DropTarget{
                             .on_drop = .of(state, State.addPinned),
-                            .child = cx.make(facet.Card{
+                            .child = cx.make(kete.Card{
                                 .variant = .elevated,
                                 .padding = .all(16),
-                                .child = cx.make(facet.Column{
+                                .child = cx.make(kete.Column{
                                     .cross_axis_alignment = .start,
                                     .spacing = 12,
                                     .children = cx.makeAll(.{
-                                        facet.Text{
+                                        kete.Text{
                                             .text = "Drop Zone (Pinned)",
                                             .style = .{ .size = 18, .color = t.on_surface },
                                         },
-                                        facet.Text{
+                                        kete.Text{
                                             .text = if (state.selected_item) |sel|
                                                 cx.fmt("Last clicked: Item #{d}", .{sel + 1})
                                             else
                                                 "Drag items here to pin them.",
                                             .style = .{ .size = t.body_size, .color = t.on_surface_variant },
                                         },
-                                        facet.Column{
+                                        kete.Column{
                                             .cross_axis_alignment = .start,
                                             .spacing = 8,
                                             .children = pinned_widgets[0..state.pinned_len],
                                         },
-                                        facet.TextButton{
+                                        kete.TextButton{
                                             .label = "Clear pinned",
                                             .on_press = if (state.pinned_len > 0) .of(state, State.clearPinned) else null,
                                         },
@@ -154,7 +154,7 @@ pub const ListsAndDragDemo = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -162,7 +162,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root = ListsAndDragDemo{};
     _ = try app.openWindow(.{
-        .title = "Facet Lists & Drag",
+        .title = "Kete Lists & Drag",
         .root = .of(&root),
         .size = .{ 820, 540 },
         .on_close_request = .close,

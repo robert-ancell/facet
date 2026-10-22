@@ -4,7 +4,7 @@
 //! the command line.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const examples = @import("docs_examples.zig");
 
 /// The space around each example, in logical pixels.
@@ -24,9 +24,9 @@ pub fn main(init: std.process.Init) !void {
     var out = try std.Io.Dir.cwd().createDirPathOpen(io, out_path, .{});
     defer out.close(io);
 
-    const u = try facet.ui.WindowUi.createDefault(gpa, io);
+    const u = try kete.ui.WindowUi.createDefault(gpa, io);
     defer u.destroy();
-    u.theme = facet.Theme.light;
+    u.theme = kete.Theme.light;
     u.scale = scale;
     try examples.init(gpa);
     defer examples.deinit(gpa);
@@ -55,7 +55,7 @@ pub fn main(init: std.process.Init) !void {
         defer gpa.free(pixels);
         @memset(pixels, u.theme.surface.toArgb());
         try u.preview(.{ .pixels = pixels, .width = w * scale, .height = h * scale });
-        const png = try facet.gfx.png.encode(gpa, pixels, w * scale, h * scale);
+        const png = try kete.gfx.png.encode(gpa, pixels, w * scale, h * scale);
         defer gpa.free(png);
         var file = try out.createFile(io, ex.name ++ ".png", .{});
         defer file.close(io);

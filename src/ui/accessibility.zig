@@ -8,7 +8,7 @@
 //! platform's accessibility API as the W3C's Core Accessibility API
 //! Mappings say: on Linux, AT-SPI (`atspi.zig`).
 //!
-//! Facet's widgets say what they are (`pub fn accessible(self, n) ?Info`).
+//! Kete's widgets say what they are (`pub fn accessible(self, n) ?Info`).
 //! Others, and the app's own, are described with `Accessible`:
 //!
 //!     // A name for a button that only has an icon (aria-label).
@@ -190,7 +190,7 @@ pub const ValueSetter = struct {
 
 /// What a widget is to assistive technologies: its ARIA role, states and
 /// properties (named as ARIA's, without "aria-"; null where it has none),
-/// and what facet adds (its text, its action).
+/// and what kete adds (its text, its action).
 pub const Info = struct {
     /// What it is.
     role: Role,
@@ -261,7 +261,7 @@ pub const Info = struct {
 /// own (with a `role`), or (without) the objects of the widgets in it,
 /// with these properties instead of theirs; or not at all (`hidden`).
 /// Its fields are ARIA's states and properties (each one set replaces the
-/// widgets'), and facet's own (as `Info`'s).
+/// widgets'), and kete's own (as `Info`'s).
 pub const Accessible = struct {
     /// What it is; null to describe the widgets in it instead.
     role: ?Role = null,

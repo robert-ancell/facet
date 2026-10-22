@@ -2,7 +2,7 @@
 //! buttons, and a button opening a menu.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 pub const Range = enum { day, week, month, year };
@@ -32,59 +32,59 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     return common.page(cx, &.{
         common.section(cx, "Common buttons", "Filled, tonal, outlined and text buttons, from the most emphasis to the least", &.{
             common.labelled(cx, "Label", cx.makeAll(.{
-                facet.FilledButton{ .label = "Filled", .on_press = common.pressed(cx, &s.log, "Filled") },
-                facet.TonalButton{ .label = "Tonal", .on_press = common.pressed(cx, &s.log, "Tonal") },
-                facet.OutlinedButton{ .label = "Outlined", .on_press = common.pressed(cx, &s.log, "Outlined") },
-                facet.TextButton{ .label = "Text", .on_press = common.pressed(cx, &s.log, "Text") },
+                kete.FilledButton{ .label = "Filled", .on_press = common.pressed(cx, &s.log, "Filled") },
+                kete.TonalButton{ .label = "Tonal", .on_press = common.pressed(cx, &s.log, "Tonal") },
+                kete.OutlinedButton{ .label = "Outlined", .on_press = common.pressed(cx, &s.log, "Outlined") },
+                kete.TextButton{ .label = "Text", .on_press = common.pressed(cx, &s.log, "Text") },
             })),
             common.labelled(cx, "Leading icon", cx.makeAll(.{
-                facet.FilledButton{ .label = "Send", .icon = .send, .on_press = common.pressed(cx, &s.log, "Send") },
-                facet.TonalButton{ .label = "Edit", .icon = .edit, .on_press = common.pressed(cx, &s.log, "Edit") },
-                facet.OutlinedButton{ .label = "Share", .icon = .share, .on_press = common.pressed(cx, &s.log, "Share") },
-                facet.TextButton{ .label = "Add", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add") },
+                kete.FilledButton{ .label = "Send", .icon = .send, .on_press = common.pressed(cx, &s.log, "Send") },
+                kete.TonalButton{ .label = "Edit", .icon = .edit, .on_press = common.pressed(cx, &s.log, "Edit") },
+                kete.OutlinedButton{ .label = "Share", .icon = .share, .on_press = common.pressed(cx, &s.log, "Share") },
+                kete.TextButton{ .label = "Add", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add") },
             })),
             common.labelled(cx, "Trailing icon", cx.makeAll(.{
-                facet.FilledButton{ .label = "Next", .trailing_icon = .chevron_right, .on_press = common.pressed(cx, &s.log, "Next") },
-                facet.OutlinedButton{ .label = "Download", .trailing_icon = .download, .on_press = common.pressed(cx, &s.log, "Download") },
-                facet.TextButton{ .label = "More", .trailing_icon = .expand_more, .on_press = common.pressed(cx, &s.log, "More") },
+                kete.FilledButton{ .label = "Next", .trailing_icon = .chevron_right, .on_press = common.pressed(cx, &s.log, "Next") },
+                kete.OutlinedButton{ .label = "Download", .trailing_icon = .download, .on_press = common.pressed(cx, &s.log, "Download") },
+                kete.TextButton{ .label = "More", .trailing_icon = .expand_more, .on_press = common.pressed(cx, &s.log, "More") },
             })),
             common.labelled(cx, "Destructive", cx.makeAll(.{
-                facet.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = common.pressed(cx, &s.log, "Delete") },
+                kete.OutlinedButton{ .label = "Delete", .icon = .delete, .destructive = true, .on_press = common.pressed(cx, &s.log, "Delete") },
             })),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.FilledButton{ .label = "Filled" },
-                facet.TonalButton{ .label = "Tonal" },
-                facet.OutlinedButton{ .label = "Outlined" },
-                facet.TextButton{ .label = "Text" },
+                kete.FilledButton{ .label = "Filled" },
+                kete.TonalButton{ .label = "Tonal" },
+                kete.OutlinedButton{ .label = "Outlined" },
+                kete.TextButton{ .label = "Text" },
             })),
             common.status(cx, s.log.text("Press a button")),
         }),
         common.section(cx, "Icon buttons", "Icon-only buttons in four styles, which can toggle, each with a tooltip saying what it does", &.{
             common.labelled(cx, "Standard", cx.makeAll(.{
-                facet.Tooltip{ .text = "Favourite", .child = cx.make(facet.IconButton{ .icon = .favorite, .selected = s.favourite, .on_press = .of(s, State.toggleFavourite) }) },
-                facet.Tooltip{ .text = "Search", .child = cx.make(facet.IconButton{ .icon = .search, .on_press = common.pressed(cx, &s.log, "Search") }) },
-                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .print }) },
+                kete.Tooltip{ .text = "Favourite", .child = cx.make(kete.IconButton{ .icon = .favorite, .selected = s.favourite, .on_press = .of(s, State.toggleFavourite) }) },
+                kete.Tooltip{ .text = "Search", .child = cx.make(kete.IconButton{ .icon = .search, .on_press = common.pressed(cx, &s.log, "Search") }) },
+                kete.Tooltip{ .text = "Unavailable", .child = cx.make(kete.IconButton{ .icon = .print }) },
             })),
             common.labelled(cx, "Filled", cx.makeAll(.{
-                facet.Tooltip{ .text = "Bookmark", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled, .selected = s.bookmarked, .on_press = .of(s, State.toggleBookmarked) }) },
-                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .star, .variant = .filled }) },
+                kete.Tooltip{ .text = "Bookmark", .child = cx.make(kete.IconButton{ .icon = .star, .variant = .filled, .selected = s.bookmarked, .on_press = .of(s, State.toggleBookmarked) }) },
+                kete.Tooltip{ .text = "Unavailable", .child = cx.make(kete.IconButton{ .icon = .star, .variant = .filled }) },
             })),
             common.labelled(cx, "Tonal", cx.makeAll(.{
-                facet.Tooltip{ .text = "Mute", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal, .selected = s.muted, .on_press = .of(s, State.toggleMuted) }) },
-                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .notifications, .variant = .tonal }) },
+                kete.Tooltip{ .text = "Mute", .child = cx.make(kete.IconButton{ .icon = .notifications, .variant = .tonal, .selected = s.muted, .on_press = .of(s, State.toggleMuted) }) },
+                kete.Tooltip{ .text = "Unavailable", .child = cx.make(kete.IconButton{ .icon = .notifications, .variant = .tonal }) },
             })),
             common.labelled(cx, "Outlined", cx.makeAll(.{
-                facet.Tooltip{ .text = "Lock", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined, .selected = s.locked, .on_press = .of(s, State.toggleLocked) }) },
-                facet.Tooltip{ .text = "Unavailable", .child = cx.make(facet.IconButton{ .icon = .lock, .variant = .outlined }) },
+                kete.Tooltip{ .text = "Lock", .child = cx.make(kete.IconButton{ .icon = .lock, .variant = .outlined, .selected = s.locked, .on_press = .of(s, State.toggleLocked) }) },
+                kete.Tooltip{ .text = "Unavailable", .child = cx.make(kete.IconButton{ .icon = .lock, .variant = .outlined }) },
             })),
             common.labelled(cx, "Sizes", cx.makeAll(.{
-                facet.IconButton{ .icon = .settings, .size = 32, .icon_size = 18, .on_press = common.pressed(cx, &s.log, "Small settings") },
-                facet.IconButton{ .icon = .settings, .on_press = common.pressed(cx, &s.log, "Settings") },
-                facet.IconButton{ .icon = .settings, .size = 56, .icon_size = 32, .variant = .tonal, .on_press = common.pressed(cx, &s.log, "Large settings") },
+                kete.IconButton{ .icon = .settings, .size = 32, .icon_size = 18, .on_press = common.pressed(cx, &s.log, "Small settings") },
+                kete.IconButton{ .icon = .settings, .on_press = common.pressed(cx, &s.log, "Settings") },
+                kete.IconButton{ .icon = .settings, .size = 56, .icon_size = 32, .variant = .tonal, .on_press = common.pressed(cx, &s.log, "Large settings") },
             })),
         }),
         common.section(cx, "Segmented buttons", "A choice of one from a few, as a group of joined buttons", &.{
@@ -101,7 +101,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
             })}),
         }),
         common.section(cx, "Menus", "A list of actions over everything else, from a button; items can show shortcuts, be destructive, or be unavailable", cx.makeAll(.{
-            facet.Row{
+            kete.Row{
                 .spacing = 12,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
@@ -114,7 +114,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 }
 
 /// A segmented button group choosing a `T`.
-fn segmented(comptime T: type, cx: *facet.BuildContext, value: *T, options: []const Segment(T)) facet.Widget {
+fn segmented(comptime T: type, cx: *kete.BuildContext, value: *T, options: []const Segment(T)) kete.Widget {
     const Pick = struct {
         value: *T,
         choice: T,
@@ -123,11 +123,11 @@ fn segmented(comptime T: type, cx: *facet.BuildContext, value: *T, options: []co
             p.value.* = p.choice;
         }
     };
-    const buttons = cx.arena.alloc(facet.Widget, options.len) catch return cx.make(facet.SizedBox.empty);
+    const buttons = cx.arena.alloc(kete.Widget, options.len) catch return cx.make(kete.SizedBox.empty);
     for (options, buttons, 0..) |opt, *b, i| {
-        const p = cx.arena.create(Pick) catch return cx.make(facet.SizedBox.empty);
+        const p = cx.arena.create(Pick) catch return cx.make(kete.SizedBox.empty);
         p.* = .{ .value = value, .choice = opt.value };
-        b.* = cx.make(facet.PillButton{
+        b.* = cx.make(kete.PillButton{
             .label = opt.label,
             .icon = opt.icon,
             .selected = value.* == opt.value,
@@ -136,11 +136,11 @@ fn segmented(comptime T: type, cx: *facet.BuildContext, value: *T, options: []co
             .on_press = .of(p, Pick.pick),
         });
     }
-    return cx.make(facet.PillBar{ .children = buttons });
+    return cx.make(kete.PillBar{ .children = buttons });
 }
 
 fn Segment(comptime T: type) type {
-    return struct { value: T, label: []const u8, icon: ?facet.IconName = null };
+    return struct { value: T, label: []const u8, icon: ?kete.IconName = null };
 }
 
 /// A button opening a menu below it.
@@ -159,7 +159,7 @@ const MenuButton = struct {
     };
 
     pub const State = struct {
-        anchor: facet.WidgetAnchor = .{},
+        anchor: kete.WidgetAnchor = .{},
         log: ?*Log = null,
         actions: [5]Action = undefined,
 
@@ -177,10 +177,10 @@ const MenuButton = struct {
         }
     };
 
-    pub fn build(self: *const MenuButton, cx: *facet.BuildContext, state: *@This().State) facet.Widget {
+    pub fn build(self: *const MenuButton, cx: *kete.BuildContext, state: *@This().State) kete.Widget {
         state.anchor = cx.anchor();
         state.log = self.log;
-        return cx.make(facet.OutlinedButton{
+        return cx.make(kete.OutlinedButton{
             .label = "Edit",
             .icon = .edit,
             .trailing_icon = .expand_more,

@@ -2,7 +2,7 @@
 //! chips.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
 pub const Size = enum { small, medium, large };
@@ -10,9 +10,9 @@ pub const Quality = enum { low, balanced, high, ultra };
 
 const topping_names = [_][]const u8{ "Cheese", "Mushroom", "Olives" };
 const filter_names = [_][]const u8{ "Unread", "Starred", "Files", "From me" };
-const filter_icons = [_]facet.IconName{ .mail, .star, .folder, .person };
+const filter_icons = [_]kete.IconName{ .mail, .star, .folder, .person };
 const tag_names = [_][]const u8{ "zig", "wayland", "vulkan" };
-const resolutions = [_]facet.MenuItem{
+const resolutions = [_]kete.MenuItem{
     .{ .label = "3840 × 2160" },
     .{ .label = "2560 × 1440" },
     .{ .label = "1920 × 1080" },
@@ -72,7 +72,7 @@ pub const State = struct {
 };
 
 /// A callback flipping `flag`.
-fn toggle(flag: *bool) facet.Callback {
+fn toggle(flag: *bool) kete.Callback {
     const T = struct {
         fn flip(f: *bool) void {
             f.* = !f.*;
@@ -82,7 +82,7 @@ fn toggle(flag: *bool) facet.Callback {
 }
 
 /// A callback for a checkbox setting `flag`.
-fn setter(flag: *bool) facet.ValueCallback(bool) {
+fn setter(flag: *bool) kete.ValueCallback(bool) {
     const T = struct {
         fn set(f: *bool, v: bool) void {
             f.* = v;
@@ -92,7 +92,7 @@ fn setter(flag: *bool) facet.ValueCallback(bool) {
 }
 
 /// A callback clearing `flag`.
-fn clear(flag: *bool) facet.Callback {
+fn clear(flag: *bool) kete.Callback {
     const T = struct {
         fn clear(f: *bool) void {
             f.* = false;
@@ -101,36 +101,36 @@ fn clear(flag: *bool) facet.Callback {
     return .of(flag, T.clear);
 }
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     const t = cx.theme();
 
-    var toppings: [topping_names.len]facet.Widget = undefined;
+    var toppings: [topping_names.len]kete.Widget = undefined;
     for (&toppings, topping_names, &s.toppings) |*w, name, *on| {
-        w.* = cx.make(facet.CheckboxRow{ .value = on.*, .on_changed = setter(on), .label = name });
+        w.* = cx.make(kete.CheckboxRow{ .value = on.*, .on_changed = setter(on), .label = name });
     }
 
     const sizes = [_]struct { Size, []const u8 }{ .{ .small, "Small" }, .{ .medium, "Medium" }, .{ .large, "Large" } };
-    var radios: [sizes.len]facet.Widget = undefined;
+    var radios: [sizes.len]kete.Widget = undefined;
     for (&radios, sizes) |*w, sz| {
-        w.* = cx.make(facet.RadioRow(Size){ .value = sz[0], .group_value = s.size, .on_changed = .of(s, State.setSize), .label = sz[1] });
+        w.* = cx.make(kete.RadioRow(Size){ .value = sz[0], .group_value = s.size, .on_changed = .of(s, State.setSize), .label = sz[1] });
     }
 
-    var filters: [filter_names.len]facet.Widget = undefined;
+    var filters: [filter_names.len]kete.Widget = undefined;
     for (&filters, filter_names, filter_icons, &s.filters) |*w, name, icon, *on| {
-        w.* = cx.make(facet.Chip{ .label = name, .icon = icon, .selected = on.*, .on_press = toggle(on) });
+        w.* = cx.make(kete.Chip{ .label = name, .icon = icon, .selected = on.*, .on_press = toggle(on) });
     }
 
-    var tags: [tag_names.len + 1]facet.Widget = undefined;
+    var tags: [tag_names.len + 1]kete.Widget = undefined;
     var tag_count: usize = 0;
     for (tag_names, &s.tags) |name, *shown| {
         if (!shown.*) continue;
-        tags[tag_count] = cx.make(facet.Chip{ .label = name, .on_remove = clear(shown) });
+        tags[tag_count] = cx.make(kete.Chip{ .label = name, .on_remove = clear(shown) });
         tag_count += 1;
     }
-    tags[tag_count] = cx.make(facet.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.resetTags) });
+    tags[tag_count] = cx.make(kete.TextButton{ .label = "Reset", .icon = .refresh, .on_press = .of(s, State.resetTags) });
     tag_count += 1;
 
-    const qualities = [_]facet.Select(Quality).Option{
+    const qualities = [_]kete.Select(Quality).Option{
         .{ .value = .low, .item = .{ .label = "Low" } },
         .{ .value = .balanced, .item = .{ .label = "Balanced" } },
         .{ .value = .high, .item = .{ .label = "High" } },
@@ -141,61 +141,61 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         common.section(cx, "Checkboxes", "Any number of options from a set, each on or off", &.{
             common.labelled(cx, "Toppings", &toppings),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.CheckboxRow{ .value = true, .label = "Always on" },
-                facet.CheckboxRow{ .value = false, .label = "Never on" },
+                kete.CheckboxRow{ .value = true, .label = "Always on" },
+                kete.CheckboxRow{ .value = false, .label = "Never on" },
             })),
             common.labelled(cx, "Agreement", cx.makeAll(.{
-                facet.CheckboxRow{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" },
-                facet.FilledButton{ .label = "Continue", .on_press = if (s.terms) common.pressed(cx, &s.agreed, "Continue") else null },
+                kete.CheckboxRow{ .value = s.terms, .on_changed = .of(s, State.setTerms), .label = "I agree to the terms" },
+                kete.FilledButton{ .label = "Continue", .on_press = if (s.terms) common.pressed(cx, &s.agreed, "Continue") else null },
             })),
             common.status(cx, s.agreed.text("Agree to the terms to continue")),
         }),
         common.section(cx, "Radio buttons", "Exactly one option from a set, here of an enum", &.{
             common.labelled(cx, "Size", &radios),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.RadioRow(u8){ .value = 0, .group_value = 0, .label = "Chosen" },
-                facet.RadioRow(u8){ .value = 1, .group_value = 0, .label = "Not chosen" },
+                kete.RadioRow(u8){ .value = 0, .group_value = 0, .label = "Chosen" },
+                kete.RadioRow(u8){ .value = 1, .group_value = 0, .label = "Not chosen" },
             })),
             common.status(cx, cx.fmt("Size is {s}", .{@tagName(s.size)})),
         }),
         common.section(cx, "Switches", "A setting turned on or off straight away", &.{
             common.labelled(cx, "Radios", cx.makeAll(.{
-                facet.SwitchRow{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" },
-                facet.SwitchRow{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" },
+                kete.SwitchRow{ .value = s.wifi, .on_changed = if (s.airplane) null else .of(s, State.setWifi), .label = "Wi-Fi" },
+                kete.SwitchRow{ .value = s.bluetooth, .on_changed = if (s.airplane) null else .of(s, State.setBluetooth), .label = "Bluetooth" },
             })),
             common.labelled(cx, "Override", cx.makeAll(.{
-                facet.SwitchRow{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" },
+                kete.SwitchRow{ .value = s.airplane, .on_changed = .of(s, State.setAirplane), .label = "Airplane mode (turns the others off)" },
             })),
         }),
         common.section(cx, "Sliders", "A value from a range, continuous or in steps", &.{
             common.labelled(cx, cx.fmt("Volume {d:.0}%", .{s.volume * 100}), cx.makeAll(.{
-                facet.Icon{ .icon = .remove, .size = 20, .color = t.on_surface_variant },
-                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.volume, .on_changed = .of(s, State.setVolume) }) },
-                facet.Icon{ .icon = .add, .size = 20, .color = t.on_surface_variant },
+                kete.Icon{ .icon = .remove, .size = 20, .color = t.on_surface_variant },
+                kete.Expanded{ .child = cx.make(kete.Slider{ .value = s.volume, .on_changed = .of(s, State.setVolume) }) },
+                kete.Icon{ .icon = .add, .size = 20, .color = t.on_surface_variant },
             })),
             common.labelled(cx, cx.fmt("Brightness {d:.0}", .{s.brightness}), cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.Slider{ .value = s.brightness, .min = 0, .max = 100, .divisions = 10, .on_changed = .of(s, State.setBrightness) }) },
+                kete.Expanded{ .child = cx.make(kete.Slider{ .value = s.brightness, .min = 0, .max = 100, .divisions = 10, .on_changed = .of(s, State.setBrightness) }) },
             })),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.Expanded{ .child = cx.make(facet.Slider{ .value = 0.3 }) },
+                kete.Expanded{ .child = cx.make(kete.Slider{ .value = 0.3 }) },
             })),
         }),
         common.section(cx, "Dropdown menus", "One option from a list shown in a menu: by index, or of a type with Select", &.{
             common.labelled(cx, "Resolution", cx.makeAll(.{
-                facet.DropdownMenu{ .options = &resolutions, .selected = s.resolution, .on_selected = .of(s, State.setResolution), .icon = .image, .width = 200 },
+                kete.DropdownMenu{ .options = &resolutions, .selected = s.resolution, .on_selected = .of(s, State.setResolution), .icon = .image, .width = 200 },
             })),
             common.labelled(cx, "Quality", cx.makeAll(.{
-                facet.Select(Quality){ .options = &qualities, .value = s.quality, .on_changed = .of(s, State.setQuality), .icon = .tune, .width = 200 },
+                kete.Select(Quality){ .options = &qualities, .value = s.quality, .on_changed = .of(s, State.setQuality), .icon = .tune, .width = 200 },
             })),
             common.labelled(cx, "Disabled", cx.makeAll(.{
-                facet.DropdownMenu{ .options = &resolutions, .selected = null, .placeholder = "Not available", .width = 200 },
+                kete.DropdownMenu{ .options = &resolutions, .selected = null, .placeholder = "Not available", .width = 200 },
             })),
         }),
         common.section(cx, "Chips", "Filter chips turned on and off, and input chips that can be removed", &.{
             common.labelled(cx, "Filters", &filters),
             common.labelled(cx, "Tags", tags[0..tag_count]),
             common.labelled(cx, "Assist", cx.makeAll(.{
-                facet.Chip{ .label = "Add to calendar", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add to calendar") },
+                kete.Chip{ .label = "Add to calendar", .icon = .add, .on_press = common.pressed(cx, &s.log, "Add to calendar") },
             })),
             common.status(cx, s.log.text("Choose an assist chip")),
         }),

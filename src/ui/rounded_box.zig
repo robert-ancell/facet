@@ -17,10 +17,10 @@ const Node = widget.WidgetNode;
 ///
 /// ```zig
 /// const t = cx.theme();
-/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
-///     facet.RoundedBox{ .color = t.primary_container, .radius = .all(16), .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
-///     facet.RoundedBox{ .border_color = t.primary, .border_width = 2, .radius = .all(28), .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
-///     facet.RoundedBox{ .color = t.secondary_container, .radius = .{ .tl = 4, .tr = 24, .br = 4, .bl = 24 }, .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     kete.RoundedBox{ .color = t.primary_container, .radius = .all(16), .child = cx.make(kete.SizedBox{ .width = 72, .height = 56 }) },
+///     kete.RoundedBox{ .border_color = t.primary, .border_width = 2, .radius = .all(28), .child = cx.make(kete.SizedBox{ .width = 72, .height = 56 }) },
+///     kete.RoundedBox{ .color = t.secondary_container, .radius = .{ .tl = 4, .tr = 24, .br = 4, .bl = 24 }, .child = cx.make(kete.SizedBox{ .width = 72, .height = 56 }) },
 /// }) });
 /// ```
 pub const RoundedBox = struct {

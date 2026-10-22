@@ -1,11 +1,11 @@
 //! MacWindow: a native macOS window: AppKit's NSWindow, with the system's
 //! own title bar, buttons, resizing and full screen (server-side
-//! decorations), and a view of facet's in it.
+//! decorations), and a view of kete's in it.
 //!
 //! Frames are drawn on the CPU into one of three buffers in turn (so the
 //! damage tracking draws only what changed, as on Wayland) and shown as
 //! the contents of the view's Core Animation layer. AppKit's events become
-//! facet's `InputEvent`s: macOS key codes become `KeyboardKey`s, and Command counts as Control (so Command and C copies).
+//! kete's `InputEvent`s: macOS key codes become `KeyboardKey`s, and Command counts as Control (so Command and C copies).
 //! What the toolkit waits on as well (`window.Source`s: image loads,
 //! wakes) is watched through the main run loop, so it sleeps until there
 //! is something to do, and read through the app's `std.Io` once it is
@@ -13,7 +13,7 @@
 //! be there (and waits in AppKit, not in the `Io`).
 //!
 //! Everything AppKit has is loaded when the window is opened (see
-//! `gfx.objc`), so facet builds for macOS without its SDK.
+//! `gfx.objc`), so kete builds for macOS without its SDK.
 //!
 //! The GPU draws frames when it can: the Metal renderer asks for the
 //! view's layer as a `CAMetalLayer` (`beginMetalFrame`) and presents
@@ -113,7 +113,7 @@ pub const MacWindow = struct {
         /// pixels), and its size in pixels.
         position: [2]i32,
         pixel_size: [2]u32,
-        /// What is drawn in it (straight alpha, as facet draws).
+        /// What is drawn in it (straight alpha, as kete draws).
         pixels: []u32 = &.{},
     };
 
@@ -643,7 +643,7 @@ pub const MacWindow = struct {
         msg(void, panel, "setReleasedWhenClosed:", .{objc.no});
         msg(void, panel, "setOpaque:", .{objc.no});
         msg(void, panel, "setBackgroundColor:", .{msg(Id, objc.class("NSColor"), "clearColor", .{})});
-        // Facet draws the shadow (in the popup's own pixels).
+        // Kete draws the shadow (in the popup's own pixels).
         msg(void, panel, "setHasShadow:", .{objc.no});
         msg(void, panel, "setLevel:", .{@as(isize, 101)}); // NSPopUpMenuWindowLevel
         msg(void, panel, "setAcceptsMouseMovedEvents:", .{objc.yes});
@@ -727,7 +727,7 @@ pub const MacWindow = struct {
     }
 
     /// Where the popup is, in the window's coordinates (known as soon as
-    /// it is opened: facet places it).
+    /// it is opened: kete places it).
     pub fn popupPosition(w: *MacWindow, id: u32) ?[2]i32 {
         const pop = w.popupOf(id) orelse return null;
         return pop.position;
@@ -966,7 +966,7 @@ pub const MacWindow = struct {
     fn viewClass() objc.Class {
         const m = view_methods;
         const b = if (@import("builtin").cpu.arch == .aarch64) "B@:" else "c@:";
-        return objc.makeClass("FacetView", "NSView", &.{
+        return objc.makeClass("KeteView", "NSView", &.{
             .{ .sel = "acceptsFirstResponder", .imp = &m.yesFn, .types = b },
             .{ .sel = "isFlipped", .imp = &m.yesFn, .types = b },
             .{ .sel = "acceptsFirstMouse:", .imp = &m.yesFn, .types = b },
@@ -991,7 +991,7 @@ pub const MacWindow = struct {
     fn delegateClass() objc.Class {
         const m = delegate_methods;
         const b = if (@import("builtin").cpu.arch == .aarch64) "B@:@" else "c@:@";
-        return objc.makeClass("FacetWindowDelegate", "NSObject", &.{
+        return objc.makeClass("KeteWindowDelegate", "NSObject", &.{
             .{ .sel = "windowShouldClose:", .imp = &m.windowShouldClose, .types = b },
             .{ .sel = "windowDidResize:", .imp = &m.resized, .types = "v@:@" },
             .{ .sel = "windowDidEndLiveResize:", .imp = &m.modeChanged, .types = "v@:@" },
@@ -1015,7 +1015,7 @@ fn keepTopLeft(layer: Id) void {
 }
 
 /// The windows open (Quit closes them all), and the display they are on
-/// (AppKit has one application a process, and so facet one display).
+/// (AppKit has one application a process, and so kete one display).
 var windows: std.ArrayList(*MacWindow) = .empty;
 var current_display: ?*MacDisplay = null;
 
@@ -1148,7 +1148,7 @@ fn startApp() Id {
     if (app_started) return app;
     app_started = true;
     _ = msg(objc.Bool, app, "setActivationPolicy:", .{@as(isize, 0)});
-    const delegate = msg(Id, objc.makeClass("FacetAppDelegate", "NSObject", &.{
+    const delegate = msg(Id, objc.makeClass("KeteAppDelegate", "NSObject", &.{
         .{ .sel = "applicationShouldTerminate:", .imp = &shouldTerminate, .types = "Q@:@" },
     }), "new", .{});
     msg(void, app, "setDelegate:", .{delegate});
@@ -1383,7 +1383,7 @@ test "macOS keys become the keyboard keys the toolkit has" {
 test "a menu popup opens where the positioner puts it, on the screen, and shows what is drawn" {
     if (@import("builtin").os.tag != .macos) return error.SkipZigTest;
     const testing = std.testing;
-    const w = MacWindow.open(testing.allocator, testing.io, .empty, .{ .title = "facet test", .size = .{ 300, 200 } }) catch return error.SkipZigTest;
+    const w = MacWindow.open(testing.allocator, testing.io, .empty, .{ .title = "kete test", .size = .{ 300, 200 } }) catch return error.SkipZigTest;
     defer w.close();
     _ = try w.applyConfigure();
     const pool = objc.push();

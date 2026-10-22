@@ -14,9 +14,9 @@ const Node = widget.WidgetNode;
 /// ![The SizedBox example](images/SizedBox.png)
 ///
 /// ```zig
-/// return cx.make(facet.RoundedBox{
+/// return cx.make(kete.RoundedBox{
 ///     .border_color = cx.theme().outline,
-///     .child = cx.make(facet.SizedBox{ .width = 160, .height = 64, .child = cx.make(facet.Align.center(cx.make(facet.Text{ .text = "160 by 64", .wrap = false }))) }),
+///     .child = cx.make(kete.SizedBox{ .width = 160, .height = 64, .child = cx.make(kete.Align.center(cx.make(kete.Text{ .text = "160 by 64", .wrap = false }))) }),
 /// });
 /// ```
 pub const SizedBox = struct {

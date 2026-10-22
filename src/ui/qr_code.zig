@@ -54,7 +54,7 @@ pub const Matrix = struct {
 /// ![The QrCode example](images/QrCode.png)
 ///
 /// ```zig
-/// return cx.make(facet.QrCode{ .text = "https://example.com", .size = 120 });
+/// return cx.make(kete.QrCode{ .text = "https://example.com", .size = 120 });
 /// ```
 pub const QrCode = struct {
     /// What the code says.

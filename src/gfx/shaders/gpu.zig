@@ -1,4 +1,4 @@
-//! What Facet's shaders, written in Zig and compiled to SPIR-V, import
+//! What Kete's shaders, written in Zig and compiled to SPIR-V, import
 //! as "gpu": vector types, inputs and outputs by location, the uniform
 //! block, the position, and texture sampling.
 
@@ -12,12 +12,12 @@ pub const Vec4 = @Vector(4, f32);
 pub const position = std.spirv.position_out;
 
 /// The fragment's colour, straight (not premultiplied) RGBA.
-pub const color = @extern(*addrspace(.output) Vec4, .{ .name = "facet_color", .decoration = .{ .location = 0 } });
+pub const color = @extern(*addrspace(.output) Vec4, .{ .name = "kete_color", .decoration = .{ .location = 0 } });
 
 const max_locations = 8;
-const vin_names = [max_locations][]const u8{ "facet_vin0", "facet_vin1", "facet_vin2", "facet_vin3", "facet_vin4", "facet_vin5", "facet_vin6", "facet_vin7" };
-const vout_names = [max_locations][]const u8{ "facet_vout0", "facet_vout1", "facet_vout2", "facet_vout3", "facet_vout4", "facet_vout5", "facet_vout6", "facet_vout7" };
-const fin_names = [max_locations][]const u8{ "facet_fin0", "facet_fin1", "facet_fin2", "facet_fin3", "facet_fin4", "facet_fin5", "facet_fin6", "facet_fin7" };
+const vin_names = [max_locations][]const u8{ "kete_vin0", "kete_vin1", "kete_vin2", "kete_vin3", "kete_vin4", "kete_vin5", "kete_vin6", "kete_vin7" };
+const vout_names = [max_locations][]const u8{ "kete_vout0", "kete_vout1", "kete_vout2", "kete_vout3", "kete_vout4", "kete_vout5", "kete_vout6", "kete_vout7" };
+const fin_names = [max_locations][]const u8{ "kete_fin0", "kete_fin1", "kete_fin2", "kete_fin3", "kete_fin4", "kete_fin5", "kete_fin6", "kete_fin7" };
 
 /// A vertex attribute.
 pub fn vertexInput(comptime T: type, comptime location: u32) *addrspace(.input) T {
@@ -36,7 +36,7 @@ pub fn fragmentInput(comptime T: type, comptime location: u32) *addrspace(.input
 
 /// The program's uniforms: an extern struct the app sets for each draw.
 pub fn uniforms(comptime T: type) *addrspace(.uniform) T {
-    return @extern(*addrspace(.uniform) T, .{ .name = "facet_uniforms", .decoration = .{ .descriptor = .{ .binding = 0, .set = 0 } } });
+    return @extern(*addrspace(.uniform) T, .{ .name = "kete_uniforms", .decoration = .{ .descriptor = .{ .binding = 0, .set = 0 } } });
 }
 
 const Image2D = @SpirvType(.{ .image = .{
@@ -50,7 +50,7 @@ const Image2D = @SpirvType(.{ .image = .{
 } });
 const SampledImage2D = @SpirvType(.{ .sampled_image = Image2D });
 const tex = @extern(*addrspace(.constant) SampledImage2D, .{
-    .name = "facet_texture",
+    .name = "kete_texture",
     .decoration = .{ .descriptor = .{ .set = 0, .binding = 0 } },
 });
 

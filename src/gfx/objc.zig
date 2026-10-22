@@ -1,6 +1,6 @@
 //! Calling Objective-C (AppKit, Metal and friends) from Zig, on macOS: the
 //! Objective-C runtime, and the frameworks' C functions and constants,
-//! loaded when first used (as facet loads Vulkan and EGL), so no SDK is
+//! loaded when first used (as kete loads Vulkan and EGL), so no SDK is
 //! needed to build, and nothing to link but the C library.
 //!
 //!     const app = objc.msg(objc.Id, objc.class("NSApplication"), "sharedApplication", .{});
@@ -192,11 +192,11 @@ pub fn constant(name: [*:0]const u8) Id {
 
 /// Makes a class of our own, `name`, a subclass of `super`, with the
 /// methods `methods` (selector, implementation, type encoding) and a
-/// pointer-sized ivar `facet` (for the Zig object it belongs to).
+/// pointer-sized ivar `kete` (for the Zig object it belongs to).
 pub fn makeClass(name: [*:0]const u8, super: [*:0]const u8, methods: []const Method) Class {
     if (class(name)) |existing| return existing;
     const cls = rt().allocateClassPair(class(super), name, 0);
-    _ = rt().addIvar(cls, "facet", @sizeOf(usize), std.math.log2_int(usize, @sizeOf(usize)), "^v");
+    _ = rt().addIvar(cls, "kete", @sizeOf(usize), std.math.log2_int(usize, @sizeOf(usize)), "^v");
     for (methods) |m| _ = rt().addMethod(cls, sel(m.sel), m.imp, m.types);
     rt().registerClassPair(cls);
     return cls;
@@ -207,12 +207,12 @@ pub const Method = struct { sel: [*:0]const u8, imp: *const anyopaque, types: [*
 /// The Zig object an object of one of our classes belongs to.
 pub fn owner(comptime T: type, obj: Id) ?*T {
     const cls = msg(Class, obj, "class", .{});
-    const ivar = rt().getInstanceVariable(cls, "facet");
+    const ivar = rt().getInstanceVariable(cls, "kete");
     return @ptrCast(@alignCast(rt().getIvar(obj, ivar)));
 }
 
 pub fn setOwner(obj: Id, ptr: ?*anyopaque) void {
     const cls = msg(Class, obj, "class", .{});
-    const ivar = rt().getInstanceVariable(cls, "facet");
+    const ivar = rt().getInstanceVariable(cls, "kete");
     rt().setIvar(obj, ivar, ptr);
 }

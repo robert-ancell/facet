@@ -1,4 +1,4 @@
-//! Facet: a declarative UI toolkit for Zig, with the look of Material 3.
+//! Kete: a declarative UI toolkit for Zig, with the look of Material 3.
 //!
 //! * `ui` (and top-level re-exports): declarative widget tree,
 //!   widgets, layout, state, damage tracking, and input handling

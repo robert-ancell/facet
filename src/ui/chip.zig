@@ -28,10 +28,10 @@ const Color = gfx.Color;
 /// ![The Chip example](images/Chip.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
-///     facet.Chip{ .label = "Filter", .on_press = .of(state, State.save) },
-///     facet.Chip{ .label = "Selected", .selected = true, .on_press = .of(state, State.save) },
-///     facet.Chip{ .label = "Remove", .icon = .tag, .on_remove = .of(state, State.save) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
+///     kete.Chip{ .label = "Filter", .on_press = .of(state, State.save) },
+///     kete.Chip{ .label = "Selected", .selected = true, .on_press = .of(state, State.save) },
+///     kete.Chip{ .label = "Remove", .icon = .tag, .on_remove = .of(state, State.save) },
 /// }) });
 /// ```
 pub const Chip = struct {

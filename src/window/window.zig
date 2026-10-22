@@ -1247,7 +1247,7 @@ pub const Window = struct {
     }
 };
 
-/// `src` (straight alpha, as facet draws) premultiplied into `dst`: as
+/// `src` (straight alpha, as kete draws) premultiplied into `dst`: as
 /// macOS's and Windows' popups (Core Animation, layered windows) show it.
 pub fn premultiply(dst: []u32, src: []const u32) void {
     for (dst, src) |*d, p| {

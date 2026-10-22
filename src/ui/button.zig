@@ -35,7 +35,7 @@ pub const icon_size = 18;
 /// ![The FilledButton example](images/FilledButton.png)
 ///
 /// ```zig
-/// return cx.make(facet.FilledButton{ .label = "Save", .icon = .check, .on_press = .of(state, State.save) });
+/// return cx.make(kete.FilledButton{ .label = "Save", .icon = .check, .on_press = .of(state, State.save) });
 /// ```
 pub const FilledButton = struct {
     /// The label (or give a `child` instead).
@@ -73,7 +73,7 @@ pub const FilledButton = struct {
 /// ![The TonalButton example](images/TonalButton.png)
 ///
 /// ```zig
-/// return cx.make(facet.TonalButton{ .label = "Add to cart", .icon = .shopping_cart, .on_press = .of(state, State.save) });
+/// return cx.make(kete.TonalButton{ .label = "Add to cart", .icon = .shopping_cart, .on_press = .of(state, State.save) });
 /// ```
 pub const TonalButton = struct {
     /// The text of the button (or give a `child` instead).
@@ -111,7 +111,7 @@ pub const TonalButton = struct {
 /// ![The OutlinedButton example](images/OutlinedButton.png)
 ///
 /// ```zig
-/// return cx.make(facet.OutlinedButton{ .label = "Cancel", .on_press = .of(state, State.save) });
+/// return cx.make(kete.OutlinedButton{ .label = "Cancel", .on_press = .of(state, State.save) });
 /// ```
 pub const OutlinedButton = struct {
     /// The text of the button (or give a `child` instead).
@@ -156,7 +156,7 @@ pub const OutlinedButton = struct {
 /// ![The TextButton example](images/TextButton.png)
 ///
 /// ```zig
-/// return cx.make(facet.TextButton{ .label = "Learn more", .trailing_icon = .arrow_forward, .on_press = .of(state, State.save) });
+/// return cx.make(kete.TextButton{ .label = "Learn more", .trailing_icon = .arrow_forward, .on_press = .of(state, State.save) });
 /// ```
 pub const TextButton = struct {
     /// The text of the button (or give a `child` instead).

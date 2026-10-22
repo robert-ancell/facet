@@ -1,4 +1,4 @@
-//! Facet's font renderer: OpenType fonts with TrueType outlines,
+//! Kete's font renderer: OpenType fonts with TrueType outlines,
 //! rasterized with exact-area anti-aliasing and laid out with kerning.
 //!
 //! * `opentype`: parsing the font (character map, metrics, outlines, GPOS
@@ -6,7 +6,7 @@
 //! * `raster`: rasterizing outlines into coverage masks
 //! * `text`: the glyph cache, layout, and drawing into 32-bit pixels
 //!
-//! Facet includes Fira Sans (SIL Open Font License) and Twemoji Mozilla as
+//! Kete includes Fira Sans (SIL Open Font License) and Twemoji Mozilla as
 //! optional default fonts (`default_font_data`, `emoji_font_data`); apps may
 //! also supply their own font or none at all.
 //!

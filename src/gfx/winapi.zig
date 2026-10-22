@@ -1,6 +1,6 @@
 //! The Windows API: kernel32's functions (linked, as every program has
 //! them), and the other system DLLs' (user32, gdi32, dwmapi, d3d11, dxgi,
-//! ...) loaded when first used (as facet loads Vulkan, EGL and AppKit), so
+//! ...) loaded when first used (as kete loads Vulkan, EGL and AppKit), so
 //! nothing else is linked. COM objects (Direct3D's, DXGI's) are called
 //! through their vtables (`Com`).
 
@@ -453,7 +453,7 @@ pub fn advapi32() ?*const Advapi32 {
 }
 
 /// DWM's timing of the display's refreshes (`DWM_TIMING_INFO`, packed: only
-/// what facet reads of it is named), when the next is and how long each is,
+/// what kete reads of it is named), when the next is and how long each is,
 /// on the performance counter.
 pub const CompositionTiming = struct {
     refresh_qpc: u64,

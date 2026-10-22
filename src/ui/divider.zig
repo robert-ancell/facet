@@ -15,10 +15,10 @@ const Context = widget.BuildContext;
 /// ![The Divider example](images/Divider.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.Column{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
-///     facet.Text{ .text = "Above" },
-///     facet.Divider{},
-///     facet.Text{ .text = "Below" },
+/// return cx.make(kete.SizedBox{ .width = 240, .child = cx.make(kete.Column{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
+///     kete.Text{ .text = "Above" },
+///     kete.Divider{},
+///     kete.Text{ .text = "Below" },
 /// }) }) });
 /// ```
 pub const Divider = struct {

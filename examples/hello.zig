@@ -1,7 +1,7 @@
 //! Interactive counter application (`zig build run-hello`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 pub const Counter = struct {
     pub const State = struct {
@@ -16,27 +16,27 @@ pub const Counter = struct {
         }
     };
 
-    pub fn build(_: *const Counter, cx: *facet.BuildContext, state: *State) facet.Widget {
-        return cx.make(facet.Align.center(cx.make(facet.Column{
+    pub fn build(_: *const Counter, cx: *kete.BuildContext, state: *State) kete.Widget {
+        return cx.make(kete.Align.center(cx.make(kete.Column{
             .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
-                facet.Text{
-                    .text = "Hello, Facet!",
+                kete.Text{
+                    .text = "Hello, Kete!",
                 },
-                facet.Text{
+                kete.Text{
                     .text = cx.fmt("Count: {d}", .{state.count}),
                 },
-                facet.Row{
+                kete.Row{
                     .fill = false,
                     .spacing = 12,
                     .children = cx.makeAll(.{
-                        facet.OutlinedButton{
+                        kete.OutlinedButton{
                             .icon = .remove,
                             .on_press = .of(state, State.decrement),
                         },
-                        facet.FilledButton{
+                        kete.FilledButton{
                             .icon = .add,
                             .on_press = .of(state, State.increment),
                         },
@@ -48,7 +48,7 @@ pub const Counter = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    const app = try facet.App.init(init.gpa, init.io, init.minimal.environ, .{
+    const app = try kete.App.init(init.gpa, init.io, init.minimal.environ, .{
         .on_quit_request = .quit,
         .on_last_window_closed = .quit,
     });
@@ -56,7 +56,7 @@ pub fn main(init: std.process.Init) !void {
 
     const root: Counter = .{};
     _ = try app.openWindow(.{
-        .title = "Hello Facet",
+        .title = "Hello Kete",
         .root = .of(&root),
         .size = .{ 480, 320 },
         .on_close_request = .close,

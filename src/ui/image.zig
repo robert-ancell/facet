@@ -38,7 +38,7 @@ const Size = geometry.Size;
 /// ![The Image example](images/Image.png)
 ///
 /// ```zig
-/// return cx.make(facet.SizedBox{ .width = 160, .height = 100, .child = cx.make(facet.Image{ .source = .{ .image = &photo } }) });
+/// return cx.make(kete.SizedBox{ .width = 160, .height = 100, .child = cx.make(kete.Image{ .source = .{ .image = &photo } }) });
 /// ```
 pub const Image = struct {
     /// What to show: pixels in memory, a file, a URL, or an image file's bytes.

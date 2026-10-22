@@ -23,11 +23,11 @@ const Color = gfx.Color;
 /// ![The IconButton example](images/IconButton.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
-///     facet.IconButton{ .icon = .favorite, .on_press = .of(state, State.save) },
-///     facet.IconButton{ .icon = .favorite, .variant = .filled, .on_press = .of(state, State.save) },
-///     facet.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) },
-///     facet.IconButton{ .icon = .favorite, .variant = .outlined, .selected = true, .on_press = .of(state, State.save) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     kete.IconButton{ .icon = .favorite, .on_press = .of(state, State.save) },
+///     kete.IconButton{ .icon = .favorite, .variant = .filled, .on_press = .of(state, State.save) },
+///     kete.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) },
+///     kete.IconButton{ .icon = .favorite, .variant = .outlined, .selected = true, .on_press = .of(state, State.save) },
 /// }) });
 /// ```
 pub const IconButton = struct {

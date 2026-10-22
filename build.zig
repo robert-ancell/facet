@@ -84,7 +84,7 @@ fn addSceneDxbc(b: *std.Build, mod: *std.Build.Module, name: []const u8, source:
 
 /// HLSL compiled to DXBC (shader model 5.0, for Direct3D 11) by fxc, the
 /// Windows SDK's compiler, when building on Windows (`-Dfxc=` says where it
-/// is, if it is not on PATH or in the SDK). Facet is built for Windows on
+/// is, if it is not on PATH or in the SDK). Kete is built for Windows on
 /// Windows: without fxc the build fails. `-Dwindows-check` gives empty
 /// shaders instead, only to check that the code compiles elsewhere (the
 /// renderer then refuses to start).
@@ -151,7 +151,7 @@ fn findFxc(b: *std.Build) ?[]const u8 {
 }
 
 pub const Modules = struct {
-    facet: *std.Build.Module,
+    kete: *std.Build.Module,
     ui: *std.Build.Module,
     gfx: *std.Build.Module,
     font: *std.Build.Module,
@@ -236,8 +236,8 @@ pub fn createModules(
         },
     });
 
-    const facet = b.addModule(name, .{
-        .root_source_file = b.path("src/facet.zig"),
+    const kete = b.addModule(name, .{
+        .root_source_file = b.path("src/kete.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -249,7 +249,7 @@ pub fn createModules(
     });
 
     return .{
-        .facet = facet,
+        .kete = kete,
         .ui = ui,
         .gfx = gfx,
         .font = font,
@@ -264,7 +264,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const icon_font = addIconFont(b);
-    const mods = createModules(b, "facet", target, optimize, icon_font);
+    const mods = createModules(b, "kete", target, optimize, icon_font);
     const polyhedron_gl_spv = addSpirv(b, "polyhedron_gl", "examples/shaders/polyhedron.zig", .opengl);
     const polyhedron_vk_spv = addSpirv(b, "polyhedron_vk", "examples/shaders/polyhedron.zig", .vulkan);
 
@@ -273,7 +273,7 @@ pub fn build(b: *std.Build) void {
         source: []const u8,
         desc: []const u8,
         polyhedron_spv: ?std.Build.LazyPath = null,
-        /// Not built for Windows (it uses an API facet has only elsewhere),
+        /// Not built for Windows (it uses an API kete has only elsewhere),
         /// or built only for it.
         not_windows: bool = false,
         only_windows: bool = false,
@@ -304,7 +304,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path(ex.source),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+            .imports = &.{.{ .name = "kete", .module = mods.kete }},
         });
         if (ex.polyhedron_spv) |spv| {
             mod.addAnonymousImport("polyhedron.spv", .{ .root_source_file = spv });
@@ -325,7 +325,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&b.addRunArtifact(ex_test).step);
     }
 
-    // Tools: one reporting the backends facet picks on this system, and a
+    // Tools: one reporting the backends kete picks on this system, and a
     // tour of every widget.
     const tools = [_]struct {
         name: []const u8,
@@ -334,8 +334,8 @@ pub fn build(b: *std.Build) void {
         desc: []const u8,
         cube: bool = false,
     }{
-        .{ .name = "facet-info", .step = "info", .source = "tools/info.zig", .desc = "Show the windowing, buffer, sync and rendering backends in use" },
-        .{ .name = "facet-showcase", .step = "showcase", .source = "tools/showcase.zig", .desc = "Run the tour of every widget", .cube = true },
+        .{ .name = "kete-info", .step = "info", .source = "tools/info.zig", .desc = "Show the windowing, buffer, sync and rendering backends in use" },
+        .{ .name = "kete-showcase", .step = "showcase", .source = "tools/showcase.zig", .desc = "Run the tour of every widget", .cube = true },
     };
     const cube_vulkan_spv = addSpirv(b, "cube_vulkan", "tools/showcase/shaders/cube.zig", .vulkan);
     const cube_opengl_spv = addSpirv(b, "cube_opengl", "tools/showcase/shaders/cube.zig", .opengl);
@@ -344,7 +344,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path(tool.source),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+            .imports = &.{.{ .name = "kete", .module = mods.kete }},
         });
         if (tool.cube) {
             mod.addAnonymousImport("cube_vulkan.spv", .{ .root_source_file = cube_vulkan_spv });
@@ -362,7 +362,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // API reference generated from the doc comments, installed to zig-out/docs.
-    const docs_lib = b.addLibrary(.{ .name = "facet", .root_module = mods.facet });
+    const docs_lib = b.addLibrary(.{ .name = "kete", .root_module = mods.kete });
     const install_docs = b.addInstallDirectory(.{
         .source_dir = docs_lib.getEmittedDocs(),
         .install_dir = .prefix,
@@ -375,7 +375,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tools/docs_images.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+            .imports = &.{.{ .name = "kete", .module = mods.kete }},
         }),
     });
     const images_run = b.addRunArtifact(images_exe);
@@ -394,7 +394,7 @@ pub fn build(b: *std.Build) void {
         mods.gfx,
         mods.window,
         mods.ui,
-        mods.facet,
+        mods.kete,
     }) |m| {
         // Wayland's wire protocol has no use (or fds) on Windows.
         if (m == mods.wayland and target.result.os.tag == .windows) continue;

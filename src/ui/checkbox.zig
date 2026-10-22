@@ -26,9 +26,9 @@ const target = control.target;
 /// ![The Checkbox example](images/Checkbox.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
-///     facet.Checkbox{ .value = true, .on_changed = .of(state, State.setOn) },
-///     facet.Checkbox{ .value = false, .on_changed = .of(state, State.setOn) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     kete.Checkbox{ .value = true, .on_changed = .of(state, State.setOn) },
+///     kete.Checkbox{ .value = false, .on_changed = .of(state, State.setOn) },
 /// }) });
 /// ```
 pub const Checkbox = struct {
@@ -59,7 +59,7 @@ pub const Checkbox = struct {
 /// ![The CheckboxRow example](images/CheckboxRow.png)
 ///
 /// ```zig
-/// return cx.make(facet.CheckboxRow{ .value = true, .label = "Send me updates", .on_changed = .of(state, State.setOn) });
+/// return cx.make(kete.CheckboxRow{ .value = true, .label = "Send me updates", .on_changed = .of(state, State.setOn) });
 /// ```
 pub const CheckboxRow = struct {
     /// Whether it is checked (see `Checkbox.value`).

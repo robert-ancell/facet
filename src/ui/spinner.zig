@@ -16,7 +16,7 @@ const Color = gfx.Color;
 /// ![The Spinner example](images/Spinner.png)
 ///
 /// ```zig
-/// return cx.make(facet.Spinner{ .size = 40 });
+/// return cx.make(kete.Spinner{ .size = 40 });
 /// ```
 pub const Spinner = struct {
     /// Its diameter.

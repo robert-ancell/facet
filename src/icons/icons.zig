@@ -1,4 +1,4 @@
-//! Facet's icons: Material Icons (Apache License 2.0), drawn from a font.
+//! Kete's icons: Material Icons (Apache License 2.0), drawn from a font.
 //! The bundled icon font has only the icons named in `IconName` (see names.zig
 //! and tools/subset_icons.zig), so it is a few kilobytes.
 //!
@@ -13,7 +13,7 @@ const generated = @import("icon_codepoints");
 
 pub const IconName = names.IconName;
 
-/// The icon font: Material Icons with only Facet's icons. Its glyphs fill
+/// The icon font: Material Icons with only Kete's icons. Its glyphs fill
 /// the em square, with the baseline at the bottom: an icon of size `s` is
 /// drawn at font size `s`, with its baseline `s` below its top.
 pub const font_data = @embedFile("MaterialIcons.ttf");

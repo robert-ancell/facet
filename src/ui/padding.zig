@@ -16,9 +16,9 @@ const Node = widget.WidgetNode;
 /// (`box` stands for any widget: a labelled rounded rectangle.)
 ///
 /// ```zig
-/// return cx.make(facet.RoundedBox{
+/// return cx.make(kete.RoundedBox{
 ///     .border_color = cx.theme().outline,
-///     .child = cx.make(facet.Padding{ .padding = .symmetric(32, 12), .child = box(cx, "Padded", 80, 32) }),
+///     .child = cx.make(kete.Padding{ .padding = .symmetric(32, 12), .child = box(cx, "Padded", 80, 32) }),
 /// });
 /// ```
 pub const Padding = struct {

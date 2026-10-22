@@ -30,9 +30,9 @@ const Color = gfx.Color;
 /// ![The Switch example](images/Switch.png)
 ///
 /// ```zig
-/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
-///     facet.Switch{ .value = true, .on_changed = .of(state, State.setOn) },
-///     facet.Switch{ .value = false, .on_changed = .of(state, State.setOn) },
+/// return cx.make(kete.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     kete.Switch{ .value = true, .on_changed = .of(state, State.setOn) },
+///     kete.Switch{ .value = false, .on_changed = .of(state, State.setOn) },
 /// }) });
 /// ```
 pub const Switch = struct {
@@ -69,7 +69,7 @@ pub const Switch = struct {
 /// ![The SwitchRow example](images/SwitchRow.png)
 ///
 /// ```zig
-/// return cx.make(facet.SwitchRow{ .value = true, .label = "Wi-Fi", .on_changed = .of(state, State.setOn) });
+/// return cx.make(kete.SwitchRow{ .value = true, .label = "Wi-Fi", .on_changed = .of(state, State.setOn) });
 /// ```
 pub const SwitchRow = struct {
     /// Whether it is on (see `Switch.value`).

@@ -2,10 +2,10 @@
 //! search and pick from.
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 const common = @import("common.zig");
 
-const Icon = facet.IconName;
+const Icon = kete.IconName;
 const all = std.enums.values(Icon);
 
 pub const State = struct {
@@ -34,37 +34,37 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
+pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     const t = cx.theme();
     s.match();
-    const colours = [_]facet.Color{ t.on_surface, t.primary, t.@"error", .rgb(0x66bb6a), .rgb(0xffa726) };
-    var sizes: [5]facet.Widget = undefined;
+    const colours = [_]kete.Color{ t.on_surface, t.primary, t.@"error", .rgb(0x66bb6a), .rgb(0xffa726) };
+    var sizes: [5]kete.Widget = undefined;
     for (&sizes, [_]f32{ 16, 24, 32, 48, 64 }) |*w, size| {
-        w.* = cx.make(facet.Column{ .fill = false, .spacing = 4, .children = cx.makeAll(.{
-            facet.Icon{ .icon = s.chosen, .size = size, .color = t.on_surface },
-            facet.Text{ .text = cx.fmt("{d:.0}", .{size}), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
+        w.* = cx.make(kete.Column{ .fill = false, .spacing = 4, .children = cx.makeAll(.{
+            kete.Icon{ .icon = s.chosen, .size = size, .color = t.on_surface },
+            kete.Text{ .text = cx.fmt("{d:.0}", .{size}), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
         }) });
     }
-    var tinted: [colours.len]facet.Widget = undefined;
-    for (&tinted, colours) |*w, c| w.* = cx.make(facet.Icon{ .icon = s.chosen, .size = 40, .color = c });
+    var tinted: [colours.len]kete.Widget = undefined;
+    for (&tinted, colours) |*w, c| w.* = cx.make(kete.Icon{ .icon = s.chosen, .size = 40, .color = c });
 
     const q = s.query[0..s.query_len];
     return common.page(cx, &.{
         common.section(cx, cx.fmt("All {d} icons", .{all.len}), "Material's icons, from a font of them built in; type to search their names, and press one to choose it", cx.makeAll(.{
-            facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = cx.makeAll(.{
-                facet.TextField{ .placeholder = "Search", .initial = q, .on_changed = .of(s, State.setQuery) },
+            kete.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                kete.TextField{ .placeholder = "Search", .initial = q, .on_changed = .of(s, State.setQuery) },
                 common.status(cx, if (q.len == 0) cx.fmt("{d} icons", .{s.match_count}) else cx.fmt("{d} with “{s}”", .{ s.match_count, q })),
             }) },
-            facet.SizedBox{
+            kete.SizedBox{
                 .height = 340,
-                .child = cx.make(facet.RoundedBox{
+                .child = cx.make(kete.RoundedBox{
                     .border_color = t.outline_variant,
                     .radius = .all(8),
                     .child = if (s.match_count == 0)
-                        cx.make(facet.Align.center(cx.make(facet.Text{ .text = "No icon has that in its name", .style = .{ .color = t.on_surface_variant } })))
+                        cx.make(kete.Align.center(cx.make(kete.Text{ .text = "No icon has that in its name", .style = .{ .color = t.on_surface_variant } })))
                     else
                         // A view for each search, so each starts at the top.
-                        cx.make(facet.ScrollView{ .child = cx.make(facet.Padding{ .padding = .all(8), .child = cx.make(facet.Grid{
+                        cx.make(kete.ScrollView{ .child = cx.make(kete.Padding{ .padding = .all(8), .child = cx.make(kete.Grid{
                             .count = s.match_count,
                             .cell = .{ .w = 104, .h = 76 },
                             .spacing = 4,
@@ -74,18 +74,18 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
             },
         })),
         common.section(cx, cx.fmt("“{s}”", .{@tagName(s.chosen)}), "The icon chosen, at sizes and in colours", cx.makeAll(.{
-            facet.Row{ .spacing = 20, .cross_axis_alignment = .end, .children = &sizes },
-            facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &tinted },
-            facet.RoundedBox{ .color = t.surface_container, .radius = .all(6), .child = cx.make(facet.Padding{
+            kete.Row{ .spacing = 20, .cross_axis_alignment = .end, .children = &sizes },
+            kete.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &tinted },
+            kete.RoundedBox{ .color = t.surface_container, .radius = .all(6), .child = cx.make(kete.Padding{
                 .padding = .symmetric(12, 8),
-                .child = cx.make(facet.Text{ .text = cx.fmt("cx.make(facet.Icon{{ .icon = .{f}, .size = 24 }})", .{std.zig.fmtId(@tagName(s.chosen))}), .style = .{ .size = 13, .color = t.on_surface } }),
+                .child = cx.make(kete.Text{ .text = cx.fmt("cx.make(kete.Icon{{ .icon = .{f}, .size = 24 }})", .{std.zig.fmtId(@tagName(s.chosen))}), .style = .{ .size = 13, .color = t.on_surface } }),
             }) },
         })),
     });
 }
 
 /// The `i`th icon found: it and its name, to press to choose it.
-fn cell(s: *State, cx: *facet.BuildContext, i: usize) facet.Widget {
+fn cell(s: *State, cx: *kete.BuildContext, i: usize) kete.Widget {
     const t = cx.theme();
     const icon = all[s.matches[i]];
     const Choose = struct {
@@ -95,18 +95,18 @@ fn cell(s: *State, cx: *facet.BuildContext, i: usize) facet.Widget {
             c.s.chosen = c.icon;
         }
     };
-    const c = cx.arena.create(Choose) catch return cx.make(facet.SizedBox.empty);
+    const c = cx.arena.create(Choose) catch return cx.make(kete.SizedBox.empty);
     c.* = .{ .s = s, .icon = icon };
     const chosen = s.chosen == icon;
-    return cx.make(facet.Tooltip{ .text = @tagName(icon), .child = cx.make(facet.Card{
+    return cx.make(kete.Tooltip{ .text = @tagName(icon), .child = cx.make(kete.Card{
         .variant = if (chosen) .filled else .outlined,
         .selected = chosen,
         .padding = .all(6),
         .radius = 8,
         .on_press = .of(c, Choose.choose),
-        .child = cx.make(facet.Column{ .spacing = 6, .children = cx.makeAll(.{
-            facet.Icon{ .icon = icon, .size = 28, .color = if (chosen) t.primary else t.on_surface },
-            facet.Text{ .text = @tagName(icon), .style = .{ .size = 11, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true, .text_align = .center },
+        .child = cx.make(kete.Column{ .spacing = 6, .children = cx.makeAll(.{
+            kete.Icon{ .icon = icon, .size = 28, .color = if (chosen) t.primary else t.on_surface },
+            kete.Text{ .text = @tagName(icon), .style = .{ .size = 11, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true, .text_align = .center },
         }) }),
     }) });
 }

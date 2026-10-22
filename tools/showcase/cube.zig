@@ -1,10 +1,10 @@
 //! A spinning cube, drawn by the showcase's 3D widgets: `Scene(Api)` is the
-//! scene for `facet.VulkanArea` (`Api = .vulkan`), `facet.OpenGlArea`
-//! (`Api = .opengl`), `facet.MetalArea` (`Api = .metal`) or
-//! `facet.D3D11Area` (`Api = .d3d11`).
+//! scene for `kete.VulkanArea` (`Api = .vulkan`), `kete.OpenGlArea`
+//! (`Api = .opengl`), `kete.MetalArea` (`Api = .metal`) or
+//! `kete.D3D11Area` (`Api = .d3d11`).
 
 const std = @import("std");
-const facet = @import("facet");
+const kete = @import("kete");
 
 const vulkan_spv align(4) = @embedFile("cube_vulkan.spv").*;
 const opengl_spv align(4) = @embedFile("cube_opengl.spv").*;
@@ -20,7 +20,7 @@ const Uniforms = extern struct {
     model: Mat4,
 };
 
-const attributes = [_]facet.gfx.shaders.Attribute{
+const attributes = [_]kete.gfx.shaders.Attribute{
     .{ .location = 0, .components = 3, .offset = @offsetOf(Vertex, "pos") },
     .{ .location = 1, .components = 3, .offset = @offsetOf(Vertex, "color") },
     .{ .location = 2, .components = 3, .offset = @offsetOf(Vertex, "normal") },
@@ -66,10 +66,10 @@ pub const Api = enum { vulkan, opengl, metal, d3d11 };
 
 pub fn Scene(comptime api: Api) type {
     const Context = switch (api) {
-        .vulkan => facet.gfx.VulkanContext,
-        .opengl => facet.gfx.OpenGlContext,
-        .metal => facet.gfx.MetalContext,
-        .d3d11 => facet.gfx.D3D11Context,
+        .vulkan => kete.gfx.VulkanContext,
+        .opengl => kete.gfx.OpenGlContext,
+        .metal => kete.gfx.MetalContext,
+        .d3d11 => kete.gfx.D3D11Context,
     };
     return struct {
         /// How far round the cube has turned, and tilted towards the

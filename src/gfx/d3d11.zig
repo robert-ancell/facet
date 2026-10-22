@@ -1,6 +1,6 @@
-//! Direct3D 11 rendering backend for Facet's 2D `Canvas`, on Windows: the
+//! Direct3D 11 rendering backend for Kete's 2D `Canvas`, on Windows: the
 //! canvas's batches drawn on the GPU with the shaders in
-//! `shaders/canvas.hlsl` (compiled to DXBC by fxc when facet is built, so
+//! `shaders/canvas.hlsl` (compiled to DXBC by fxc when kete is built, so
 //! nothing is compiled when it starts), its glyph atlas and images in
 //! textures.
 //!
@@ -620,7 +620,7 @@ pub const D3D11Renderer = struct {
     pub const backend: renderer_mod.RenderBackend = .d3d11;
 
     /// The system's GPU; an error if there is none (or this is not
-    /// Windows, or facet was built without its shaders).
+    /// Windows, or kete was built without its shaders).
     pub fn initDefault(gpa: std.mem.Allocator) !D3D11Renderer {
         return init(gpa, false);
     }
