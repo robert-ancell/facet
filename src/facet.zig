@@ -34,7 +34,6 @@ pub const Theme = ui.Theme;
 pub const ThemeBrightness = ui.ThemeBrightness;
 pub const Themed = ui.Themed;
 pub const SyntaxHighlight = ui.SyntaxHighlight;
-pub const Clipboard = ui.Clipboard;
 pub const Waker = ui.Waker;
 
 pub const Size = ui.Size;
@@ -101,7 +100,6 @@ pub const SwitchRow = ui.SwitchRow;
 pub const TextField = ui.TextField;
 pub const TextArea = ui.TextArea;
 pub const TextDocument = ui.TextDocument;
-pub const Menu = ui.Menu;
 pub const MenuItem = ui.MenuItem;
 pub const ScrollView = ui.ScrollView;
 pub const Icon = ui.Icon;
