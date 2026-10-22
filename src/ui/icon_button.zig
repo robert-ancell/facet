@@ -1,4 +1,4 @@
-//! IconButton: Material 3's circular icon button, in standard, filled,
+//! IconButton: a circular icon button, in standard, filled,
 //! tonal and outlined variants, with optional toggle (`selected`) state.
 
 const a11y = @import("accessibility.zig");
@@ -18,7 +18,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
-/// Material 3's icon button: a round button with only an icon.
+/// An icon button: a round button with only an icon.
 ///
 /// ![The IconButton example](images/IconButton.png)
 ///
@@ -31,7 +31,7 @@ const Color = gfx.Color;
 /// }) });
 /// ```
 pub const IconButton = struct {
-    /// Material 3's four kinds of icon button.
+    /// The four kinds of icon button.
     pub const Variant = enum {
         /// Only the icon, which takes the primary colour when selected.
         standard,

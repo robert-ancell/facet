@@ -1,4 +1,4 @@
-//! Tooltip: Material 3's plain tooltip, shown above (or below, when near
+//! Tooltip: a plain tooltip, shown above (or below, when near
 //! the top of the window) its `child` while the pointer hovers over it.
 
 const std = @import("std");
@@ -17,7 +17,7 @@ const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const Event = widget.Event;
 
-/// Material 3's plain tooltip: a short hint shown while the pointer is over
+/// A plain tooltip: a short hint shown while the pointer is over
 /// the child.
 ///
 /// ![The Tooltip example](images/Tooltip.png)

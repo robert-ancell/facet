@@ -1,4 +1,4 @@
-//! Switch: Material 3's switch, its handle sliding between off and on, and
+//! Switch: a switch, its handle sliding between off and on, and
 //! `SwitchRow`, one with its label beside it (see control.zig).
 
 const a11y = @import("accessibility.zig");
@@ -22,7 +22,7 @@ const target = control.target;
 
 const Color = gfx.Color;
 
-/// A switch on its own: Material 3 leaves its label to the text beside it
+/// A switch on its own: its label is left to the text beside it
 /// (`SwitchRow` has one), so name it for assistive technologies with
 /// `Accessible`.
 ///

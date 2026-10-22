@@ -10,7 +10,7 @@ const SizedBox = @import("sized_box.zig").SizedBox;
 const Widget = widget.Widget;
 const Context = widget.BuildContext;
 
-/// Material 3's divider: a thin line between content.
+/// A divider: a thin line between content.
 ///
 /// ![The Divider example](images/Divider.png)
 ///

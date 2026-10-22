@@ -1,11 +1,11 @@
-//! What Material's selection controls (checkbox.zig, radio.zig,
+//! What the selection controls (checkbox.zig, radio.zig,
 //! switch.zig) share.
 //!
 //! Each control shows the value it is given and reports a change
 //! through `on_changed` (the app's state holds the value, and its next
 //! build shows the change). Without `on_changed` it is disabled. Each
 //! control is a `Pressable` around its mark (a widget that paints it, with
-//! Material's hover and press state layer); a row form of it (`SwitchRow`,
+//! a tint under the pointer when hovered or pressed); a row form of it (`SwitchRow`,
 //! `CheckboxRow`, `RadioRow`) has its `label` beside the mark, and pressing
 //! either toggles it. The control on its own is named for assistive
 //! technologies with `Accessible`.
@@ -22,7 +22,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;
 
-/// The square a checkbox or radio button takes (Material's touch target).
+/// The square a checkbox or radio button takes (room to press it).
 pub const target = 40;
 
 /// What each control's state keeps from its last build, so a press (which
@@ -40,7 +40,7 @@ pub fn Latest(comptime T: type) type {
     };
 }
 
-/// The state layer's opacity: Material's hover and press tints.
+/// The opacity of the tint under the pointer when it is hovered or pressed.
 pub fn layerAlpha(i: PointerInteraction, enabled: bool) f32 {
     if (!enabled) return 0;
     return if (i.pressed) 0.10 else if (i.hovered) 0.08 else 0;

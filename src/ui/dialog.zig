@@ -1,4 +1,4 @@
-//! Dialog: Material 3's modal dialog, shown centered over a dimmed scrim
+//! Dialog: a modal dialog, shown centered over a dimmed scrim
 //! backdrop with an optional icon, title, description, custom content and
 //! action buttons.
 
@@ -24,7 +24,7 @@ const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 
-/// Material 3's dialog: a card over a dimmed scrim, to ask or tell the user
+/// A dialog: a card over a dimmed scrim, to ask or tell the user
 /// something before going on.
 ///
 /// ![The Dialog example](images/Dialog.png)

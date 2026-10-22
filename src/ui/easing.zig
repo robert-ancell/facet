@@ -86,9 +86,9 @@ pub const Easing = struct {
     pub const outBounce: Easing = .{ .f = curves.outBounce };
     pub const inOutBounce: Easing = .{ .f = curves.inOutBounce };
 
-    /// Material 3's easings (m3.material.io/styles/motion): `standard` for
-    /// most motion on screen, and `emphasized` (decelerating as things come
-    /// in, accelerating as they leave) for the most noticeable.
+    /// The curves for motion in the interface: `standard` for most motion on
+    /// screen, and `emphasized` (decelerating as things come in, accelerating
+    /// as they leave) for the most noticeable.
     pub const standard: Easing = bezier(0.2, 0, 0, 1);
     pub const standard_decelerate: Easing = bezier(0, 0, 0, 1);
     pub const standard_accelerate: Easing = bezier(0.3, 0, 1, 1);
@@ -303,7 +303,7 @@ test "a Bézier easing follows its curve" {
     // CSS's `ease-in-out` is symmetric about the middle.
     try testing.expectApproxEqAbs(@as(f32, 0.5), cubicBezier(0.42, 0, 0.58, 1, 0.5), 1e-4);
     try testing.expectApproxEqAbs(1 - cubicBezier(0.42, 0, 0.58, 1, 0.3), cubicBezier(0.42, 0, 0.58, 1, 0.7), 1e-4);
-    // Material's standard easing is well along by halfway.
+    // The standard easing is well along by halfway.
     try testing.expect(Easing.standard.apply(0.5) > 0.8);
 }
 

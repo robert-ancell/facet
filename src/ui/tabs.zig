@@ -1,4 +1,4 @@
-//! TabBar: Material 3's horizontal tab bar with an active indicator bar and
+//! TabBar: a horizontal tab bar with an active indicator bar and
 //! bottom divider.
 
 const a11y = @import("accessibility.zig");
@@ -36,7 +36,7 @@ pub const Tab = struct {
     badge: ?u32 = null,
 };
 
-/// Material 3's tab bar: tabs along a bar, one of them selected.
+/// A tab bar: tabs along a bar, one of them selected.
 ///
 /// ![The TabBar example](images/TabBar.png)
 ///

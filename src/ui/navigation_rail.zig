@@ -1,4 +1,4 @@
-//! NavigationRail: Material 3's vertical navigation sidebar (compact icon +
+//! NavigationRail: a vertical navigation sidebar (compact icon +
 //! label pills or extended horizontal rows), with optional badges.
 
 const a11y = @import("accessibility.zig");
@@ -24,7 +24,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;
 
-/// Material 3's navigation rail: a column of destinations, one of them selected,
+/// A navigation rail: a column of destinations, one of them selected,
 /// in a narrow bar or an extended one.
 ///
 /// ![The NavigationRail example](images/NavigationRail.png)

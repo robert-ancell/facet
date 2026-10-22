@@ -1,5 +1,5 @@
-//! Theme: a Material 3 colour scheme (the baseline light and dark ones),
-//! text sizes, and persistent appearance settings.
+//! Theme: a colour scheme (the light and dark ones, with the colour roles
+//! of Material 3), text sizes, and persistent appearance settings.
 
 const std = @import("std");
 const gfx = @import("gfx");
@@ -9,7 +9,7 @@ const Color = gfx.Color;
 /// Default path where persistent appearance settings can be stored.
 pub const settings_file = "/data/apps/.appearance";
 
-/// Whether the system uses the dark or light Material 3 colour scheme.
+/// Whether the system uses the dark or light colour scheme.
 pub const ThemeMode = enum {
     /// The dark scheme.
     dark,
@@ -121,8 +121,10 @@ pub const ThemeBrightness = enum {
     dark,
 };
 
-/// A Material 3 colour scheme, and text sizes in pixels. The app's (`WindowUi`'s)
-/// is the light or dark baseline, as the system asks; `Themed` gives the
+/// A colour scheme, and text sizes in pixels. The colours are named for the
+/// roles in Material 3's colour system (`primary`, `surface_container`,
+/// `on_surface`...): the colour of something, and `on_` the colour of what is
+/// drawn on it. The app's (`WindowUi`'s) is the light or dark one, as the system asks; `Themed` gives the
 /// widgets below it another (changing a colour or two of `cx.theme()`, say).
 pub const Theme = struct {
     /// Whether the scheme is light or dark.

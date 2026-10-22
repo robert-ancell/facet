@@ -1,4 +1,4 @@
-//! DropdownMenu and Select: Material 3's dropdown selector, showing the
+//! DropdownMenu and Select: a dropdown selector, showing the
 //! chosen option in an `OutlinedButton` with a trailing arrow and opening
 //! a `Menu` below it when pressed.
 
@@ -16,7 +16,7 @@ const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const ValueCallback = widget.ValueCallback;
 
-/// Material 3's dropdown: a button that opens a menu of choices, by index.
+/// A dropdown: a button that opens a menu of choices, by index.
 ///
 /// ![The DropdownMenu example](images/DropdownMenu.png)
 ///

@@ -1,4 +1,4 @@
-//! Icon: a Material icon, by its `IconName`.
+//! Icon: an icon from the bundled set, by its `IconName`.
 //!
 //!     cx.make(ui.Icon{ .icon = .folder, .size = 24 })
 //!
@@ -19,7 +19,7 @@ const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
-/// A Material icon.
+/// An icon from the bundled icon set.
 ///
 /// ![The Icon example](images/Icon.png)
 ///

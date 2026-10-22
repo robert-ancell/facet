@@ -1,4 +1,4 @@
-//! Slider: Material 3's continuous or discrete slider for choosing a number
+//! Slider: a continuous or discrete slider for choosing a number
 //! from a range by pressing or dragging along a track.
 
 const focus = @import("focus.zig");
@@ -17,7 +17,7 @@ const Event = widget.Event;
 const ValueCallback = widget.ValueCallback;
 const Painter = painter.Painter;
 
-/// Material 3's slider: a handle on a track, that is dragged (or moved with the
+/// A slider: a handle on a track, that is dragged (or moved with the
 /// arrow keys) to choose a value from `min` to `max`.
 ///
 /// ![The Slider example](images/Slider.png)

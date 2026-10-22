@@ -1,6 +1,6 @@
-//! Facet: a declarative Material 3 UI toolkit for Zig.
+//! Facet: a declarative UI toolkit for Zig, with the look of Material 3.
 //!
-//! * `ui` (and top-level re-exports): declarative widget tree, Material 3
+//! * `ui` (and top-level re-exports): declarative widget tree,
 //!   widgets, layout, state, damage tracking, and input handling
 //! * `gfx`: 2D vector canvas (`Canvas`), glyph `Atlas`, `Image`, generic
 //!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,

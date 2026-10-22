@@ -1,4 +1,4 @@
-//! Chip: Material 3's compact pill element for filters, selections, tags
+//! Chip: a compact pill element for filters, selections, tags
 //! and quick actions, with optional leading icon, `selected` check state
 //! and trailing remove button (`on_remove`).
 
@@ -23,7 +23,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
-/// Material 3's chip: a small pill to choose, filter or remove with.
+/// A chip: a small pill to choose, filter or remove with.
 ///
 /// ![The Chip example](images/Chip.png)
 ///

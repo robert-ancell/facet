@@ -1,4 +1,4 @@
-//! Checkbox: Material 3's checkbox, on or off, and `CheckboxRow`, one with
+//! Checkbox: a checkbox, on or off, and `CheckboxRow`, one with
 //! its label beside it (see control.zig).
 
 const a11y = @import("accessibility.zig");
@@ -19,7 +19,7 @@ const Latest = control.Latest;
 const layerAlpha = control.layerAlpha;
 const target = control.target;
 
-/// A checkbox on its own: Material 3 leaves its label to the text beside
+/// A checkbox on its own: its label is left to the text beside
 /// it (`CheckboxRow` has one), so name it for assistive technologies with
 /// `Accessible`.
 ///

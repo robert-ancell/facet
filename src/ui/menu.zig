@@ -1,4 +1,4 @@
-//! Menu: Material 3's menu, a list of actions shown above everything else
+//! Menu: a list of actions shown above everything else
 //! at a point (where the right button was pressed, say): see
 //! `WindowUi.openMenu`. Its items can have icons, a keyboard shortcut and
 //! a check, and be set apart by dividers; one can open a submenu, which
@@ -349,7 +349,7 @@ const MenuPanel = struct {
     }
 };
 
-/// An item: its icon, label and shortcut, with Material's hover and press tint.
+/// An item: its icon, label and shortcut, tinted when the pointer is over it or presses it.
 const MenuRow = struct {
     item: Item,
     menu: *Menu.State,

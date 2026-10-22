@@ -1,4 +1,4 @@
-//! Badge: Material 3's status dot or count indicator, shown standalone or
+//! Badge: a status dot or count indicator, shown standalone or
 //! at the top-right corner of a `child` widget.
 
 const gfx = @import("gfx");
@@ -18,7 +18,7 @@ const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const Color = gfx.Color;
 
-/// Material 3's badge: a count, a label or a dot on the corner of a widget.
+/// A badge: a count, a label or a dot on the corner of a widget.
 ///
 /// ![The Badge example](images/Badge.png)
 ///

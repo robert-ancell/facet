@@ -1,4 +1,4 @@
-//! Spinner: Material 3's indeterminate circular progress indicator.
+//! Spinner: an indeterminate circular progress indicator.
 
 const a11y = @import("accessibility.zig");
 const std = @import("std");
@@ -9,7 +9,7 @@ const painter = @import("painter.zig");
 
 const Color = gfx.Color;
 
-/// Material's indeterminate circular progress indicator: an arc that turns
+/// An indeterminate circular progress indicator: an arc that turns
 /// as it grows and shrinks, for work that takes a while. It asks for frames
 /// while it is shown.
 ///

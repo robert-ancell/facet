@@ -1,4 +1,4 @@
-//! Facet's declarative Material 3 widget toolkit. An app describes
+//! Facet's declarative widget toolkit, with the look of Material 3. An app describes
 //! its UI as a tree of widgets, made again each frame from its state;
 //! the toolkit keeps what persists (state, layout) between frames, lays
 //! the tree out, paints it with the `gfx` canvas and sends it pointer

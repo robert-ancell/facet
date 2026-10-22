@@ -1,4 +1,4 @@
-//! Card: Material 3's surface container for grouping related information
+//! Card: a surface container for grouping related information
 //! and actions, in filled, elevated and outlined variants.
 
 const gfx = @import("gfx");
@@ -15,7 +15,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
-/// Material 3's card: a rounded surface that holds content.
+/// A card: a rounded surface that holds content.
 ///
 /// ![The Card example](images/Card.png)
 ///
@@ -27,7 +27,7 @@ const Color = gfx.Color;
 /// }) });
 /// ```
 pub const Card = struct {
-    /// Material 3's three kinds of card.
+    /// The three kinds of card.
     pub const Variant = enum {
         /// On the highest container colour, with no outline (until it is
         /// selected).

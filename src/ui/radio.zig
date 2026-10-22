@@ -1,4 +1,4 @@
-//! Radio: one of a group of Material 3 radio buttons, and `RadioRow`, one
+//! Radio: one of a group of radio buttons, and `RadioRow`, one
 //! with its label beside it (see control.zig).
 
 const focus = @import("focus.zig");
@@ -22,7 +22,7 @@ const layerAlpha = control.layerAlpha;
 const target = control.target;
 
 /// One of a group of radio buttons: selected when `value` is the group's
-/// value, and selecting it reports `value`. Material 3 leaves its label to
+/// value, and selecting it reports `value`. its label is left to
 /// the text beside it (`RadioRow` has one), so name it for assistive
 /// technologies with `Accessible`.
 ///

@@ -1,4 +1,4 @@
-//! ListItem: Material 3's list row with a leading icon or widget, a
+//! ListItem: a list row with a leading icon or widget, a
 //! headline, optional supporting text, and a trailing icon, text or widget.
 
 const a11y = @import("accessibility.zig");
@@ -23,7 +23,7 @@ const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
-/// Material 3's list item: a row with a headline and, optionally, supporting
+/// A list item: a row with a headline and, optionally, supporting
 /// text and things at its start and end.
 ///
 /// ![The ListItem example](images/ListItem.png)

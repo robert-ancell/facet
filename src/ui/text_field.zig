@@ -1,4 +1,4 @@
-//! TextField: one line of text to type, Material's outlined text field.
+//! TextField: one line of text to type, in an outlined box.
 //! Clicking it gives it the keyboard; typing, Backspace, Delete, the arrow
 //! keys, Home and End edit it; Enter submits. With `obscure` (for
 //! passwords) it shows dots.
@@ -27,7 +27,7 @@ const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
-/// Material 3's text field: one line of text to edit, with a placeholder, a
+/// A text field: one line of text to edit, with a placeholder, a
 /// selection, copy and paste.
 ///
 /// ![The TextField example](images/TextField.png)

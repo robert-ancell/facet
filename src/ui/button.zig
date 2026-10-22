@@ -1,4 +1,4 @@
-//! Material 3 buttons: `FilledButton` (high emphasis), `TonalButton`
+//! Buttons: `FilledButton` (high emphasis), `TonalButton`
 //! (medium emphasis), `OutlinedButton` (medium emphasis, with an outline)
 //! and `TextButton` (low emphasis). Each is a pill with a label, an icon or
 //! both, and differs from the others only in its colours.
@@ -29,7 +29,7 @@ const RoundedBox = rounded_box.RoundedBox;
 pub const height = 40;
 pub const icon_size = 18;
 
-/// Material 3's filled button: a primary pill button for the main action on
+/// A filled button: a pill button in the primary colour for the main action on
 /// a page or in a dialog.
 ///
 /// ![The FilledButton example](images/FilledButton.png)
@@ -67,7 +67,7 @@ pub const FilledButton = struct {
     }
 };
 
-/// Material 3's filled tonal button: a secondary container pill button with
+/// A tonal button: a pill button in a softer colour, with
 /// medium emphasis between `FilledButton` and `OutlinedButton`.
 ///
 /// ![The TonalButton example](images/TonalButton.png)
@@ -105,7 +105,7 @@ pub const TonalButton = struct {
     }
 };
 
-/// Material 3's outlined button: a pill with an outline, for important
+/// An outlined button: a pill with an outline, for important
 /// actions that are not the main one.
 ///
 /// ![The OutlinedButton example](images/OutlinedButton.png)
@@ -150,7 +150,7 @@ pub const OutlinedButton = struct {
     }
 };
 
-/// Material 3's text button: a low-emphasis button without an outline or
+/// A text button: a low-emphasis button without an outline or
 /// background until hovered or pressed, for secondary dialog actions.
 ///
 /// ![The TextButton example](images/TextButton.png)
@@ -198,7 +198,7 @@ const Look = struct {
     padding: f32 = 24,
 };
 
-/// Material's state layer: how strongly the button is tinted while hovered
+/// How strongly the button is tinted while hovered
 /// or pressed.
 fn stateLayer(on_press: ?Callback, i: PointerInteraction, pressed: f32) f32 {
     if (on_press == null) return 0;

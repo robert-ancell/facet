@@ -4,8 +4,8 @@
 //! so (`pub fn focusable(self, n) bool`): those that can be pressed,
 //! sliders, text fields.
 //!
-//! Focus moved by the keyboard shows (`ring`): Material's focus ring
-//! around the widget, which goes when the pointer is next pressed.
+//! Focus moved by the keyboard shows (`ring`): a ring around the
+//! widget, which goes when the pointer is next pressed.
 
 const std = @import("std");
 const gfx = @import("gfx");
@@ -115,7 +115,7 @@ pub fn reveal(n: *Node) void {
     }
 }
 
-/// Draws Material's focus ring around `n` (in its painter) if it has the
+/// Draws the focus ring around `n` (in its painter) if it has the
 /// focus and that shows: 3 pixels wide, 2 outside it (or inside, with
 /// `inset`, for one that fills its space), its corners `radius` (null:
 /// round, half its height).

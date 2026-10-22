@@ -1,4 +1,4 @@
-//! ProgressBar: Material 3's linear progress indicator, determinate (when
+//! ProgressBar: a linear progress indicator, determinate (when
 //! `value` is given, from 0 to 1) or indeterminate (when `value` is null,
 //! animating a bar along the track).
 
@@ -11,7 +11,7 @@ const painter = @import("painter.zig");
 
 const Color = gfx.Color;
 
-/// Material 3's linear progress bar: a track that fills as `value` goes from 0 to 1,
+/// A linear progress bar: a track that fills as `value` goes from 0 to 1,
 /// or an animation when the `value` is null.
 ///
 /// ![The ProgressBar example](images/ProgressBar.png)

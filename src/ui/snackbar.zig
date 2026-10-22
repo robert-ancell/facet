@@ -1,4 +1,4 @@
-//! Snackbar: Material 3's brief notification bar at the bottom of the
+//! Snackbar: a brief notification bar at the bottom of the
 //! window, with a message, an optional action button and a dismiss button.
 
 const a11y = @import("accessibility.zig");
@@ -22,7 +22,7 @@ const Node = widget.WidgetNode;
 const Context = widget.BuildContext;
 const Callback = widget.Callback;
 
-/// Material 3's snackbar: a short message at the bottom of the screen, with
+/// A snackbar: a short message at the bottom of the screen, with
 /// an optional action.
 ///
 /// ![The Snackbar example](images/Snackbar.png)
