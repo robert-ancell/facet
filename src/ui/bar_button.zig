@@ -11,7 +11,7 @@ const Pressable = @import("pressable.zig").Pressable;
 const Painter = @import("painter.zig").Painter;
 
 const Node = widget.WidgetNode;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Widget = widget.Widget;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;

@@ -13,7 +13,7 @@ const Size = geometry.Size;
 const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const Event = widget.Event;
 

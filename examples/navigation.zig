@@ -50,7 +50,7 @@ pub const NavigationDemo = struct {
         }
     };
 
-    pub fn build(_: *const NavigationDemo, cx: *facet.Context, state: *State) facet.Widget {
+    pub fn build(_: *const NavigationDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
         const rail_items = [_]facet.NavigationRail.Item{
             .{ .label = "Inbox", .icon = .chat, .badge = state.unread },
             .{ .label = "Files", .icon = .folder },

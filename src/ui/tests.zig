@@ -10,7 +10,7 @@ const ui = @import("ui.zig");
 
 const testing = std.testing;
 const Widget = ui.Widget;
-const Context = ui.Context;
+const Context = ui.BuildContext;
 const Node = ui.WidgetNode;
 
 const fira_data = font.default_font_data;
@@ -1455,7 +1455,7 @@ test "HiDPI scale factor renders text and shapes at physical buffer resolution w
     try testing.expectEqual(u.theme.primary.toArgb(), img.at(360, 120));
 }
 
-test "Context.backend reports platform, buffer transport, and renderer" {
+test "BuildContext.backend reports platform, buffer transport, and renderer" {
     const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 

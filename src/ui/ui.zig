@@ -14,7 +14,7 @@
 //!             count: u32 = 0,
 //!             fn add(s: *State) void { s.count += 1; }
 //!         };
-//!         pub fn build(self: *const Counter, cx: *ui.Context, state: *State) ui.Widget {
+//!         pub fn build(self: *const Counter, cx: *ui.BuildContext, state: *State) ui.Widget {
 //!             return cx.make(ui.Row{ .spacing = 12, .children = cx.makeAll(.{
 //!                 ui.Text{ .text = cx.fmt("{s}: {d}", .{ self.label, state.count }) },
 //!                 ui.OutlinedButton{ .label = "Add", .on_press = .of(state, State.add) },
@@ -104,7 +104,7 @@ pub const Insets = geometry.Insets;
 pub const Alignment = geometry.Alignment;
 
 pub const Widget = widget.Widget;
-pub const Context = widget.Context;
+pub const BuildContext = widget.BuildContext;
 pub const WidgetAnchor = widget.WidgetAnchor;
 pub const BackendInfo = widget.BackendInfo;
 pub const WindowInfo = widget.WindowInfo;

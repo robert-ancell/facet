@@ -96,7 +96,7 @@ fn clear(flag: *bool) facet.Callback {
     return .of(flag, T.clear);
 }
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
 
     var toppings: [topping_names.len]facet.Widget = undefined;

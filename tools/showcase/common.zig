@@ -5,7 +5,7 @@ const std = @import("std");
 const facet = @import("facet");
 
 /// A page: its sections one above the other, with dividers between them.
-pub fn page(cx: *facet.Context, sections: []const facet.Widget) facet.Widget {
+pub fn page(cx: *facet.BuildContext, sections: []const facet.Widget) facet.Widget {
     const children = cx.arena.alloc(facet.Widget, sections.len * 2 -| 1) catch return cx.make(facet.SizedBox.empty);
     for (sections, 0..) |s, i| {
         children[i * 2] = s;
@@ -20,7 +20,7 @@ pub fn page(cx: *facet.Context, sections: []const facet.Widget) facet.Widget {
 }
 
 /// A section: a title, a line saying what it shows, and its demos.
-pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demos: []const facet.Widget) facet.Widget {
+pub fn section(cx: *facet.BuildContext, title: []const u8, subtitle: []const u8, demos: []const facet.Widget) facet.Widget {
     const t = cx.theme();
     const children = cx.arena.alloc(facet.Widget, demos.len + 1) catch return cx.make(facet.SizedBox.empty);
     children[0] = cx.make(facet.Column{
@@ -42,7 +42,7 @@ pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demo
 }
 
 /// Widgets in a row, with a label at the left saying what they are.
-pub fn labelled(cx: *facet.Context, label: []const u8, widgets: []const facet.Widget) facet.Widget {
+pub fn labelled(cx: *facet.BuildContext, label: []const u8, widgets: []const facet.Widget) facet.Widget {
     const t = cx.theme();
     const children = cx.arena.alloc(facet.Widget, widgets.len + 1) catch return cx.make(facet.SizedBox.empty);
     children[0] = cx.make(facet.SizedBox{
@@ -60,7 +60,7 @@ pub fn labelled(cx: *facet.Context, label: []const u8, widgets: []const facet.Wi
 pub const label_width = 96;
 
 /// Text saying what was last done, under a demo.
-pub fn status(cx: *facet.Context, text: []const u8) facet.Widget {
+pub fn status(cx: *facet.BuildContext, text: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Text{ .text = text, .style = .{ .size = 13, .color = t.primary }, .wrap = false, .ellipsis = true });
 }
@@ -81,7 +81,7 @@ pub const Log = struct {
 };
 
 /// A callback noting in `log` that `name` was pressed.
-pub fn pressed(cx: *facet.Context, log: *Log, name: []const u8) facet.Callback {
+pub fn pressed(cx: *facet.BuildContext, log: *Log, name: []const u8) facet.Callback {
     const Press = struct {
         log: *Log,
         name: []const u8,

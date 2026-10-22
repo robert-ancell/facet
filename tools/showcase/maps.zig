@@ -69,7 +69,7 @@ pub const State = struct {
 
 const max_zoom = 18;
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     const kinds = [_]facet.Select(Kind).Option{
         .{ .value = .vector, .label = "Vector" },
@@ -209,7 +209,7 @@ fn paletteOf(look: Look) Palette {
 
 /// The style for the tiles made here (with its layers in the frame's
 /// arena, or `gpa` for a lasting one).
-fn styleOf(cx: ?*facet.Context, p: Palette) facet.MapStyle {
+fn styleOf(cx: ?*facet.BuildContext, p: Palette) facet.MapStyle {
     const layers = [_]facet.MapStyle.Layer{
         .{ .source_layer = "zones", .filter = kindIs("tropics"), .draw = .{ .fill = p.tropics } },
         .{ .source_layer = "zones", .filter = kindIs("polar"), .draw = .{ .fill = p.polar } },

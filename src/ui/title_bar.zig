@@ -22,7 +22,7 @@ const BarButton = @import("bar_button.zig").BarButton;
 const Text = @import("text.zig").Text;
 
 const Node = widget.WidgetNode;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Widget = widget.Widget;
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;

@@ -20,7 +20,7 @@ const Theme = @import("theme.zig").Theme;
 const icons = @import("icons");
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 const Border = decorated.Border;

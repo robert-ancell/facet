@@ -28,7 +28,7 @@ const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Painter = painter_mod.Painter;
 
 /// How far the pointer moves, held down, before it drags.

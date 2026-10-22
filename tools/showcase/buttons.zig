@@ -32,7 +32,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "Common buttons", "Filled, tonal, outlined and text buttons, from the most emphasis to the least", &.{
             common.labelled(cx, "Label", cx.makeAll(.{
@@ -114,7 +114,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 }
 
 /// A segmented button group choosing a `T`.
-fn segmented(comptime T: type, cx: *facet.Context, value: *T, options: []const Segment(T)) facet.Widget {
+fn segmented(comptime T: type, cx: *facet.BuildContext, value: *T, options: []const Segment(T)) facet.Widget {
     const Pick = struct {
         value: *T,
         choice: T,
@@ -177,7 +177,7 @@ const MenuButton = struct {
         }
     };
 
-    pub fn build(self: *const MenuButton, cx: *facet.Context, state: *@This().State) facet.Widget {
+    pub fn build(self: *const MenuButton, cx: *facet.BuildContext, state: *@This().State) facet.Widget {
         state.anchor = cx.anchor();
         state.log = self.log;
         return cx.make(facet.OutlinedButton{

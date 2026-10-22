@@ -17,7 +17,7 @@ const SizedBox = @import("sized_box.zig").SizedBox;
 const Text = @import("text.zig").Text;
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const Callback = widget.Callback;
 

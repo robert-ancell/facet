@@ -724,7 +724,7 @@ test "typing into a text field" {
     const App = struct {
         sink: *Sink,
         obscure: bool,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .children = cx.makeAll(.{
                 TextField{ .placeholder = "Password", .obscure = self.obscure, .on_changed = .of(self.sink, Sink.changed), .on_submit = .of(self.sink, Sink.submit) },
             }) }) });
@@ -805,7 +805,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     // password.
     const App = struct {
         sinks: *[3]Sink,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(20), .child = cx.make(Column{ .cross_axis_alignment = .start, .spacing = 10, .children = cx.makeAll(.{
                 TextField{ .initial = "hello world", .on_changed = .of(&self.sinks[0], Sink.changed) },
                 TextField{ .on_changed = .of(&self.sinks[1], Sink.changed) },
@@ -966,7 +966,7 @@ test "without the system's clipboard, text is copied within the app" {
         }
     };
     const App = struct {
-        pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(_: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(TextField{});
         }
     };
@@ -995,7 +995,7 @@ test "a paste for a widget that has gone goes nowhere" {
     u.clipboard = .of(&board);
     const App = struct {
         field: bool,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return if (self.field) cx.make(TextField{}) else cx.make(Padding{ .padding = .all(1) });
         }
     };
@@ -1026,7 +1026,7 @@ test "a field asked for takes the keyboard by itself, once" {
     const sink: Sink = .{ .text = &text, .len = &len };
     const App = struct {
         sink: *const Sink,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(20), .child = cx.make(TextField{ .autofocus = true, .on_changed = .of(self.sink, Sink.changed) }) });
         }
     };
@@ -1061,7 +1061,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
     const sink: Sink = .{ .text = &text, .len = &len };
     const App = struct {
         sink: *const Sink,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(20), .child = cx.make(TextField{ .autofocus = true, .on_changed = .of(self.sink, Sink.changed) }) });
         }
     };
@@ -1107,7 +1107,7 @@ test "a password field has a visibility toggle button on the right hand side" {
     const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
-        pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(_: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(20), .child = cx.make(TextField{
                 .initial = "secret",
                 .obscure = true,
@@ -1182,7 +1182,7 @@ test "double click selects current word, triple click selects all, and selection
     defer u.destroy();
 
     const App = struct {
-        pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(_: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{
                 .padding = .all(40),
                 .child = cx.make(Column{

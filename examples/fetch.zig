@@ -76,7 +76,7 @@ const Fetch = struct {
 const FetchView = struct {
     fetch: *Fetch,
 
-    pub fn build(self: *const FetchView, cx: *facet.Context) facet.Widget {
+    pub fn build(self: *const FetchView, cx: *facet.BuildContext) facet.Widget {
         const status = self.fetch.get();
         const text = switch (status) {
             .idle => "Not fetched yet",

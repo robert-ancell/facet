@@ -20,7 +20,7 @@ const std = @import("std");
 const widget = @import("widget.zig");
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 
 /// A widget made afresh each frame of an animation, from how far through it
 /// the frame is (`t`, from 0 to 1).

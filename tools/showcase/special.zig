@@ -29,7 +29,7 @@ const Text = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
 
     const qr_text = if (s.qr.len > 0) s.qr.buf[0..s.qr.len] else "https://github.com/robert-ancell/facet";
@@ -69,7 +69,7 @@ const easings = [_]Named{
     .{ "steps(5)", facet.Easing.steps(5) },
 };
 
-fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
+fn animation(cx: *facet.BuildContext, s: *State) []const facet.Widget {
     const t = cx.theme();
     const rows = cx.arena.alloc(facet.Widget, easings.len + 2) catch return &.{};
     rows[0] = cx.make(facet.Row{ .spacing = 12, .cross_axis_alignment = .center, .children = cx.makeAll(.{
@@ -103,7 +103,7 @@ fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
 
 /// A dot across its track, eased `t` of the way along (inset a little,
 /// for easings that overshoot).
-fn dot(e: *const Named, cx: *facet.Context, t: f32) facet.Widget {
+fn dot(e: *const Named, cx: *facet.BuildContext, t: f32) facet.Widget {
     return cx.make(facet.Align{
         .alignment = .{ .x = e[1].lerp(@as(f32, -0.8), 0.8, t), .y = 0 },
         .child = cx.make(facet.SizedBox{ .width = 20, .height = 20, .child = cx.make(facet.Decorated{
@@ -114,7 +114,7 @@ fn dot(e: *const Named, cx: *facet.Context, t: f32) facet.Widget {
 }
 
 /// A bar growing and changing colour, and back.
-fn pulse(cx: *facet.Context, t: f32) facet.Widget {
+fn pulse(cx: *facet.BuildContext, t: f32) facet.Widget {
     const th = cx.theme();
     const ease = facet.Easing.inOutSine;
     return cx.make(facet.Align{

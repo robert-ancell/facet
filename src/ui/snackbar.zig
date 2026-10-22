@@ -19,7 +19,7 @@ const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Node = widget.WidgetNode;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Callback = widget.Callback;
 
 /// Material 3's snackbar: a short message at the bottom of the screen, with

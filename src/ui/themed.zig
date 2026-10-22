@@ -12,7 +12,7 @@ const Theme = @import("theme.zig").Theme;
 const SizedBox = @import("sized_box.zig").SizedBox;
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 
 /// Gives the widgets below it a theme of their own (a changed `cx.theme()`, say).
 pub const Themed = struct {

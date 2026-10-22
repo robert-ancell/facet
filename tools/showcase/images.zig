@@ -79,7 +79,7 @@ const Text = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     var cards: [formats.len]facet.Widget = undefined;
     for (&cards, formats) |*card, f| {
@@ -168,7 +168,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 
 /// `image` centred on a checked background `w` by `h`, so what is
 /// transparent in it shows.
-fn onChecks(cx: *facet.Context, w: f32, h: f32, image: facet.Widget) facet.Widget {
+fn onChecks(cx: *facet.BuildContext, w: f32, h: f32, image: facet.Widget) facet.Widget {
     return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
         Checks{},
         facet.Align.center(image),
@@ -176,7 +176,7 @@ fn onChecks(cx: *facet.Context, w: f32, h: f32, image: facet.Widget) facet.Widge
 }
 
 /// The photo in a box `w` by `h`, outlined to show the space it has.
-fn framed(cx: *facet.Context, w: f32, h: f32, photo: []const u8) facet.Widget {
+fn framed(cx: *facet.BuildContext, w: f32, h: f32, photo: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = cx.makeAll(.{
         facet.Decorated{ .border = .{ .width = 1, .color = t.outline }, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Align.center(cx.make(facet.Image{ .source = .{ .bytes = photo }, .loading = .func(loading) }))) }) },
@@ -184,11 +184,11 @@ fn framed(cx: *facet.Context, w: f32, h: f32, photo: []const u8) facet.Widget {
     }) });
 }
 
-fn loading(cx: *facet.Context) facet.Widget {
+fn loading(cx: *facet.BuildContext) facet.Widget {
     return cx.make(facet.Spinner{ .size = 32 });
 }
 
-fn failed(cx: *facet.Context) facet.Widget {
+fn failed(cx: *facet.BuildContext) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Column{ .fill = false, .spacing = 4, .children = cx.makeAll(.{
         facet.Icon{ .icon = .image, .size = 32, .color = t.outline },

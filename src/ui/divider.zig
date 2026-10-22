@@ -8,7 +8,7 @@ const Padding = @import("padding.zig").Padding;
 const SizedBox = @import("sized_box.zig").SizedBox;
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 
 /// Material 3's divider: a thin line between content.
 pub const Divider = struct {

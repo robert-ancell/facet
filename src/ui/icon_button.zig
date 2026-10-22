@@ -15,7 +15,7 @@ const Pressable = @import("pressable.zig").Pressable;
 const SizedBox = @import("sized_box.zig").SizedBox;
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 

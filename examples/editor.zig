@@ -83,7 +83,7 @@ pub fn highlightZig(text: []const u8, out: []facet.SyntaxHighlight) void {
 pub const EditorView = struct {
     doc: *facet.TextDocument,
 
-    pub fn build(self: *const EditorView, cx: *facet.Context) facet.Widget {
+    pub fn build(self: *const EditorView, cx: *facet.BuildContext) facet.Widget {
         const t = cx.theme();
         const bytes = self.doc.text();
         const lines = 1 + std.mem.count(u8, bytes, "\n");

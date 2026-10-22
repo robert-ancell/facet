@@ -26,7 +26,7 @@ const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Node = widget.WidgetNode;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 
 /// A grid of equal cells, as many to a row as fit its width, left to right and
 /// top to bottom, that makes only the items in view when it is in a scroll view.

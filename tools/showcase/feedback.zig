@@ -64,7 +64,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     if (s.running) {
         const now = cx.now();
@@ -137,7 +137,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 }
 
 /// `child` with the page's dialog and snackbar over it.
-pub fn wrap(cx: *facet.Context, s: *State, child: facet.Widget) facet.Widget {
+pub fn wrap(cx: *facet.BuildContext, s: *State, child: facet.Widget) facet.Widget {
     const ringtones = [_]struct { Ringtone, []const u8 }{ .{ .classic, "Classic" }, .{ .chime, "Chime" }, .{ .pulse, "Pulse" } };
     var radios: [ringtones.len]facet.Widget = undefined;
     for (&radios, ringtones) |*w, r| {

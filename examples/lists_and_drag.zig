@@ -35,7 +35,7 @@ pub const ListsAndDragDemo = struct {
         }
     };
 
-    fn buildGridItem(state: *State, cx: *facet.Context, index: usize) facet.Widget {
+    fn buildGridItem(state: *State, cx: *facet.BuildContext, index: usize) facet.Widget {
         const t = cx.theme();
         const selected = state.selected_item == index;
         const press = cx.arena.create(ItemPress) catch unreachable;
@@ -70,7 +70,7 @@ pub const ListsAndDragDemo = struct {
         });
     }
 
-    pub fn build(_: *const ListsAndDragDemo, cx: *facet.Context, state: *State) facet.Widget {
+    pub fn build(_: *const ListsAndDragDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
         const t = cx.theme();
 
         var pinned_widgets: [6]facet.Widget = undefined;

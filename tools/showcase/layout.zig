@@ -27,7 +27,7 @@ pub const State = struct {
 };
 
 /// A coloured box, `w` by `h`.
-fn box(cx: *facet.Context, i: usize, w: ?f32, h: ?f32) facet.Widget {
+fn box(cx: *facet.BuildContext, i: usize, w: ?f32, h: ?f32) facet.Widget {
     return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Decorated{
         .color = .rgb(swatches[i % swatches.len]),
         .radius = .all(4),
@@ -35,7 +35,7 @@ fn box(cx: *facet.Context, i: usize, w: ?f32, h: ?f32) facet.Widget {
 }
 
 /// `child` on a strip `height` high, showing the space it lays out in.
-fn strip(cx: *facet.Context, height: f32, child: facet.Widget) facet.Widget {
+fn strip(cx: *facet.BuildContext, height: f32, child: facet.Widget) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Expanded{ .child = cx.make(facet.SizedBox{ .height = height, .child = cx.make(facet.Decorated{
         .color = t.surface_container,
@@ -78,7 +78,7 @@ const ThemePanel = struct {
         on.* = v;
     }
 
-    pub fn build(self: *const ThemePanel, cx: *facet.Context) facet.Widget {
+    pub fn build(self: *const ThemePanel, cx: *facet.BuildContext) facet.Widget {
         const t = cx.theme();
         return cx.make(facet.Decorated{
             .color = t.surface,
@@ -107,7 +107,7 @@ const ThemePanel = struct {
 };
 
 /// A fruit, to drag or in the basket.
-fn fruitPill(cx: *facet.Context, name: []const u8, in_basket: bool) facet.Widget {
+fn fruitPill(cx: *facet.BuildContext, name: []const u8, in_basket: bool) facet.Widget {
     const t = cx.theme();
     const fg = if (in_basket) t.on_primary_container else t.on_surface;
     return cx.make(facet.Decorated{
@@ -125,7 +125,7 @@ fn fruitPill(cx: *facet.Context, name: []const u8, in_basket: bool) facet.Widget
     });
 }
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
 
     const mains = [_]facet.MainAxisAlignment{ .start, .center, .end, .space_between, .space_around, .space_evenly };

@@ -20,7 +20,7 @@ pub const vertex_attributes = [_]facet.gfx.shaders.Attribute{
 
 /// The viewer, drawing the solid with `Backend`, which gives:
 /// * `name`, shown over the solid;
-/// * `Context`, the 3D widget's context (`facet.gfx.OpenGlContext`, ...);
+/// * `BuildContext`, the 3D widget's context (`facet.gfx.OpenGlContext`, ...);
 /// * `Area`, the 3D widget (`facet.OpenGlArea`, ...);
 /// * `createPipeline(ctx)`, the solid's pipeline (see `vertex_attributes`);
 /// * optionally `finish(ctx)`, which waits for drawing to finish before
@@ -176,7 +176,7 @@ pub fn Viewer(comptime Backend: type) type {
             }
         };
 
-        pub fn build(_: *const @This(), cx: *facet.Context, state: *State) facet.Widget {
+        pub fn build(_: *const @This(), cx: *facet.BuildContext, state: *State) facet.Widget {
             const now = cx.now();
             if (!state.paused) {
                 if (state.last_ns) |prev| {

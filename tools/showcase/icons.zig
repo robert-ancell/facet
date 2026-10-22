@@ -34,7 +34,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     s.match();
     const colours = [_]facet.Color{ t.on_surface, t.primary, t.@"error", .rgb(0x66bb6a), .rgb(0xffa726) };
@@ -85,7 +85,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 }
 
 /// The `i`th icon found: it and its name, to press to choose it.
-fn cell(s: *State, cx: *facet.Context, i: usize) facet.Widget {
+fn cell(s: *State, cx: *facet.BuildContext, i: usize) facet.Widget {
     const t = cx.theme();
     const icon = all[s.matches[i]];
     const Choose = struct {

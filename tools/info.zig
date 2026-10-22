@@ -6,7 +6,7 @@ const std = @import("std");
 const facet = @import("facet");
 
 const Info = struct {
-    pub fn build(_: *const Info, cx: *facet.Context) facet.Widget {
+    pub fn build(_: *const Info, cx: *facet.BuildContext) facet.Widget {
         return cx.make(facet.Decorated{
             .color = cx.theme().surface,
             .child = cx.make(facet.ScrollView{
@@ -19,7 +19,7 @@ const Info = struct {
     }
 };
 
-fn sectionHeading(cx: *facet.Context, title: []const u8, subtitle: []const u8) facet.Widget {
+fn sectionHeading(cx: *facet.BuildContext, title: []const u8, subtitle: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Column{
         .fill = false,
@@ -32,7 +32,7 @@ fn sectionHeading(cx: *facet.Context, title: []const u8, subtitle: []const u8) f
     });
 }
 
-fn buildReport(cx: *facet.Context) facet.Widget {
+fn buildReport(cx: *facet.BuildContext) facet.Widget {
     const t = cx.theme();
     const info = cx.backend();
     const win = cx.window();

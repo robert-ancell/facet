@@ -59,7 +59,7 @@ const Buffer = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State, notes: *facet.TextDocument, code: *facet.TextDocument) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State, notes: *facet.TextDocument, code: *facet.TextDocument) facet.Widget {
     const t = cx.theme();
     return common.page(cx, &.{
         common.section(cx, "Text", "Text in the theme's sizes and colours", cx.makeAll(.{
@@ -113,7 +113,7 @@ pub fn build(cx: *facet.Context, s: *State, notes: *facet.TextDocument, code: *f
     });
 }
 
-fn aligned(cx: *facet.Context, a: facet.TextAlign) facet.Widget {
+fn aligned(cx: *facet.BuildContext, a: facet.TextAlign) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Expanded{ .child = cx.make(facet.Decorated{
         .color = t.surface_container,
@@ -125,7 +125,7 @@ fn aligned(cx: *facet.Context, a: facet.TextAlign) facet.Widget {
     }) });
 }
 
-fn area(cx: *facet.Context, doc: *facet.TextDocument, highlighter: ?facet.TextArea.Highlighter, height: f32) facet.Widget {
+fn area(cx: *facet.BuildContext, doc: *facet.TextDocument, highlighter: ?facet.TextArea.Highlighter, height: f32) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.SizedBox{
         .height = height,

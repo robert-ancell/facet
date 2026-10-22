@@ -29,7 +29,7 @@ pub const State = struct {
 };
 
 /// A callback setting `slot` to `value`.
-fn choose(cx: *facet.Context, slot: anytype, value: usize) facet.Callback {
+fn choose(cx: *facet.BuildContext, slot: anytype, value: usize) facet.Callback {
     const Slot = @TypeOf(slot);
     const Pick = struct {
         slot: Slot,
@@ -44,7 +44,7 @@ fn choose(cx: *facet.Context, slot: anytype, value: usize) facet.Callback {
     return .of(p, Pick.pick);
 }
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     const variants = [_]struct { facet.Card.Variant, []const u8, []const u8 }{
         .{ .filled, "Filled", "A tinted surface, for content set apart from what is around it." },
@@ -189,7 +189,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     });
 }
 
-fn scrollRows(cx: *facet.Context, s: *State) facet.Widget {
+fn scrollRows(cx: *facet.BuildContext, s: *State) facet.Widget {
     const rows = cx.arena.alloc(facet.Widget, 30) catch return cx.make(facet.SizedBox.empty);
     for (rows, 0..) |*r, i| {
         r.* = cx.make(facet.ListItem{
@@ -202,7 +202,7 @@ fn scrollRows(cx: *facet.Context, s: *State) facet.Widget {
     return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .stretch, .children = rows });
 }
 
-fn gridCell(s: *State, cx: *facet.Context, i: usize) facet.Widget {
+fn gridCell(s: *State, cx: *facet.BuildContext, i: usize) facet.Widget {
     const t = cx.theme();
     const selected = s.cell == i;
     return cx.make(facet.Card{

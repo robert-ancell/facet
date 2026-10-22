@@ -845,7 +845,7 @@ test "typing into a text area, moving up and down, and copying" {
     defer d.deinit();
     const App = struct {
         doc: *Document,
-        pub fn build(self: *const @This(), cx: *widget.Context) widget.Widget {
+        pub fn build(self: *const @This(), cx: *widget.BuildContext) widget.Widget {
             return cx.make(Padding{ .padding = .all(10), .child = cx.make(TextArea{ .doc = self.doc, .autofocus = true }) });
         }
     };

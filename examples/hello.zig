@@ -16,7 +16,7 @@ pub const Counter = struct {
         }
     };
 
-    pub fn build(_: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
+    pub fn build(_: *const Counter, cx: *facet.BuildContext, state: *State) facet.Widget {
         return cx.make(facet.Align.center(cx.make(facet.Column{
             .fill = false,
             .cross_axis_alignment = .center,

@@ -78,7 +78,7 @@ pub const CanvasAndQrDemo = struct {
         }
     };
 
-    pub fn build(_: *const CanvasAndQrDemo, cx: *facet.Context, state: *State) facet.Widget {
+    pub fn build(_: *const CanvasAndQrDemo, cx: *facet.BuildContext, state: *State) facet.Widget {
         const default_url = "https://github.com/robert-ancell/facet";
         const payload = if (state.payload_len > 0) state.payload_buf[0..state.payload_len] else default_url;
 

@@ -38,7 +38,7 @@ pub const State = struct {
     }
 };
 
-pub fn build(cx: *facet.Context, s: *State) facet.Widget {
+pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     if (s.spinning) {
         const now = cx.now();
         if (s.last_ns) |prev| {
@@ -86,7 +86,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 }
 
 /// The cube, drawn with `api` by its widget (`Area`, as `facet.VulkanArea`).
-fn area(cx: *facet.Context, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
+fn area(cx: *facet.BuildContext, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(Area(cube.Scene(api)){
         .scene = .{ .angle = s.angle, .tilt = s.tilt },
@@ -99,7 +99,7 @@ fn area(cx: *facet.Context, s: *State, comptime Area: fn (type) type, comptime a
     });
 }
 
-fn label(cx: *facet.Context, text: []const u8) facet.Widget {
+fn label(cx: *facet.BuildContext, text: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
         .padding = .all(10),

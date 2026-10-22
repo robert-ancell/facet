@@ -18,7 +18,7 @@
 //!   by default a widget passes its constraints to its children, stacks
 //!   them at its top left and is as big as allowed. Children are found in
 //!   a `child: Widget` (or `?Widget`) or a `children: []const Widget`
-//!   field, or made by a `children` function taking the `Context` and the
+//!   field, or made by a `children` function taking the `BuildContext` and the
 //!   node (for widgets that make only the children that show: see
 //!   `realize` and grid.zig).
 //!
@@ -44,10 +44,10 @@ const Painter = painter_mod.Painter;
 const WindowUi = runtime.WindowUi;
 
 /// A widget: a description of part of the screen, made fresh every frame
-/// by `Context.make` from any struct type (see the top of this file for what
+/// by `BuildContext.make` from any struct type (see the top of this file for what
 /// such a type can have).
 pub const Widget = struct {
-    /// The widget's value (made with `Context.make`, in the frame's arena).
+    /// The widget's value (made with `BuildContext.make`, in the frame's arena).
     ptr: *const anyopaque,
     /// What the toolkit calls on it: `layout`, `paint`, `event` and the rest.
     vtable: *const VTable,
@@ -73,7 +73,7 @@ pub const Widget = struct {
     }
 
     /// Makes a widget of a value that lives at least until the next frame
-    /// is built (see `Context.make` for values made while building).
+    /// is built (see `BuildContext.make` for values made while building).
     pub fn of(comptime T: type, ptr: *const T) Widget {
         return .{ .ptr = ptr, .vtable = vtableFor(T) };
     }
@@ -202,7 +202,7 @@ pub fn ValueCallback(comptime T: type) type {
 
 pub const VTable = struct {
     name: []const u8,
-    build: ?*const fn (*const anyopaque, *Context, ?*anyopaque) Widget,
+    build: ?*const fn (*const anyopaque, *BuildContext, ?*anyopaque) Widget,
     children: *const fn (*const anyopaque) []const Widget,
     layout: ?*const fn (*const anyopaque, *WidgetNode, Constraints) Size,
     min_size: ?*const fn (*const anyopaque, *WidgetNode, Constraints) Size,
@@ -222,7 +222,7 @@ pub const VTable = struct {
     /// types it), so only Control and Tab moves the focus from it.
     takes_tab: bool,
     /// Makes its children (instead of `children`), when the tree is built.
-    make_children: ?*const fn (*const anyopaque, *Context, *WidgetNode) []const Widget,
+    make_children: ?*const fn (*const anyopaque, *BuildContext, *WidgetNode) []const Widget,
     /// Told, once laid out in a scroll view, what of it shows (relative to
     /// itself), to make the children there.
     realize: ?*const fn (*const anyopaque, *WidgetNode, Rect) void,
@@ -255,7 +255,7 @@ fn makeVTable(comptime T: type) VTable {
         fn self(ptr: *const anyopaque) *const T {
             return @ptrCast(@alignCast(ptr));
         }
-        fn build(ptr: *const anyopaque, cx: *Context, state: ?*anyopaque) Widget {
+        fn build(ptr: *const anyopaque, cx: *BuildContext, state: ?*anyopaque) Widget {
             const param_types = @typeInfo(@TypeOf(T.build)).@"fn".param_types;
             if (param_types.len == 3) return T.build(self(ptr), cx, @ptrCast(@alignCast(state.?)));
             return T.build(self(ptr), cx);
@@ -299,7 +299,7 @@ fn makeVTable(comptime T: type) VTable {
         fn focusable(ptr: *const anyopaque, n: *WidgetNode) bool {
             return T.focusable(self(ptr), n);
         }
-        fn makeChildren(ptr: *const anyopaque, cx: *Context, n: *WidgetNode) []const Widget {
+        fn makeChildren(ptr: *const anyopaque, cx: *BuildContext, n: *WidgetNode) []const Widget {
             return T.children(self(ptr), cx, n);
         }
         fn realize(ptr: *const anyopaque, n: *WidgetNode, visible: Rect) void {
@@ -349,7 +349,7 @@ const Missing = struct {
 };
 const missing: Missing = .{};
 
-/// Where a widget is (from `Context.anchor`, as it is built), to open a menu
+/// Where a widget is (from `BuildContext.anchor`, as it is built), to open a menu
 /// from later, as a button's callback does. Kept in the widget's `State`,
 /// it is good for as long as the widget is there.
 pub const WidgetAnchor = struct {
@@ -366,7 +366,7 @@ pub const WidgetAnchor = struct {
 };
 
 /// What `build` functions get: the frame's arena, and the UI.
-pub const Context = struct {
+pub const BuildContext = struct {
     /// The UI the widget is built in: its window's (its `theme`, the
     /// app's `io`, and what the app's windows share, as `shared`).
     ui: *WindowUi,
@@ -385,7 +385,7 @@ pub const Context = struct {
 
     /// A widget of `value`'s type, copied into the frame's arena (with
     /// its `children` slice, so `&.{ a, b }` can be passed directly).
-    pub fn make(cx: *Context, value: anytype) Widget {
+    pub fn make(cx: *BuildContext, value: anytype) Widget {
         const T = @TypeOf(value);
         const p = cx.arena.create(T) catch return Widget.of(Missing, &missing);
         p.* = value;
@@ -404,7 +404,7 @@ pub const Context = struct {
     /// Widgets of the values in the tuple `values` (each made as `make`
     /// does; any already a `Widget` taken as it is), as a slice in the
     /// frame's arena: for `children`.
-    pub fn makeAll(cx: *Context, values: anytype) []const Widget {
+    pub fn makeAll(cx: *BuildContext, values: anytype) []const Widget {
         const fields = @typeInfo(@TypeOf(values)).@"struct".field_types;
         const out = cx.arena.alloc(Widget, fields.len) catch return &.{};
         inline for (fields, 0..) |F, i| {
@@ -415,42 +415,42 @@ pub const Context = struct {
 
     /// Where the widget being built is, to open a menu from later (from a
     /// callback): see `WidgetAnchor`.
-    pub fn anchor(cx: *const Context) WidgetAnchor {
+    pub fn anchor(cx: *const BuildContext) WidgetAnchor {
         return .{ .node = cx.node };
     }
 
     /// Text formatted into the frame's arena.
-    pub fn fmt(cx: *Context, comptime f: []const u8, args: anytype) []const u8 {
+    pub fn fmt(cx: *BuildContext, comptime f: []const u8, args: anytype) []const u8 {
         return cx.arena.print(f, args) catch "…";
     }
 
     /// The theme the widget is in: the app's, or that of the nearest
     /// `Themed` above it.
-    pub fn theme(cx: *const Context) *const Theme {
+    pub fn theme(cx: *const BuildContext) *const Theme {
         return cx.theme_ptr orelse &cx.ui.theme;
     }
 
     /// The frame's time, in nanoseconds (for animations).
-    pub fn now(cx: *const Context) u64 {
+    pub fn now(cx: *const BuildContext) u64 {
         return cx.ui.now_ns;
     }
 
     /// Asks for another frame after this one (for animations).
-    pub fn requestFrame(cx: *Context) void {
+    pub fn requestFrame(cx: *BuildContext) void {
         cx.ui.needs_frame = true;
     }
 
     /// What the app runs on: the windowing platform, its extensions, the
     /// 2D renderer (`software`, `opengl`, `vulkan`, ...), and the keyboard's
     /// layout.
-    pub fn backend(cx: *const Context) BackendInfo {
+    pub fn backend(cx: *const BuildContext) BackendInfo {
         return cx.ui.backend();
     }
 
     /// How the widget's window is shown: its buffers (`wl_shm`,
     /// `linux_dmabuf`, ...) and how they are synchronized and paced, its
     /// decorations, size, scale, and state.
-    pub fn window(cx: *const Context) WindowInfo {
+    pub fn window(cx: *const BuildContext) WindowInfo {
         return cx.ui.windowInfo();
     }
 };
@@ -716,11 +716,11 @@ pub const WidgetNode = struct {
         // unless it gives one of its own (`Themed`).
         if (n.parent) |p| n.theme_ptr = p.theme_ptr;
         if (w.vtable.build) |f| {
-            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
+            var cx: BuildContext = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             const built = f(w.ptr, &cx, n.state_ptr);
             n.reconcile(&.{built});
         } else if (w.vtable.make_children) |f| {
-            var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
+            var cx: BuildContext = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             n.reconcile(f(w.ptr, &cx, n));
         } else {
             n.reconcile(w.vtable.children(w.ptr));

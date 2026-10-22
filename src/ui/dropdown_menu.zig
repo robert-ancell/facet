@@ -12,7 +12,7 @@ const button = @import("button.zig");
 const OutlinedButton = button.OutlinedButton;
 
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Node = widget.WidgetNode;
 const ValueCallback = widget.ValueCallback;
 

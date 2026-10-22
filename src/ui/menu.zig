@@ -23,7 +23,7 @@ const Text = @import("text.zig").Text;
 const Point = geometry.Point;
 const Size = geometry.Size;
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Callback = widget.Callback;
 
 /// One item of a `Menu`.

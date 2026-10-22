@@ -12,7 +12,7 @@ const Pressable = @import("pressable.zig").Pressable;
 
 const Insets = geometry.Insets;
 const Widget = widget.Widget;
-const Context = widget.Context;
+const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
