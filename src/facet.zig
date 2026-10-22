@@ -32,7 +32,6 @@ pub const PointerCursor = ui.PointerCursor;
 pub const Callback = ui.Callback;
 pub const ValueCallback = ui.ValueCallback;
 pub const Painter = ui.Painter;
-pub const GpuArea = ui.GpuArea;
 pub const Theme = ui.Theme;
 pub const ThemeBrightness = ui.ThemeBrightness;
 pub const Themed = ui.Themed;

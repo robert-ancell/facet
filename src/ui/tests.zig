@@ -316,7 +316,7 @@ test "an overlay's top layer takes the pointer where it has something" {
 
 /// Draws straight to the GPU.
 const GpuView = struct {
-    fn draw(_: *const GpuView, _: *anyopaque, _: ui.GpuArea) anyerror!void {}
+    fn draw(_: *const GpuView, _: *anyopaque, _: gfx.GpuArea) anyerror!void {}
     pub fn paint(self: *const GpuView, _: *Node, p: *ui.Painter) void {
         p.gpu(self, draw);
     }
@@ -543,7 +543,7 @@ test "a removed widget damages where it was" {
 
 const Keyed = struct {
     key: ?u64,
-    fn draw(_: *const Keyed, _: *anyopaque, _: ui.GpuArea) anyerror!void {}
+    fn draw(_: *const Keyed, _: *anyopaque, _: gfx.GpuArea) anyerror!void {}
     pub fn paint(self: *const Keyed, _: *Node, p: *ui.Painter) void {
         p.gpuWith(.{ .key = self.key, .bounds = .{ .x = 10, .y = 10, .w = 20, .h = 20 } }, self, draw);
     }
