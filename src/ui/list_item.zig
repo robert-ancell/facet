@@ -12,7 +12,7 @@ const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 const Row = @import("flex.zig").Row;
@@ -37,7 +37,7 @@ pub const ListItem = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub const one_line_height = 52;

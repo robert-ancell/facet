@@ -10,7 +10,7 @@ const widget = @import("widget.zig");
 const Center = @import("center.zig").Center;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const decorated = @import("decorated.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 const Row = @import("flex.zig").Row;
@@ -44,7 +44,7 @@ pub const FilledButton = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const FilledButton, _: *Node) ?a11y.Info {
@@ -71,7 +71,7 @@ pub const TonalButton = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const TonalButton, _: *Node) ?a11y.Info {
@@ -101,7 +101,7 @@ pub const OutlinedButton = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const OutlinedButton, _: *Node) ?a11y.Info {
@@ -132,7 +132,7 @@ pub const TextButton = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const TextButton, _: *Node) ?a11y.Info {
@@ -161,7 +161,7 @@ const Look = struct {
 
 /// Material's state layer: how strongly the button is tinted while hovered
 /// or pressed.
-fn stateLayer(on_press: ?Callback, i: Interaction, pressed: f32) f32 {
+fn stateLayer(on_press: ?Callback, i: PointerInteraction, pressed: f32) f32 {
     if (on_press == null) return 0;
     return if (i.pressed) pressed else if (i.hovered) 0.08 else 0;
 }

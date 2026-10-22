@@ -8,7 +8,7 @@ const widget = @import("widget.zig");
 const Center = @import("center.zig").Center;
 const Decorated = @import("decorated.zig").Decorated;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Painter = @import("painter.zig").Painter;
 const Pressable = @import("pressable.zig").Pressable;
@@ -54,7 +54,7 @@ pub const PillButton = struct {
     on_press: ?Callback = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub const height = 36;

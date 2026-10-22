@@ -6,7 +6,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Decorated = @import("decorated.zig").Decorated;
 const Border = @import("decorated.zig").Border;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 
@@ -37,7 +37,7 @@ pub const Card = struct {
     child: ?Widget = null,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn build(self: *const Card, cx: *Context, state: *State) Widget {

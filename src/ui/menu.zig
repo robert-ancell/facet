@@ -10,7 +10,7 @@ const Node = @import("widget.zig").WidgetNode;
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
 const Decorated = @import("decorated.zig").Decorated;
 const SizedBox = @import("sized_box.zig").SizedBox;
@@ -77,7 +77,7 @@ const MenuRow = struct {
     item: Item,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
         /// The action, and the UI (whose menu closes), from the last build.
         action: ?Callback = null,
         ui: ?*@import("runtime.zig").WindowUi = null,

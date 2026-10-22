@@ -7,7 +7,7 @@ const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const geometry = @import("geometry.zig");
 const control = @import("control.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Painter = @import("painter.zig").Painter;
 
 const Size = geometry.Size;
@@ -100,7 +100,7 @@ pub const SwitchMark = struct {
     /// 0 off, 1 on (between while it slides).
     position: f32,
     enabled: bool = true,
-    interaction: Interaction = .{},
+    interaction: PointerInteraction = .{},
 
     pub const width = 52;
     pub const height = 32;

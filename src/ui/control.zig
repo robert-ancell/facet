@@ -11,7 +11,7 @@
 //! technologies with `Accessible`.
 
 const widget = @import("widget.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 const Row = @import("flex.zig").Row;
@@ -29,7 +29,7 @@ pub const target = 40;
 /// comes between builds) reports the right change.
 pub fn Latest(comptime T: type) type {
     return struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
         value: ?T = null,
         on_changed: ?ValueCallback(T) = null,
 
@@ -41,13 +41,13 @@ pub fn Latest(comptime T: type) type {
 }
 
 /// The state layer's opacity: Material's hover and press tints.
-pub fn layerAlpha(i: Interaction, enabled: bool) f32 {
+pub fn layerAlpha(i: PointerInteraction, enabled: bool) f32 {
     if (!enabled) return 0;
     return if (i.pressed) 0.10 else if (i.hovered) 0.08 else 0;
 }
 
 /// The control's mark beside its label (if any), pressable as a whole.
-pub fn control(cx: *Context, interaction: *Interaction, on_press: ?Callback, mark: Widget, label: []const u8, gap: f32) Widget {
+pub fn control(cx: *Context, interaction: *PointerInteraction, on_press: ?Callback, mark: Widget, label: []const u8, gap: f32) Widget {
     const t = cx.theme();
     const content = if (label.len == 0) mark else cx.make(Row{
         .main_axis_size = .min,

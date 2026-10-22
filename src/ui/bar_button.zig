@@ -6,7 +6,7 @@ const gfx = @import("gfx");
 const icons = @import("icons");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
 const Painter = @import("painter.zig").Painter;
 
@@ -23,7 +23,7 @@ pub const BarButton = struct {
     icon: icons.IconName,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const BarButton, n: *Node) ?a11y.Info {

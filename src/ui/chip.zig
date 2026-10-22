@@ -12,7 +12,7 @@ const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
 const Border = @import("decorated.zig").Border;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 const Row = @import("flex.zig").Row;
@@ -36,8 +36,8 @@ pub const Chip = struct {
     pub const height = 32;
 
     pub const State = struct {
-        interaction: Interaction = .{},
-        remove_interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
+        remove_interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const Chip, _: *Node) ?a11y.Info {

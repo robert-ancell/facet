@@ -1,5 +1,5 @@
 //! Pressable: calls back when the child is clicked, and says whether the
-//! pointer is over it and pressing it (`Interaction`).
+//! pointer is over it and pressing it (`PointerInteraction`).
 
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
@@ -12,7 +12,7 @@ const Event = widget.Event;
 const Callback = widget.Callback;
 
 /// Whether the pointer is over a widget, and pressing it.
-pub const Interaction = struct {
+pub const PointerInteraction = struct {
     hovered: bool = false,
     pressed: bool = false,
 };
@@ -25,7 +25,7 @@ pub const Interaction = struct {
 /// a focus ring, its corners `focus_radius` (null: round).
 pub const Pressable = struct {
     on_press: ?Callback = null,
-    interaction: ?*Interaction = null,
+    interaction: ?*PointerInteraction = null,
     focus_radius: ?f32 = null,
     child: ?Widget = null,
 
@@ -42,7 +42,7 @@ pub const Pressable = struct {
     }
 
     pub fn event(self: *const Pressable, _: *Node, e: Event) bool {
-        var dummy: Interaction = .{};
+        var dummy: PointerInteraction = .{};
         const i = self.interaction orelse &dummy;
         switch (e) {
             .enter => i.hovered = true,

@@ -9,7 +9,7 @@ const swatches = [_]u24{ 0xef5350, 0xffa726, 0x66bb6a, 0x42a5f5, 0xab47bc, 0x26a
 const fruit = [_][]const u8{ "Apple", "Banana", "Cherry", "Grape" };
 
 pub const State = struct {
-    hover: facet.Interaction = .{},
+    hover: facet.PointerInteraction = .{},
     presses: u32 = 0,
     basket: [fruit.len]bool = @splat(false),
     /// Each theme panel's switch.

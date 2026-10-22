@@ -14,7 +14,7 @@ const icons = @import("icons");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Decorated = @import("decorated.zig").Decorated;
 const Padding = @import("padding.zig").Padding;
 const Row = @import("flex.zig").Row;
@@ -56,7 +56,7 @@ pub const Draggable = struct {
     icon: ?icons.IconName = null,
     /// Clicked (pressed and let go without dragging).
     on_press: ?Callback = null,
-    interaction: ?*Interaction = null,
+    interaction: ?*PointerInteraction = null,
     child: ?Widget = null,
 
     pub const State = struct {
@@ -70,7 +70,7 @@ pub const Draggable = struct {
     }
 
     pub fn event(self: *const Draggable, n: *Node, e: Event) bool {
-        var dummy: Interaction = .{};
+        var dummy: PointerInteraction = .{};
         const i = self.interaction orelse &dummy;
         const st = n.state(State);
         const origin = n.position();

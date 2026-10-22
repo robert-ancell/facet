@@ -10,7 +10,7 @@ const Center = @import("center.zig").Center;
 const Decorated = @import("decorated.zig").Decorated;
 const Border = @import("decorated.zig").Border;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
 const SizedBox = @import("sized_box.zig").SizedBox;
 
@@ -45,7 +45,7 @@ pub const IconButton = struct {
     variant: Variant = .standard,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const IconButton, n: *Node) ?a11y.Info {

@@ -12,7 +12,7 @@ const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
 const Row = @import("flex.zig").Row;
@@ -103,7 +103,7 @@ const RailDestination = struct {
     on_press: ?Callback,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const RailDestination, _: *Node) ?a11y.Info {

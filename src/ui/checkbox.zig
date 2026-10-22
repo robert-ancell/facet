@@ -6,7 +6,7 @@ const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const geometry = @import("geometry.zig");
 const control = @import("control.zig");
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Painter = @import("painter.zig").Painter;
 
 const Size = geometry.Size;
@@ -82,7 +82,7 @@ fn buildControl(cx: *Context, state: *Checkbox.State, value: bool, on_changed: ?
 pub const CheckboxMark = struct {
     checked: bool,
     enabled: bool = true,
-    interaction: Interaction = .{},
+    interaction: PointerInteraction = .{},
 
     pub const box = 18;
 

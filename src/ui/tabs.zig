@@ -12,7 +12,7 @@ const Decorated = @import("decorated.zig").Decorated;
 const Divider = @import("divider.zig").Divider;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
-const Interaction = @import("pressable.zig").Interaction;
+const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Painter = @import("painter.zig").Painter;
 const Pressable = @import("pressable.zig").Pressable;
@@ -96,7 +96,7 @@ const TabItem = struct {
     on_press: ?Callback,
 
     pub const State = struct {
-        interaction: Interaction = .{},
+        interaction: PointerInteraction = .{},
     };
 
     pub fn accessible(self: *const TabItem, _: *Node) ?a11y.Info {
