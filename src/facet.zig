@@ -13,14 +13,12 @@
 //! * `font`: pure-Zig OpenType/TrueType font parser, shaper, and rasterizer,
 //!   including bundled default Fira Sans and Twemoji Mozilla fallback fonts
 //! * `icons`: Material Icons enum (`Icon`) and subsetted icon font
-//! * `wayland`: zero-dependency Wayland wire protocol and client library
 
 pub const ui = @import("ui");
 pub const gfx = @import("gfx");
 pub const font = @import("font");
 pub const icons = @import("icons");
 pub const window = @import("window");
-pub const wayland = @import("wayland");
 
 pub const WindowUi = ui.WindowUi;
 pub const Shared = ui.Shared;
@@ -160,5 +158,4 @@ test {
     _ = font;
     _ = icons;
     _ = window;
-    if (@import("builtin").os.tag != .windows) _ = wayland;
 }

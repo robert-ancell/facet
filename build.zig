@@ -246,7 +246,6 @@ pub fn createModules(
             .{ .name = "font", .module = font },
             .{ .name = "icons", .module = icons },
             .{ .name = "window", .module = window },
-            .{ .name = "wayland", .module = wayland },
         },
     });
 
