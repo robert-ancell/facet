@@ -72,13 +72,13 @@ const max_zoom = 18;
 pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const t = cx.theme();
     const kinds = [_]facet.Select(Kind).Option{
-        .{ .value = .vector, .label = "Vector" },
-        .{ .value = .images, .label = "Images" },
+        .{ .value = .vector, .item = .{ .label = "Vector" } },
+        .{ .value = .images, .item = .{ .label = "Images" } },
     };
     const looks = [_]facet.Select(Look).Option{
-        .{ .value = .atlas, .label = "Atlas" },
-        .{ .value = .night, .label = "Night" },
-        .{ .value = .blueprint, .label = "Blueprint" },
+        .{ .value = .atlas, .item = .{ .label = "Atlas" } },
+        .{ .value = .night, .item = .{ .label = "Night" } },
+        .{ .value = .blueprint, .item = .{ .label = "Blueprint" } },
     };
     const palette = paletteOf(s.look);
     const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.SizedBox.empty);

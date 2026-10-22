@@ -12,7 +12,12 @@ const topping_names = [_][]const u8{ "Cheese", "Mushroom", "Olives" };
 const filter_names = [_][]const u8{ "Unread", "Starred", "Files", "From me" };
 const filter_icons = [_]facet.IconName{ .mail, .star, .folder, .person };
 const tag_names = [_][]const u8{ "zig", "wayland", "vulkan" };
-const resolutions = [_][]const u8{ "3840 × 2160", "2560 × 1440", "1920 × 1080", "1280 × 720" };
+const resolutions = [_]facet.MenuItem{
+    .{ .label = "3840 × 2160" },
+    .{ .label = "2560 × 1440" },
+    .{ .label = "1920 × 1080" },
+    .{ .label = "1280 × 720" },
+};
 
 pub const State = struct {
     toppings: [topping_names.len]bool = .{ true, false, true },
@@ -126,10 +131,10 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     tag_count += 1;
 
     const qualities = [_]facet.Select(Quality).Option{
-        .{ .value = .low, .label = "Low" },
-        .{ .value = .balanced, .label = "Balanced" },
-        .{ .value = .high, .label = "High" },
-        .{ .value = .ultra, .label = "Ultra" },
+        .{ .value = .low, .item = .{ .label = "Low" } },
+        .{ .value = .balanced, .item = .{ .label = "Balanced" } },
+        .{ .value = .high, .item = .{ .label = "High" } },
+        .{ .value = .ultra, .item = .{ .label = "Ultra" } },
     };
 
     return common.page(cx, &.{

@@ -1055,9 +1055,9 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
 
         pub fn build(_: *const @This(), cx: *Context, state: *State) Widget {
             const opts = [_]ui.Select(Mode).Option{
-                .{ .value = .one, .label = "One" },
-                .{ .value = .two, .label = "Two" },
-                .{ .value = .three, .label = "Three" },
+                .{ .value = .one, .item = .{ .label = "One" } },
+                .{ .value = .two, .item = .{ .label = "Two" } },
+                .{ .value = .three, .item = .{ .label = "Three" } },
             };
             const rail_items = [_]ui.NavigationRail.Item{
                 .{ .label = "First", .icon = .folder },
@@ -2677,7 +2677,7 @@ test "a menu opened from the keyboard has the focus, and gives it back" {
         }
         pub fn build(self: *const @This(), cx: *Context) Widget {
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.DropdownMenu{
-                .options = &.{ "Red", "Green", "Blue" },
+                .options = &.{ .{ .label = "Red" }, .{ .label = "Green" }, .{ .label = "Blue" } },
                 .selected = self.picked.*,
                 .on_selected = .of(self.picked, pick),
             }) });
@@ -2878,4 +2878,132 @@ test "an anchor opens a menu just below its widget, and one taken from no widget
     S.anchor.openMenu(&.{.{ .label = "Cut" }});
     try testing.expect(u.menu != null);
     try testing.expectEqual(ui.Point{ 20, 50 }, u.menu.?.at);
+}
+
+fn findLabel(n: *Node, label: []const u8) ?*Node {
+    if (n.widget.as(ui.Text)) |t| if (std.mem.eql(u8, t.text, label)) return n;
+    for (n.children.items) |ch| if (findLabel(ch, label)) |f| return f;
+    return null;
+}
+
+fn middleOf(n: *Node) ui.Point {
+    const at = n.position();
+    return .{ at[0] + n.size.w / 2, at[1] + n.size.h / 2 };
+}
+
+test "menu items open submenus, which keys move in and out of, and dividers set items apart" {
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    const S = struct {
+        var hits: u32 = 0;
+        fn bump(p: *u32) void {
+            p.* += 1;
+        }
+        const deeper = [_]ui.MenuItem{.{ .label = "Deepest", .on_press = .of(&hits, bump) }};
+        const sub = [_]ui.MenuItem{
+            .{ .label = "Deep", .on_press = .of(&hits, bump) },
+            ui.MenuItem.divider,
+            .{ .label = "Further", .submenu = &deeper },
+        };
+        const items = [_]ui.MenuItem{
+            .{ .label = "Plain", .leading_icon = .folder, .on_press = .of(&hits, bump) },
+            .{ .label = "Check", .kind = .checkbox, .checked = true, .on_press = .of(&hits, bump) },
+            ui.MenuItem.divider,
+            .{ .label = "More", .submenu = &sub },
+        };
+        fn build(cx: *Context) Widget {
+            return cx.make(ui.SizedBox{ .width = 10, .height = 10 });
+        }
+    };
+    const app = Root(S.build){};
+    u.frame(600, 400, 0, app);
+    u.openMenu(u.root.?, .{ 20, 20 }, &S.items);
+    u.frame(600, 400, 1, app);
+    const root = u.menu_root.?;
+    const cascade = root.child(0);
+    try testing.expectEqual(@as(usize, 1), cascade.childCount());
+    // Items, a divider (shorter), and room around them.
+    const panel = cascade.child(0);
+    try testing.expectEqual(3 * ui.menu.item_height + ui.menu.divider_height + 2 * ui.menu.padding, panel.size.h);
+
+    // The pointer on an item with a submenu opens it, beside the menu.
+    const more = findLabel(root, "More").?;
+    u.pointerMotion(middleOf(more));
+    u.frame(600, 400, 2, app);
+    try testing.expectEqual(@as(usize, 2), cascade.childCount());
+    try testing.expect(cascade.child(1).position()[0] > panel.position()[0] + panel.size.w - 8);
+    try testing.expect(ui.menu.Menu.contains(root, middleOf(cascade.child(1))));
+    // On another item, it closes.
+    u.pointerMotion(middleOf(findLabel(root, "Plain").?));
+    u.frame(600, 400, 3, app);
+    try testing.expectEqual(@as(usize, 1), cascade.childCount());
+
+    // Pressing the item in the submenu does it, and closes everything.
+    u.pointerMotion(middleOf(findLabel(root, "More").?));
+    u.frame(600, 400, 4, app);
+    clickAt(u, middleOf(findLabel(root, "Deep").?));
+    try testing.expectEqual(@as(u32, 1), S.hits);
+    try testing.expect(u.menu == null);
+
+    // From the keyboard: down to "More" (past the divider), right into
+    // its submenu, which has the focus, and left out of it.
+    u.openMenu(u.root.?, .{ 20, 20 }, &S.items);
+    u.frame(600, 400, 5, app);
+    const root2 = u.menu_root.?;
+    pressKey(u, app, .down, .{});
+    pressKey(u, app, .down, .{});
+    pressKey(u, app, .down, .{});
+    try testing.expect(ui.focus.within(findLabel(root2, "More").?, u.focused.?));
+    pressKey(u, app, .right, .{});
+    pressKey(u, app, .down, .{});
+    try testing.expectEqual(@as(usize, 2), root2.child(0).childCount());
+    try testing.expect(ui.focus.within(u.focused.?, root2.child(0).child(1)));
+    // Down wraps within the submenu: it does not leave for the menu.
+    pressKey(u, app, .down, .{});
+    try testing.expect(ui.focus.within(u.focused.?, root2.child(0).child(1)));
+    pressKey(u, app, .left, .{});
+    try testing.expectEqual(@as(usize, 1), root2.child(0).childCount());
+    try testing.expect(ui.focus.within(findLabel(root2, "More").?, u.focused.?));
+    pressKey(u, app, .escape, .{});
+    try testing.expect(u.menu == null);
+}
+
+test "a dropdown's options are menu items: icons, dividers and disabled choices, with the choice made marked" {
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    var picked: usize = 99;
+    const App = struct {
+        picked: *usize,
+        fn pick(p: *usize, i: usize) void {
+            p.* = i;
+        }
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.DropdownMenu{
+                .options = &.{
+                    .{ .label = "Light", .leading_icon = .light_mode },
+                    .{ .label = "Dark", .leading_icon = .dark_mode, .enabled = false },
+                    ui.MenuItem.divider,
+                    .{ .label = "Automatic", .leading_icon = .settings },
+                },
+                .selected = 3,
+                .on_selected = .of(self.picked, pick),
+            }) });
+        }
+    };
+    const app: App = .{ .picked = &picked };
+    u.frame(400, 400, 0, app);
+    // The button shows the choice made, with its icon.
+    try testing.expect(findLabel(u.root.?, "Automatic") != null);
+    click(u, find(u.root.?, ui.DropdownMenu).?);
+    u.frame(400, 400, 1, app);
+    const root = u.menu_root.?;
+    const panel = root.child(0).child(0);
+    try testing.expectEqual(@as(usize, 4), find(panel, ui.Column).?.childCount());
+    // A disabled choice does nothing; the one after the divider is index 3.
+    clickAt(u, middleOf(findLabel(root, "Dark").?));
+    try testing.expectEqual(@as(usize, 99), picked);
+    try testing.expect(u.menu != null);
+    clickAt(u, middleOf(findLabel(root, "Automatic").?));
+    try testing.expectEqual(@as(usize, 3), picked);
+    try testing.expect(u.menu == null);
 }

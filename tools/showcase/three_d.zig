@@ -49,10 +49,10 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         cx.requestFrame();
     }
     const samples = [_]facet.Select(Samples).Option{
-        .{ .value = .one, .label = "None" },
-        .{ .value = .two, .label = "2× MSAA" },
-        .{ .value = .four, .label = "4× MSAA" },
-        .{ .value = .eight, .label = "8× MSAA" },
+        .{ .value = .one, .item = .{ .label = "None" } },
+        .{ .value = .two, .item = .{ .label = "2× MSAA" } },
+        .{ .value = .four, .item = .{ .label = "4× MSAA" } },
+        .{ .value = .eight, .item = .{ .label = "8× MSAA" } },
     };
     const scenes = switch (builtin.os.tag) {
         .macos => common.section(cx, "Metal", "The scene drawn with Metal, on the renderer's GPU where it can be; drag it to turn it", &.{

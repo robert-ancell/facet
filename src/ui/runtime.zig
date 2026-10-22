@@ -387,7 +387,7 @@ pub const WindowUi = struct {
     /// The menu or popup shown, if any.
     menu: ?struct {
         content: union(enum) {
-            items: []menu_mod.Item,
+            items: struct { list: []menu_mod.Item, arena: std.heap.ArenaAllocator },
             popup: PopupBuilder,
         },
         at: Point,
@@ -398,6 +398,8 @@ pub const WindowUi = struct {
     /// The menu and tooltip in popups of their own, when the window has
     /// them (`Window.openPopup`); otherwise they are drawn in the window.
     menu_popup: ?PopupLayer = null,
+    /// The size of the window the menu was last laid out in.
+    menu_window: Size = .{ .w = 0, .h = 0 },
     /// The tooltip in a popup of its own, when the window has them.
     tooltip_popup: ?PopupLayer = null,
     /// Where the menu built this frame wants to be, if in popups.
@@ -778,6 +780,7 @@ pub const WindowUi = struct {
             ui.menu_focus_pending = false;
             focus_mod.show(ui, f);
         };
+        if (ui.menu != null) if (ui.menu_root) |mr| menu_mod.Menu.focusPending(mr);
         ui.updateAccessibility();
     }
 
@@ -857,7 +860,7 @@ pub const WindowUi = struct {
         // In the theme of the widget that opened it.
         var cx: Context = .{ .ui = ui, .arena = ui.arena(), .theme_ptr = menu.owner.theme_ptr };
         const w = switch (menu.content) {
-            .items => |items| cx.make(menu_mod.Menu{ .items = items }),
+            .items => |items| cx.make(menu_mod.Menu{ .items = items.list }),
             .popup => |popup| popup.f(popup.ctx, &cx),
         };
         if (ui.menu_root) |m| if (m.widget.vtable != w.vtable) {
@@ -868,11 +871,18 @@ pub const WindowUi = struct {
         const n = ui.menu_root orelse return null;
         n.theme_ptr = menu.owner.theme_ptr;
         n.build(w);
+        ui.menu_window = window;
         const size = n.layout(.{ .max_w = window.w, .max_h = window.h });
-        n.offset = menu_mod.place(window, menu.at, size);
+        // The menu itself where `place` puts it, with its submenus about it.
+        var origin: Point = .{ 0, 0 };
+        if (n.widget.as(menu_mod.Menu) != null) {
+            const st = n.state(menu_mod.Menu.State);
+            n.offset = st.offset;
+            origin = st.origin;
+        } else n.offset = menu_mod.place(window, menu.at, size);
         if (ui.usesPopups()) ui.wanted_menu = .{
             .kind = .menu,
-            .anchor = .{ @intFromFloat(@round(menu.at[0])), @intFromFloat(@round(menu.at[1])), 1, 1 },
+            .anchor = .{ @intFromFloat(@round(menu.at[0] - origin[0])), @intFromFloat(@round(menu.at[1] - origin[1])), 1, 1 },
             .size = popupSize(size),
             .side = .below_right,
         };
@@ -1045,8 +1055,12 @@ pub const WindowUi = struct {
     pub fn openMenu(ui: *WindowUi, owner: *Node, at: Point, items: []const menu_mod.Item) void {
         ui.closeMenu();
         ui.focusMenuWhenMade();
-        const copy = ui.gpa.dupe(menu_mod.Item, items) catch return;
-        ui.menu = .{ .content = .{ .items = copy }, .at = at, .owner = owner };
+        var copy_arena: std.heap.ArenaAllocator = .init(ui.gpa);
+        const copy = menu_mod.cloneItems(copy_arena.allocator(), items) catch {
+            copy_arena.deinit();
+            return;
+        };
+        ui.menu = .{ .content = .{ .items = .{ .list = copy, .arena = copy_arena } }, .at = at, .owner = owner };
         ui.needs_frame = true;
     }
 
@@ -1062,7 +1076,10 @@ pub const WindowUi = struct {
     pub fn closeMenu(ui: *WindowUi) void {
         const menu = ui.menu orelse return;
         switch (menu.content) {
-            .items => |items| ui.gpa.free(items),
+            .items => |items| {
+                var copy_arena = items.arena;
+                copy_arena.deinit();
+            },
             .popup => {},
         }
         ui.menu = null;
@@ -1658,9 +1675,7 @@ pub const WindowUi = struct {
     fn overMenu(ui: *const WindowUi) bool {
         const m = ui.menu_root orelse return false;
         const pos = ui.pointer orelse return false;
-        const x = pos[0] - m.offset[0];
-        const y = pos[1] - m.offset[1];
-        return x >= 0 and y >= 0 and x < m.size.w and y < m.size.h;
+        return menu_mod.Menu.contains(m, pos);
     }
 
     /// Drops what refers to `n`, which is going: a menu it opened, a drag from it, a paste for it.
