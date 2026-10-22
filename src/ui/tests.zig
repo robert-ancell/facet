@@ -3130,3 +3130,42 @@ test "text measured again only when its text, font or width changes" {
     u.frame(600, 400, 5, app);
     try testing.expect(text.content.?.w > widest);
 }
+
+test "a badge sits on its child's corner as Material 3's does, the child's size the whole widget's" {
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    const S = struct {
+        fn build(cx: *Context) Widget {
+            return cx.make(ui.Padding{ .padding = .all(20), .child = cx.make(ui.Row{ .fill = false, .spacing = 40, .children = cx.makeAll(.{
+                ui.Badge{ .count = 3, .child = cx.make(ui.Icon{ .icon = .mail, .size = 24 }) },
+                ui.Badge{ .child = cx.make(ui.Icon{ .icon = .chat, .size = 24 }) },
+            }) }) });
+        }
+    };
+    u.frame(300, 200, 0, Root(S.build){});
+    var badges: std.ArrayList(*Node) = .empty;
+    defer badges.deinit(testing.allocator);
+    try findAll(u.root.?, ui.Badge, &badges);
+    try testing.expectEqual(@as(usize, 2), badges.items.len);
+    for (badges.items, 0..) |b, i| {
+        const box = b.child(0);
+        // As big as the icon, the badge not counted as overflowing it.
+        try testing.expectEqual(@as(f32, 24), box.size.w);
+        try testing.expectEqual(@as(f32, 24), box.size.h);
+        try testing.expect(!box.overflow.any());
+        const pill = box.child(1);
+        if (i == 0) {
+            // A pill 16 high, from 12 in from the icon's right edge, its
+            // bottom 14 below the icon's top (so 2 above it).
+            try testing.expectEqual(@as(f32, 16), pill.size.h);
+            try testing.expectEqual(@as(f32, 16), pill.size.w);
+            try testing.expectEqual(@as(f32, 12), pill.offset[0]);
+            try testing.expectEqual(@as(f32, -2), pill.offset[1]);
+        } else {
+            // A 6 px dot inside the icon's top-right corner.
+            try testing.expectEqual(@as(f32, 6), pill.size.w);
+            try testing.expectEqual(@as(f32, 18), pill.offset[0]);
+            try testing.expectEqual(@as(f32, 0), pill.offset[1]);
+        }
+    }
+}

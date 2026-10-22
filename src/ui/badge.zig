@@ -1,5 +1,9 @@
-//! Badge: a status dot or count indicator, shown standalone or
-//! at the top-right corner of a `child` widget.
+//! Badge: a status dot or count indicator, shown standalone or on the
+//! top-right corner of a `child` widget, as Material 3 has it: a 6 px dot
+//! inside the corner, or a pill at least 16 px across hanging over it (its
+//! left edge 12 px in from the child's right edge, its bottom 14 px below
+//! the child's top). The child's size is the whole widget's: the pill
+//! reaches beyond it.
 
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
@@ -31,7 +35,7 @@ const Color = gfx.Color;
 /// ```
 pub const Badge = struct {
     /// When set, shows the count (or "99+" above 99); when null and `label`
-    /// is empty, shows a small 8px status dot.
+    /// is empty, shows a small 6px status dot.
     count: ?u32 = null,
     /// Text to show instead of a count.
     label: []const u8 = "",
@@ -43,6 +47,10 @@ pub const Badge = struct {
     text_color: ?Color = null,
     /// What the badge is on the corner of.
     child: ?Widget = null,
+
+    /// The dot's size, and the pill's least width and height.
+    pub const dot_size = 6;
+    pub const pill_size = 16;
 
     pub fn build(self: *const Badge, cx: *Context) Widget {
         if (!self.show) return self.child orelse cx.make(SizedBox.empty);
@@ -65,18 +73,18 @@ pub const Badge = struct {
         if (text.len == 0) {
             return cx.make(RoundedBox{
                 .color = bg,
-                .radius = .all(4),
-                .child = cx.make(SizedBox{ .width = 8, .height = 8 }),
+                .radius = .all(dot_size / 2),
+                .child = cx.make(SizedBox{ .width = dot_size, .height = dot_size }),
             });
         }
 
         return cx.make(RoundedBox{
             .color = bg,
-            .radius = .all(9),
+            .radius = .all(pill_size / 2),
             .child = cx.make(ConstrainedBox{
-                .constraints = .{ .min_w = 18, .min_h = 18 },
+                .constraints = .{ .min_w = pill_size, .min_h = pill_size },
                 .child = cx.make(Padding{
-                    .padding = .symmetric(5, 1),
+                    .padding = .symmetric(4, 0),
                     .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = cx.make(Text{
                         .text = text,
                         .style = .{ .size = 11, .color = fg },
@@ -91,23 +99,26 @@ pub const Badge = struct {
 const BadgedChild = struct {
     children: []const Widget,
 
+    /// The child as it would be without the badge; the badge on its
+    /// top-right corner: the dot inside it, the pill hanging over it.
     pub fn layout(_: *const BadgedChild, n: *Node, c: Constraints) Size {
         if (n.childCount() < 2) return c.smallest();
         const ch = n.child(0);
         const pill = n.child(1);
-        const cs = ch.layout(c.loosen());
-        const ps = pill.layout(c.loosen());
-        const w = @max(cs.w, ps.w);
-        const h = @max(cs.h, ps.h);
-        ch.place(0, @max(0, h - cs.h));
-        pill.place(@max(0, w - ps.w), 0);
-        return c.constrain(.{ .w = w, .h = h });
+        const cs = ch.layout(c);
+        const ps = pill.layout(.unbounded);
+        ch.place(0, 0);
+        if (ps.w > Badge.dot_size + 0.5) {
+            pill.place(cs.w - 12, 14 - ps.h);
+        } else {
+            pill.place(cs.w - ps.w, 0);
+        }
+        pill.overhangs = true;
+        return cs;
     }
 
     pub fn minSize(_: *const BadgedChild, n: *Node, c: Constraints) Size {
         if (n.childCount() < 2) return c.smallest();
-        const cs = n.child(0).minSize(c.loosen());
-        const ps = n.child(1).minSize(c.loosen());
-        return c.constrain(.{ .w = @max(cs.w, ps.w), .h = @max(cs.h, ps.h) });
+        return n.child(0).minSize(c);
     }
 };

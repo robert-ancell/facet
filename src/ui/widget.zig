@@ -515,6 +515,10 @@ pub const WidgetNode = struct {
     content: ?Rect = null,
     /// How far its children (or content) reach past each edge.
     overflow: Edges = .{},
+    /// Placed partly outside its parent on purpose (a badge over an icon's
+    /// corner): not counted as the parent's overflow. Its parent's layout
+    /// sets it, each time it places it.
+    overhangs: bool = false,
     /// The frame it was last laid out in.
     laid_out: u64 = 0,
     /// Whatever the widget's layout wants to keep for its paint, in the
@@ -575,6 +579,7 @@ pub const WidgetNode = struct {
         for (n.children.items) |ch| {
             ch.offset = .{ 0, 0 };
             ch.size = .{};
+            ch.overhangs = false;
         }
         const want = if (n.widget.vtable.layout) |f| f(n.widget.ptr, n, c) else n.defaultLayout(c);
         n.size = c.sanitizeSize(want);
@@ -637,7 +642,7 @@ pub const WidgetNode = struct {
         var y0: f32 = 0;
         var x1 = n.size.w;
         var y1 = n.size.h;
-        for (n.children.items) |ch| if (ch.laid_out == n.laid_out) {
+        for (n.children.items) |ch| if (ch.laid_out == n.laid_out and !ch.overhangs) {
             x0 = @min(x0, ch.offset[0]);
             y0 = @min(y0, ch.offset[1]);
             x1 = @max(x1, ch.offset[0] + ch.size.w);
