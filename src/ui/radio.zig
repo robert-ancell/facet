@@ -22,9 +22,9 @@ const layerAlpha = control.layerAlpha;
 const target = control.target;
 
 /// One of a group of radio buttons: selected when `value` is the group's
-/// value, and selecting it reports `value`. its label is left to
-/// the text beside it (`RadioRow` has one), so name it for assistive
-/// technologies with `Accessible`.
+/// value, and selecting it reports `value`. It is usually used as part of a
+/// `RadioRow`, which adds text beside it that selects it too; name a radio
+/// button used without one for assistive technologies with `Accessible`.
 ///
 /// ![The Radio example](images/Radio.png)
 ///

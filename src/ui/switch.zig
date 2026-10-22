@@ -22,9 +22,10 @@ const target = control.target;
 
 const Color = gfx.Color;
 
-/// A switch on its own: its label is left to the text beside it
-/// (`SwitchRow` has one), so name it for assistive technologies with
-/// `Accessible`.
+/// A switch: a track with a handle that slides between off and on when it is
+/// pressed. It is usually used as part of a `SwitchRow`, which adds text
+/// beside it that toggles it too; name a switch used without one for
+/// assistive technologies with `Accessible`.
 ///
 /// ![The Switch example](images/Switch.png)
 ///

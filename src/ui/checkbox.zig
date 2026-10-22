@@ -19,9 +19,10 @@ const Latest = control.Latest;
 const layerAlpha = control.layerAlpha;
 const target = control.target;
 
-/// A checkbox on its own: its label is left to the text beside
-/// it (`CheckboxRow` has one), so name it for assistive technologies with
-/// `Accessible`.
+/// A checkbox: a box that is ticked or not, and is toggled by pressing it.
+/// It is usually used as part of a `CheckboxRow`, which adds text beside it
+/// that toggles it too; name a checkbox used without one for assistive
+/// technologies with `Accessible`.
 ///
 /// ![The Checkbox example](images/Checkbox.png)
 ///
