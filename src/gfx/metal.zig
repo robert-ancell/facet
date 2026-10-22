@@ -86,6 +86,7 @@ pub const MetalRenderer = struct {
     atlas: ?*atlas_mod.Atlas = null,
     atlas_stale: ?atlas_mod.Rect = null,
     images: std.AutoHashMapUnmanaged(u64, Id) = .empty,
+    image_use: renderer_mod.ImageUse = .{},
     /// The windows' frames (each kept from one to the next, so only what
     /// changed is drawn), by the layer each is shown in, and the texture
     /// `record` draws in for the CPU.
@@ -166,6 +167,7 @@ pub const MetalRenderer = struct {
         var it = r.images.valueIterator();
         while (it.next()) |tex| objc.release(tex.*);
         r.images.deinit(r.gpa);
+        r.image_use.deinit(r.gpa);
         r.scratch.deinit(r.gpa);
         inline for (@typeInfo(Pipelines).@"struct".field_names) |name| objc.release(@field(r.pipelines, name));
         for (&r.screens) |*sc| objc.release(sc.frame.tex);
@@ -364,18 +366,11 @@ pub const MetalRenderer = struct {
     }
 
     fn uploadImages(r: *MetalRenderer, canvases: []const *const Canvas) !void {
-        var used: std.AutoHashMapUnmanaged(u64, void) = .empty;
-        defer used.deinit(r.gpa);
-        for (canvases) |c| for (c.batches.items) |*b| {
-            const img = b.image orelse continue;
-            try used.put(r.gpa, img.id, {});
-        };
-        // Those no longer drawn go (the GPU keeps them while it uses them).
+        // Those no window draws any more go (the GPU keeps them while it uses them).
         var stale: std.ArrayList(u64) = .empty;
         defer stale.deinit(r.gpa);
-        var it = r.images.iterator();
-        while (it.next()) |e| if (!used.contains(e.key_ptr.*)) try stale.append(r.gpa, e.key_ptr.*);
-        for (stale.items) |id| objc.release(r.images.fetchRemove(id).?.value);
+        try r.image_use.update(r.gpa, canvases, &stale);
+        for (stale.items) |id| if (r.images.fetchRemove(id)) |e| objc.release(e.value);
 
         for (canvases) |c| for (c.batches.items) |*b| {
             const img = b.image orelse continue;

@@ -187,6 +187,36 @@ pub const max_uncovered = 64;
 /// drawn whole again when it is next drawn.
 pub const max_screens = 8;
 
+/// How many frames (of any window) a GPU renderer keeps an image's texture
+/// that none of them draws.
+pub const image_keep_frames = 60;
+
+/// When a GPU renderer last drew each image, by id: the windows of an App
+/// share the renderer and each draws only its own images, so a texture is
+/// let go only once no window has drawn it for `image_keep_frames`.
+pub const ImageUse = struct {
+    frame: u64 = 0,
+    last: std.AutoHashMapUnmanaged(u64, u64) = .empty,
+
+    pub fn deinit(u: *ImageUse, gpa: std.mem.Allocator) void {
+        u.last.deinit(gpa);
+    }
+
+    /// Notes the images `canvases` draw, in a frame of their own: the ids
+    /// of those no longer drawn go in `stale`, for the renderer to release
+    /// (if it has them).
+    pub fn update(u: *ImageUse, gpa: std.mem.Allocator, canvases: []const *const Canvas, stale: *std.ArrayList(u64)) !void {
+        u.frame += 1;
+        for (canvases) |c| for (c.batches.items) |*b| {
+            const img = b.image orelse continue;
+            try u.last.put(gpa, img.id, u.frame);
+        };
+        var it = u.last.iterator();
+        while (it.next()) |e| if (u.frame - e.value_ptr.* > image_keep_frames) try stale.append(gpa, e.key_ptr.*);
+        for (stale.items) |id| _ = u.last.remove(id);
+    }
+};
+
 /// What of `damage` is not filled by the GPU draws in `above` (the
 /// segments drawn after something), so that only it need be drawn: in
 /// `buf`, or `damage` itself if nothing is cut from it. If the pieces do

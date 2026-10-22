@@ -231,6 +231,7 @@ pub const OpenGlRenderer = struct {
     atlas: ?*atlas_mod.Atlas = null,
     atlas_stale: ?atlas_mod.Rect = null,
     images: std.AutoHashMapUnmanaged(u64, GLuint) = .empty,
+    image_use: renderer_mod.ImageUse = .{},
     rgba_scratch: std.ArrayList(u8) = .empty,
     fbo: GLuint = 0,
     fbo_tex: GLuint = 0,
@@ -356,6 +357,7 @@ pub const OpenGlRenderer = struct {
             r.gl.DeleteTextures(1, &t);
         }
         r.images.deinit(r.gpa);
+        r.image_use.deinit(r.gpa);
         r.rgba_scratch.deinit(r.gpa);
         r.pixel_scratch.deinit(r.gpa);
         if (r.fbo != 0) {
@@ -552,18 +554,12 @@ pub const OpenGlRenderer = struct {
     }
 
     fn uploadImages(r: *OpenGlRenderer, canvases: []const *const Canvas) !void {
-        var used: std.AutoHashMapUnmanaged(u64, void) = .empty;
-        defer used.deinit(r.gpa);
-        for (canvases) |c| for (c.batches.items) |*b| {
-            const img = b.image orelse continue;
-            try used.put(r.gpa, img.id, {});
-        };
-        var stale_ids: std.ArrayList(u64) = .empty;
-        defer stale_ids.deinit(r.gpa);
-        var it = r.images.iterator();
-        while (it.next()) |e| if (!used.contains(e.key_ptr.*)) try stale_ids.append(r.gpa, e.key_ptr.*);
-        for (stale_ids.items) |id| {
-            const tex = r.images.fetchRemove(id).?.value;
+        // Those no window draws any more go.
+        var stale: std.ArrayList(u64) = .empty;
+        defer stale.deinit(r.gpa);
+        try r.image_use.update(r.gpa, canvases, &stale);
+        for (stale.items) |id| {
+            const tex = (r.images.fetchRemove(id) orelse continue).value;
             const arr = [1]GLuint{tex};
             r.gl.DeleteTextures(1, &arr);
         }
@@ -1543,136 +1539,149 @@ pub const OffscreenContext = struct {
     }
 };
 
+/// An OpenGL that does nothing, for tests without a GPU.
+const MockGl = struct {
+    var next_id: GLuint = 1;
+    var draws: usize = 0;
+    var last_scissor: [4]GLint = .{ 0, 0, 0, 0 };
+    /// Textures there are, and made in all.
+    var textures: usize = 0;
+    var made_textures: usize = 0;
+
+    fn enable(_: GLenum) callconv(.c) void {}
+    fn disable(_: GLenum) callconv(.c) void {}
+    fn blendFuncSeparate(_: GLenum, _: GLenum, _: GLenum, _: GLenum) callconv(.c) void {}
+    fn viewport(_: GLint, _: GLint, _: GLsizei, _: GLsizei) callconv(.c) void {}
+    fn scissor(x: GLint, y: GLint, w: GLsizei, h: GLsizei) callconv(.c) void {
+        last_scissor = .{ x, y, w, h };
+    }
+    fn bindFramebuffer(_: GLenum, _: GLuint) callconv(.c) void {}
+    fn genFramebuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
+        for (0..@intCast(n)) |i| {
+            out[i] = next_id;
+            next_id += 1;
+        }
+    }
+    fn deleteFramebuffers(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
+    fn framebufferTexture2D(_: GLenum, _: GLenum, _: GLenum, _: GLuint, _: GLint) callconv(.c) void {}
+    fn readPixels(_: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLenum, _: GLenum, _: *anyopaque) callconv(.c) void {}
+    fn genBuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
+        for (0..@intCast(n)) |i| {
+            out[i] = next_id;
+            next_id += 1;
+        }
+    }
+    fn deleteBuffers(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
+    fn bindBuffer(_: GLenum, _: GLuint) callconv(.c) void {}
+    fn bufferData(_: GLenum, _: GLsizeiptr, _: ?*const anyopaque, _: GLenum) callconv(.c) void {}
+    fn bufferSubData(_: GLenum, _: GLintptr, _: GLsizeiptr, _: ?*const anyopaque) callconv(.c) void {}
+    fn genVertexArrays(n: GLsizei, out: [*]GLuint) callconv(.c) void {
+        for (0..@intCast(n)) |i| {
+            out[i] = next_id;
+            next_id += 1;
+        }
+    }
+    fn deleteVertexArrays(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
+    fn bindVertexArray(_: GLuint) callconv(.c) void {}
+    fn enableVertexAttribArray(_: GLuint) callconv(.c) void {}
+    fn vertexAttribPointer(_: GLuint, _: GLint, _: GLenum, _: GLboolean, _: GLsizei, _: ?*const anyopaque) callconv(.c) void {}
+    fn createShader(_: GLenum) callconv(.c) GLuint {
+        defer next_id += 1;
+        return next_id;
+    }
+    fn deleteShader(_: GLuint) callconv(.c) void {}
+    fn shaderSource(_: GLuint, _: GLsizei, _: [*]const [*:0]const u8, _: ?[*]const GLint) callconv(.c) void {}
+    fn compileShader(_: GLuint) callconv(.c) void {}
+    fn getShaderiv(_: GLuint, _: GLenum, out: *GLint) callconv(.c) void {
+        out.* = 1;
+    }
+    fn createProgram() callconv(.c) GLuint {
+        defer next_id += 1;
+        return next_id;
+    }
+    fn deleteProgram(_: GLuint) callconv(.c) void {}
+    fn attachShader(_: GLuint, _: GLuint) callconv(.c) void {}
+    fn linkProgram(_: GLuint) callconv(.c) void {}
+    fn getProgramiv(_: GLuint, _: GLenum, out: *GLint) callconv(.c) void {
+        out.* = 1;
+    }
+    fn useProgram(_: GLuint) callconv(.c) void {}
+    fn getUniformLocation(_: GLuint, _: [*:0]const u8) callconv(.c) GLint {
+        return 0;
+    }
+    fn uniform1i(_: GLint, _: GLint) callconv(.c) void {}
+    fn genTextures(n: GLsizei, out: [*]GLuint) callconv(.c) void {
+        textures += @intCast(n);
+        made_textures += @intCast(n);
+        for (0..@intCast(n)) |i| {
+            out[i] = next_id;
+            next_id += 1;
+        }
+    }
+    fn deleteTextures(n: GLsizei, _: [*]const GLuint) callconv(.c) void {
+        textures -= @intCast(n);
+    }
+    fn activeTexture(_: GLenum) callconv(.c) void {}
+    fn bindTexture(_: GLenum, _: GLuint) callconv(.c) void {}
+    fn pixelStorei(_: GLenum, _: GLint) callconv(.c) void {}
+    fn texParameteri(_: GLenum, _: GLenum, _: GLint) callconv(.c) void {}
+    fn texImage2D(_: GLenum, _: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLint, _: GLenum, _: GLenum, _: ?*const anyopaque) callconv(.c) void {}
+    fn texSubImage2D(_: GLenum, _: GLint, _: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLenum, _: GLenum, _: ?*const anyopaque) callconv(.c) void {}
+    fn drawArrays(_: GLenum, _: GLint, _: GLsizei) callconv(.c) void {
+        draws += 1;
+    }
+
+    fn procs() Procs {
+        return .{
+            .Enable = MockGl.enable,
+            .Disable = MockGl.disable,
+            .BlendFuncSeparate = MockGl.blendFuncSeparate,
+            .Viewport = MockGl.viewport,
+            .Scissor = MockGl.scissor,
+            .BindFramebuffer = MockGl.bindFramebuffer,
+            .GenFramebuffers = MockGl.genFramebuffers,
+            .DeleteFramebuffers = MockGl.deleteFramebuffers,
+            .FramebufferTexture2D = MockGl.framebufferTexture2D,
+            .ReadPixels = MockGl.readPixels,
+            .GenBuffers = MockGl.genBuffers,
+            .DeleteBuffers = MockGl.deleteBuffers,
+            .BindBuffer = MockGl.bindBuffer,
+            .BufferData = MockGl.bufferData,
+            .BufferSubData = MockGl.bufferSubData,
+            .GenVertexArrays = MockGl.genVertexArrays,
+            .DeleteVertexArrays = MockGl.deleteVertexArrays,
+            .BindVertexArray = MockGl.bindVertexArray,
+            .EnableVertexAttribArray = MockGl.enableVertexAttribArray,
+            .VertexAttribPointer = MockGl.vertexAttribPointer,
+            .CreateShader = MockGl.createShader,
+            .DeleteShader = MockGl.deleteShader,
+            .ShaderSource = MockGl.shaderSource,
+            .CompileShader = MockGl.compileShader,
+            .GetShaderiv = MockGl.getShaderiv,
+            .CreateProgram = MockGl.createProgram,
+            .DeleteProgram = MockGl.deleteProgram,
+            .AttachShader = MockGl.attachShader,
+            .LinkProgram = MockGl.linkProgram,
+            .GetProgramiv = MockGl.getProgramiv,
+            .UseProgram = MockGl.useProgram,
+            .GetUniformLocation = MockGl.getUniformLocation,
+            .Uniform1i = MockGl.uniform1i,
+            .GenTextures = MockGl.genTextures,
+            .DeleteTextures = MockGl.deleteTextures,
+            .ActiveTexture = MockGl.activeTexture,
+            .BindTexture = MockGl.bindTexture,
+            .PixelStorei = MockGl.pixelStorei,
+            .TexParameteri = MockGl.texParameteri,
+            .TexImage2D = MockGl.texImage2D,
+            .TexSubImage2D = MockGl.texSubImage2D,
+            .DrawArrays = MockGl.drawArrays,
+        };
+    }
+};
+
 test "OpenGlRenderer prepares batches, uploads atlas and images, and records draws" {
-    const MockGl = struct {
-        var next_id: GLuint = 1;
-        var draws: usize = 0;
-        var last_scissor: [4]GLint = .{ 0, 0, 0, 0 };
-
-        fn enable(_: GLenum) callconv(.c) void {}
-        fn disable(_: GLenum) callconv(.c) void {}
-        fn blendFuncSeparate(_: GLenum, _: GLenum, _: GLenum, _: GLenum) callconv(.c) void {}
-        fn viewport(_: GLint, _: GLint, _: GLsizei, _: GLsizei) callconv(.c) void {}
-        fn scissor(x: GLint, y: GLint, w: GLsizei, h: GLsizei) callconv(.c) void {
-            last_scissor = .{ x, y, w, h };
-        }
-        fn bindFramebuffer(_: GLenum, _: GLuint) callconv(.c) void {}
-        fn genFramebuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
-            for (0..@intCast(n)) |i| {
-                out[i] = next_id;
-                next_id += 1;
-            }
-        }
-        fn deleteFramebuffers(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
-        fn framebufferTexture2D(_: GLenum, _: GLenum, _: GLenum, _: GLuint, _: GLint) callconv(.c) void {}
-        fn readPixels(_: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLenum, _: GLenum, _: *anyopaque) callconv(.c) void {}
-        fn genBuffers(n: GLsizei, out: [*]GLuint) callconv(.c) void {
-            for (0..@intCast(n)) |i| {
-                out[i] = next_id;
-                next_id += 1;
-            }
-        }
-        fn deleteBuffers(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
-        fn bindBuffer(_: GLenum, _: GLuint) callconv(.c) void {}
-        fn bufferData(_: GLenum, _: GLsizeiptr, _: ?*const anyopaque, _: GLenum) callconv(.c) void {}
-        fn bufferSubData(_: GLenum, _: GLintptr, _: GLsizeiptr, _: ?*const anyopaque) callconv(.c) void {}
-        fn genVertexArrays(n: GLsizei, out: [*]GLuint) callconv(.c) void {
-            for (0..@intCast(n)) |i| {
-                out[i] = next_id;
-                next_id += 1;
-            }
-        }
-        fn deleteVertexArrays(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
-        fn bindVertexArray(_: GLuint) callconv(.c) void {}
-        fn enableVertexAttribArray(_: GLuint) callconv(.c) void {}
-        fn vertexAttribPointer(_: GLuint, _: GLint, _: GLenum, _: GLboolean, _: GLsizei, _: ?*const anyopaque) callconv(.c) void {}
-        fn createShader(_: GLenum) callconv(.c) GLuint {
-            defer next_id += 1;
-            return next_id;
-        }
-        fn deleteShader(_: GLuint) callconv(.c) void {}
-        fn shaderSource(_: GLuint, _: GLsizei, _: [*]const [*:0]const u8, _: ?[*]const GLint) callconv(.c) void {}
-        fn compileShader(_: GLuint) callconv(.c) void {}
-        fn getShaderiv(_: GLuint, _: GLenum, out: *GLint) callconv(.c) void {
-            out.* = 1;
-        }
-        fn createProgram() callconv(.c) GLuint {
-            defer next_id += 1;
-            return next_id;
-        }
-        fn deleteProgram(_: GLuint) callconv(.c) void {}
-        fn attachShader(_: GLuint, _: GLuint) callconv(.c) void {}
-        fn linkProgram(_: GLuint) callconv(.c) void {}
-        fn getProgramiv(_: GLuint, _: GLenum, out: *GLint) callconv(.c) void {
-            out.* = 1;
-        }
-        fn useProgram(_: GLuint) callconv(.c) void {}
-        fn getUniformLocation(_: GLuint, _: [*:0]const u8) callconv(.c) GLint {
-            return 0;
-        }
-        fn uniform1i(_: GLint, _: GLint) callconv(.c) void {}
-        fn genTextures(n: GLsizei, out: [*]GLuint) callconv(.c) void {
-            for (0..@intCast(n)) |i| {
-                out[i] = next_id;
-                next_id += 1;
-            }
-        }
-        fn deleteTextures(_: GLsizei, _: [*]const GLuint) callconv(.c) void {}
-        fn activeTexture(_: GLenum) callconv(.c) void {}
-        fn bindTexture(_: GLenum, _: GLuint) callconv(.c) void {}
-        fn pixelStorei(_: GLenum, _: GLint) callconv(.c) void {}
-        fn texParameteri(_: GLenum, _: GLenum, _: GLint) callconv(.c) void {}
-        fn texImage2D(_: GLenum, _: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLint, _: GLenum, _: GLenum, _: ?*const anyopaque) callconv(.c) void {}
-        fn texSubImage2D(_: GLenum, _: GLint, _: GLint, _: GLint, _: GLsizei, _: GLsizei, _: GLenum, _: GLenum, _: ?*const anyopaque) callconv(.c) void {}
-        fn drawArrays(_: GLenum, _: GLint, _: GLsizei) callconv(.c) void {
-            draws += 1;
-        }
-    };
-
-    var gl_renderer = try OpenGlRenderer.initWithProcs(std.testing.allocator, .{
-        .Enable = MockGl.enable,
-        .Disable = MockGl.disable,
-        .BlendFuncSeparate = MockGl.blendFuncSeparate,
-        .Viewport = MockGl.viewport,
-        .Scissor = MockGl.scissor,
-        .BindFramebuffer = MockGl.bindFramebuffer,
-        .GenFramebuffers = MockGl.genFramebuffers,
-        .DeleteFramebuffers = MockGl.deleteFramebuffers,
-        .FramebufferTexture2D = MockGl.framebufferTexture2D,
-        .ReadPixels = MockGl.readPixels,
-        .GenBuffers = MockGl.genBuffers,
-        .DeleteBuffers = MockGl.deleteBuffers,
-        .BindBuffer = MockGl.bindBuffer,
-        .BufferData = MockGl.bufferData,
-        .BufferSubData = MockGl.bufferSubData,
-        .GenVertexArrays = MockGl.genVertexArrays,
-        .DeleteVertexArrays = MockGl.deleteVertexArrays,
-        .BindVertexArray = MockGl.bindVertexArray,
-        .EnableVertexAttribArray = MockGl.enableVertexAttribArray,
-        .VertexAttribPointer = MockGl.vertexAttribPointer,
-        .CreateShader = MockGl.createShader,
-        .DeleteShader = MockGl.deleteShader,
-        .ShaderSource = MockGl.shaderSource,
-        .CompileShader = MockGl.compileShader,
-        .GetShaderiv = MockGl.getShaderiv,
-        .CreateProgram = MockGl.createProgram,
-        .DeleteProgram = MockGl.deleteProgram,
-        .AttachShader = MockGl.attachShader,
-        .LinkProgram = MockGl.linkProgram,
-        .GetProgramiv = MockGl.getProgramiv,
-        .UseProgram = MockGl.useProgram,
-        .GetUniformLocation = MockGl.getUniformLocation,
-        .Uniform1i = MockGl.uniform1i,
-        .GenTextures = MockGl.genTextures,
-        .DeleteTextures = MockGl.deleteTextures,
-        .ActiveTexture = MockGl.activeTexture,
-        .BindTexture = MockGl.bindTexture,
-        .PixelStorei = MockGl.pixelStorei,
-        .TexParameteri = MockGl.texParameteri,
-        .TexImage2D = MockGl.texImage2D,
-        .TexSubImage2D = MockGl.texSubImage2D,
-        .DrawArrays = MockGl.drawArrays,
-    });
+    MockGl.draws = 0;
+    var gl_renderer = try OpenGlRenderer.initWithProcs(std.testing.allocator, MockGl.procs());
     defer gl_renderer.deinit();
 
     var c = Canvas.init(std.testing.allocator);
@@ -1689,6 +1698,40 @@ test "OpenGlRenderer prepares batches, uploads atlas and images, and records dra
     try std.testing.expectEqual(@as(usize, 3), MockGl.draws);
     // OpenGL scissor flips Y: 100 - (20 + 30) = 50
     try std.testing.expectEqual([4]GLint{ 10, 50, 50, 30 }, MockGl.last_scissor);
+}
+
+test "OpenGlRenderer keeps the images of every window it draws" {
+    var gl_renderer = try OpenGlRenderer.initWithProcs(std.testing.allocator, MockGl.procs());
+    defer gl_renderer.deinit();
+    const px = [_]u32{ 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00 };
+    const pic_a = canvas_mod.Image.init(&px, 2, 2);
+    const pic_b = canvas_mod.Image.init(&px, 2, 2);
+    var a = Canvas.init(std.testing.allocator);
+    defer a.deinit();
+    a.begin(100, 100);
+    a.drawImage(&pic_a, .{ .x = 0, .y = 0, .w = 20, .h = 20 }, 1.0);
+    var b = Canvas.init(std.testing.allocator);
+    defer b.deinit();
+    b.begin(100, 100);
+    b.drawImage(&pic_b, .{ .x = 0, .y = 0, .w = 20, .h = 20 }, 1.0);
+
+    // Two windows drawing in turn, each its own image: each is uploaded once.
+    const made = MockGl.made_textures;
+    for (0..10) |_| {
+        try gl_renderer.prepare(&.{&a});
+        try gl_renderer.prepare(&.{&b});
+    }
+    try std.testing.expectEqual(made + 2, MockGl.made_textures);
+    try std.testing.expectEqual(2, gl_renderer.images.count());
+
+    // One no window draws goes, after a while (b drew last, a frame without it).
+    const textures = MockGl.textures;
+    for (1..renderer_mod.image_keep_frames) |_| try gl_renderer.prepare(&.{&b});
+    try std.testing.expectEqual(2, gl_renderer.images.count());
+    try gl_renderer.prepare(&.{&b});
+    try std.testing.expectEqual(1, gl_renderer.images.count());
+    try std.testing.expect(gl_renderer.images.contains(pic_b.id));
+    try std.testing.expectEqual(textures - 1, MockGl.textures);
 }
 
 test "OpenGlRenderer.initDefault renders 2D Canvas shapes and images into software.Image" {

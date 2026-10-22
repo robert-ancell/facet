@@ -585,6 +585,7 @@ pub const D3D11Renderer = struct {
     atlas: ?*atlas_mod.Atlas = null,
     atlas_stale: ?atlas_mod.Rect = null,
     images: std.AutoHashMapUnmanaged(u64, ImageTex) = .empty,
+    image_use: renderer_mod.ImageUse = .{},
     /// The window's frame (kept from one to the next, so only what changed
     /// is drawn), the texture `record` draws in for the CPU, and what
     /// either is read back to the CPU through.
@@ -686,6 +687,7 @@ pub const D3D11Renderer = struct {
             w32.release(img.tex);
         }
         r.images.deinit(r.gpa);
+        r.image_use.deinit(r.gpa);
         r.scratch.deinit(r.gpa);
         for (r.vs ++ r.layouts) |o| w32.release(o);
         for (r.ps) |o| w32.release(o);
@@ -837,19 +839,12 @@ pub const D3D11Renderer = struct {
     }
 
     fn uploadImages(r: *D3D11Renderer, canvases: []const *const Canvas) !void {
-        var used: std.AutoHashMapUnmanaged(u64, void) = .empty;
-        defer used.deinit(r.gpa);
-        for (canvases) |c| for (c.batches.items) |*b| {
-            const img = b.image orelse continue;
-            try used.put(r.gpa, img.id, {});
-        };
-        // Those no longer drawn go (the GPU keeps them while it uses them).
+        // Those no window draws any more go (the GPU keeps them while it uses them).
         var stale: std.ArrayList(u64) = .empty;
         defer stale.deinit(r.gpa);
-        var it = r.images.iterator();
-        while (it.next()) |e| if (!used.contains(e.key_ptr.*)) try stale.append(r.gpa, e.key_ptr.*);
+        try r.image_use.update(r.gpa, canvases, &stale);
         for (stale.items) |id| {
-            const t = r.images.fetchRemove(id).?.value;
+            const t = (r.images.fetchRemove(id) orelse continue).value;
             w32.release(t.srv);
             w32.release(t.tex);
         }

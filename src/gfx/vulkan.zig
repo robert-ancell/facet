@@ -275,6 +275,7 @@ pub const VulkanRenderer = struct {
     atlas_stale: ?atlas_mod.Rect = null,
     atlas_set: VkDescriptorSet = VK_NULL_HANDLE,
     images: std.AutoHashMapUnmanaged(u64, VkDescriptorSet) = .empty,
+    image_use: renderer_mod.ImageUse = .{},
 
     /// Initializes a self-contained Vulkan 1.1+ 2D renderer that compiles SPIR-V
     /// pipelines (`shape`, `solid`, `opaque`, `text`, `image`), manages glyph
@@ -337,6 +338,7 @@ pub const VulkanRenderer = struct {
             while (it.next()) |id| rel(r.textures.ctx, id.*);
         }
         r.images.deinit(r.gpa);
+        r.image_use.deinit(r.gpa);
         r.destroyVbo();
         r.shader_modules.deinit(r.device, &r.vk);
         if (r.owned) |owned| {
@@ -443,18 +445,12 @@ pub const VulkanRenderer = struct {
     }
 
     fn uploadImages(r: *VulkanRenderer, canvases: []const *const Canvas) !void {
-        var used: std.AutoHashMapUnmanaged(u64, void) = .empty;
-        defer used.deinit(r.gpa);
-        for (canvases) |c| for (c.batches.items) |*b| {
-            const img = b.image orelse continue;
-            try used.put(r.gpa, img.id, {});
-        };
-        var stale_ids: std.ArrayList(u64) = .empty;
-        defer stale_ids.deinit(r.gpa);
-        var it = r.images.iterator();
-        while (it.next()) |e| if (!used.contains(e.key_ptr.*)) try stale_ids.append(r.gpa, e.key_ptr.*);
-        for (stale_ids.items) |id| {
-            _ = r.images.remove(id);
+        // Those no window draws any more go.
+        var stale: std.ArrayList(u64) = .empty;
+        defer stale.deinit(r.gpa);
+        try r.image_use.update(r.gpa, canvases, &stale);
+        for (stale.items) |id| {
+            if (!r.images.remove(id)) continue;
             if (r.textures.releaseImage) |rel| rel(r.textures.ctx, id);
         }
 
