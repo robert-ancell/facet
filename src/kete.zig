@@ -103,8 +103,7 @@ pub const VulkanArea = ui.VulkanArea;
 pub const MetalArea = ui.MetalArea;
 pub const D3D11Area = ui.D3D11Area;
 
-pub const Window = window.Window;
-pub const WindowControls = window.WindowControls;
+pub const Window = ui.Window;
 
 test {
     _ = ui;

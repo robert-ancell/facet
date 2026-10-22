@@ -2796,14 +2796,14 @@ test "an app's windows are closed as their options say, and it quits as its own 
     const Seen = struct {
         quit_asked: u32 = 0,
         last_closed: u32 = 0,
-        close_asked: ?*ui.App.Window = null,
+        close_asked: ?*ui.Window = null,
         fn quitAsked(s: *@This()) void {
             s.quit_asked += 1;
         }
         fn lastClosed(s: *@This()) void {
             s.last_closed += 1;
         }
-        fn closeAsked(s: *@This(), w: *ui.App.Window) void {
+        fn closeAsked(s: *@This(), w: *ui.Window) void {
             s.close_asked = w;
         }
     };

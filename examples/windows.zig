@@ -10,8 +10,8 @@ const kete = @import("kete");
 const Windows = struct {
     gpa: std.mem.Allocator,
     app: *kete.App,
-    main: *kete.App.Window = undefined,
-    others: std.ArrayList(*kete.App.Window) = .empty,
+    main: *kete.Window = undefined,
+    others: std.ArrayList(*kete.Window) = .empty,
     opened: u32 = 0,
 
     fn open(w: *Windows) void {
@@ -26,7 +26,7 @@ const Windows = struct {
         w.others.append(w.gpa, win) catch win.destroy();
     }
 
-    fn closeMain(w: *Windows, _: *kete.App.Window) void {
+    fn closeMain(w: *Windows, _: *kete.Window) void {
         w.app.quit();
     }
 

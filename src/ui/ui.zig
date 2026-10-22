@@ -198,6 +198,8 @@ pub const Painter = painter.Painter;
 pub const WindowUi = runtime.WindowUi;
 pub const SharedResources = runtime.SharedResources;
 pub const App = runtime.App;
+/// An app's window (see `App.openWindow`).
+pub const Window = runtime.App.Window;
 pub const Clipboard = runtime.Clipboard;
 pub const Waker = runtime.Waker;
 

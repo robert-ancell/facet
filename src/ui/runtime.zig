@@ -2129,6 +2129,8 @@ pub const App = struct {
     /// destroyed (`destroy`, or `App.deinit`).
     pub const Window = struct {
         app: *App,
+        /// The window system's window, for what a custom backend adds (the
+        /// methods above do what an app needs of it).
         win: window_mod.Window,
         /// Whether `close` closes `win` (it was opened by `openWindow`).
         owns_window: bool = false,
@@ -2190,10 +2192,80 @@ pub const App = struct {
         }
 
         /// Changes the title the system shows for it.
-        pub fn setTitle(w: *Window, title: []const u8) void {
+        pub fn setTitle(w: *Window, text: []const u8) void {
             if (w.closed) return;
-            w.win.setTitle(title);
+            w.win.setTitle(text);
             w.dirty = true;
+        }
+
+        /// The title the system shows for it ("" if it has none, or it is
+        /// closed).
+        pub fn title(w: *const Window) []const u8 {
+            if (w.closed) return "";
+            return w.win.title();
+        }
+
+        /// Its size in logical pixels, `[width, height]` (zeros once it is
+        /// closed).
+        pub fn size(w: *const Window) [2]u32 {
+            if (w.closed) return .{ 0, 0 };
+            return w.win.size();
+        }
+
+        /// How many pixels each of its logical pixels is, on its display (1
+        /// once it is closed).
+        pub fn scale(w: *const Window) u32 {
+            if (w.closed) return 1;
+            return w.win.scale();
+        }
+
+        /// Sets the smallest size, in logical pixels, the user can resize it to.
+        pub fn setMinSize(w: *Window, width: u32, height: u32) void {
+            if (w.closed) return;
+            w.win.setMinSize(width, height);
+        }
+
+        /// Whether it fills the screen.
+        pub fn isMaximized(w: *const Window) bool {
+            return !w.closed and w.win.isMaximized();
+        }
+
+        /// Whether the system can maximize it.
+        pub fn canMaximize(w: *const Window) bool {
+            return !w.closed and w.win.canMaximize();
+        }
+
+        /// Makes it fill the screen (`on`), or go back to its own size.
+        pub fn setMaximized(w: *Window, on: bool) void {
+            if (w.closed) return;
+            w.win.setMaximized(on);
+        }
+
+        /// Whether the system can minimize it.
+        pub fn canMinimize(w: *const Window) bool {
+            return !w.closed and w.win.canMinimize();
+        }
+
+        /// Hides it (to the dock or task bar); the system shows it again.
+        pub fn setMinimized(w: *Window) void {
+            if (w.closed) return;
+            w.win.setMinimized();
+        }
+
+        /// Whether it covers the whole display.
+        pub fn isFullscreen(w: *const Window) bool {
+            return !w.closed and w.win.isFullscreen();
+        }
+
+        /// Whether the system can make it fullscreen.
+        pub fn canFullscreen(w: *const Window) bool {
+            return !w.closed and w.win.canFullscreen();
+        }
+
+        /// Makes it cover the whole display (`on`), or go back to its own size.
+        pub fn setFullscreen(w: *Window, on: bool) void {
+            if (w.closed) return;
+            w.win.setFullscreen(on);
         }
 
         /// Draws `root` from now on.
@@ -2227,11 +2299,11 @@ pub const App = struct {
                 if (w.closed) w.release();
             }
             w.dirty = false;
-            const size = w.win.size();
+            const extent = w.win.size();
             const now_ns = w.ui.clockNs();
             const target_ns = w.win.nextPresentationNs(now_ns);
             const begun = w.ui.clockNs();
-            w.root.frame(w.root.ptr, w.ui, size[0], size[1], target_ns);
+            w.root.frame(w.root.ptr, w.ui, extent[0], extent[1], target_ns);
             const built = w.ui.clockNs();
             w.win.setPresentationTime(target_ns);
             const clear = w.clear_color orelse w.ui.theme.surface.toArgb();
