@@ -1,5 +1,5 @@
 //! `WindowUi`: a window's UI, which runs its widget tree (what the app's
-//! windows share is `Shared`). Each frame it builds the root widget
+//! windows share is `SharedResources`). Each frame it builds the root widget
 //! (keeping the nodes and state that still match), lays it out to the
 //! window's size, and paints it; `render` then draws it through the active `gfx.Renderer`
 //! (Software, OpenGL, Vulkan, or a custom backend).
@@ -91,7 +91,7 @@ pub const Clipboard = struct {
 /// for work done in the background (a fetch started with `io.async`, say),
 /// once it has put what it made where the UI will find it. It neither
 /// blocks nor allocates, so it can be used from anywhere. From
-/// `Shared.waker` (an `App`'s `shared`) or `WindowUi.waker`; good for as long as
+/// `App.waker` or `WindowUi.waker`; good for as long as
 /// that is.
 pub const Waker = struct {
     wake_: ?sys.Wake = null,
@@ -107,7 +107,7 @@ pub const Waker = struct {
 /// fonts, the glyph atlas, the renderer, the images loaded, what wakes the
 /// UI (`Waker`), the accessibility bus, and the clipboard within the app.
 /// It does its I/O, and tells the time, through `io` (the app's).
-pub const Shared = struct {
+pub const SharedResources = struct {
     gpa: std.mem.Allocator,
     io: std.Io,
     /// Text is drawn in it; without one, text takes no space.
@@ -146,8 +146,8 @@ pub const Shared = struct {
     /// renderer is the Metal one (on macOS), the Direct3D 11 one (on
     /// Windows), or the Vulkan one, then OpenGL (elsewhere), or else the
     /// software one.
-    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*Shared {
-        const s = try gpa.create(Shared);
+    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*SharedResources {
+        const s = try gpa.create(SharedResources);
         errdefer gpa.destroy(s);
         s.* = .{
             .gpa = gpa,
@@ -189,14 +189,14 @@ pub const Shared = struct {
 
     /// What the app's windows share, using the bundled default Fira Sans and
     /// Twemoji Mozilla fallback fonts.
-    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*Shared {
+    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*SharedResources {
         return createWithFontData(gpa, io, font.default_font_data);
     }
 
     /// What the app's windows share, drawing text in the OpenType or
     /// TrueType font in `data` (which must outlive it), falling back to the
     /// bundled Twemoji Mozilla font for emoji.
-    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*Shared {
+    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*SharedResources {
         const s = try create(gpa, io, null);
         errdefer s.destroy();
         s.owned_font = try font.Font.init(data);
@@ -208,7 +208,7 @@ pub const Shared = struct {
     }
 
     /// Lets it go: the windows' UIs must be destroyed first.
-    pub fn destroy(s: *Shared) void {
+    pub fn destroy(s: *SharedResources) void {
         std.debug.assert(s.uis.items.len == 0);
         s.uis.deinit(s.gpa);
         s.images.deinit();
@@ -221,7 +221,7 @@ pub const Shared = struct {
     }
 
     /// A window's UI, drawing with what is shared (destroy it before this).
-    pub fn createWindowUi(s: *Shared) !*WindowUi {
+    pub fn createWindowUi(s: *SharedResources) !*WindowUi {
         const ui = try s.gpa.create(WindowUi);
         errdefer s.gpa.destroy(ui);
         ui.* = .{
@@ -245,7 +245,7 @@ pub const Shared = struct {
     /// `OpenGlRenderer.renderer()`, `VulkanRenderer.renderer()`, or
     /// `gfx.Renderer.of(&my_backend)`), which is its to deinit if
     /// `take_ownership`.
-    pub fn attachRenderer(s: *Shared, r: gfx.Renderer, take_ownership: bool) void {
+    pub fn attachRenderer(s: *SharedResources, r: gfx.Renderer, take_ownership: bool) void {
         if (s.owns_renderer) if (s.renderer) |old| old.deinit();
         s.vulkan_renderer = null;
         s.opengl_renderer = null;
@@ -258,19 +258,19 @@ pub const Shared = struct {
 
     /// Something to wake the UI for a frame from another thread or task
     /// (it only marks it to be drawn if there are no fds left).
-    pub fn waker(s: *Shared) Waker {
+    pub fn waker(s: *SharedResources) Waker {
         if (s.wake == null) s.wake = sys.Wake.create() catch return .{ .woken = &s.woken };
         return .{ .wake_ = s.wake, .woken = &s.woken };
     }
 
     /// What is read when a `Waker` wakes the UI (to wait on with the
     /// windows'), once there is a waker.
-    pub fn wakeSource(s: *Shared) ?window_mod.Source {
+    pub fn wakeSource(s: *SharedResources) ?window_mod.Source {
         return if (s.wake) |*x| .ofWake(x) else null;
     }
 
     /// Takes the wakes since the last time; true if there were any.
-    pub fn takeWakes(s: *Shared) bool {
+    pub fn takeWakes(s: *SharedResources) bool {
         const drained = if (s.wake) |*w| w.drain() else false;
         return s.woken.swap(false, .acq_rel) or drained;
     }
@@ -279,9 +279,9 @@ pub const Shared = struct {
 /// A window's UI: its widget tree, focus, input, menus and frames (see the
 /// top of this file).
 pub const WindowUi = struct {
-    /// What the app's windows share (see `Shared`), and whether this UI
+    /// What the app's windows share (see `SharedResources`), and whether this UI
     /// made it for itself (`create`: a UI of its own, with no others).
-    shared: *Shared,
+    shared: *SharedResources,
     owns_shared: bool = false,
     /// From `shared`, which they are: what allocates, and what does the
     /// I/O and tells the time (the app's `Io`).
@@ -444,30 +444,30 @@ pub const WindowUi = struct {
     };
 
     /// Creates a `WindowUi` of its own (a window's, with no other windows to
-    /// share with: see `Shared.createWindowUi`) with the given `font` (`null` for
+    /// share with: see `SharedResources.createWindowUi`) with the given `font` (`null` for
     /// no text font; icons still use the bundled Material Icons font),
-    /// drawn with the best renderer there is (see `Shared.create`).
+    /// drawn with the best renderer there is (see `SharedResources.create`).
     ///
     /// It does its I/O, and tells the time, through `io`: the app's (as
     /// from `std.process.Init`).
     pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*WindowUi {
-        return standalone(try Shared.create(gpa, io, f));
+        return standalone(try SharedResources.create(gpa, io, f));
     }
 
     /// Creates a `WindowUi` of its own using the bundled default Fira Sans and
     /// Twemoji Mozilla fallback fonts.
     pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*WindowUi {
-        return standalone(try Shared.createDefault(gpa, io));
+        return standalone(try SharedResources.createDefault(gpa, io));
     }
 
     /// Creates a `WindowUi` of its own drawing text in the OpenType or TrueType
     /// font in `data` (which must outlive it), falling back to the bundled
     /// Twemoji Mozilla font for emoji.
     pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*WindowUi {
-        return standalone(try Shared.createWithFontData(gpa, io, data));
+        return standalone(try SharedResources.createWithFontData(gpa, io, data));
     }
 
-    fn standalone(shared: *Shared) !*WindowUi {
+    fn standalone(shared: *SharedResources) !*WindowUi {
         errdefer shared.destroy();
         const ui = try shared.createWindowUi();
         ui.owns_shared = true;
@@ -516,7 +516,7 @@ pub const WindowUi = struct {
 
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
     /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`): for
-    /// all the app's windows (see `Shared.attachRenderer`).
+    /// all the app's windows (see `SharedResources.attachRenderer`).
     pub fn attachRenderer(ui: *WindowUi, r: gfx.Renderer, take_ownership: bool) void {
         ui.shared.attachRenderer(r, take_ownership);
     }
@@ -1640,7 +1640,7 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
 
 /// A native toolkit app: its windows (the system's own, opened on a
 /// `window.NativeDisplay`, unless it is given a display), each with its
-/// `WindowControls` and a `WindowUi`, and what they share (`Shared`: the font, the
+/// `WindowControls` and a `WindowUi`, and what they share (`SharedResources`: the font, the
 /// renderer, the theme). The app runs them in a loop of its own:
 ///
 ///     const app = try App.init(gpa, io, environ, .{ .on_quit_request = .quit, .on_last_window_closed = .quit });
@@ -1661,7 +1661,7 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
 /// It does its I/O, waits, and tells the time through the `std.Io` it is
 /// given (the app's, as from `std.process.Init`), so other tasks on it go
 /// on while `step` waits: a fetch started with `io.async`, which wakes
-/// the UI (`Shared.waker`) when it is done.
+/// the UI (`SharedResources.waker`) when it is done.
 pub const App = struct {
     gpa: std.mem.Allocator,
     io: std.Io,
@@ -1669,7 +1669,7 @@ pub const App = struct {
     display: window_mod.Display,
     /// Whether `deinit` closes `display` (it was opened by `init`).
     owns_display: bool = false,
-    shared: *Shared,
+    shared: *SharedResources,
     /// Its windows, open and closed (until destroyed).
     windows: std.ArrayList(*Window) = .empty,
     /// How many of them are open, and whether the last was closed since
@@ -1785,7 +1785,7 @@ pub const App = struct {
         const owns_display = options.display == null;
         const display: window_mod.Display = options.display orelse .of(try window_mod.NativeDisplay.open(gpa, io, environ));
         errdefer if (owns_display) display.close();
-        const shared = if (options.font_data) |data| try Shared.createWithFontData(gpa, io, data) else try Shared.createDefault(gpa, io);
+        const shared = if (options.font_data) |data| try SharedResources.createWithFontData(gpa, io, data) else try SharedResources.createDefault(gpa, io);
         errdefer shared.destroy();
         const a = try gpa.create(App);
         a.* = .{
@@ -1803,6 +1803,12 @@ pub const App = struct {
         };
         _ = a.theme_watch.changed(io);
         return a;
+    }
+
+    /// Something to wake the app's windows for a frame from another thread or
+    /// task (see `Waker`).
+    pub fn waker(a: *App) Waker {
+        return a.shared.waker();
     }
 
     /// Closes its windows (and frees their handles), and lets it go.

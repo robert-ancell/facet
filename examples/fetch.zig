@@ -1,7 +1,7 @@
 //! Fetching in the background on the app's `std.Io` (`zig build run-fetch`):
 //! a button starts an HTTP request with `io.async`, which runs while the
 //! UI waits in `app.step` (both on the same `Io`). When it is done it puts
-//! what it found where the UI will look, and wakes the UI (`Shared.waker`)
+//! what it found where the UI will look, and wakes the UI (`App.waker`)
 //! to show it.
 
 const std = @import("std");
@@ -107,7 +107,7 @@ pub fn main(init: std.process.Init) !void {
         .on_last_window_closed = .quit,
     });
     defer app.deinit();
-    var fetch: Fetch = .{ .io = init.io, .gpa = init.gpa, .waker = app.shared.waker() };
+    var fetch: Fetch = .{ .io = init.io, .gpa = init.gpa, .waker = app.waker() };
     defer fetch.deinit();
 
     const root = FetchView{ .fetch = &fetch };

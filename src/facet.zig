@@ -19,7 +19,6 @@ pub const font = @import("font");
 pub const window = @import("window");
 
 pub const WindowUi = ui.WindowUi;
-pub const Shared = ui.Shared;
 pub const App = ui.App;
 pub const Widget = ui.Widget;
 pub const Context = ui.Context;
