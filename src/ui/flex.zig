@@ -54,9 +54,52 @@ pub const CrossAxisAlignment = enum {
 };
 
 /// Children one after another, left to right.
-pub const Row = Flex(.horizontal);
+pub const Row = struct {
+    /// The widgets, from left to right.
+    children: []const Widget = &.{},
+    /// Where the children are along the row, when they take up less room
+    /// than it has.
+    main_axis_alignment: MainAxisAlignment = .start,
+    /// Where each child is up and down in the row.
+    cross_axis_alignment: CrossAxisAlignment = .center,
+    /// Whether it takes all the width there is (if that is bounded), or only
+    /// as much as its children need.
+    fill: bool = true,
+    /// Space between children.
+    spacing: f32 = 0,
+
+    pub fn layout(self: *const Row, n: *Node, c: Constraints) Size {
+        return FlexLayout(.horizontal).layout(self, n, c);
+    }
+
+    pub fn minSize(self: *const Row, n: *Node, c: Constraints) Size {
+        return FlexLayout(.horizontal).minSize(self, n, c);
+    }
+};
+
 /// Children one after another, top to bottom.
-pub const Column = Flex(.vertical);
+pub const Column = struct {
+    /// The widgets, from top to bottom.
+    children: []const Widget = &.{},
+    /// Where the children are down the column, when they take up less room
+    /// than it has.
+    main_axis_alignment: MainAxisAlignment = .start,
+    /// Where each child is across the column.
+    cross_axis_alignment: CrossAxisAlignment = .center,
+    /// Whether it takes all the height there is (if that is bounded), or
+    /// only as much as its children need.
+    fill: bool = true,
+    /// Space between children.
+    spacing: f32 = 0,
+
+    pub fn layout(self: *const Column, n: *Node, c: Constraints) Size {
+        return FlexLayout(.vertical).layout(self, n, c);
+    }
+
+    pub fn minSize(self: *const Column, n: *Node, c: Constraints) Size {
+        return FlexLayout(.vertical).minSize(self, n, c);
+    }
+};
 
 /// A direction of layout: a `Row` is laid out along `.horizontal` and a
 /// `Column` along `.vertical`, and a `Divider` runs along one.
@@ -67,20 +110,10 @@ pub const Axis = enum {
     vertical,
 };
 
-/// What `Row` and `Column` are: children one after another along `axis`.
-fn Flex(comptime axis: Axis) type {
+/// How a `Row` (along `.horizontal`) or a `Column` (along `.vertical`) lays
+/// out its children, which is the same along either axis.
+fn FlexLayout(comptime axis: Axis) type {
     return struct {
-        const Self = @This();
-
-        children: []const Widget = &.{},
-        main_axis_alignment: MainAxisAlignment = .start,
-        cross_axis_alignment: CrossAxisAlignment = .center,
-        /// Whether it takes all the room there is along its main axis (if that
-        /// is bounded), or only as much as its children need.
-        fill: bool = true,
-        /// Space between children.
-        spacing: f32 = 0,
-
         fn main(s: Size) f32 {
             return if (axis == .horizontal) s.w else s.h;
         }
@@ -105,7 +138,7 @@ fn Flex(comptime axis: Axis) type {
             return if (std.math.isFinite(e.flex) and e.flex > 0) e.flex else 0;
         }
 
-        pub fn layout(self: *const Self, n: *Node, c: Constraints) Size {
+        fn layout(self: anytype, n: *Node, c: Constraints) Size {
             const max_main = if (axis == .horizontal) c.max_w else c.max_h;
             const min_main = if (axis == .horizontal) c.min_w else c.min_h;
             const max_cross = if (axis == .horizontal) c.max_h else c.max_w;
@@ -181,7 +214,7 @@ fn Flex(comptime axis: Axis) type {
             return sized(main_size, final_cross);
         }
 
-        pub fn minSize(self: *const Self, n: *Node, c: Constraints) Size {
+        fn minSize(self: anytype, n: *Node, c: Constraints) Size {
             const max_main = if (axis == .horizontal) c.max_w else c.max_h;
             const min_main = if (axis == .horizontal) c.min_w else c.min_h;
             const max_cross = if (axis == .horizontal) c.max_h else c.max_w;
