@@ -9,7 +9,7 @@
 const std = @import("std");
 const math = std.math;
 
-pub const LatLon = struct {
+pub const MapCoordinate = struct {
     /// Degrees north (negative: south).
     lat: f64 = 0,
     /// Degrees east (negative: west).
@@ -18,7 +18,7 @@ pub const LatLon = struct {
 
 /// What a map view shows: the place at its centre, and how close.
 pub const Camera = struct {
-    center: LatLon = .{},
+    center: MapCoordinate = .{},
     /// At zoom z the flat map is 256 × 2^z pixels across, and the globe
     /// as far round its equator.
     zoom: f64 = 2,
@@ -51,13 +51,13 @@ const deg = math.pi / 180.0;
 
 /// Where `p` is on the flat map: 0 to 1 from west to east, and from north
 /// to south.
-pub fn toWorld(p: LatLon) [2]f64 {
+pub fn toWorld(p: MapCoordinate) [2]f64 {
     const lat = math.clamp(p.lat, -max_lat, max_lat) * deg;
     return .{ (p.lon + 180) / 360, (1 - @log(@tan(lat) + 1 / @cos(lat)) / math.pi) / 2 };
 }
 
 /// The place at `w` on the flat map (east or west of it are copies).
-pub fn fromWorld(w: [2]f64) LatLon {
+pub fn fromWorld(w: [2]f64) MapCoordinate {
     return .{ .lat = math.atan(math.sinh(math.pi * (1 - 2 * w[1]))) / deg, .lon = wrapLon(w[0] * 360 - 180) };
 }
 
@@ -85,7 +85,7 @@ pub fn globeUntil(size: [2]f64) f64 {
 /// the day. Within a fraction of a degree (the usual low-precision
 /// formulas: the sun's mean orbit, its centre's equation and sidereal
 /// time).
-pub fn subsolarPoint(unix_seconds: f64) LatLon {
+pub fn subsolarPoint(unix_seconds: f64) MapCoordinate {
     // Days since noon on the 1st of January 2000 (J2000).
     const d = unix_seconds / 86400 - 10957.5;
     const g = (357.529 + 0.98560028 * d) * deg;
@@ -100,7 +100,7 @@ pub fn subsolarPoint(unix_seconds: f64) LatLon {
 
 /// Which way `p` is from the centre of the earth (a unit vector: x
 /// towards 90°E, y towards the north pole, z towards 0°, 0°).
-pub fn direction(p: LatLon) [3]f64 {
+pub fn direction(p: MapCoordinate) [3]f64 {
     const lat = p.lat * deg;
     const lon = p.lon * deg;
     return .{ @cos(lat) * @sin(lon), @sin(lat), @cos(lat) * @cos(lon) };
@@ -182,7 +182,7 @@ pub const View = struct {
 
     /// Where `p` shows (the copy of it nearest the centre, on the flat
     /// map).
-    pub fn projectLatLon(v: *const View, p: LatLon) Projected {
+    pub fn projectCoordinate(v: *const View, p: MapCoordinate) Projected {
         var w = toWorld(p);
         w[0] -= @round(w[0] - v.center[0]);
         return v.project(w);
@@ -218,7 +218,7 @@ pub const View = struct {
 
     /// The place at `q` on the globe in the camera's view (a unit vector:
     /// see `onGlobe`).
-    pub fn placeAt(v: *const View, q: [3]f64) LatLon {
+    pub fn placeAt(v: *const View, q: [3]f64) MapCoordinate {
         const y = q[1] * v.cos_lat + q[2] * v.sin_lat;
         const z = -q[1] * v.sin_lat + q[2] * v.cos_lat;
         return .{
@@ -239,7 +239,7 @@ pub const View = struct {
 
     /// What is at `s` in the view: null off the globe, or beyond the flat
     /// map's top or bottom.
-    pub fn unproject(v: *const View, s: [2]f64) ?LatLon {
+    pub fn unproject(v: *const View, s: [2]f64) ?MapCoordinate {
         if (v.flat >= 1) {
             const w: [2]f64 = .{ v.center[0] + (s[0] - v.size[0] / 2) / v.world, v.center[1] + (s[1] - v.size[1] / 2) / v.world };
             if (w[1] < 0 or w[1] > 1) return null;
@@ -263,7 +263,7 @@ pub const View = struct {
         return fromWorld(w);
     }
 
-    fn unprojectGlobe(v: *const View, s: [2]f64) ?LatLon {
+    fn unprojectGlobe(v: *const View, s: [2]f64) ?MapCoordinate {
         // Where the ray from the camera through `s` first meets the globe.
         const d: [3]f64 = .{ (s[0] - v.size[0] / 2) / v.focal, -(s[1] - v.size[1] / 2) / v.focal, -1 };
         const a = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
@@ -293,7 +293,7 @@ fn centered(camera: Camera, w: [2]f64) Camera {
 /// `place` at `at` in the view: what dragging the map does, the place
 /// grabbed staying under the pointer. Off the globe's edge, as near as it
 /// can be.
-pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: LatLon, at_in: [2]f64) Camera {
+pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: MapCoordinate, at_in: [2]f64) Camera {
     const v = View.init(camera, size, projection);
     var at = at_in;
     if (v.flat <= 0) {
@@ -361,14 +361,14 @@ test "what shows where is what is there, on the globe, the flat map and between"
     for ([_]f64{ 1.5, 3, 5.5, 8 }) |zoom| {
         const v = View.init(.{ .center = .{ .lat = 40, .lon = -100 }, .zoom = zoom }, size, .globe);
         // The centre is at the centre.
-        const c = v.projectLatLon(v.camera.center);
+        const c = v.projectCoordinate(v.camera.center);
         try testing.expect(c.visible);
         try testing.expectApproxEqAbs(400, c.pos[0], 1e-6);
         try testing.expectApproxEqAbs(240, c.pos[1], 1e-6);
         // And what is shown somewhere is what shows there.
         for ([_][2]f64{ .{ 380, 250 }, .{ 450, 200 }, .{ 390, 300 } }) |s| {
             const p = v.unproject(s) orelse return error.TestUnexpectedResult;
-            const back = v.projectLatLon(p);
+            const back = v.projectCoordinate(p);
             try testing.expect(back.visible);
             try testing.expectApproxEqAbs(s[0], back.pos[0], 1e-2);
             try testing.expectApproxEqAbs(s[1], back.pos[1], 1e-2);
@@ -378,8 +378,8 @@ test "what shows where is what is there, on the globe, the flat map and between"
     // is hidden.
     const v = View.init(.{ .zoom = 1 }, size, .globe);
     try testing.expect(v.unproject(.{ 5, 5 }) == null);
-    try testing.expect(!v.projectLatLon(.{ .lon = 180 }).visible);
-    try testing.expect(v.projectLatLon(.{ .lon = 60 }).visible);
+    try testing.expect(!v.projectCoordinate(.{ .lon = 180 }).visible);
+    try testing.expect(v.projectCoordinate(.{ .lon = 60 }).visible);
 }
 
 test "dragging keeps the place grabbed under the pointer" {
@@ -394,7 +394,7 @@ test "dragging keeps the place grabbed under the pointer" {
             cam = moveTo(cam, size, proj, place, at);
             // The zoom stays as it was.
             try testing.expectEqual(zoom, cam.zoom);
-            const p = View.init(cam, size, proj).projectLatLon(place);
+            const p = View.init(cam, size, proj).projectCoordinate(place);
             try testing.expectApproxEqAbs(at[0], p.pos[0], 0.05);
             try testing.expectApproxEqAbs(at[1], p.pos[1], 0.05);
         }
@@ -409,7 +409,7 @@ test "zooming about a point keeps the place there" {
         const place = View.init(cam, size, .globe).unproject(at).?;
         const zoomed = zoomAbout(cam, size, .globe, at, 0.5, 0, 20);
         try testing.expectEqual(zoom + 0.5, zoomed.zoom);
-        const p = View.init(zoomed, size, .globe).projectLatLon(place);
+        const p = View.init(zoomed, size, .globe).projectCoordinate(place);
         try testing.expectApproxEqAbs(at[0], p.pos[0], 0.05);
         try testing.expectApproxEqAbs(at[1], p.pos[1], 0.05);
     }
@@ -428,7 +428,7 @@ test "the globe becomes the flat map only once it covers the view, whatever its 
         for (0..9) |j| for (0..9) |i| {
             const at: [2]f64 = .{ size[0] * @as(f64, @floatFromInt(i)) / 8, size[1] * @as(f64, @floatFromInt(j)) / 8 };
             const p = part.unproject(at) orelse return error.TestUnexpectedResult;
-            try testing.expect(part.projectLatLon(p).visible);
+            try testing.expect(part.projectCoordinate(p).visible);
         };
     }
     // A wide view at zoom 5.2 is still a globe.

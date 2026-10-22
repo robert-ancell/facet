@@ -2208,7 +2208,7 @@ const MapTiles = struct {
     pictures: [2]gfx.Image,
     /// Levels further in than this are not there yet.
     ready_to: u8 = 30,
-    shapes: ?*const ui.VectorTile = null,
+    shapes: ?*const ui.MapVectorTile = null,
 
     pub fn tile(s: *MapTiles, req: ui.MapSource.Request) ui.MapTile {
         if (req.id.z > s.ready_to) return .pending;
@@ -2268,9 +2268,9 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     img.deinit();
 
     // Shapes, in a style: the tile filled green.
-    const outline = [_]ui.VectorTile.Point{ .{ 0, 0 }, .{ 4096, 0 }, .{ 4096, 4096 }, .{ 0, 4096 } };
-    const land = [_]ui.VectorTile.Feature{.{ .geometry = .{ .polygon = &.{&outline} } }};
-    const shapes: ui.VectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
+    const outline = [_]ui.MapVectorTile.Point{ .{ 0, 0 }, .{ 4096, 0 }, .{ 4096, 4096 }, .{ 0, 4096 } };
+    const land = [_]ui.MapVectorTile.Feature{.{ .geometry = .{ .polygon = &.{&outline} } }};
+    const shapes: ui.MapVectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
     tiles.shapes = &shapes;
     const style: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .source_layer = "land", .draw = .{ .fill = .rgb(0x00ff00) } }} };
     u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat, .style = &style });
@@ -2302,7 +2302,7 @@ test "a map view is dragged and zoomed" {
     const before = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).unproject(.{ 300, 100 }).?;
     u.pointerScroll(.{ 300, 100 }, 0, -30);
     try testing.expectApproxEqAbs(2, camera.zoom, 1e-6);
-    const after = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).projectLatLon(before);
+    const after = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).projectCoordinate(before);
     try testing.expectApproxEqAbs(300, after.pos[0], 1e-3);
     try testing.expectApproxEqAbs(100, after.pos[1], 1e-3);
 

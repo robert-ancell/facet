@@ -40,21 +40,21 @@ const Painter = painter_mod.Painter;
 const Color = gfx.Color;
 
 pub const Camera = projection.Camera;
-pub const LatLon = projection.LatLon;
+pub const MapCoordinate = projection.MapCoordinate;
 pub const Projection = projection.Projection;
 pub const View = projection.View;
-pub const TileId = tiles.TileId;
+pub const MapTileId = tiles.MapTileId;
 pub const Tile = tiles.Tile;
 pub const MapSource = tiles.MapSource;
-pub const VectorTile = tiles.VectorTile;
+pub const MapVectorTile = tiles.MapVectorTile;
 pub const MapStyle = style_mod.MapStyle;
-pub const TilePainter = tile_painter.TilePainter;
+pub const MapTilePainter = tile_painter.MapTilePainter;
 pub const LabelStyle = tile_painter.LabelStyle;
 
 /// How night is shaded on a map.
 pub const Night = struct {
     /// Where the sun is overhead.
-    sun: LatLon,
+    sun: MapCoordinate,
     color: Color = .rgb(0x000814),
     /// How dark it is where the sun is well below the horizon (and less
     /// in twilight, as it sets).
@@ -108,7 +108,7 @@ pub const MapView = struct {
     pub const State = struct {
         own: ?Camera = null,
         /// The place grabbed, while dragging.
-        grab: ?LatLon = null,
+        grab: ?MapCoordinate = null,
         /// The pointer's last moves (where, and when): how fast it was
         /// going when let go.
         trail: [4]struct { pos: [2]f64, ns: u64 } = undefined,
@@ -288,14 +288,14 @@ pub const MapView = struct {
 
     /// A tile that shows, and which copy of the world it is in (how far
     /// east of the world's tiles, in worlds).
-    const Shown = struct { id: TileId, copy: f64 };
+    const Shown = struct { id: MapTileId, copy: f64 };
 
     /// What is drawn for a tile that shows: a tile at its level or
     /// further out (`from`).
     const Drawn = struct {
         shown: Shown,
-        from: TileId,
-        what: union(enum) { image: *const gfx.Image, vector: *const VectorTile },
+        from: MapTileId,
+        what: union(enum) { image: *const gfx.Image, vector: *const MapVectorTile },
     };
 
     /// The tiles' level at a zoom: the same wherever the camera looks, so
@@ -333,7 +333,7 @@ pub const MapView = struct {
 
     /// Those of `id`'s tiles at `lvl` that show on the globe (or between it
     /// and the flat map).
-    fn visit(v: *const View, id: TileId, lvl: u8, out: *std.ArrayList(Shown), arena: std.mem.Allocator) void {
+    fn visit(v: *const View, id: MapTileId, lvl: u8, out: *std.ArrayList(Shown), arena: std.mem.Allocator) void {
         if (out.items.len == max_tiles) return;
         const n: f64 = @floatFromInt(id.count());
         const copy = @round(v.center[0] - (@as(f64, @floatFromInt(id.x)) + 0.5) / n);
@@ -346,7 +346,7 @@ pub const MapView = struct {
     }
 
     /// Whether some of a tile shows, as far as points across it tell.
-    fn shows(v: *const View, id: TileId, copy: f64) bool {
+    fn shows(v: *const View, id: MapTileId, copy: f64) bool {
         const n: f64 = @floatFromInt(id.count());
         const x0 = @as(f64, @floatFromInt(id.x)) / n + copy;
         const y0 = @as(f64, @floatFromInt(id.y)) / n;
@@ -427,7 +427,7 @@ pub const MapView = struct {
         // drawn for several further in).
         for (drawn.items) |d| if (d.what == .image) drawImageTile(c, &v, d, arena);
         var labels: tile_painter.Labels = .{ .arena = arena, .area = whole, .font = n.ui.font, .atlas = n.ui.atlas };
-        const Shapes = struct { tp: TilePainter, tile: *const VectorTile };
+        const Shapes = struct { tp: MapTilePainter, tile: *const MapVectorTile };
         var shapes: std.ArrayList(Shapes) = .empty;
         for (drawn.items, 0..) |d, i| {
             const vt = switch (d.what) {
@@ -491,7 +491,7 @@ pub const MapView = struct {
             const rho = edge * @as(f64, @floatFromInt(i)) / rings;
             const az = std.math.tau * @as(f64, @floatFromInt(j)) / sectors;
             const place = v.placeAt(.{ @sin(rho) * @cos(az), @sin(rho) * @sin(az), @cos(rho) });
-            const p = v.projectLatLon(place).pos;
+            const p = v.projectCoordinate(place).pos;
             const dir = projection.direction(place);
             const height = std.math.asin(std.math.clamp(dir[0] * sun[0] + dir[1] * sun[1] + dir[2] * sun[2], -1, 1)) * 180 / std.math.pi;
             const t: f32 = @floatCast(std.math.clamp((1 - height) / 13, 0, 1));

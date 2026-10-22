@@ -10,8 +10,8 @@ const common = @import("common.zig");
 
 const gpa = std.heap.smp_allocator;
 const Color = facet.Color;
-const VectorTile = facet.VectorTile;
-const Point = VectorTile.Point;
+const MapVectorTile = facet.MapVectorTile;
+const Point = MapVectorTile.Point;
 
 pub const Kind = enum { vector, images };
 pub const Look = enum { atlas, night, blueprint };
@@ -259,7 +259,7 @@ fn degrees(buf: []u8, v: f64, pos: []const u8, neg: []const u8) []const u8 {
 }
 
 /// Makes the shapes of tile `id` in `arena`.
-fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
+fn makeTile(arena: std.mem.Allocator, id: facet.MapTileId) !MapVectorTile {
     const n = std.math.exp2(@as(f64, @floatFromInt(id.z)));
     const fx: f64 = @floatFromInt(id.x);
     const fy: f64 = @floatFromInt(id.y);
@@ -280,10 +280,10 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         }
     }{ .n = n, .fx = fx, .fy = fy };
 
-    var grid: std.ArrayList(VectorTile.Feature) = .empty;
-    var labels: std.ArrayList(VectorTile.Feature) = .empty;
-    var circles: std.ArrayList(VectorTile.Feature) = .empty;
-    var zones: std.ArrayList(VectorTile.Feature) = .empty;
+    var grid: std.ArrayList(MapVectorTile.Feature) = .empty;
+    var labels: std.ArrayList(MapVectorTile.Feature) = .empty;
+    var circles: std.ArrayList(MapVectorTile.Feature) = .empty;
+    var zones: std.ArrayList(MapVectorTile.Feature) = .empty;
 
     // The lines in the tile: at or east of its west edge, and at or north
     // of its south edge, so each is in one tile.
@@ -298,14 +298,14 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         const line = try arena.dupe(Point, &.{ at.p(north, lon), at.p(south, lon) });
         try grid.append(arena, .{
             .geometry = .{ .lines = try arena.dupe([]const Point, &.{line}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "major", .value = .{ .boolean = @abs(lon) < 1e-9 or @abs(@abs(lon) - 180) < 1e-9 } }}),
+            .properties = try arena.dupe(MapVectorTile.Property, &.{.{ .key = "major", .value = .{ .boolean = @abs(lon) < 1e-9 or @abs(@abs(lon) - 180) < 1e-9 } }}),
         });
     }
     for (parallels.items) |lat| {
         const line = try arena.dupe(Point, &.{ at.p(lat, west), at.p(lat, east) });
         try grid.append(arena, .{
             .geometry = .{ .lines = try arena.dupe([]const Point, &.{line}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "major", .value = .{ .boolean = @abs(lat) < 1e-9 } }}),
+            .properties = try arena.dupe(MapVectorTile.Property, &.{.{ .key = "major", .value = .{ .boolean = @abs(lat) < 1e-9 } }}),
         });
     }
     // Labels: in each cell, its parallel above the line, half way along,
@@ -314,14 +314,14 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         var buf: [24]u8 = undefined;
         try labels.append(arena, .{
             .geometry = .{ .points = try arena.dupe(Point, &.{at.p(lat, lon + s / 2)}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{
+            .properties = try arena.dupe(MapVectorTile.Property, &.{
                 .{ .key = "kind", .value = .{ .string = "parallel" } },
                 .{ .key = "name", .value = .{ .string = try arena.dupe(u8, degrees(&buf, lat, "N", "S")) } },
             }),
         });
         if (lat + s / 2 < lat_limit) try labels.append(arena, .{
             .geometry = .{ .points = try arena.dupe(Point, &.{at.p(lat + s / 2, lon)}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{
+            .properties = try arena.dupe(MapVectorTile.Property, &.{
                 .{ .key = "kind", .value = .{ .string = "meridian" } },
                 .{ .key = "name", .value = .{ .string = try arena.dupe(u8, degrees(&buf, lon, "E", "W")) } },
             }),
@@ -339,11 +339,11 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         const line = try arena.dupe(Point, &.{ at.p(c[0], west), at.p(c[0], east) });
         try circles.append(arena, .{
             .geometry = .{ .lines = try arena.dupe([]const Point, &.{line}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "name", .value = .{ .string = c[1] } }}),
+            .properties = try arena.dupe(MapVectorTile.Property, &.{.{ .key = "name", .value = .{ .string = c[1] } }}),
         });
         try circles.append(arena, .{
             .geometry = .{ .points = try arena.dupe(Point, &.{at.p(c[0], (west + east) / 2)}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "name", .value = .{ .string = c[1] } }}),
+            .properties = try arena.dupe(MapVectorTile.Property, &.{.{ .key = "name", .value = .{ .string = c[1] } }}),
         });
     };
     for ([_]struct { f64, f64, []const u8 }{
@@ -357,11 +357,11 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
         const ring = try arena.dupe(Point, &.{ at.p(hi, west), at.p(hi, east), at.p(lo, east), at.p(lo, west) });
         try zones.append(arena, .{
             .geometry = .{ .polygon = try arena.dupe([]const Point, &.{ring}) },
-            .properties = try arena.dupe(VectorTile.Property, &.{.{ .key = "kind", .value = .{ .string = z[2] } }}),
+            .properties = try arena.dupe(MapVectorTile.Property, &.{.{ .key = "kind", .value = .{ .string = z[2] } }}),
         });
     }
 
-    return .{ .extent = extent, .layers = try arena.dupe(VectorTile.Layer, &.{
+    return .{ .extent = extent, .layers = try arena.dupe(MapVectorTile.Layer, &.{
         .{ .name = "zones", .features = zones.items },
         .{ .name = "grid", .features = grid.items },
         .{ .name = "circles", .features = circles.items },
@@ -372,19 +372,19 @@ fn makeTile(arena: std.mem.Allocator, id: facet.TileId) !VectorTile {
 /// Tiles kept while they are being shown, and a while after.
 fn Cache(comptime Entry: type) type {
     return struct {
-        entries: std.AutoHashMapUnmanaged(facet.TileId, *Entry) = .empty,
+        entries: std.AutoHashMapUnmanaged(facet.MapTileId, *Entry) = .empty,
 
         const Self = @This();
         const keep = 400;
         const unused_ns = 2 * std.time.ns_per_s;
 
-        fn get(c: *Self, id: facet.TileId, now: u64) ?*Entry {
+        fn get(c: *Self, id: facet.MapTileId, now: u64) ?*Entry {
             const e = c.entries.get(id) orelse return null;
             e.used_ns = now;
             return e;
         }
 
-        fn put(c: *Self, id: facet.TileId, e: *Entry, now: u64) void {
+        fn put(c: *Self, id: facet.MapTileId, e: *Entry, now: u64) void {
             c.trim(now);
             c.entries.put(gpa, id, e) catch e.deinit();
         }
@@ -392,7 +392,7 @@ fn Cache(comptime Entry: type) type {
         /// Lets go of tiles not shown for a while, when there are many.
         fn trim(c: *Self, now: u64) void {
             if (c.entries.count() < keep) return;
-            var stale: std.ArrayList(facet.TileId) = .empty;
+            var stale: std.ArrayList(facet.MapTileId) = .empty;
             defer stale.deinit(gpa);
             var it = c.entries.iterator();
             while (it.next()) |kv| if (now -| kv.value_ptr.*.used_ns > unused_ns) stale.append(gpa, kv.key_ptr.*) catch break;
@@ -414,7 +414,7 @@ const VectorTiles = struct {
 
     const Shapes = struct {
         arena: std.heap.ArenaAllocator,
-        tile: VectorTile,
+        tile: MapVectorTile,
         used_ns: u64,
 
         fn deinit(e: *Shapes) void {
@@ -504,7 +504,7 @@ const ImageTiles = struct {
         return .{ .image = .{ .image = &e.image } };
     }
 
-    fn draw(p: *ImageTiles, id: facet.TileId, now: u64) !*Picture {
+    fn draw(p: *ImageTiles, id: facet.MapTileId, now: u64) !*Picture {
         const style = &(p.style orelse return error.NoStyle);
         if (p.drawing == null) {
             p.drawing = .{
@@ -520,9 +520,9 @@ const ImageTiles = struct {
         d.canvas.begin(size, size);
         // The tiles around, made too, for their labels that reach into it.
         const Around = struct {
-            fn get(ctx: *anyopaque, other: facet.TileId) ?*const VectorTile {
+            fn get(ctx: *anyopaque, other: facet.MapTileId) ?*const MapVectorTile {
                 const a: *std.heap.ArenaAllocator = @ptrCast(@alignCast(ctx));
-                const t = a.allocator().create(VectorTile) catch return null;
+                const t = a.allocator().create(MapVectorTile) catch return null;
                 t.* = makeTile(a.allocator(), other) catch return null;
                 return t;
             }
@@ -566,7 +566,7 @@ test "tiles have their lines, labels and zones, each in one tile" {
     const a = try makeTile(arena.allocator(), .{ .z = 3, .x = 3, .y = 3 });
     const b = try makeTile(arena.allocator(), .{ .z = 3, .x = 4, .y = 3 });
     var on_edge: usize = 0;
-    for ([_]VectorTile{ a, b }, [_]f32{ extent, 0 }) |t, x| for (t.layer("grid").?.features) |f| {
+    for ([_]MapVectorTile{ a, b }, [_]f32{ extent, 0 }) |t, x| for (t.layer("grid").?.features) |f| {
         const line = f.geometry.lines[0];
         if (line[0][0] == line[1][0] and @abs(line[0][0] - x) < 0.01) on_edge += 1;
     };

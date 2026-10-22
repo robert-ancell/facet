@@ -11,8 +11,8 @@ const projection = @import("projection.zig");
 const tiles = @import("tiles.zig");
 
 const View = projection.View;
-const TileId = tiles.TileId;
-const Point = tiles.VectorTile.Point;
+const MapTileId = tiles.MapTileId;
+const Point = tiles.MapVectorTile.Point;
 const Color = gfx.Color;
 
 /// How a label is drawn.
@@ -83,25 +83,25 @@ pub const Labels = struct {
     }
 };
 
-pub const TilePainter = struct {
+pub const MapTilePainter = struct {
     canvas: *gfx.Canvas,
     /// For what is drawn in a frame (the frame's arena).
     arena: std.mem.Allocator,
     view: *const View,
     /// The tile being drawn.
-    id: TileId,
+    id: MapTileId,
     /// Its top left on the flat map (beyond 0 to 1 for a copy of the
     /// world to the east or west), and its width there.
     corner: [2]f64,
     span: f64,
-    /// The tile's coordinates' extent (`VectorTile.extent`).
+    /// The tile's coordinates' extent (`MapVectorTile.extent`).
     extent: f32,
     /// The camera's zoom.
     zoom: f64,
     labels: *Labels,
 
     /// Where `p` (in the tile's coordinates) shows, and whether it does.
-    pub fn project(tp: *const TilePainter, p: Point) View.Projected {
+    pub fn project(tp: *const MapTilePainter, p: Point) View.Projected {
         const k = tp.span / tp.extent;
         return tp.view.project(.{ tp.corner[0] + p[0] * k, tp.corner[1] + p[1] * k });
     }
@@ -110,7 +110,7 @@ pub const TilePainter = struct {
 
     /// The longest edge (in the tile's coordinates) drawn straight: on the
     /// flat map, any; bent, about a degree of the globe.
-    fn maxStep(tp: *const TilePainter) f32 {
+    fn maxStep(tp: *const MapTilePainter) f32 {
         if (tp.view.flat >= 1) return std.math.inf(f32);
         const per_tile = @as(f32, @floatFromInt(@as(u32, 256) >> @intCast(@min(tp.id.z, 8))));
         return tp.extent / @max(per_tile, 1);
@@ -118,7 +118,7 @@ pub const TilePainter = struct {
 
     /// `points` where they show, with long edges cut into short ones
     /// (back to the first point at the end, if `closed` and bent).
-    fn projectAll(tp: *const TilePainter, points: []const Point, closed: bool) []Projected {
+    fn projectAll(tp: *const MapTilePainter, points: []const Point, closed: bool) []Projected {
         var out: std.ArrayList(Projected) = .empty;
         const step = tp.maxStep();
         const n = points.len;
@@ -141,13 +141,13 @@ pub const TilePainter = struct {
         return out.items;
     }
 
-    fn add(tp: *const TilePainter, out: *std.ArrayList(Projected), p: Point) void {
+    fn add(tp: *const MapTilePainter, out: *std.ArrayList(Projected), p: Point) void {
         const q = tp.project(p);
         out.append(tp.arena, .{ .pos = .{ @floatCast(q.pos[0]), @floatCast(q.pos[1]) }, .visible = q.visible }) catch {};
     }
 
     /// Whether any of `pts` shows in the view, as far as their bounds go.
-    fn inView(tp: *const TilePainter, pts: []const [2]f32, margin: f32) bool {
+    fn inView(tp: *const MapTilePainter, pts: []const [2]f32, margin: f32) bool {
         if (pts.len == 0) return false;
         var lo = pts[0];
         var hi = pts[0];
@@ -160,7 +160,7 @@ pub const TilePainter = struct {
     }
 
     /// Fills what is inside an odd number of `rings`.
-    pub fn fill(tp: *TilePainter, rings: []const []const Point, color: Color) void {
+    pub fn fill(tp: *MapTilePainter, rings: []const []const Point, color: Color) void {
         // On the globe, a tile further out than level 4 is cut into cells
         // a sixteenth of the world across (or less), each filled on its
         // own: those out of sight are left out, and those across the
@@ -220,14 +220,14 @@ pub const TilePainter = struct {
 
     /// Whether any of a cell is on the side of the globe that shows (as
     /// far as its corners and middle tell).
-    fn cellShows(tp: *const TilePainter, x0: f32, y0: f32, size: f32) bool {
+    fn cellShows(tp: *const MapTilePainter, x0: f32, y0: f32, size: f32) bool {
         for ([_]Point{ .{ 0, 0 }, .{ 1, 0 }, .{ 0, 1 }, .{ 1, 1 }, .{ 0.5, 0.5 } }) |k| {
             if (tp.project(.{ x0 + k[0] * size, y0 + k[1] * size }).visible) return true;
         }
         return false;
     }
 
-    fn fillPart(tp: *TilePainter, rings: []const []const Point, color: Color) void {
+    fn fillPart(tp: *MapTilePainter, rings: []const []const Point, color: Color) void {
         const out = tp.arena.alloc([]const [2]f32, rings.len) catch return;
         var any = false;
         var all_pts: std.ArrayList([2]f32) = .empty;
@@ -253,7 +253,7 @@ pub const TilePainter = struct {
 
     /// Strokes a line `width` pixels wide through `points` (back to the
     /// first, if `closed`).
-    pub fn stroke(tp: *TilePainter, points: []const Point, closed: bool, width: f32, color: Color) void {
+    pub fn stroke(tp: *MapTilePainter, points: []const Point, closed: bool, width: f32, color: Color) void {
         const proj = tp.projectAll(points, closed);
         const pts = tp.arena.alloc([2]f32, proj.len) catch return;
         for (proj, pts) |q, *p| p.* = q.pos;
@@ -286,13 +286,13 @@ pub const TilePainter = struct {
     }
 
     /// A dot at `p`.
-    pub fn circle(tp: *TilePainter, p: Point, radius: f32, color: Color) void {
+    pub fn circle(tp: *MapTilePainter, p: Point, radius: f32, color: Color) void {
         const q = tp.project(p);
         if (!q.visible) return;
         tp.canvas.fillCircle(.{ @floatCast(q.pos[0]), @floatCast(q.pos[1]) }, radius, color);
     }
 
-    pub fn ring(tp: *TilePainter, p: Point, radius: f32, width: f32, color: Color) void {
+    pub fn ring(tp: *MapTilePainter, p: Point, radius: f32, width: f32, color: Color) void {
         const q = tp.project(p);
         if (!q.visible) return;
         tp.canvas.strokeCircle(.{ @floatCast(q.pos[0]), @floatCast(q.pos[1]) }, radius, width, color);
@@ -300,7 +300,7 @@ pub const TilePainter = struct {
 
     /// A label at `p`, unless it would overlap one already drawn (or, on
     /// the globe, be near its edge, where it would be squeezed).
-    pub fn label(tp: *TilePainter, p: Point, text: []const u8, style: LabelStyle) void {
+    pub fn label(tp: *MapTilePainter, p: Point, text: []const u8, style: LabelStyle) void {
         const q = tp.project(p);
         if (!q.visible) return;
         if (tp.view.flat <= 0) {

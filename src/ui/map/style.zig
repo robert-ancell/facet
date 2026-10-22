@@ -19,10 +19,10 @@ const tiles = @import("tiles.zig");
 const tile_painter = @import("tile_painter.zig");
 const Theme = @import("../theme.zig").Theme;
 
-const VectorTile = tiles.VectorTile;
-const Feature = VectorTile.Feature;
-const Value = VectorTile.Value;
-const TilePainter = tile_painter.TilePainter;
+const MapVectorTile = tiles.MapVectorTile;
+const Feature = MapVectorTile.Feature;
+const Value = MapVectorTile.Value;
+const MapTilePainter = tile_painter.MapTilePainter;
 const Color = gfx.Color;
 
 pub const MapStyle = struct {
@@ -97,7 +97,7 @@ pub const MapStyle = struct {
     pub const Custom = struct {
         ctx: ?*const anyopaque = null,
         /// Draws a feature, with the painter (in the tile's coordinates).
-        f: *const fn (ctx: ?*const anyopaque, tp: *TilePainter, feature: *const Feature) void,
+        f: *const fn (ctx: ?*const anyopaque, tp: *MapTilePainter, feature: *const Feature) void,
     };
 
     /// The plain style's layers, in the theme's colours, for a view with
@@ -116,7 +116,7 @@ pub const MapStyle = struct {
     /// those (true). (A view of many tiles draws each layer of the style
     /// across all of them before the next, with `drawLayer`, so that one
     /// tile's fills do not cover the lines of those drawn before it.)
-    pub fn drawTile(s: *const MapStyle, tp: *TilePainter, tile: *const VectorTile, labels: bool) void {
+    pub fn drawTile(s: *const MapStyle, tp: *MapTilePainter, tile: *const MapVectorTile, labels: bool) void {
         for (s.layers) |*l| if ((l.draw == .label) == labels) drawLayer(l, tp, tile);
     }
 
@@ -124,7 +124,7 @@ pub const MapStyle = struct {
     /// their labels that reach into it: `get` gives one (or null).
     pub const Nearby = struct {
         ctx: *anyopaque,
-        get: *const fn (ctx: *anyopaque, id: tiles.TileId) ?*const VectorTile,
+        get: *const fn (ctx: *anyopaque, id: tiles.MapTileId) ?*const MapVectorTile,
     };
 
     /// Draws tile `id`'s shapes on `canvas`, flat, `size` pixels across
@@ -137,7 +137,7 @@ pub const MapStyle = struct {
     /// theirs that reach into it are drawn too, so that the pictures of
     /// tiles side by side each have their part of it. (Without, one that
     /// would cross the edge is left out.)
-    pub fn paintTile(s: *const MapStyle, canvas: *gfx.Canvas, arena: std.mem.Allocator, atlas: *gfx.Atlas, f: ?*const font.Font, id: tiles.TileId, tile: *const VectorTile, size: f32, nearby: ?Nearby) void {
+    pub fn paintTile(s: *const MapStyle, canvas: *gfx.Canvas, arena: std.mem.Allocator, atlas: *gfx.Atlas, f: ?*const font.Font, id: tiles.MapTileId, tile: *const MapVectorTile, size: f32, nearby: ?Nearby) void {
         const n: f64 = @floatFromInt(id.count());
         const corner: [2]f64 = .{ @as(f64, @floatFromInt(id.x)) / n, @as(f64, @floatFromInt(id.y)) / n };
         const zoom = @as(f64, @floatFromInt(id.z)) + std.math.log2(@as(f64, size) / 256);
@@ -155,7 +155,7 @@ pub const MapStyle = struct {
         // tiles), for each of the tiles they cross.
         const around: gfx.Rect = .{ .x = -size, .y = -size, .w = 3 * size, .h = 3 * size };
         var labels: tile_painter.Labels = .{ .arena = arena, .area = if (nearby != null) around else whole, .font = f, .atlas = atlas };
-        var tp: TilePainter = .{ .canvas = canvas, .arena = arena, .view = &view, .id = id, .corner = corner, .span = 1 / n, .extent = tile.extent, .zoom = zoom, .labels = &labels };
+        var tp: MapTilePainter = .{ .canvas = canvas, .arena = arena, .view = &view, .id = id, .corner = corner, .span = 1 / n, .extent = tile.extent, .zoom = zoom, .labels = &labels };
         s.drawTile(&tp, tile, false);
         const near = nearby orelse return s.drawTile(&tp, tile, true);
         const count: i64 = @intCast(id.count());
@@ -163,7 +163,7 @@ pub const MapStyle = struct {
             const y = @as(i64, id.y) + dy;
             if (y < 0 or y >= count) continue;
             const x = @mod(@as(i64, id.x) + dx, count);
-            const other: tiles.TileId = .{ .z = id.z, .x = @intCast(x), .y = @intCast(y) };
+            const other: tiles.MapTileId = .{ .z = id.z, .x = @intCast(x), .y = @intCast(y) };
             const vt = if (dx == 0 and dy == 0) tile else near.get(near.ctx, other) orelse continue;
             var otp = tp;
             otp.id = other;
@@ -174,7 +174,7 @@ pub const MapStyle = struct {
     }
 
     /// Draws what of `tile` the style's layer `l` draws.
-    pub fn drawLayer(l: *const Layer, tp: *TilePainter, tile: *const VectorTile) void {
+    pub fn drawLayer(l: *const Layer, tp: *MapTilePainter, tile: *const MapVectorTile) void {
         const zoom: f32 = @floatCast(tp.zoom);
         if (zoom < l.min_zoom or zoom > l.max_zoom) return;
         for (tile.layers) |*tl| {
@@ -186,7 +186,7 @@ pub const MapStyle = struct {
         }
     }
 
-    fn drawFeature(d: Draw, tp: *TilePainter, f: *const Feature) void {
+    fn drawFeature(d: Draw, tp: *MapTilePainter, f: *const Feature) void {
         switch (d) {
             .fill => |color| if (f.geometry == .polygon) tp.fill(f.geometry.polygon, color),
             .line => |line| switch (f.geometry) {
@@ -212,7 +212,7 @@ pub const MapStyle = struct {
     }
 
     /// The point half way along a line.
-    fn middle(pts: []const VectorTile.Point) VectorTile.Point {
+    fn middle(pts: []const MapVectorTile.Point) MapVectorTile.Point {
         var total: f32 = 0;
         for (pts[0 .. pts.len - 1], pts[1..]) |a, b| total += std.math.hypot(b[0] - a[0], b[1] - a[1]);
         var left = total / 2;
@@ -225,7 +225,7 @@ pub const MapStyle = struct {
     }
 
     /// The middle of a ring's bounds.
-    fn centre(pts: []const VectorTile.Point) VectorTile.Point {
+    fn centre(pts: []const MapVectorTile.Point) MapVectorTile.Point {
         var lo = pts[0];
         var hi = pts[0];
         for (pts) |p| {
@@ -244,7 +244,7 @@ test "filters pick features by their properties" {
     try std.testing.expect((F{ .not_equals = .{ .key = "kind", .value = .{ .string = "minor" } } }).matches(&f));
     try std.testing.expect((F{ .has = "kind" }).matches(&f));
     try std.testing.expect(!(F{ .has = "name" }).matches(&f));
-    try std.testing.expectEqual(VectorTile.Point{ 5, 0 }, MapStyle.middle(&.{ .{ 0, 0 }, .{ 10, 0 } }));
+    try std.testing.expectEqual(MapVectorTile.Point{ 5, 0 }, MapStyle.middle(&.{ .{ 0, 0 }, .{ 10, 0 } }));
 }
 
 test "pictures of tiles side by side each have their part of a label across the edge" {
@@ -256,18 +256,18 @@ test "pictures of tiles side by side each have their part of a label across the 
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     // A label on the east edge of the west tile, none in the east one.
-    const point = [_]VectorTile.Point{.{ 4096, 2048 }};
-    const props = [_]VectorTile.Property{.{ .key = "name", .value = .{ .string = "MMMM" } }};
+    const point = [_]MapVectorTile.Point{.{ 4096, 2048 }};
+    const props = [_]MapVectorTile.Property{.{ .key = "name", .value = .{ .string = "MMMM" } }};
     const features = [_]Feature{.{ .geometry = .{ .points = &point }, .properties = &props }};
-    const west: VectorTile = .{ .layers = &.{.{ .name = "places", .features = &features }} };
-    const east: VectorTile = .{ .layers = &.{} };
+    const west: MapVectorTile = .{ .layers = &.{.{ .name = "places", .features = &features }} };
+    const east: MapVectorTile = .{ .layers = &.{} };
     const style: MapStyle = .{ .background = .rgb(0x000000), .layers = &.{
         .{ .draw = .{ .label = .{ .style = .{ .size = 24, .color = .rgb(0xffffff) } } } },
     } };
     const Pair = struct {
-        west: *const VectorTile,
-        east: *const VectorTile,
-        fn get(ctx: *anyopaque, id: tiles.TileId) ?*const VectorTile {
+        west: *const MapVectorTile,
+        east: *const MapVectorTile,
+        fn get(ctx: *anyopaque, id: tiles.MapTileId) ?*const MapVectorTile {
             const p: *const @This() = @ptrCast(@alignCast(ctx));
             return if (id.x == 0) p.west else p.east;
         }
@@ -285,7 +285,7 @@ test "pictures of tiles side by side each have their part of a label across the 
         }
     }.count;
     const img: gfx.software.Image = .{ .pixels = &pixels, .width = 256, .height = 256 };
-    for ([_]struct { tiles.TileId, *const VectorTile, ?MapStyle.Nearby, usize, usize, bool }{
+    for ([_]struct { tiles.MapTileId, *const MapVectorTile, ?MapStyle.Nearby, usize, usize, bool }{
         // Alone, it would cross the edge: left out.
         .{ .{ .z = 1, .x = 0, .y = 0 }, &west, null, 128, 256, false },
         // With the tiles around: its west half at the west tile's east edge,

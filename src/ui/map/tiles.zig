@@ -3,7 +3,7 @@
 //! slippy-map scheme: tile (z, x, y) with x from the west and y from the
 //! north. A tile is a picture (pixels, or a PNG, JPEG, GIF or WebP file,
 //! URL or bytes, loaded in the background as an `Image` is) or shapes (a
-//! `VectorTile`, drawn in the map's style).
+//! `MapVectorTile`, drawn in the map's style).
 //!
 //! Facet has no source of its own: an app gives the view one, which may
 //! make tiles, fetch them from a tile server, or read them from files.
@@ -23,19 +23,19 @@ const image_loader = @import("../image_loader.zig");
 const runtime = @import("../runtime.zig");
 
 /// A tile: its level, and where it is across and down at that level.
-pub const TileId = struct {
+pub const MapTileId = struct {
     z: u8,
     x: u32,
     y: u32,
 
     /// The tile at the next level out that this is a quarter of.
-    pub fn parent(t: TileId) ?TileId {
+    pub fn parent(t: MapTileId) ?MapTileId {
         if (t.z == 0) return null;
         return .{ .z = t.z - 1, .x = t.x / 2, .y = t.y / 2 };
     }
 
     /// How many tiles there are across (and down) at its level.
-    pub fn count(t: TileId) u32 {
+    pub fn count(t: MapTileId) u32 {
         return @as(u32, 1) << @intCast(t.z);
     }
 };
@@ -51,7 +51,7 @@ pub const Tile = union(enum) {
     /// URL or bytes loaded in the background (and kept while it shows).
     image: image_loader.Source,
     /// Shapes, drawn in the map's style (they must last while they show).
-    vector: *const VectorTile,
+    vector: *const MapVectorTile,
 };
 
 /// Where a map's tiles come from: anything with a `tile` method.
@@ -70,7 +70,7 @@ pub const MapSource = struct {
     attribution: []const u8 = "",
 
     pub const Request = struct {
-        id: TileId,
+        id: MapTileId,
         /// Wakes the UI for a frame (from any thread), when a tile that
         /// was `.pending` is ready.
         waker: runtime.Waker,
@@ -108,7 +108,7 @@ pub const MapSource = struct {
 
 /// A tile's shapes, in layers (as a Mapbox vector tile has them): points,
 /// lines and polygons, each with properties for the style to go by.
-pub const VectorTile = struct {
+pub const MapVectorTile = struct {
     /// Coordinates go from 0 to this across the tile and down it (and may
     /// go a little beyond, for shapes that cross its edges).
     extent: f32 = 4096,
@@ -165,18 +165,18 @@ pub const VectorTile = struct {
         }
     };
 
-    pub fn layer(t: *const VectorTile, name: []const u8) ?*const Layer {
+    pub fn layer(t: *const MapVectorTile, name: []const u8) ?*const Layer {
         for (t.layers) |*l| if (std.mem.eql(u8, l.name, name)) return l;
         return null;
     }
 };
 
 test "tiles' parents, and features' properties" {
-    const t: TileId = .{ .z = 3, .x = 5, .y = 2 };
-    try std.testing.expectEqual(TileId{ .z = 2, .x = 2, .y = 1 }, t.parent().?);
+    const t: MapTileId = .{ .z = 3, .x = 5, .y = 2 };
+    try std.testing.expectEqual(MapTileId{ .z = 2, .x = 2, .y = 1 }, t.parent().?);
     try std.testing.expectEqual(@as(u32, 8), t.count());
-    try std.testing.expect((TileId{ .z = 0, .x = 0, .y = 0 }).parent() == null);
-    const f: VectorTile.Feature = .{ .geometry = .{ .points = &.{.{ 1, 2 }} }, .properties = &.{
+    try std.testing.expect((MapTileId{ .z = 0, .x = 0, .y = 0 }).parent() == null);
+    const f: MapVectorTile.Feature = .{ .geometry = .{ .points = &.{.{ 1, 2 }} }, .properties = &.{
         .{ .key = "name", .value = .{ .string = "Here" } },
         .{ .key = "rank", .value = .{ .number = 3 } },
     } };
