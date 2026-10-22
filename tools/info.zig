@@ -97,16 +97,16 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
     else
         "VSync OFF";
 
-    const ext_section: facet.Widget = if (info.wayland_extensions.len > 0) blk: {
-        const rows_list = cx.arena.alloc(facet.Widget, info.wayland_extensions.len) catch unreachable;
+    const ext_section: facet.Widget = if (win.wayland_extensions.len > 0) blk: {
+        const rows_list = cx.arena.alloc(facet.Widget, win.wayland_extensions.len) catch unreachable;
         var row_count: usize = 0;
         var i: usize = 0;
-        while (i < info.wayland_extensions.len) {
+        while (i < win.wayland_extensions.len) {
             const row_chips = cx.arena.alloc(facet.Widget, 4) catch unreachable;
             var chip_count: usize = 0;
             var row_chars: usize = 0;
-            while (i < info.wayland_extensions.len and chip_count < 4) {
-                const ext = info.wayland_extensions[i];
+            while (i < win.wayland_extensions.len and chip_count < 4) {
+                const ext = win.wayland_extensions[i];
                 if (chip_count > 0 and row_chars + ext.len > 56) break;
                 row_chips[chip_count] = cx.make(facet.Chip{
                     .label = ext,
@@ -293,7 +293,7 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
             sectionHeading(
                 cx,
                 "Wayland Extensions",
-                cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{info.wayland_extensions.len}),
+                cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{win.wayland_extensions.len}),
             ),
             ext_section,
             facet.Divider{},

@@ -595,10 +595,17 @@ pub const WindowUi = struct {
     pub fn backend(ui: *const WindowUi) widget.BackendInfo {
         return .{
             .platform = if (ui.win) |w| w.platform() else .headless,
-            .wayland_extensions = if (ui.win) |w| w.waylandExtensions() else &.{},
             .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
             .keyboard = ui.keyboard,
         };
+    }
+
+    /// The Wayland extensions `w` uses, if it is a Wayland window.
+    fn waylandExtensionsOf(w: window_mod.Window) []const []const u8 {
+        // There is no Wayland backend to be on Windows.
+        if (comptime builtin.os.tag == .windows) return &.{};
+        const wl = w.as(window_mod.WaylandWindow) orelse return &.{};
+        return wl.waylandExtensions();
     }
 
     /// How its window is shown (see `widget.WindowInfo`).
@@ -610,6 +617,7 @@ pub const WindowUi = struct {
             .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
             .frame_sync = if (ui.win) |w| w.frameSync() else .{},
             .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
+            .wayland_extensions = if (ui.win) |w| waylandExtensionsOf(w) else &.{},
             .decorations = ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },

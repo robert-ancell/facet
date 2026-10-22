@@ -440,16 +440,15 @@ pub const BuildContext = struct {
         cx.ui.needs_frame = true;
     }
 
-    /// What the app runs on: the windowing platform, its Wayland extensions, the
-    /// 2D renderer (`software`, `opengl`, `vulkan`, ...), and the keyboard's
-    /// layout.
+    /// What the app runs on: the windowing platform, the 2D renderer
+    /// (`software`, `opengl`, `vulkan`, ...), and the keyboard's layout.
     pub fn backend(cx: *const BuildContext) BackendInfo {
         return cx.ui.backend();
     }
 
     /// How the widget's window is shown: its buffers (in memory, in dmabufs,
-    /// ...) and how they are synchronized and paced, its decorations, size,
-    /// scale, and state.
+    /// ...) and how they are synchronized and paced, the Wayland extensions it
+    /// uses, its decorations, size, scale, and state.
     pub fn window(cx: *const BuildContext) WindowInfo {
         return cx.ui.windowInfo();
     }
@@ -460,22 +459,11 @@ pub const BuildContext = struct {
 pub const BackendInfo = struct {
     /// Windowing platform (`wayland`, `headless`, `windows`, `macos`, `custom`).
     platform: window_mod.WindowPlatform = .headless,
-    /// The Wayland protocol extensions used: the global interfaces bound
-    /// (none on other platforms).
-    wayland_extensions: []const []const u8 = &.{},
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `metal`,
     /// `d3d11`, `custom`).
     renderer: gfx.RenderBackend = .software,
     /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
     keyboard: window_mod.KeyboardLayout = .{},
-
-    /// Whether the Wayland protocol extensions include `ext_name`.
-    pub fn hasWaylandExtension(info: BackendInfo, ext_name: []const u8) bool {
-        for (info.wayland_extensions) |ext| {
-            if (std.mem.eql(u8, ext, ext_name)) return true;
-        }
-        return false;
-    }
 };
 
 /// How a window is shown (see `BackendInfo` for what all the app's windows
@@ -491,6 +479,9 @@ pub const WindowInfo = struct {
     frame_sync: window_mod.WindowFrameSync = .{},
     /// The refresh rate of the display it is on, in Hz, or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
+    /// The Wayland protocol extensions the window uses: the global
+    /// interfaces it bound (none on other platforms).
+    wayland_extensions: []const []const u8 = &.{},
     /// Window decoration mode (`none`, `client`, `server`).
     decorations: window_mod.WindowDecorations = .none,
     /// Logical window size in pixels.
@@ -505,6 +496,14 @@ pub const WindowInfo = struct {
     fullscreen: bool = false,
     /// Whether the window is tiled against other windows or the screen's edges.
     tiled: bool = false,
+
+    /// Whether the Wayland protocol extensions include `ext_name`.
+    pub fn hasWaylandExtension(info: WindowInfo, ext_name: []const u8) bool {
+        for (info.wayland_extensions) |ext| {
+            if (std.mem.eql(u8, ext, ext_name)) return true;
+        }
+        return false;
+    }
 };
 
 pub const Edges = struct {

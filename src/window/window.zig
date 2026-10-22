@@ -599,7 +599,6 @@ pub const Window = struct {
         bufferSync: *const fn (ptr: *anyopaque) WindowBufferSync,
         frameSync: *const fn (ptr: *anyopaque) WindowFrameSync,
         refreshHz: *const fn (ptr: *anyopaque) f32,
-        waylandExtensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) WindowDecorations,
         title: *const fn (ptr: *anyopaque) []const u8,
         setTitle: *const fn (ptr: *anyopaque, title: []const u8) void,
@@ -702,10 +701,6 @@ pub const Window = struct {
                     if (r > 0) return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(r));
                 }
                 return 0.0;
-            }
-            fn waylandExtensionsFn(p: *anyopaque) []const []const u8 {
-                if (@hasDecl(T, "waylandExtensions")) return self(p).waylandExtensions();
-                return &.{};
             }
             fn decorationsFn(p: *anyopaque) WindowDecorations {
                 if (@hasDecl(T, "decorations")) {
@@ -920,7 +915,6 @@ pub const Window = struct {
                 .bufferSync = bufferSyncFn,
                 .frameSync = frameSyncFn,
                 .refreshHz = refreshHzFn,
-                .waylandExtensions = waylandExtensionsFn,
                 .decorations = decorationsFn,
                 .title = titleFn,
                 .setTitle = setTitleFn,
@@ -1004,11 +998,6 @@ pub const Window = struct {
     /// unknown (see `refreshNs`).
     pub fn refreshHz(w: Window) f32 {
         return w.vtable.refreshHz(w.ptr);
-    }
-    /// The Wayland protocol extensions the window uses: the global
-    /// interfaces bound (none on other platforms).
-    pub fn waylandExtensions(w: Window) []const []const u8 {
-        return w.vtable.waylandExtensions(w.ptr);
     }
     /// Who draws the window's title bar and borders: the toolkit, the window system
     /// or no one.
