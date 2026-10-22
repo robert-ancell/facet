@@ -544,6 +544,10 @@ pub const WidgetNode = struct {
     /// Whatever the widget's layout wants to keep for its paint, in the
     /// frame's arena.
     scratch: ?*anyopaque = null,
+    /// Whether the widget, or one below it (not past a scroll view), makes
+    /// only the children that show (`realize`), so that `realizeIn` has
+    /// something to do here. Set when it is built.
+    realizes: bool = false,
     /// What it drew when last painted (to find what changed).
     paint: @import("damage.zig").Painted = .{},
     /// The theme it is in, if not the app's: its parent's, or one a
@@ -726,6 +730,13 @@ pub const WidgetNode = struct {
         } else {
             n.reconcile(w.vtable.children(w.ptr));
         }
+        n.realizes = w.vtable.realize != null;
+        if (!n.realizes) for (n.children.items) |ch| {
+            if (ch.realizes and !ch.widget.vtable.scrolls) {
+                n.realizes = true;
+                break;
+            }
+        };
     }
 
     /// Matches the children's widgets to the existing child nodes (same
@@ -814,7 +825,7 @@ pub const WidgetNode = struct {
     /// (`realize`), in it and below, what of them shows: `visible`
     /// (relative to this node). Scroll views below tell their own.
     pub fn realizeIn(n: *WidgetNode, visible: Rect) void {
-        if (n.laid_out != n.ui.frame_no) return;
+        if (!n.realizes or n.laid_out != n.ui.frame_no) return;
         if (n.widget.vtable.realize) |f| return f(n.widget.ptr, n, visible);
         for (n.children.items) |ch| {
             if (ch.widget.vtable.scrolls) continue;
