@@ -3,7 +3,7 @@
 //! and trailing remove button (`on_remove`).
 
 const a11y = @import("accessibility.zig");
-const Node = @import("widget.zig").Node;
+const Node = @import("widget.zig").WidgetNode;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");

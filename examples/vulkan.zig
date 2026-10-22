@@ -9,7 +9,7 @@ const polyhedron_spv align(4) = @embedFile("polyhedron.spv").*;
 
 pub const VulkanDemo = viewer.Viewer(struct {
     pub const name = "Vulkan";
-    pub const Context = facet.VulkanContext;
+    pub const Context = facet.gfx.VulkanContext;
     pub const Area = facet.VulkanArea;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {

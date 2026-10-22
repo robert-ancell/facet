@@ -31,7 +31,7 @@ const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Widget = widget.Widget;
 const Callback = widget.Callback;
 const Rect = geometry.Rect;

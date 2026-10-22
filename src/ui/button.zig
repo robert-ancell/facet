@@ -4,7 +4,7 @@
 //! both, and differs from the others only in its colours.
 
 const a11y = @import("accessibility.zig");
-const Node = @import("widget.zig").Node;
+const Node = @import("widget.zig").WidgetNode;
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const Center = @import("center.zig").Center;

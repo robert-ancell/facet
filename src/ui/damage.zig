@@ -18,7 +18,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 
 const Rect = geometry.Rect;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Rectangles in window pixels (whole pixels), overlapping ones merged.
 pub const Region = struct {

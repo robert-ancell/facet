@@ -6,7 +6,7 @@ const widget = @import("widget.zig");
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// A box of a given width and/or height (within its constraints); the
 /// child, if any, is made to fit it.

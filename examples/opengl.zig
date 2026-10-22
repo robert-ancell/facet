@@ -9,7 +9,7 @@ const polyhedron_spv align(4) = @embedFile("polyhedron.spv").*;
 
 pub const OpenGlDemo = viewer.Viewer(struct {
     pub const name = "OpenGL";
-    pub const Context = facet.OpenGlContext;
+    pub const Context = facet.gfx.OpenGlContext;
     pub const Area = facet.OpenGlArea;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {

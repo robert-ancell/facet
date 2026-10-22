@@ -8,7 +8,7 @@ const Painter = @import("painter.zig").Painter;
 
 const Point = geometry.Point;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 pub const Border = struct {
     width: f32 = 1,

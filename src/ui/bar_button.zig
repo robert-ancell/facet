@@ -10,7 +10,7 @@ const Interaction = @import("pressable.zig").Interaction;
 const Pressable = @import("pressable.zig").Pressable;
 const Painter = @import("painter.zig").Painter;
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Context = widget.Context;
 const Widget = widget.Widget;
 const Constraints = geometry.Constraints;

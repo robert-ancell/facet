@@ -6,7 +6,7 @@ const widget = @import("widget.zig");
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Layers over each other, filling it (later ones on top, and first to
 /// get the pointer). Each layer positions its content itself (with

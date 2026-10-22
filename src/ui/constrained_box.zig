@@ -6,7 +6,7 @@ const widget = @import("widget.zig");
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Adds constraints of its own to the child's (within its parent's).
 pub const ConstrainedBox = struct {

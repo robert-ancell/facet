@@ -7,7 +7,7 @@ const viewer = @import("viewer.zig");
 
 pub const D3D11Demo = viewer.Viewer(struct {
     pub const name = "Direct3D 11";
-    pub const Context = facet.D3D11Context;
+    pub const Context = facet.gfx.D3D11Context;
     pub const Area = facet.D3D11Area;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {

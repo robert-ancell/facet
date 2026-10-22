@@ -7,7 +7,7 @@ const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Insets = geometry.Insets;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Space around the child.
 pub const Padding = struct {

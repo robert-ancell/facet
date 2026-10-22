@@ -25,7 +25,7 @@ const Size = geometry.Size;
 const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Context = widget.Context;
 
 pub const LazyGrid = struct {

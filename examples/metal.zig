@@ -7,7 +7,7 @@ const viewer = @import("viewer.zig");
 
 pub const MetalDemo = viewer.Viewer(struct {
     pub const name = "Metal";
-    pub const Context = facet.MetalContext;
+    pub const Context = facet.gfx.MetalContext;
     pub const Area = facet.MetalArea;
 
     pub fn createPipeline(ctx: *Context) !Context.Pipeline {

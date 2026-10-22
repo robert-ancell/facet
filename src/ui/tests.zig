@@ -11,7 +11,7 @@ const ui = @import("ui.zig");
 const testing = std.testing;
 const Widget = ui.Widget;
 const Context = ui.Context;
-const Node = ui.Node;
+const Node = ui.WidgetNode;
 
 const fira_data = font.default_font_data;
 

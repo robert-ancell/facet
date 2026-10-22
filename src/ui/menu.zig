@@ -6,7 +6,7 @@
 //! stays in the window (`place`).
 
 const a11y = @import("accessibility.zig");
-const Node = @import("widget.zig").Node;
+const Node = @import("widget.zig").WidgetNode;
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");

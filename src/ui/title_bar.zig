@@ -21,7 +21,7 @@ const SizedBox = @import("sized_box.zig").SizedBox;
 const BarButton = @import("bar_button.zig").BarButton;
 const Text = @import("text.zig").Text;
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Context = widget.Context;
 const Widget = widget.Widget;
 const Size = geometry.Size;

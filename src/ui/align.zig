@@ -7,7 +7,7 @@ const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Alignment = geometry.Alignment;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Places the child within itself. It is as big as allowed (or a
 /// multiple of the child's size, with the factors), or the child's size

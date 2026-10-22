@@ -2,7 +2,7 @@
 //! headline, optional supporting text, and a trailing icon, text or widget.
 
 const a11y = @import("accessibility.zig");
-const Node = @import("widget.zig").Node;
+const Node = @import("widget.zig").WidgetNode;
 const std = @import("std");
 const gfx = @import("gfx");
 const icons = @import("icons");

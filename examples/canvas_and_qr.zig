@@ -13,11 +13,11 @@ pub const WaveCanvas = struct {
         last_ns: ?u64 = null,
     };
 
-    pub fn layout(_: *const WaveCanvas, _: *facet.Node, c: facet.Constraints) facet.Size {
+    pub fn layout(_: *const WaveCanvas, _: *facet.WidgetNode, c: facet.Constraints) facet.Size {
         return c.constrain(.{ .w = 340, .h = 200 });
     }
 
-    pub fn paint(self: *const WaveCanvas, n: *facet.Node, p: *facet.Painter) void {
+    pub fn paint(self: *const WaveCanvas, n: *facet.WidgetNode, p: *facet.Painter) void {
         const state = n.state(State);
         if (self.animate) {
             if (state.last_ns) |prev| {

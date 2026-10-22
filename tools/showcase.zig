@@ -260,7 +260,7 @@ test "every page fits the smallest window and lays out without overflowing, at i
 }
 
 /// Everything got a finite size, and fits in the space it was given.
-fn expectSane(n: *facet.Node) !void {
+fn expectSane(n: *facet.WidgetNode) !void {
     try std.testing.expect(std.math.isFinite(n.size.w) and n.size.w >= 0);
     try std.testing.expect(std.math.isFinite(n.size.h) and n.size.h >= 0);
     std.testing.expect(n.overflow.right < 0.5 and n.overflow.bottom < 0.5) catch |err| {

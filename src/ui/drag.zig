@@ -24,7 +24,7 @@ const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 
 const Point = geometry.Point;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;

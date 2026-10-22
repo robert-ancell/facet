@@ -61,15 +61,15 @@ pub const QrCode = struct {
         valid: bool = false,
     };
 
-    pub fn accessible(self: *const QrCode, _: *widget.Node) ?a11y.Info {
+    pub fn accessible(self: *const QrCode, _: *widget.WidgetNode) ?a11y.Info {
         return .{ .role = .img, .label = "QR code", .description = self.text };
     }
 
-    pub fn layout(self: *const QrCode, _: *widget.Node, c: geometry.Constraints) geometry.Size {
+    pub fn layout(self: *const QrCode, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
-    pub fn paint(self: *const QrCode, n: *widget.Node, p: *painter.Painter) void {
+    pub fn paint(self: *const QrCode, n: *widget.WidgetNode, p: *painter.Painter) void {
         const st = n.state(State);
         const h = std.hash.Fnv1a_64.hash(self.text);
         if (!st.valid or st.hash != h or st.len != self.text.len) {

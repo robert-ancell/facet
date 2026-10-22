@@ -12,7 +12,7 @@ const control = @import("control.zig");
 
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const ValueCallback = widget.ValueCallback;
 const Painter = painter.Painter;

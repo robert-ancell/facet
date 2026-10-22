@@ -134,11 +134,11 @@ const Lissajous = struct {
         last_ns: ?u64 = null,
     };
 
-    pub fn layout(_: *const Lissajous, _: *facet.Node, c: facet.Constraints) facet.Size {
+    pub fn layout(_: *const Lissajous, _: *facet.WidgetNode, c: facet.Constraints) facet.Size {
         return c.constrain(.{ .w = if (c.boundedWidth()) c.max_w else 480, .h = 220 });
     }
 
-    pub fn paint(_: *const Lissajous, n: *facet.Node, p: *facet.Painter) void {
+    pub fn paint(_: *const Lissajous, n: *facet.WidgetNode, p: *facet.Painter) void {
         const st = n.state(@This().State);
         if (st.last_ns) |prev| {
             const dt: f32 = @floatCast(@as(f64, @floatFromInt(n.ui.now_ns -| prev)) / std.time.ns_per_s);

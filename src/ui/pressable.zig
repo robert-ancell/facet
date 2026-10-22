@@ -7,7 +7,7 @@ const focus = @import("focus.zig");
 const Painter = @import("painter.zig").Painter;
 
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 

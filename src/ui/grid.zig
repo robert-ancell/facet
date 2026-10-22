@@ -7,7 +7,7 @@ const widget = @import("widget.zig");
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Children in rows of equal cells, left to right and top to bottom, as
 /// many to a row as fit its width (at least one).

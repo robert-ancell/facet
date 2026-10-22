@@ -24,7 +24,7 @@ const painter_mod = @import("painter.zig");
 const menu = @import("menu.zig");
 const SyntaxHighlight = @import("theme.zig").SyntaxHighlight;
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;

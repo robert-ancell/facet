@@ -18,27 +18,27 @@ pub const ProgressBar = struct {
     color: ?Color = null,
     track_color: ?Color = null,
 
-    pub fn accessible(self: *const ProgressBar, _: *widget.Node) ?a11y.Info {
+    pub fn accessible(self: *const ProgressBar, _: *widget.WidgetNode) ?a11y.Info {
         // Without a value, indeterminate: busy.
         const v = self.value orelse return .{ .role = .progressbar, .busy = true };
         return .{ .role = .progressbar, .valuenow = v, .valuemin = 0, .valuemax = 1 };
     }
 
-    pub fn layout(self: *const ProgressBar, _: *widget.Node, c: geometry.Constraints) geometry.Size {
+    pub fn layout(self: *const ProgressBar, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{
             .w = if (std.math.isFinite(c.max_w)) c.max_w else 200,
             .h = self.height,
         });
     }
 
-    pub fn minSize(self: *const ProgressBar, _: *widget.Node, c: geometry.Constraints) geometry.Size {
+    pub fn minSize(self: *const ProgressBar, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{
             .w = self.height * 4,
             .h = self.height,
         });
     }
 
-    pub fn paint(self: *const ProgressBar, n: *widget.Node, p: *painter.Painter) void {
+    pub fn paint(self: *const ProgressBar, n: *widget.WidgetNode, p: *painter.Painter) void {
         const t = n.theme();
         const c = p.canvas();
         const w = n.size.w;

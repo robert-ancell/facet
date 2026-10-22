@@ -9,7 +9,7 @@ const Expanded = @import("expanded.zig").Expanded;
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 
 /// Where a `Row` or `Column` puts its children along its main axis (left to
 /// right for a `Row`, top to bottom for a `Column`) when they take up less

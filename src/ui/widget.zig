@@ -187,30 +187,30 @@ pub const VTable = struct {
     name: []const u8,
     build: ?*const fn (*const anyopaque, *Context, ?*anyopaque) Widget,
     children: *const fn (*const anyopaque) []const Widget,
-    layout: ?*const fn (*const anyopaque, *Node, Constraints) Size,
-    min_size: ?*const fn (*const anyopaque, *Node, Constraints) Size,
-    paint: ?*const fn (*const anyopaque, *Node, *Painter) void,
-    paint_over: ?*const fn (*const anyopaque, *Node, *Painter) void,
-    event: ?*const fn (*const anyopaque, *Node, Event) bool,
-    hit_test: ?*const fn (*const anyopaque, *Node, Point) bool,
-    cursor: ?*const fn (*const anyopaque, *Node, Point) ?PointerCursor,
-    text_input: ?*const fn (*const anyopaque, *Node) ?TextInputInfo,
+    layout: ?*const fn (*const anyopaque, *WidgetNode, Constraints) Size,
+    min_size: ?*const fn (*const anyopaque, *WidgetNode, Constraints) Size,
+    paint: ?*const fn (*const anyopaque, *WidgetNode, *Painter) void,
+    paint_over: ?*const fn (*const anyopaque, *WidgetNode, *Painter) void,
+    event: ?*const fn (*const anyopaque, *WidgetNode, Event) bool,
+    hit_test: ?*const fn (*const anyopaque, *WidgetNode, Point) bool,
+    cursor: ?*const fn (*const anyopaque, *WidgetNode, Point) ?PointerCursor,
+    text_input: ?*const fn (*const anyopaque, *WidgetNode) ?TextInputInfo,
     /// What it is to assistive technologies (a screen reader), if anything
     /// (`pub fn accessible(self, n) ?accessibility.Info`).
-    accessible: ?*const fn (*const anyopaque, *Node) ?Accessibility.Info,
+    accessible: ?*const fn (*const anyopaque, *WidgetNode) ?Accessibility.Info,
     /// Whether it takes the keyboard's focus now (`pub fn focusable(self,
     /// n) bool`): Tab moves it from one to the next.
-    focusable: ?*const fn (*const anyopaque, *Node) bool,
+    focusable: ?*const fn (*const anyopaque, *WidgetNode) bool,
     /// Tab is a key it takes (`pub const takes_tab = true`: a text area
     /// types it), so only Control and Tab moves the focus from it.
     takes_tab: bool,
     /// Makes its children (instead of `children`), when the tree is built.
-    lazy_children: ?*const fn (*const anyopaque, *Context, *Node) []const Widget,
+    lazy_children: ?*const fn (*const anyopaque, *Context, *WidgetNode) []const Widget,
     /// Told, once laid out in a scroll view, what of it shows (relative to
     /// itself), to make the children there.
-    realize: ?*const fn (*const anyopaque, *Node, Rect) void,
+    realize: ?*const fn (*const anyopaque, *WidgetNode, Rect) void,
     /// Scrolls its child (`pub const scrolls = true`): it tells the
-    /// widgets in it what shows (see `Node.realizeIn`).
+    /// widgets in it what shows (see `WidgetNode.realizeIn`).
     scrolls: bool,
     state: ?StateOps,
     /// Shows only what of its children is within its bounds, without
@@ -252,40 +252,40 @@ fn makeVTable(comptime T: type) VTable {
             }
             return &.{};
         }
-        fn layout(ptr: *const anyopaque, n: *Node, c: Constraints) Size {
+        fn layout(ptr: *const anyopaque, n: *WidgetNode, c: Constraints) Size {
             return T.layout(self(ptr), n, c);
         }
-        fn minSize(ptr: *const anyopaque, n: *Node, c: Constraints) Size {
+        fn minSize(ptr: *const anyopaque, n: *WidgetNode, c: Constraints) Size {
             return T.minSize(self(ptr), n, c);
         }
-        fn paint(ptr: *const anyopaque, n: *Node, p: *Painter) void {
+        fn paint(ptr: *const anyopaque, n: *WidgetNode, p: *Painter) void {
             T.paint(self(ptr), n, p);
         }
-        fn paintOver(ptr: *const anyopaque, n: *Node, p: *Painter) void {
+        fn paintOver(ptr: *const anyopaque, n: *WidgetNode, p: *Painter) void {
             T.paintOver(self(ptr), n, p);
         }
-        fn event(ptr: *const anyopaque, n: *Node, e: Event) bool {
+        fn event(ptr: *const anyopaque, n: *WidgetNode, e: Event) bool {
             return T.event(self(ptr), n, e);
         }
-        fn hitTest(ptr: *const anyopaque, n: *Node, p: Point) bool {
+        fn hitTest(ptr: *const anyopaque, n: *WidgetNode, p: Point) bool {
             return T.hitTest(self(ptr), n, p);
         }
-        fn cursor(ptr: *const anyopaque, n: *Node, p: Point) ?PointerCursor {
+        fn cursor(ptr: *const anyopaque, n: *WidgetNode, p: Point) ?PointerCursor {
             return T.cursor(self(ptr), n, p);
         }
-        fn textInput(ptr: *const anyopaque, n: *Node) ?TextInputInfo {
+        fn textInput(ptr: *const anyopaque, n: *WidgetNode) ?TextInputInfo {
             return T.textInput(self(ptr), n);
         }
-        fn accessible(ptr: *const anyopaque, n: *Node) ?Accessibility.Info {
+        fn accessible(ptr: *const anyopaque, n: *WidgetNode) ?Accessibility.Info {
             return T.accessible(self(ptr), n);
         }
-        fn focusable(ptr: *const anyopaque, n: *Node) bool {
+        fn focusable(ptr: *const anyopaque, n: *WidgetNode) bool {
             return T.focusable(self(ptr), n);
         }
-        fn lazyChildren(ptr: *const anyopaque, cx: *Context, n: *Node) []const Widget {
+        fn lazyChildren(ptr: *const anyopaque, cx: *Context, n: *WidgetNode) []const Widget {
             return T.lazyChildren(self(ptr), cx, n);
         }
-        fn realize(ptr: *const anyopaque, n: *Node, visible: Rect) void {
+        fn realize(ptr: *const anyopaque, n: *WidgetNode, visible: Rect) void {
             T.realize(self(ptr), n, visible);
         }
         fn initState(ptr: *const anyopaque, state: *anyopaque) void {
@@ -326,7 +326,7 @@ fn makeVTable(comptime T: type) VTable {
 
 /// Shown in place of a widget that could not be made (out of memory).
 const Missing = struct {
-    pub fn layout(_: *const Missing, _: *Node, c: Constraints) Size {
+    pub fn layout(_: *const Missing, _: *WidgetNode, c: Constraints) Size {
         return c.smallest();
     }
 };
@@ -337,7 +337,7 @@ const missing: Missing = .{};
 /// from later, as a button's callback does. Kept in the widget's `State`,
 /// it is good for as long as the widget is there.
 pub const WidgetAnchor = struct {
-    node: ?*Node = null,
+    node: ?*WidgetNode = null,
 
     /// Opens a menu of `items` (copied) just below the widget, as a
     /// dropdown's; nothing, if it was not taken while building a widget.
@@ -360,7 +360,7 @@ pub const Context = struct {
     /// The toolkit's own (not for an app's widgets, which have `anchor`):
     /// the node the widget is built in, or null for what is built outside
     /// one (a menu's or popup's content, the title bar).
-    node: ?*Node = null,
+    node: ?*WidgetNode = null,
     /// The theme the widget is built in, if not the UI's (that of the
     /// nearest `Themed` above it): read it with `theme`.
     theme_ptr: ?*const Theme = null,
@@ -497,12 +497,12 @@ pub const Edges = struct {
 };
 
 /// A widget's place in the tree, kept between frames.
-pub const Node = struct {
+pub const WidgetNode = struct {
     ui: *WindowUi,
     widget: Widget,
-    parent: ?*Node = null,
+    parent: ?*WidgetNode = null,
     state_ptr: ?*anyopaque = null,
-    children: std.ArrayList(*Node) = .empty,
+    children: std.ArrayList(*WidgetNode) = .empty,
     /// From the last layout: the size, and where it is in its parent.
     size: Size = .{},
     offset: Point = .{ 0, 0 },
@@ -526,38 +526,38 @@ pub const Node = struct {
 
     /// The theme the widget is in: the app's, or that of the nearest
     /// `Themed` above it (for `layout`, `paint` and `event` functions).
-    pub fn theme(n: *const Node) *const Theme {
+    pub fn theme(n: *const WidgetNode) *const Theme {
         return n.theme_ptr orelse &n.ui.theme;
     }
 
-    pub fn child(n: *const Node, i: usize) *Node {
+    pub fn child(n: *const WidgetNode, i: usize) *WidgetNode {
         return n.children.items[i];
     }
 
-    pub fn childCount(n: *const Node) usize {
+    pub fn childCount(n: *const WidgetNode) usize {
         return n.children.items.len;
     }
 
     /// The state of a stateful widget.
-    pub fn state(n: *const Node, comptime S: type) *S {
+    pub fn state(n: *const WidgetNode, comptime S: type) *S {
         return @ptrCast(@alignCast(n.state_ptr.?));
     }
 
     /// Where it goes in its parent (for `layout` functions).
-    pub fn place(n: *Node, x: f32, y: f32) void {
+    pub fn place(n: *WidgetNode, x: f32, y: f32) void {
         n.offset = .{ x, y };
     }
 
     /// For widgets that draw more than their children: the area (relative
     /// to the widget) their drawing needs. Overflow is shown if it is
     /// bigger than the widget.
-    pub fn setContent(n: *Node, r: Rect) void {
+    pub fn setContent(n: *WidgetNode, r: Rect) void {
         n.content = r;
     }
 
     /// Lays the node out within `c` and returns its size. Never fails:
     /// constraints and sizes that make no sense are made to.
-    pub fn layout(n: *Node, c_in: Constraints) Size {
+    pub fn layout(n: *WidgetNode, c_in: Constraints) Size {
         const c = c_in.sanitize();
         n.laid_out = n.ui.frame_no;
         n.content = null;
@@ -574,7 +574,7 @@ pub const Node = struct {
 
     /// Children get the same constraints and go at the top left; the
     /// node is as big as allowed, or as its biggest child if unbounded.
-    fn defaultLayout(n: *Node, c: Constraints) Size {
+    fn defaultLayout(n: *WidgetNode, c: Constraints) Size {
         if (n.children.items.len == 0) return c.biggest();
         var biggest: Size = .{};
         for (n.children.items) |ch| {
@@ -586,7 +586,7 @@ pub const Node = struct {
 
     /// The smallest size the node and its children need within `c` without
     /// overflowing or mutating layout state.
-    pub fn minSize(n: *Node, c_in: Constraints) Size {
+    pub fn minSize(n: *WidgetNode, c_in: Constraints) Size {
         const c = c_in.sanitize();
         const want = if (n.widget.vtable.min_size) |f|
             f(n.widget.ptr, n, c)
@@ -612,7 +612,7 @@ pub const Node = struct {
         return c.sanitizeSize(want);
     }
 
-    fn defaultMinSize(n: *Node, c: Constraints) Size {
+    fn defaultMinSize(n: *WidgetNode, c: Constraints) Size {
         if (n.children.items.len == 0) return c.smallest();
         var biggest: Size = .{};
         for (n.children.items) |ch| {
@@ -622,7 +622,7 @@ pub const Node = struct {
         return c.constrain(biggest);
     }
 
-    fn findOverflow(n: *Node) void {
+    fn findOverflow(n: *WidgetNode) void {
         var x0: f32 = 0;
         var y0: f32 = 0;
         var x1 = n.size.w;
@@ -650,8 +650,8 @@ pub const Node = struct {
 
     // --- Building -----------------------------------------------------------
 
-    pub fn create(ui: *WindowUi, w: Widget) ?*Node {
-        const n = ui.gpa.create(Node) catch return null;
+    pub fn create(ui: *WindowUi, w: Widget) ?*WidgetNode {
+        const n = ui.gpa.create(WidgetNode) catch return null;
         n.* = .{ .ui = ui, .widget = w };
         if (w.vtable.state) |ops| {
             const mem = ui.gpa.rawAlloc(ops.size, ops.alignment, @returnAddress()) orelse {
@@ -665,7 +665,7 @@ pub const Node = struct {
     }
 
     /// Frees the node and those below it.
-    pub fn destroy(n: *Node) void {
+    pub fn destroy(n: *WidgetNode) void {
         for (n.children.items) |ch| ch.destroy();
         n.children.deinit(n.ui.gpa);
         n.ui.forget(n);
@@ -680,7 +680,7 @@ pub const Node = struct {
 
     /// Gives the node this frame's widget, builds it, and does the same
     /// for the children.
-    pub fn build(n: *Node, w: Widget) void {
+    pub fn build(n: *WidgetNode, w: Widget) void {
         n.widget = w;
         // In its parent's theme (a root's is given before it is built),
         // unless it gives one of its own (`Themed`).
@@ -701,7 +701,7 @@ pub const Node = struct {
     /// type, and the same key or position), makes nodes for the rest, and
     /// frees the nodes left over. (Widgets that make their children as
     /// they are laid out call it then.)
-    pub fn reconcile(n: *Node, widgets: []const Widget) void {
+    pub fn reconcile(n: *WidgetNode, widgets: []const Widget) void {
         if (widgets.len == n.children.items.len) {
             var all_match = true;
             for (widgets, n.children.items) |w, ch| {
@@ -718,11 +718,11 @@ pub const Node = struct {
         const gpa = n.ui.gpa;
         const arena = n.ui.arena();
         // The old children, aside (the list's memory is reused).
-        const old_items: []*Node = arena.dupe(*Node, n.children.items) catch blk: {
+        const old_items: []*WidgetNode = arena.dupe(*WidgetNode, n.children.items) catch blk: {
             for (n.children.items) |o| o.destroy();
             break :blk &.{};
         };
-        const old: struct { items: []*Node } = .{ .items = old_items };
+        const old: struct { items: []*WidgetNode } = .{ .items = old_items };
         n.children.clearRetainingCapacity();
         // Which old nodes are kept (if this cannot be had, none are).
         const used: []bool = arena.alloc(bool, old.items.len) catch &.{};
@@ -743,7 +743,7 @@ pub const Node = struct {
                     found = i;
                 }
             }
-            const node = if (found) |j| old.items[j] else Node.create(n.ui, w) orelse continue;
+            const node = if (found) |j| old.items[j] else WidgetNode.create(n.ui, w) orelse continue;
             n.children.append(gpa, node) catch {
                 if (found == null) node.destroy();
                 continue;
@@ -760,7 +760,7 @@ pub const Node = struct {
 
     /// Adds the nodes under `p` (relative to this node) that handle events
     /// to `path`, deepest first. Returns whether anything here was hit.
-    pub fn hitTest(n: *Node, p: Point, path: *std.ArrayList(*Node)) bool {
+    pub fn hitTest(n: *WidgetNode, p: Point, path: *std.ArrayList(*WidgetNode)) bool {
         if (n.laid_out != n.ui.frame_no) return false;
         if (p[0] < 0 or p[1] < 0 or p[0] >= n.size.w or p[1] >= n.size.h) return false;
         var hit = false;
@@ -782,7 +782,7 @@ pub const Node = struct {
     /// Tells the widgets that make only the children that show
     /// (`realize`), in it and below, what of them shows: `visible`
     /// (relative to this node). Scroll views below tell their own.
-    pub fn realizeIn(n: *Node, visible: Rect) void {
+    pub fn realizeIn(n: *WidgetNode, visible: Rect) void {
         if (n.laid_out != n.ui.frame_no) return;
         if (n.widget.vtable.realize) |f| return f(n.widget.ptr, n, visible);
         for (n.children.items) |ch| {
@@ -792,7 +792,7 @@ pub const Node = struct {
     }
 
     /// Where the node's top left is in the window (as last laid out).
-    pub fn position(n: *const Node) Point {
+    pub fn position(n: *const WidgetNode) Point {
         var p = n.offset;
         var up = n.parent;
         while (up) |u| : (up = u.parent) p = .{ p[0] + u.offset[0], p[1] + u.offset[1] };

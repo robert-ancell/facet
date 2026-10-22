@@ -19,7 +19,7 @@ const painter_mod = @import("painter.zig");
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Painter = painter_mod.Painter;
 

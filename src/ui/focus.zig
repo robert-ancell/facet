@@ -12,7 +12,7 @@ const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Painter = painter_mod.Painter;
 
 /// Whether `n` takes the focus now (and is laid out, so showing).

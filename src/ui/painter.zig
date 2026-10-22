@@ -18,7 +18,7 @@ const runtime = @import("runtime.zig");
 
 const Point = geometry.Point;
 const Rect = geometry.Rect;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const WindowUi = runtime.WindowUi;
 
 /// Where a GPU draw goes, in the frame's pixels.

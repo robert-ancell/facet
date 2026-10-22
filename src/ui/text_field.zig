@@ -21,7 +21,7 @@ const Column = @import("flex.zig").Column;
 const menu = @import("menu.zig");
 const Padding = @import("padding.zig").Padding;
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;

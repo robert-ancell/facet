@@ -13,7 +13,7 @@ const OutlinedButton = button.OutlinedButton;
 
 const Widget = widget.Widget;
 const Context = widget.Context;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const ValueCallback = widget.ValueCallback;
 
 pub const DropdownMenu = struct {

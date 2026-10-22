@@ -25,7 +25,7 @@ const painter_mod = @import("painter.zig");
 const loader = @import("image_loader.zig");
 const SizedBox = @import("sized_box.zig").SizedBox;
 
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Context = widget.Context;
 const Widget = widget.Widget;
 const Painter = painter_mod.Painter;

@@ -18,15 +18,15 @@ pub const Spinner = struct {
     /// The theme's primary colour if not given.
     color: ?Color = null,
 
-    pub fn accessible(_: *const Spinner, _: *widget.Node) ?a11y.Info {
+    pub fn accessible(_: *const Spinner, _: *widget.WidgetNode) ?a11y.Info {
         return .{ .role = .progressbar, .label = "Busy", .busy = true };
     }
 
-    pub fn layout(self: *const Spinner, _: *widget.Node, c: geometry.Constraints) geometry.Size {
+    pub fn layout(self: *const Spinner, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
-    pub fn paint(self: *const Spinner, n: *widget.Node, p: *painter.Painter) void {
+    pub fn paint(self: *const Spinner, n: *widget.WidgetNode, p: *painter.Painter) void {
         n.ui.needs_frame = true;
         const t: f32 = @floatCast(@as(f64, @floatFromInt(n.ui.now_ns % (12 * std.time.ns_per_s))) / std.time.ns_per_s);
         const r = @min(n.size.w, n.size.h) / 2;

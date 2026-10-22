@@ -200,11 +200,11 @@ fn failed(cx: *facet.Context) facet.Widget {
 
 /// A checkerboard, filling its space.
 const Checks = struct {
-    pub fn layout(_: *const Checks, _: *facet.Node, c: facet.Constraints) facet.Size {
+    pub fn layout(_: *const Checks, _: *facet.WidgetNode, c: facet.Constraints) facet.Size {
         return c.biggest();
     }
 
-    pub fn paint(_: *const Checks, n: *facet.Node, p: *facet.Painter) void {
+    pub fn paint(_: *const Checks, n: *facet.WidgetNode, p: *facet.Painter) void {
         const t = p.theme();
         const c = p.canvas();
         const size = 12;

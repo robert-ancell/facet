@@ -11,7 +11,7 @@ const painter_mod = @import("painter.zig");
 
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Painter = painter_mod.Painter;
 
 pub const TextStyle = struct {

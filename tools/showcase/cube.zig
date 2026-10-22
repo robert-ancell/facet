@@ -66,10 +66,10 @@ pub const Api = enum { vulkan, opengl, metal, d3d11 };
 
 pub fn Scene(comptime api: Api) type {
     const Context = switch (api) {
-        .vulkan => facet.VulkanContext,
-        .opengl => facet.OpenGlContext,
-        .metal => facet.MetalContext,
-        .d3d11 => facet.D3D11Context,
+        .vulkan => facet.gfx.VulkanContext,
+        .opengl => facet.gfx.OpenGlContext,
+        .metal => facet.gfx.MetalContext,
+        .d3d11 => facet.gfx.D3D11Context,
     };
     return struct {
         /// How far round the cube has turned, and tilted towards the

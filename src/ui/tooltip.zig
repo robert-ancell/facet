@@ -14,7 +14,7 @@ const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Context = widget.Context;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 
 pub const Tooltip = struct {

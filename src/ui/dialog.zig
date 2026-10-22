@@ -20,7 +20,7 @@ const Text = @import("text.zig").Text;
 
 const Widget = widget.Widget;
 const Context = widget.Context;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 

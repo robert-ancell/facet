@@ -18,7 +18,7 @@ const TextButton = @import("button.zig").TextButton;
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
-const Node = widget.Node;
+const Node = widget.WidgetNode;
 const Context = widget.Context;
 const Callback = widget.Callback;
 
