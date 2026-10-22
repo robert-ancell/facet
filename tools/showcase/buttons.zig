@@ -140,7 +140,7 @@ fn segmented(comptime T: type, cx: *facet.Context, value: *T, options: []const S
 }
 
 fn Segment(comptime T: type) type {
-    return struct { value: T, label: []const u8, icon: ?facet.icons.Icon = null };
+    return struct { value: T, label: []const u8, icon: ?facet.IconName = null };
 }
 
 /// A button opening a menu below it.

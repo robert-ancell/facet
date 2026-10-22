@@ -46,7 +46,7 @@ pub const Page = enum {
         };
     }
 
-    fn icon(p: Page) facet.icons.Icon {
+    fn icon(p: Page) facet.IconName {
         return switch (p) {
             .buttons => .smart_button,
             .selection => .toggle_on,

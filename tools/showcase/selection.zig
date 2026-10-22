@@ -10,7 +10,7 @@ pub const Quality = enum { low, balanced, high, ultra };
 
 const topping_names = [_][]const u8{ "Cheese", "Mushroom", "Olives" };
 const filter_names = [_][]const u8{ "Unread", "Starred", "Files", "From me" };
-const filter_icons = [_]facet.icons.Icon{ .mail, .star, .folder, .person };
+const filter_icons = [_]facet.IconName{ .mail, .star, .folder, .person };
 const tag_names = [_][]const u8{ "zig", "wayland", "vulkan" };
 const resolutions = [_][]const u8{ "3840 × 2160", "2560 × 1440", "1920 × 1080", "1280 × 720" };
 

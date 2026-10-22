@@ -26,7 +26,7 @@ const Color = gfx.Color;
 
 pub const Chip = struct {
     label: []const u8,
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     /// Whether it is shown as selected (and reported as pressed).
     selected: bool = false,
     on_press: ?Callback = null,
@@ -81,7 +81,7 @@ pub const Chip = struct {
         else
             .{ .width = 1, .color = if (enabled) t.outline else t.on_surface.withAlpha(0.12) };
 
-        const leading_icon: ?icons.Icon = if (self.selected) .check else self.icon;
+        const leading_icon: ?icons.IconName = if (self.selected) .check else self.icon;
 
         var parts: [3]Widget = undefined;
         var count: usize = 0;

@@ -12,12 +12,10 @@
 //!   the one built for
 //! * `font`: pure-Zig OpenType/TrueType font parser, shaper, and rasterizer,
 //!   including bundled default Fira Sans and Twemoji Mozilla fallback fonts
-//! * `icons`: Material Icons enum (`Icon`) and subsetted icon font
 
 pub const ui = @import("ui");
 pub const gfx = @import("gfx");
 pub const font = @import("font");
-pub const icons = @import("icons");
 pub const window = @import("window");
 
 pub const WindowUi = ui.WindowUi;
@@ -116,6 +114,7 @@ pub const BarButton = ui.BarButton;
 pub const ScrollView = ui.ScrollView;
 pub const LazyGrid = ui.LazyGrid;
 pub const Icon = ui.Icon;
+pub const IconName = ui.IconName;
 pub const Image = ui.Image;
 pub const QrCode = ui.QrCode;
 pub const Accessible = ui.Accessible;
@@ -155,6 +154,5 @@ test {
     _ = ui;
     _ = gfx;
     _ = font;
-    _ = icons;
     _ = window;
 }

@@ -28,7 +28,7 @@ const ValueCallback = widget.ValueCallback;
 
 pub const Tab = struct {
     label: []const u8,
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     badge: ?u32 = null,
 };
 

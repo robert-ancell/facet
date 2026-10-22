@@ -1,5 +1,5 @@
 //! Makes Facet's icon font: the Material Icons font cut down to the icons
-//! Facet includes (`Icon`, in src/icons/names.zig), leaving out unused
+//! Facet includes (`IconName`, in src/icons/names.zig), leaving out unused
 //! glyphs. The full font has over 2000 icons (350 KB); a few dozen are a
 //! few kilobytes.
 //!
@@ -7,14 +7,14 @@
 //!
 //! The codepoints file names each icon's codepoint ("folder e2c7"); an
 //! icon it does not name is an error. out.zig lists the codepoints, in the
-//! order of `Icon`. out.ttf has the icons' glyphs (and those they are made
+//! order of `IconName`. out.ttf has the icons' glyphs (and those they are made
 //! of), with the tables Facet's font reader needs: TrueType outlines,
 //! metrics and a character map. The ligatures that let the full font
 //! draw "folder" as the icon are left out: icons are drawn by codepoint.
 
 const std = @import("std");
 const font = @import("font");
-const Icon = @import("icon_names").Icon;
+const Icon = @import("icon_names").IconName;
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -52,7 +52,7 @@ pub fn main(init: std.process.Init) !void {
     try ttf.writeStreamingAll(init.io, out);
 
     var zig: std.ArrayList(u8) = .empty;
-    try zig.appendSlice(arena, "//! Made by tools/subset_icons.zig: each icon's codepoint, in the order of `Icon`.\n\npub const codepoints = [_]u21{\n");
+    try zig.appendSlice(arena, "//! Made by tools/subset_icons.zig: each icon's codepoint, in the order of `IconName`.\n\npub const codepoints = [_]u21{\n");
     for (codepoints) |cp| try zig.print(arena, "    0x{x},\n", .{cp});
     try zig.appendSlice(arena, "};\n");
     const z = try cwd.createFile(init.io, args[4], .{});

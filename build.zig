@@ -244,7 +244,6 @@ pub fn createModules(
             .{ .name = "ui", .module = ui },
             .{ .name = "gfx", .module = gfx },
             .{ .name = "font", .module = font },
-            .{ .name = "icons", .module = icons },
             .{ .name = "window", .module = window },
         },
     });

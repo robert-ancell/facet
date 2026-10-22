@@ -34,7 +34,7 @@ pub const IconButton = struct {
         outlined,
     };
 
-    icon: icons.Icon,
+    icon: icons.IconName,
     on_press: ?Callback = null,
     size: f32 = 40,
     /// Defaults to 60% of `size` (24px for a 40px button).

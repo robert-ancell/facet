@@ -36,9 +36,9 @@ pub const FilledButton = struct {
     /// The label (or give a `child` instead).
     label: []const u8 = "",
     /// An icon before the label (or alone, without one).
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     /// An icon after the label (for menu or forward buttons).
-    trailing_icon: ?icons.Icon = null,
+    trailing_icon: ?icons.IconName = null,
     child: ?Widget = null,
     /// Without it the button is disabled.
     on_press: ?Callback = null,
@@ -65,8 +65,8 @@ pub const FilledButton = struct {
 /// medium emphasis between `FilledButton` and `OutlinedButton`.
 pub const TonalButton = struct {
     label: []const u8 = "",
-    icon: ?icons.Icon = null,
-    trailing_icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
+    trailing_icon: ?icons.IconName = null,
     child: ?Widget = null,
     on_press: ?Callback = null,
 
@@ -92,8 +92,8 @@ pub const TonalButton = struct {
 /// actions that are not the main one.
 pub const OutlinedButton = struct {
     label: []const u8 = "",
-    icon: ?icons.Icon = null,
-    trailing_icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
+    trailing_icon: ?icons.IconName = null,
     child: ?Widget = null,
     /// Destructive action (e.g. delete or remove): shown in the theme's
     /// error colour when enabled.
@@ -126,8 +126,8 @@ pub const OutlinedButton = struct {
 /// background until hovered or pressed, for secondary dialog actions.
 pub const TextButton = struct {
     label: []const u8 = "",
-    icon: ?icons.Icon = null,
-    trailing_icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
+    trailing_icon: ?icons.IconName = null,
     child: ?Widget = null,
     on_press: ?Callback = null,
 

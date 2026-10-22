@@ -92,8 +92,8 @@ pub const opengl_area = @import("opengl_area.zig");
 pub const vulkan_area = @import("vulkan_area.zig");
 pub const metal_area = @import("metal_area.zig");
 pub const d3d11_area = @import("d3d11_area.zig");
-/// The icons there are (`icons.Icon`), and their font.
-pub const icons = @import("icons");
+const icons = @import("icons");
+pub const IconName = icons.IconName;
 pub const painter = @import("painter.zig");
 pub const damage = @import("damage.zig");
 pub const runtime = @import("runtime.zig");

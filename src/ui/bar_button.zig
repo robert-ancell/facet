@@ -20,7 +20,7 @@ const Size = geometry.Size;
 pub const BarButton = struct {
     on_press: widget.Callback,
     size: f32,
-    icon: icons.Icon,
+    icon: icons.IconName,
 
     pub const State = struct {
         interaction: Interaction = .{},
@@ -41,7 +41,7 @@ pub const BarButton = struct {
 };
 
 const Mark = struct {
-    icon: icons.Icon,
+    icon: icons.IconName,
     size: f32,
     hovered: bool,
     pressed: bool,

@@ -27,7 +27,7 @@ const ValueCallback = widget.ValueCallback;
 pub const NavigationRail = struct {
     pub const Item = struct {
         label: []const u8,
-        icon: icons.Icon,
+        icon: icons.IconName,
         badge: ?u32 = null,
     };
 

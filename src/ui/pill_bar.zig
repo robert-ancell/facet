@@ -47,7 +47,7 @@ pub const PillBar = struct {
 /// One segment of a `PillBar`.
 pub const PillButton = struct {
     label: []const u8,
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     selected: bool,
     first: bool = false,
     last: bool = false,

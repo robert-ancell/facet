@@ -41,7 +41,7 @@ pub const Drag = struct {
     data: usize,
     /// The chip's (the `WindowUi`'s own copy).
     label: []u8,
-    icon: ?icons.Icon,
+    icon: ?icons.IconName,
     /// Where the pointer is, in the window.
     pos: Point,
     /// The target under it that would take it, if any.
@@ -53,7 +53,7 @@ pub const Draggable = struct {
     data: usize,
     /// What the chip that follows the pointer shows.
     label: []const u8 = "",
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     /// Clicked (pressed and let go without dragging).
     on_press: ?Callback = null,
     interaction: ?*Interaction = null,
@@ -148,7 +148,7 @@ pub const DropTarget = struct {
 /// dragged.
 pub const Chip = struct {
     label: []const u8,
-    icon: ?icons.Icon,
+    icon: ?icons.IconName,
 
     pub fn build(self: *const Chip, cx: *Context) Widget {
         const t = cx.theme();

@@ -68,7 +68,7 @@ pub const Painter = struct {
     }
 
     /// Draws an icon `size` square with its top left at (`x`, `y`).
-    pub fn icon(p: *Painter, which: @import("icons").Icon, x: f32, y: f32, size: f32, color: gfx.Color) void {
+    pub fn icon(p: *Painter, which: @import("icons").IconName, x: f32, y: f32, size: f32, color: gfx.Color) void {
         var buf: [4]u8 = undefined;
         // Icons fill the em square, with the baseline at the bottom.
         _ = p.canvas().drawText(p.ui.atlas, .{ .font = p.ui.icon_font, .size = size }, x, y + size, @import("icons").text(which, &buf), color);

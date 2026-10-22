@@ -5,7 +5,7 @@ const std = @import("std");
 const facet = @import("facet");
 const common = @import("common.zig");
 
-const Icon = facet.icons.Icon;
+const Icon = facet.IconName;
 const all = std.enums.values(Icon);
 
 pub const State = struct {

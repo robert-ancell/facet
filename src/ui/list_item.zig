@@ -26,10 +26,10 @@ const Color = gfx.Color;
 pub const ListItem = struct {
     headline: []const u8,
     supporting_text: []const u8 = "",
-    leading_icon: ?icons.Icon = null,
+    leading_icon: ?icons.IconName = null,
     leading: ?Widget = null,
     trailing_text: []const u8 = "",
-    trailing_icon: ?icons.Icon = null,
+    trailing_icon: ?icons.IconName = null,
     trailing: ?Widget = null,
     /// Whether it is shown as selected (a coloured background).
     selected: bool = false,

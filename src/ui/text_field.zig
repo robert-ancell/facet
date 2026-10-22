@@ -480,7 +480,7 @@ pub const TextField = struct {
             if (self.enabled and (st.toggle_hovered or st.toggle_pressed)) {
                 c.fillCircle(.{ cx_btn, cy_btn }, toggle_radius, t.on_surface.withAlpha(if (st.toggle_pressed) 0.16 else 0.08));
             }
-            const ic: @import("icons").Icon = if (st.revealed) .visibility_off else .visibility;
+            const ic: @import("icons").IconName = if (st.revealed) .visibility_off else .visibility;
             const ic_color = if (self.enabled) t.on_surface_variant else t.on_surface.withAlpha(0.38);
             p.icon(ic, @round(cx_btn - toggle_icon_size / 2), @round(cy_btn - toggle_icon_size / 2), toggle_icon_size, ic_color);
         }

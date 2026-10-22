@@ -29,7 +29,7 @@ pub const DropdownMenu = struct {
     on_selected: ?ValueCallback(usize) = null,
     /// What the button shows when no choice is made.
     placeholder: []const u8 = "",
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     width: ?f32 = null,
 
     pub const height = button.height;
@@ -111,7 +111,7 @@ pub fn Select(comptime T: type) type {
         placeholder: []const u8 = "",
         /// Called with the value chosen; without it the dropdown is disabled.
         on_changed: ?ValueCallback(T) = null,
-        icon: ?icons.Icon = null,
+        icon: ?icons.IconName = null,
         width: ?f32 = null,
 
         pub const State = struct {

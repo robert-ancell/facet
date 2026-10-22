@@ -771,7 +771,7 @@ test "images fit the space given, keeping their shape, and text can have its own
     try testing.expectEqual(@as(u32, 0xff000000), img.at(50, 80));
 
     // Text in another font: the icon font draws "folder" as its icon.
-    const icon_font = try font.Font.init(ui.icons.font_data);
+    const icon_font = try font.Font.init(ui.Icon.font_data);
     const Shown = struct {
         f: *const font.Font,
         pub fn build(self: *const @This(), cx: *Context) Widget {

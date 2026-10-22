@@ -1,5 +1,5 @@
 //! Facet's icons: Material Icons (Apache License 2.0), drawn from a font.
-//! The bundled icon font has only the icons named in `Icon` (see names.zig
+//! The bundled icon font has only the icons named in `IconName` (see names.zig
 //! and tools/subset_icons.zig), so it is a few kilobytes.
 //!
 //!     const glyph = icons.codepoint(.folder);
@@ -11,7 +11,7 @@ const std = @import("std");
 const names = @import("names.zig");
 const generated = @import("icon_codepoints");
 
-pub const Icon = names.Icon;
+pub const IconName = names.IconName;
 
 /// The icon font: Material Icons with only Facet's icons. Its glyphs fill
 /// the em square, with the baseline at the bottom: an icon of size `s` is
@@ -19,20 +19,14 @@ pub const Icon = names.Icon;
 pub const font_data = @embedFile("MaterialIcons.ttf");
 
 /// The character an icon is in the font.
-pub fn codepoint(icon: Icon) u21 {
+pub fn codepoint(icon: IconName) u21 {
     return generated.codepoints[@backingInt(icon)];
 }
 
 /// The icon as UTF-8 text in the icon font.
-pub fn text(icon: Icon, buf: *[4]u8) []const u8 {
+pub fn text(icon: IconName, buf: *[4]u8) []const u8 {
     const len = std.unicode.utf8Encode(codepoint(icon), buf) catch unreachable;
     return buf[0..len];
-}
-
-/// The icon with this name, if it is one of Facet's.
-pub fn fromName(name: []const u8) ?Icon {
-    @setEvalBranchQuota(100_000);
-    return std.meta.stringToEnum(Icon, std.mem.trim(u8, name, " \t\r\n"));
 }
 
 const testing = std.testing;
@@ -40,15 +34,15 @@ const font = @import("font");
 
 test "every icon is in the font" {
     const f = try font.Font.init(font_data);
-    for (std.enums.values(Icon)) |icon| {
+    for (std.enums.values(IconName)) |icon| {
         const g = f.glyphIndex(codepoint(icon));
         try testing.expect(g != 0);
         try testing.expect(f.boundingBox(g) != null);
     }
     var buf: [4]u8 = undefined;
     try testing.expectEqualStrings("\u{e2c7}", text(.folder, &buf));
-    try testing.expectEqual(@as(?Icon, .folder), fromName("folder\n"));
-    try testing.expectEqual(@as(?Icon, .pets), fromName("pets"));
-    try testing.expectEqual(@as(?Icon, .remove), fromName("remove"));
-    try testing.expectEqual(@as(?Icon, null), fromName("not_an_icon"));
+    try testing.expectEqual(@as(?IconName, .folder), IconName.fromName("folder\n"));
+    try testing.expectEqual(@as(?IconName, .pets), IconName.fromName("pets"));
+    try testing.expectEqual(@as(?IconName, .remove), IconName.fromName("remove"));
+    try testing.expectEqual(@as(?IconName, null), IconName.fromName("not_an_icon"));
 }

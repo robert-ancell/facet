@@ -26,7 +26,7 @@ const Callback = widget.Callback;
 
 pub const Dialog = struct {
     open: bool = true,
-    icon: ?icons.Icon = null,
+    icon: ?icons.IconName = null,
     title: []const u8,
     description: []const u8 = "",
     content: ?Widget = null,
