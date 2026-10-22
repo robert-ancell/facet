@@ -26,9 +26,7 @@ const Painter = painter.Painter;
 /// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.Slider{ .value = 0.4, .on_changed = .of(state, State.setAmount) }) });
 /// ```
 pub const Slider = struct {
-    /// Where the handle is, from `min` to `max`. The app holds it: the
-    /// slider reports a change through `on_changed` and shows the new value
-    /// from the next build.
+    /// Where the handle is, from `min` to `max`.
     value: f32,
     /// The value at the start of the track.
     min: f32 = 0,

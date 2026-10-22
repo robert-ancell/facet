@@ -32,9 +32,7 @@ const target = control.target;
 /// }) });
 /// ```
 pub const Checkbox = struct {
-    /// Whether it is checked. The app holds it: the checkbox reports a
-    /// change through `on_changed` and shows the new value from the next
-    /// build.
+    /// Whether it is checked.
     value: bool,
     /// Called with the new value; without it the checkbox is disabled.
     on_changed: ?ValueCallback(bool) = null,

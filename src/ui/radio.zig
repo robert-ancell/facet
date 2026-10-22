@@ -40,8 +40,7 @@ pub fn Radio(comptime T: type) type {
 
         /// What selecting this button reports.
         value: T,
-        /// The group's value, which the app holds: this button is selected when
-        /// `value` equals it, and shows a change from the next build.
+        /// The group's value: this button is selected when `value` equals it.
         group_value: T,
         /// Called with `value` when it is selected; without it the button is
         /// disabled.

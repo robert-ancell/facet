@@ -54,8 +54,7 @@ pub const NavigationRail = struct {
 
     /// The destinations, from top to bottom.
     items: []const Item,
-    /// The index of the item shown as selected. The app holds it and shows a
-    /// change from the next build.
+    /// The index of the item shown as selected.
     selected: usize = 0,
     /// Called with the index of the item pressed.
     on_select: ?ValueCallback(usize) = null,

@@ -36,8 +36,7 @@ const Color = gfx.Color;
 /// }) });
 /// ```
 pub const Switch = struct {
-    /// Whether it is on. The app holds it: the switch reports a change
-    /// through `on_changed` and shows the new value from the next build.
+    /// Whether it is on.
     value: bool,
     /// Called with the new value; without it the switch is disabled.
     on_changed: ?ValueCallback(bool) = null,
