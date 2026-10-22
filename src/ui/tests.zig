@@ -586,19 +586,19 @@ test "a grid puts as many cells in a row as fit" {
     try testing.expectEqual(ui.Size{ .w = 250, .h = 140 }, grid.size);
 }
 
-const LazyItems = struct {
+const VirtualItems = struct {
     pressed: ?usize = null,
     made: usize = 0,
 
     const Press = struct {
-        items: *LazyItems,
+        items: *VirtualItems,
         i: usize,
         fn f(p: *const Press) void {
             p.items.pressed = p.i;
         }
     };
 
-    fn item(items: *LazyItems, cx: *Context, i: usize) Widget {
+    fn item(items: *VirtualItems, cx: *Context, i: usize) Widget {
         items.made += 1;
         const p = cx.arena.create(Press) catch unreachable;
         p.* = .{ .items = items, .i = i };
@@ -606,20 +606,20 @@ const LazyItems = struct {
     }
 };
 
-const LazyApp = struct {
-    items: *LazyItems,
+const VirtualApp = struct {
+    items: *VirtualItems,
     in_scroll_view: bool = true,
     pub fn build(self: *const @This(), cx: *Context) Widget {
-        const grid = cx.make(ui.LazyGrid{ .count = 100, .cell = .{ .w = 50, .h = 40 }, .spacing = 10, .item = .of(self.items, LazyItems.item) });
+        const grid = cx.make(ui.VirtualGrid{ .count = 100, .cell = .{ .w = 50, .h = 40 }, .spacing = 10, .item = .of(self.items, VirtualItems.item) });
         return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = if (self.in_scroll_view) cx.make(ui.ScrollView{ .child = grid }) else grid }) });
     }
 };
 
-test "a lazy grid makes only the rows that show, as it scrolls" {
+test "a virtual grid makes only the rows that show, as it scrolls" {
     const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
-    var items: LazyItems = .{};
-    u.frame(400, 400, 0, LazyApp{ .items = &items });
+    var items: VirtualItems = .{};
+    u.frame(400, 400, 0, VirtualApp{ .items = &items });
     const view = find(u.root.?, ui.ScrollView).?;
     const grid = view.child(0);
     // 188 wide beside the bar: three columns; 34 rows of 50.
@@ -630,12 +630,12 @@ test "a lazy grid makes only the rows that show, as it scrolls" {
     try testing.expectEqual(ui.Size{ .w = 50, .h = 40 }, grid.child(4).size);
     // The next frame makes the same ones, with the rest of the tree.
     items.made = 0;
-    u.frame(400, 400, 1, LazyApp{ .items = &items });
+    u.frame(400, 400, 1, VirtualApp{ .items = &items });
     try testing.expectEqual(@as(usize, 21), items.made);
 
     // Scrolled to 1000: rows 20 to 25 show; 19 to 26 are made.
     _ = view.state(ui.ScrollView.State).scrollTo(1000);
-    u.frame(400, 400, 2, LazyApp{ .items = &items });
+    u.frame(400, 400, 2, VirtualApp{ .items = &items });
     try testing.expectEqual(@as(usize, 24), grid.childCount());
     try testing.expectEqual(@as(?u64, 57), grid.child(0).widget.key);
     try testing.expectEqual(ui.Point{ 0, 19 * 50 }, grid.child(0).offset);
@@ -648,15 +648,15 @@ test "a lazy grid makes only the rows that show, as it scrolls" {
     try testing.expectEqual(@as(?usize, 61), items.pressed);
 
     // Not in a scroll view: all of it shows.
-    u.frame(400, 400, 3, LazyApp{ .items = &items, .in_scroll_view = false });
-    try testing.expectEqual(@as(usize, 100), find(u.root.?, ui.LazyGrid).?.childCount());
+    u.frame(400, 400, 3, VirtualApp{ .items = &items, .in_scroll_view = false });
+    try testing.expectEqual(@as(usize, 100), find(u.root.?, ui.VirtualGrid).?.childCount());
 }
 
-const LazyList = struct {
-    items: *LazyItems,
+const VirtualList = struct {
+    items: *VirtualItems,
     reveal: ?usize = null,
     pub fn build(self: *const @This(), cx: *Context) Widget {
-        const list = cx.make(ui.LazyGrid{ .count = 100, .cell = .{ .w = std.math.inf(f32), .h = 30 }, .item = .of(self.items, LazyListItems.row), .keep = self.reveal });
+        const list = cx.make(ui.VirtualGrid{ .count = 100, .cell = .{ .w = std.math.inf(f32), .h = 30 }, .item = .of(self.items, VirtualListItems.row), .keep = self.reveal });
         return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = cx.make(ui.ScrollView{
             .reveal = if (self.reveal) |r| 1000 + @as(u64, r) else null,
             .child = list,
@@ -664,18 +664,18 @@ const LazyList = struct {
     }
 };
 
-const LazyListItems = struct {
+const VirtualListItems = struct {
     /// Item `i`, keyed 1000 + i for the scroll view to reveal.
-    fn row(items: *LazyItems, cx: *Context, i: usize) Widget {
-        return LazyItems.item(items, cx, i).withKey(1000 + @as(u64, i));
+    fn row(items: *VirtualItems, cx: *Context, i: usize) Widget {
+        return VirtualItems.item(items, cx, i).withKey(1000 + @as(u64, i));
     }
 };
 
-test "a lazy list's items are as wide as it, and one far down can be revealed" {
+test "a virtual list's items are as wide as it, and one far down can be revealed" {
     const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
-    var items: LazyItems = .{};
-    u.frame(400, 400, 0, LazyList{ .items = &items });
+    var items: VirtualItems = .{};
+    u.frame(400, 400, 0, VirtualList{ .items = &items });
     const view = find(u.root.?, ui.ScrollView).?;
     const list = view.child(0);
     // One column, each row as wide as the list (beside the bar): ten rows
@@ -687,7 +687,7 @@ test "a lazy list's items are as wide as it, and one far down can be revealed" {
 
     // Revealing row 80, which is not made: it is kept, so the scroll view
     // finds it and scrolls to it, and the rows around it are made.
-    u.frame(400, 400, 1, LazyList{ .items = &items, .reveal = 80 });
+    u.frame(400, 400, 1, VirtualList{ .items = &items, .reveal = 80 });
     const st = view.state(ui.ScrollView.State);
     try testing.expectEqual(@as(f32, 81 * 30 - 300), st.offset);
     var shows = false;
@@ -698,7 +698,7 @@ test "a lazy list's items are as wide as it, and one far down can be revealed" {
     try testing.expect(shows);
     // Scrolled back to the top, row 80 is still made (and kept last).
     _ = st.scrollTo(0);
-    u.frame(400, 400, 2, LazyList{ .items = &items, .reveal = 80 });
+    u.frame(400, 400, 2, VirtualList{ .items = &items, .reveal = 80 });
     try testing.expectEqual(@as(usize, 12), list.childCount());
     try testing.expectEqual(@as(?u64, 1000 + 80), list.child(11).widget.key);
     try testing.expectEqual(ui.Point{ 0, 80 * 30 }, list.child(11).offset);

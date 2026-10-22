@@ -18,8 +18,9 @@
 //!   by default a widget passes its constraints to its children, stacks
 //!   them at its top left and is as big as allowed. Children are found in
 //!   a `child: Widget` (or `?Widget`) or a `children: []const Widget`
-//!   field, or made by `lazyChildren` (for widgets that make only the
-//!   children that show: see `realize` and lazy_grid.zig).
+//!   field, or made by a `children` function taking the `Context` and the
+//!   node (for widgets that make only the children that show: see
+//!   `realize` and virtual_grid.zig).
 //!
 //! A node is a widget's place in the tree. Each frame the new widgets are
 //! matched to the nodes of the last (by position and type, or by key), so
@@ -205,7 +206,7 @@ pub const VTable = struct {
     /// types it), so only Control and Tab moves the focus from it.
     takes_tab: bool,
     /// Makes its children (instead of `children`), when the tree is built.
-    lazy_children: ?*const fn (*const anyopaque, *Context, *WidgetNode) []const Widget,
+    make_children: ?*const fn (*const anyopaque, *Context, *WidgetNode) []const Widget,
     /// Told, once laid out in a scroll view, what of it shows (relative to
     /// itself), to make the children there.
     realize: ?*const fn (*const anyopaque, *WidgetNode, Rect) void,
@@ -282,8 +283,8 @@ fn makeVTable(comptime T: type) VTable {
         fn focusable(ptr: *const anyopaque, n: *WidgetNode) bool {
             return T.focusable(self(ptr), n);
         }
-        fn lazyChildren(ptr: *const anyopaque, cx: *Context, n: *WidgetNode) []const Widget {
-            return T.lazyChildren(self(ptr), cx, n);
+        fn makeChildren(ptr: *const anyopaque, cx: *Context, n: *WidgetNode) []const Widget {
+            return T.children(self(ptr), cx, n);
         }
         fn realize(ptr: *const anyopaque, n: *WidgetNode, visible: Rect) void {
             T.realize(self(ptr), n, visible);
@@ -311,7 +312,7 @@ fn makeVTable(comptime T: type) VTable {
         .accessible = if (@hasDecl(T, "accessible")) S.accessible else null,
         .focusable = if (@hasDecl(T, "focusable")) S.focusable else null,
         .takes_tab = @hasDecl(T, "takes_tab") and T.takes_tab,
-        .lazy_children = if (@hasDecl(T, "lazyChildren")) S.lazyChildren else null,
+        .make_children = if (@hasDecl(T, "children")) S.makeChildren else null,
         .realize = if (@hasDecl(T, "realize")) S.realize else null,
         .scrolls = @hasDecl(T, "scrolls") and T.scrolls,
         .clips_children = @hasDecl(T, "clips_children") and T.clips_children,
@@ -689,7 +690,7 @@ pub const WidgetNode = struct {
             var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             const built = f(w.ptr, &cx, n.state_ptr);
             n.reconcile(&.{built});
-        } else if (w.vtable.lazy_children) |f| {
+        } else if (w.vtable.make_children) |f| {
             var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
             n.reconcile(f(w.ptr, &cx, n));
         } else {

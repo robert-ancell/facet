@@ -174,10 +174,10 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 }),
             },
         })),
-        common.section(cx, "Virtualized grid", cx.fmt("A lazy grid of {d} cells, making only those in view", .{grid_count}), cx.makeAll(.{
+        common.section(cx, "Virtualized grid", cx.fmt("A virtual grid of {d} cells, making only those in view", .{grid_count}), cx.makeAll(.{
             facet.SizedBox{
                 .height = 200,
-                .child = cx.make(facet.ScrollView{ .child = cx.make(facet.LazyGrid{
+                .child = cx.make(facet.ScrollView{ .child = cx.make(facet.VirtualGrid{
                     .count = grid_count,
                     .cell = .{ .w = 96, .h = 40 },
                     .spacing = 8,

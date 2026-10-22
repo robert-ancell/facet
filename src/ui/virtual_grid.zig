@@ -1,4 +1,4 @@
-//! LazyGrid: a grid of many items all the same size, of which only those
+//! VirtualGrid: a grid of many items all the same size, of which only those
 //! that show are made. With an infinite cell width it is a list: one
 //! column of items as wide as it. Like `Grid`, as many cells go in a row as fit; but
 //! the items are made by a function, given their index, and only for the
@@ -6,7 +6,7 @@
 //! Because every cell is the same size, how big the grid is, and where
 //! each item goes, is known without making them.
 //!
-//!     cx.make(ui.ScrollView{ .child = cx.make(ui.LazyGrid{
+//!     cx.make(ui.ScrollView{ .child = cx.make(ui.VirtualGrid{
 //!         .count = files.len,
 //!         .cell = .{ .w = 128, .h = 124 },
 //!         .item = .of(view, View.tile),
@@ -28,7 +28,7 @@ const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 const Context = widget.Context;
 
-pub const LazyGrid = struct {
+pub const VirtualGrid = struct {
     count: usize,
     cell: Size,
     /// Space between cells, across and down.
@@ -66,7 +66,7 @@ pub const LazyGrid = struct {
 
     /// The items made with the rest of the tree: those of the last frame
     /// (and the item to keep).
-    pub fn lazyChildren(self: *const LazyGrid, cx: *Context, n: *Node) []const Widget {
+    pub fn children(self: *const VirtualGrid, cx: *Context, n: *Node) []const Widget {
         const st = n.state(State);
         st.end = @min(st.end, self.count);
         st.first = @min(st.first, st.end);
@@ -75,12 +75,12 @@ pub const LazyGrid = struct {
     }
 
     /// The item to keep, if it is not among those from `first` to `end`.
-    fn extra(self: *const LazyGrid, first: usize, end: usize) ?usize {
+    fn extra(self: *const VirtualGrid, first: usize, end: usize) ?usize {
         const k = self.keep orelse return null;
         return if (k < self.count and (k < first or k >= end)) k else null;
     }
 
-    fn make(self: *const LazyGrid, cx: *Context, st: State) []const Widget {
+    fn make(self: *const VirtualGrid, cx: *Context, st: State) []const Widget {
         const len = st.end - st.first + @intFromBool(st.kept != null);
         const out = cx.arena.alloc(Widget, len) catch return &.{};
         for (out, 0..) |*w, k| {
@@ -92,27 +92,27 @@ pub const LazyGrid = struct {
     }
 
     /// The index of the `k`th item made.
-    fn index(_: *const LazyGrid, st: State, k: usize) usize {
+    fn index(_: *const VirtualGrid, st: State, k: usize) usize {
         return if (k < st.end - st.first) st.first + k else st.kept.?;
     }
 
-    fn gap(self: *const LazyGrid) f32 {
+    fn gap(self: *const VirtualGrid) f32 {
         return if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
     }
 
     /// A list: one column, its items as wide as it.
-    fn isList(self: *const LazyGrid) bool {
+    fn isList(self: *const VirtualGrid) bool {
         return !std.math.isFinite(self.cell.w);
     }
 
-    fn columns(self: *const LazyGrid, width: f32) usize {
+    fn columns(self: *const VirtualGrid, width: f32) usize {
         if (self.isList()) return 1;
         if (!std.math.isFinite(width)) return @max(self.count, 1);
         const cw = @max(self.cell.w, 0);
         return @max(1, @as(usize, @intFromFloat(@max(@floor((width + self.gap()) / (cw + self.gap())), 0))));
     }
 
-    pub fn layout(self: *const LazyGrid, n: *Node, c: Constraints) Size {
+    pub fn layout(self: *const VirtualGrid, n: *Node, c: Constraints) Size {
         const cols = self.columns(c.max_w);
         const rows = (self.count + cols - 1) / cols;
         const cw = if (self.isList()) 0 else @max(self.cell.w, 0);
@@ -132,7 +132,7 @@ pub const LazyGrid = struct {
         return size;
     }
 
-    pub fn minSize(self: *const LazyGrid, _: *Node, c: Constraints) Size {
+    pub fn minSize(self: *const VirtualGrid, _: *Node, c: Constraints) Size {
         if (self.count == 0) return c.smallest();
         const cw = if (self.isList()) 0 else @max(self.cell.w, 0);
         const ch = @max(self.cell.h, 0);
@@ -140,7 +140,7 @@ pub const LazyGrid = struct {
     }
 
     /// Lays out the items made, each in its cell.
-    fn place(self: *const LazyGrid, n: *Node, cols: usize) void {
+    fn place(self: *const VirtualGrid, n: *Node, cols: usize) void {
         const st = n.state(State);
         const cell: Size = .{ .w = if (self.isList()) n.size.w else @max(self.cell.w, 0), .h = @max(self.cell.h, 0) };
         for (n.children.items, 0..) |child, k| {
@@ -154,7 +154,7 @@ pub const LazyGrid = struct {
 
     /// `visible` (relative to the grid) is what shows: the items in the
     /// rows it covers are made, if they are not already, and laid out.
-    pub fn realize(self: *const LazyGrid, n: *Node, visible: Rect) void {
+    pub fn realize(self: *const VirtualGrid, n: *Node, visible: Rect) void {
         const cols = self.columns(n.size.w);
         const pitch = @max(self.cell.h, 0) + self.gap();
         var want: State = .{};
