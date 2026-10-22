@@ -23,8 +23,8 @@ const target = control.target;
 
 /// One of a group of radio buttons: selected when `value` is the group's
 /// value, and selecting it reports `value`. It is usually used as part of a
-/// `RadioRow`, which adds text beside it that selects it too; name a radio
-/// button used without one for assistive technologies with `Accessible`.
+/// `RadioRow`, which adds text beside it that selects it too, and the
+/// information assistive technologies need.
 ///
 /// ![The Radio example](images/Radio.png)
 ///

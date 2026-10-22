@@ -24,8 +24,8 @@ const Color = gfx.Color;
 
 /// A switch: a track with a handle that slides between off and on when it is
 /// pressed. It is usually used as part of a `SwitchRow`, which adds text
-/// beside it that toggles it too; name a switch used without one for
-/// assistive technologies with `Accessible`.
+/// beside it that toggles it too, and the information assistive technologies
+/// need.
 ///
 /// ![The Switch example](images/Switch.png)
 ///

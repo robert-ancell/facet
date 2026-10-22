@@ -21,8 +21,7 @@ const target = control.target;
 
 /// A checkbox: a box that is ticked or not, and is toggled by pressing it.
 /// It is usually used as part of a `CheckboxRow`, which adds text beside it
-/// that toggles it too; name a checkbox used without one for assistive
-/// technologies with `Accessible`.
+/// that toggles it too, and the information assistive technologies need.
 ///
 /// ![The Checkbox example](images/Checkbox.png)
 ///
