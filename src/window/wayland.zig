@@ -745,7 +745,7 @@ pub const WaylandWindow = struct {
         return w.extensions_buf[0..w.extensions_len];
     }
 
-    pub fn decorations(w: *const WaylandWindow) window_mod.Decorations {
+    pub fn decorations(w: *const WaylandWindow) window_mod.WindowDecorations {
         return if (w.server_decorations) .server else .client;
     }
 
@@ -3071,7 +3071,7 @@ test "edgesAt detects resize edges only outside the window content and respects 
     WaylandWindow.decorationEvent(&win, &disp, 1, p.zxdg_toplevel_decoration_v1.event.configure, &r_ssd);
     try std.testing.expect(win.server_decorations);
     try std.testing.expect(win.decoration_changed);
-    try std.testing.expectEqual(window_mod.Decorations.server, win.decorations());
+    try std.testing.expectEqual(window_mod.WindowDecorations.server, win.decorations());
     try std.testing.expect(!win.hasClientDecorations());
     try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));

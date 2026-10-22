@@ -1504,7 +1504,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     var win_info: ui.WindowInfo = .{};
     u.frame(320, 240, 0, Probe{ .out = &info, .win = &win_info });
     try testing.expectEqual(window.Platform.headless, info.platform);
-    try testing.expectEqual(window.Decorations.none, win_info.decorations);
+    try testing.expectEqual(window.WindowDecorations.none, win_info.decorations);
     try testing.expectEqual(window.BufferTransport.memory, win_info.buffer_transport);
     try testing.expectEqual(expected_renderer, info.renderer);
 
@@ -1527,7 +1527,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 1, Probe{ .out = &info, .win = &win_info });
         try testing.expectEqual(window.Platform.wayland, info.platform);
-        try testing.expectEqual(window.Decorations.client, win_info.decorations);
+        try testing.expectEqual(window.WindowDecorations.client, win_info.decorations);
         try testing.expectEqual(window.BufferTransport.wl_shm, win_info.buffer_transport);
         try testing.expectEqual(window.BufferSync.none, win_info.buffer_sync);
         try testing.expect(win_info.frame_sync.vsync);
@@ -1547,7 +1547,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
         wl_win.server_decorations = true;
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 2, Probe{ .out = &info, .win = &win_info });
-        try testing.expectEqual(window.Decorations.server, win_info.decorations);
+        try testing.expectEqual(window.WindowDecorations.server, win_info.decorations);
     }
 }
 
@@ -2074,8 +2074,8 @@ const ProbeLeaf = struct {
 };
 
 test "the baseline schemes are Material's, and say which is dark" {
-    try testing.expectEqual(ui.Brightness.dark, ui.Theme.dark.brightness);
-    try testing.expectEqual(ui.Brightness.light, ui.Theme.light.brightness);
+    try testing.expectEqual(ui.ThemeBrightness.dark, ui.Theme.dark.brightness);
+    try testing.expectEqual(ui.ThemeBrightness.light, ui.Theme.light.brightness);
     try testing.expectEqual(gfx.Color.rgb(0xf2b8b5), ui.Theme.dark.@"error");
     try testing.expectEqual(gfx.Color.rgb(0x601410), ui.Theme.dark.on_error);
     try testing.expectEqual(gfx.Color.rgb(0xb3261e), ui.Theme.light.@"error");

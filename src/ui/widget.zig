@@ -472,7 +472,7 @@ pub const WindowInfo = struct {
     /// `wp_presentation`), or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
     /// Window decoration mode (`none`, `client`, `server`).
-    decorations: window_mod.Decorations = .none,
+    decorations: window_mod.WindowDecorations = .none,
     /// Logical window size in pixels.
     logical_size: [2]u32 = .{ 0, 0 },
     /// Physical target buffer size in pixels (`logical_size * scale`).

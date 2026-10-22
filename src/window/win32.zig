@@ -363,7 +363,7 @@ pub const Win32Window = struct {
     };
 
     pub const platform: window.Platform = .windows;
-    pub const decorations: window.Decorations = .server;
+    pub const decorations: window.WindowDecorations = .server;
 
     pub const Options = struct {
         title: []const u8,

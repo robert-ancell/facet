@@ -112,13 +112,13 @@ pub const Watch = struct {
 };
 
 /// Whether a scheme is light (dark on light) or dark (light on dark).
-pub const Brightness = enum { light, dark };
+pub const ThemeBrightness = enum { light, dark };
 
 /// A Material 3 colour scheme, and text sizes in pixels. The app's (`WindowUi`'s)
 /// is the light or dark baseline, as the system asks; `Themed` gives the
 /// widgets below it another (changing a colour or two of `cx.theme()`, say).
 pub const Theme = struct {
-    brightness: Brightness,
+    brightness: ThemeBrightness,
     primary: Color,
     on_primary: Color,
     primary_container: Color,

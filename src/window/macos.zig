@@ -124,7 +124,7 @@ pub const MacWindow = struct {
     };
 
     pub const platform: window.Platform = .macos;
-    pub const decorations: window.Decorations = .server;
+    pub const decorations: window.WindowDecorations = .server;
 
     const Buffer = struct {
         pixels: ?*Pixels = null,

@@ -351,7 +351,7 @@ pub const WindowUi = struct {
     /// Whether the window is tiled by the compositor.
     tiled: bool = false,
     /// Active window decoration mode (`none`, `client`, `server`).
-    decorations: window_mod.Decorations = .none,
+    decorations: window_mod.WindowDecorations = .none,
     /// The window attached to the UI, if any.
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).

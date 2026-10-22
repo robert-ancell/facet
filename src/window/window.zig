@@ -306,12 +306,12 @@ pub const BufferTransport = enum {
 /// Whether window decorations (title bar, drop shadows, resize borders) are
 /// drawn by the toolkit (`client`), the compositor/window manager (`server`),
 /// or not at all (`none`).
-pub const Decorations = enum {
+pub const WindowDecorations = enum {
     none,
     client,
     server,
 
-    pub fn name(d: Decorations) []const u8 {
+    pub fn name(d: WindowDecorations) []const u8 {
         return switch (d) {
             .none => "None",
             .client => "Client-side (CSD)",
@@ -416,7 +416,7 @@ pub const Window = struct {
         frameSync: *const fn (ptr: *anyopaque) FrameSync,
         refreshHz: *const fn (ptr: *anyopaque) f32,
         extensions: *const fn (ptr: *anyopaque) []const []const u8,
-        decorations: *const fn (ptr: *anyopaque) Decorations,
+        decorations: *const fn (ptr: *anyopaque) WindowDecorations,
         title: *const fn (ptr: *anyopaque) []const u8,
         setTitle: *const fn (ptr: *anyopaque, title: []const u8) void,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
@@ -523,9 +523,9 @@ pub const Window = struct {
                 if (@hasDecl(T, "extensions")) return self(p).extensions();
                 return &.{};
             }
-            fn decorationsFn(p: *anyopaque) Decorations {
+            fn decorationsFn(p: *anyopaque) WindowDecorations {
                 if (@hasDecl(T, "decorations")) {
-                    if (@TypeOf(T.decorations) == Decorations) return T.decorations;
+                    if (@TypeOf(T.decorations) == WindowDecorations) return T.decorations;
                     return self(p).decorations();
                 }
                 if (@hasField(T, "decorations")) return self(p).decorations;
@@ -827,7 +827,7 @@ pub const Window = struct {
     }
     /// Who draws the window's title bar and borders: the toolkit, the window system
     /// or no one.
-    pub fn decorations(w: Window) Decorations {
+    pub fn decorations(w: Window) WindowDecorations {
         return w.vtable.decorations(w.ptr);
     }
     /// The window's title, or "" if it has none.
