@@ -2552,9 +2552,9 @@ const FocusApp = struct {
     }
 };
 
-fn pressKey(u: *ui.WindowUi, root: anytype, code: u32, mods: struct { shift: bool = false, ctrl: bool = false }) void {
-    u.key(.{ .code = code, .pressed = true, .shift = mods.shift, .ctrl = mods.ctrl });
-    u.key(.{ .code = code, .pressed = false, .shift = mods.shift, .ctrl = mods.ctrl });
+fn pressKey(u: *ui.WindowUi, root: anytype, key: ui.KeyboardKey, mods: struct { shift: bool = false, ctrl: bool = false }) void {
+    u.key(.{ .key = key, .pressed = true, .shift = mods.shift, .ctrl = mods.ctrl });
+    u.key(.{ .key = key, .pressed = false, .shift = mods.shift, .ctrl = mods.ctrl });
     u.frame(400, 600, 0, root);
 }
 
@@ -2582,38 +2582,38 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
     // In order, past the disabled button, round to the start.
     const order = [_]type{ ui.FilledButton, ui.TextField, ui.CheckboxRow, ui.Slider, ui.RadioRow(u8), ui.RadioRow(u8), ui.TextArea };
     inline for (order) |T| {
-        pressKey(u, app, ui.keymap.tab, .{});
+        pressKey(u, app, .tab, .{});
         try testing.expect(focusedIn(u, T));
         try testing.expect(u.focus_visible);
     }
     // The text area types a tab (as spaces); Control and Tab moves on.
-    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, .tab, .{});
     try testing.expect(doc.text().len > 0 and std.mem.trim(u8, doc.text(), " \t").len == 0);
-    pressKey(u, app, ui.keymap.tab, .{ .ctrl = true });
+    pressKey(u, app, .tab, .{ .ctrl = true });
     try testing.expect(focusedIn(u, ui.FilledButton));
     // And back.
-    pressKey(u, app, ui.keymap.tab, .{ .shift = true });
+    pressKey(u, app, .tab, .{ .shift = true });
     try testing.expect(focusedIn(u, ui.TextArea));
 
     // Space and Enter press what has the focus.
-    pressKey(u, app, ui.keymap.tab, .{ .ctrl = true });
-    pressKey(u, app, ui.keymap.space, .{});
-    pressKey(u, app, ui.keymap.enter, .{});
+    pressKey(u, app, .tab, .{ .ctrl = true });
+    pressKey(u, app, .space, .{});
+    pressKey(u, app, .enter, .{});
     try testing.expectEqual(@as(u32, 2), pressed);
-    pressKey(u, app, ui.keymap.tab, .{});
-    pressKey(u, app, ui.keymap.tab, .{});
-    pressKey(u, app, ui.keymap.space, .{});
+    pressKey(u, app, .tab, .{});
+    pressKey(u, app, .tab, .{});
+    pressKey(u, app, .space, .{});
     try testing.expect(checked);
     // The arrows move the slider, and choose among the radio buttons.
-    pressKey(u, app, ui.keymap.tab, .{});
-    pressKey(u, app, ui.keymap.right, .{});
+    pressKey(u, app, .tab, .{});
+    pressKey(u, app, .right, .{});
     try testing.expectEqual(@as(f32, 4), level);
-    pressKey(u, app, ui.keymap.end, .{});
+    pressKey(u, app, .end, .{});
     try testing.expectEqual(@as(f32, 10), level);
-    pressKey(u, app, ui.keymap.tab, .{});
-    pressKey(u, app, ui.keymap.down, .{});
+    pressKey(u, app, .tab, .{});
+    pressKey(u, app, .down, .{});
     try testing.expectEqual(@as(u8, 2), choice);
-    pressKey(u, app, ui.keymap.down, .{});
+    pressKey(u, app, .down, .{});
     try testing.expectEqual(@as(u8, 1), choice);
 
     // The pointer pressed: the ring goes.
@@ -2628,9 +2628,9 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
     try testing.expect(u.focused == null);
     u.frame(400, 600, 1, app);
     var next: u32 = 2;
-    pressKey(u, app, ui.keymap.tab, .{ .shift = true });
+    pressKey(u, app, .tab, .{ .shift = true });
     // (From the text area, which takes Tab: Control, Shift and Tab.)
-    pressKey(u, app, ui.keymap.tab, .{ .shift = true, .ctrl = true });
+    pressKey(u, app, .tab, .{ .shift = true, .ctrl = true });
     const tree = try ui.accessibility.build(testing.allocator, u.root.?, &.{}, "", .{ 400, 600 }, u.focused, ui.accessibility.window_id, &next);
     defer {
         tree.deinit();
@@ -2675,13 +2675,13 @@ test "an open dialog keeps the focus in it, and Escape dismisses it" {
     // Round its two buttons, never to the one behind it.
     var seen: [4]?*Node = @splat(null);
     for (&seen) |*s| {
-        pressKey(u, app, ui.keymap.tab, .{});
+        pressKey(u, app, .tab, .{});
         try testing.expect(ui.focus.within(u.focused.?, dialog));
         try testing.expect(!ui.focus.within(u.focused.?, behind));
         s.* = u.focused;
     }
     try testing.expect(seen[0] != seen[1] and seen[0] == seen[2]);
-    pressKey(u, app, ui.keymap.escape, .{});
+    pressKey(u, app, .escape, .{});
     try testing.expectEqual(@as(u32, 1), dismissed);
 }
 
@@ -2705,14 +2705,14 @@ test "a menu opened from the keyboard has the focus, and gives it back" {
     };
     const app: MenuApp = .{ .picked = &picked };
     u.frame(400, 600, 0, app);
-    pressKey(u, app, ui.keymap.tab, .{});
+    pressKey(u, app, .tab, .{});
     const opener = u.focused.?;
-    pressKey(u, app, ui.keymap.enter, .{});
+    pressKey(u, app, .enter, .{});
     try testing.expect(u.menu != null);
     try testing.expect(ui.focus.within(u.focused.?, u.menu_root.?));
-    pressKey(u, app, ui.keymap.down, .{});
-    pressKey(u, app, ui.keymap.down, .{});
-    pressKey(u, app, ui.keymap.enter, .{});
+    pressKey(u, app, .down, .{});
+    pressKey(u, app, .down, .{});
+    pressKey(u, app, .enter, .{});
     try testing.expectEqual(@as(usize, 2), picked);
     try testing.expect(u.menu == null);
     try testing.expectEqual(opener, u.focused.?);

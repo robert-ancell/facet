@@ -2,7 +2,6 @@
 //! with its label beside it (see control.zig).
 
 const focus = @import("focus.zig");
-const keymap = @import("keymap.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
@@ -106,9 +105,9 @@ const RadioKeys = struct {
             .key => |k| k,
             else => return false,
         };
-        const forward = switch (k.code) {
-            keymap.down, keymap.right => true,
-            keymap.up, keymap.left => false,
+        const forward = switch (k.key) {
+            .down, .right => true,
+            .up, .left => false,
             else => return false,
         };
         if (!k.pressed) return true;
@@ -125,7 +124,7 @@ const RadioKeys = struct {
         const count = radios.items.len;
         const next = radios.items[if (forward) (now + 1) % count else (now + count - 1) % count];
         focus.show(ui, next);
-        _ = next.widget.vtable.event.?(next.widget.ptr, next, .{ .key = .{ .code = keymap.space, .pressed = true } });
+        _ = next.widget.vtable.event.?(next.widget.ptr, next, .{ .key = .{ .key = .space, .pressed = true } });
         return true;
     }
 };

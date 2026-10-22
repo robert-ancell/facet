@@ -1,7 +1,6 @@
 //! Slider: Material 3's continuous or discrete slider for choosing a number
 //! from a range by pressing or dragging along a track.
 
-const keymap = @import("keymap.zig");
 const focus = @import("focus.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
@@ -169,13 +168,13 @@ pub const Slider = struct {
             .key => |k| {
                 const on_changed = self.on_changed orelse return false;
                 const step = self.keyStep();
-                const v: f32 = switch (k.code) {
-                    keymap.left, keymap.down => self.value - step,
-                    keymap.right, keymap.up => self.value + step,
-                    keymap.page_down => self.value - step * 10,
-                    keymap.page_up => self.value + step * 10,
-                    keymap.home => self.min,
-                    keymap.end => self.max,
+                const v: f32 = switch (k.key) {
+                    .left, .down => self.value - step,
+                    .right, .up => self.value + step,
+                    .page_down => self.value - step * 10,
+                    .page_up => self.value + step * 10,
+                    .home => self.min,
+                    .end => self.max,
                     else => return false,
                 };
                 if (k.pressed) on_changed.call(std.math.clamp(v, self.min, self.max));

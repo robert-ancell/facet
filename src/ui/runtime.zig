@@ -34,7 +34,6 @@ const theme_mod = @import("theme.zig");
 const image_loader = @import("image_loader.zig");
 const Theme = theme_mod.Theme;
 const damage_mod = @import("damage.zig");
-const keymap = @import("keymap.zig");
 const menu_mod = @import("menu.zig");
 const drag_mod = @import("drag.zig");
 const tooltip_mod = @import("tooltip.zig");
@@ -1288,9 +1287,9 @@ pub const WindowUi = struct {
             .button => |b| ui.pointerButton(b.pos, b.button, b.pressed),
             .scroll => |s| ui.pointerScroll(s.pos, s.dx, s.dy),
             .key => |k| if (ui.loaded_keymap != null)
-                ui.keyEvent(k.code, k.pressed)
+                ui.keyEvent(k.key, k.pressed)
             else
-                ui.key(.{ .code = k.code, .pressed = k.pressed, .char = k.char, .shift = k.shift, .ctrl = k.ctrl }),
+                ui.key(.{ .key = k.key, .pressed = k.pressed, .char = k.char, .shift = k.shift, .ctrl = k.ctrl }),
             .leave => ui.pointerLeave(),
             .touch_down => |t| ui.touchDown(t.id, t.pos),
             .touch_motion => |t| ui.touchMotion(t.id, t.pos),
@@ -1497,13 +1496,15 @@ pub const WindowUi = struct {
 
     /// A key went down or up: what it types, by `loaded_keymap` if it has
     /// one.
-    pub fn keyEvent(ui: *WindowUi, code: u32, pressed: bool) void {
-        const km = &(ui.loaded_keymap orelse return ui.key(.{ .code = code, .pressed = pressed }));
+    pub fn keyEvent(ui: *WindowUi, which: widget.KeyboardKey, pressed: bool) void {
+        const km = &(ui.loaded_keymap orelse return ui.key(.{ .key = which, .pressed = pressed }));
+        // A key the keymap has no code for types nothing.
+        const code = window_mod.evdev.codeOf(which) orelse return ui.key(.{ .key = which, .pressed = pressed });
         const mods = ui.key_state.mods();
         const char = if (pressed) km.char(code, ui.key_state) else null;
         km.update(&ui.key_state, code, pressed);
         ui.key(.{
-            .code = code,
+            .key = which,
             .pressed = pressed,
             .char = char,
             .shift = mods & window_mod.xkb.shift_mask != 0,
@@ -1514,10 +1515,10 @@ pub const WindowUi = struct {
     /// A key went down or up, with what it types (if anything) and the
     /// modifiers held.
     pub fn key(ui: *WindowUi, k: widget.Event.Key) void {
-        switch (k.code) {
+        switch (k.key) {
             // Modifiers only change what other keys do.
-            keymap.left_shift, keymap.right_shift, keymap.left_ctrl, keymap.right_ctrl, keymap.right_alt => return,
-            keymap.escape => if (k.pressed and ui.menu != null) {
+            .left_shift, .right_shift, .left_ctrl, .right_ctrl, .right_alt => return,
+            .escape => if (k.pressed and ui.menu != null) {
                 ui.closeMenu();
                 return;
             },
@@ -1525,7 +1526,7 @@ pub const WindowUi = struct {
         }
         ui.needs_frame = true;
         // Tab moves the focus (Control and Tab, from what takes Tab).
-        if (k.code == keymap.tab) {
+        if (k.key == .tab) {
             const takes_tab = if (ui.focused) |f| f.widget.vtable.takes_tab else false;
             if (k.ctrl or !takes_tab) {
                 if (k.pressed) _ = focus_mod.move(ui, !k.shift);
@@ -1539,14 +1540,14 @@ pub const WindowUi = struct {
         var at = ui.focused;
         while (at) |n| : (at = n.parent) if (send(n, .{ .key = e })) return;
         if (!k.pressed) return;
-        switch (k.code) {
+        switch (k.key) {
             // Escape dismisses the dialog in front.
-            keymap.escape => if (ui.root) |r| if (focus_mod.topDialog(r)) |d| {
+            .escape => if (ui.root) |r| if (focus_mod.topDialog(r)) |d| {
                 if (d.widget.as(@import("dialog.zig").Dialog).?.on_dismiss) |f| f.call();
             },
             // Up and down move through a menu.
-            keymap.up, keymap.down => if (ui.menu != null) {
-                _ = focus_mod.move(ui, k.code == keymap.down);
+            .up, .down => if (ui.menu != null) {
+                _ = focus_mod.move(ui, k.key == .down);
             },
             else => {},
         }

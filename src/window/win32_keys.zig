@@ -1,7 +1,7 @@
-//! Windows keys as Linux key codes (`KEY_A`, ...), which facet's input
-//! events carry: from the scan code Windows gives with each key message
-//! (set 1, with its extended flag), which for most keys is the Linux code
-//! itself.
+//! Windows keys as Linux key codes (`KEY_A`, ...), which `window.evdev`
+//! makes `KeyboardKey`s of for facet's input events: from the scan code
+//! Windows gives with each key message (set 1, with its extended flag),
+//! which for most keys is the Linux code itself.
 
 const std = @import("std");
 

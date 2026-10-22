@@ -1,7 +1,7 @@
 //! Win32Window: a native Windows window (a Win32 `HWND`, with the system's
 //! own title bar, buttons, resizing and full screen), and facet's
-//! `InputEvent`s from its messages: Windows' scan codes become the Linux
-//! key codes the toolkit uses, and each key's character is the `WM_CHAR`
+//! `InputEvent`s from its messages: Windows' scan codes become `KeyboardKey`s,
+//! and each key's character is the `WM_CHAR`
 //! that `TranslateMessage` makes of it (so dead keys and the keyboard's
 //! layout work as everywhere else on Windows).
 //!
@@ -711,7 +711,7 @@ pub const Win32Window = struct {
             WM_CHAR => {
                 // A character with no key down before it (typed with Alt
                 // and the keypad, or given by an input method).
-                if (w.charOf(@intCast(wparam & 0xffff))) |ch| w.push(.{ .key = .{ .code = 0, .pressed = true, .char = ch } });
+                if (w.charOf(@intCast(wparam & 0xffff))) |ch| w.push(.{ .key = .{ .key = .other, .pressed = true, .char = ch } });
                 return 0;
             },
             WM_SYSCHAR => {
@@ -776,7 +776,7 @@ pub const Win32Window = struct {
             const sc = u.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX);
             k = .{ .scan = sc & 0xff, .extended = sc & 0xff00 == 0xe000 };
         }
-        const code = keys.linuxKey(k.scan, k.extended, vk);
+        const which_key = window.evdev.keyOf(keys.linuxKey(k.scan, k.extended, vk));
         const shift = u.GetKeyState(VK_SHIFT) < 0;
         const alt = u.GetKeyState(VK_MENU) < 0;
         // AltGr is Ctrl and Alt together: what it types is not a shortcut.
@@ -798,8 +798,8 @@ pub const Win32Window = struct {
                 if (w.high_surrogate == 0) break;
             }
         }
-        if (code == 0 and (char == null or ctrl)) return;
-        w.push(.{ .key = .{ .code = code, .pressed = pressed, .char = if (ctrl) null else char, .shift = shift, .ctrl = ctrl } });
+        if (which_key == .other and (char == null or ctrl)) return;
+        w.push(.{ .key = .{ .key = which_key, .pressed = pressed, .char = if (ctrl) null else char, .shift = shift, .ctrl = ctrl } });
     }
 
     /// The character of a `WM_CHAR`'s UTF-16 unit (null for controls, and

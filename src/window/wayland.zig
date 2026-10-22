@@ -1811,10 +1811,11 @@ pub const WaylandWindow = struct {
     /// (by the keymap and the modifiers now: so in order with the
     /// compositor's changes to them).
     fn keyInput(w: *const WaylandWindow, code: u32, pressed: bool) window_mod.InputEvent {
-        const km = &(w.keymap orelse return .{ .key = .{ .code = code, .pressed = pressed } });
+        const key = window_mod.evdev.keyOf(code);
+        const km = &(w.keymap orelse return .{ .key = .{ .key = key, .pressed = pressed } });
         const mods = w.xkb_state.mods();
         return .{ .key = .{
-            .code = code,
+            .key = key,
             .pressed = pressed,
             .char = if (pressed) km.char(code, w.xkb_state) else null,
             .shift = mods & xkb.shift_mask != 0,
@@ -2800,7 +2801,7 @@ pub const WaylandWindow = struct {
                 w.compose_state.reset();
                 var it = w.keys_down.iterator(.{});
                 while (it.next()) |code| {
-                    w.pushInput(.{ .key = .{ .code = @intCast(code), .pressed = false } });
+                    w.pushInput(.{ .key = .{ .key = window_mod.evdev.keyOf(@intCast(code)), .pressed = false } });
                 }
                 w.keys_down = .empty;
             },
@@ -2966,7 +2967,7 @@ test "held keys repeat after the delay, except modifiers, and stop on release or
     win.serviceRepeat(first_due);
     const rep1 = win.takeInput();
     try std.testing.expectEqual(@as(usize, 1), rep1.len);
-    try std.testing.expectEqual(@as(u32, 30), rep1[0].key.code);
+    try std.testing.expectEqual(window_mod.KeyboardKey.a, rep1[0].key.key);
     try std.testing.expect(rep1[0].key.pressed);
     try std.testing.expectEqual(first_due + 40 * std.time.ns_per_ms, win.repeat.?.next_ns);
 
@@ -2981,7 +2982,7 @@ test "held keys repeat after the delay, except modifiers, and stop on release or
     WaylandWindow.keyboardEvent(&win, &disp, 1, p.wl_keyboard.event.leave, &r_leave);
     const left = win.takeInput();
     try std.testing.expectEqual(@as(usize, 1), left.len);
-    try std.testing.expectEqual(@as(u32, 42), left[0].key.code);
+    try std.testing.expectEqual(window_mod.KeyboardKey.left_shift, left[0].key.key);
     try std.testing.expect(!left[0].key.pressed);
 }
 

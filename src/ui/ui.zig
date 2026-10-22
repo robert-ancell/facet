@@ -94,7 +94,6 @@ pub const metal_area = @import("metal_area.zig");
 pub const d3d11_area = @import("d3d11_area.zig");
 /// The icons there are (`icons.Icon`), and their font.
 pub const icons = @import("icons");
-pub const keymap = @import("keymap.zig");
 pub const painter = @import("painter.zig");
 pub const damage = @import("damage.zig");
 pub const runtime = @import("runtime.zig");
@@ -119,6 +118,7 @@ pub const Callback = widget.Callback;
 pub const ValueCallback = widget.ValueCallback;
 
 pub const PointerButton = widget.PointerButton;
+pub const KeyboardKey = widget.KeyboardKey;
 
 pub const SizedBox = sized_box.SizedBox;
 pub const ConstrainedBox = constrained_box.ConstrainedBox;
@@ -286,7 +286,6 @@ test {
     _ = vulkan_area;
     _ = metal_area;
     _ = d3d11_area;
-    _ = keymap;
     _ = painter;
     _ = damage;
     _ = runtime;

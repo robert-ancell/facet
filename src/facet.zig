@@ -53,6 +53,7 @@ pub const Alignment = ui.Alignment;
 pub const Color = gfx.Color;
 pub const Radii = gfx.Radii;
 pub const PointerButton = ui.PointerButton;
+pub const KeyboardKey = ui.KeyboardKey;
 
 pub const SizedBox = ui.SizedBox;
 pub const ConstrainedBox = ui.ConstrainedBox;

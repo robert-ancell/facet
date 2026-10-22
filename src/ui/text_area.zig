@@ -21,7 +21,6 @@ const font = @import("font");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
-const keymap = @import("keymap.zig");
 const menu = @import("menu.zig");
 const SyntaxHighlight = @import("theme.zig").SyntaxHighlight;
 
@@ -581,25 +580,25 @@ pub const TextArea = struct {
         const d = self.doc;
         st.reveal = true;
         if (k.ctrl) {
-            switch (k.code) {
-                keymap.key_a => d.selectAll(),
-                keymap.key_c => st.copy(),
-                keymap.key_x => if (d.selection() != null) {
+            switch (k.key) {
+                .a => d.selectAll(),
+                .c => st.copy(),
+                .x => if (d.selection() != null) {
                     st.copy();
                     return d.deleteSelection();
                 },
                 // The text comes later (see `State.pasted`).
-                keymap.key_v => st.paste(),
-                keymap.home => d.moveTo(0, k.shift),
-                keymap.end => d.moveTo(d.text().len, k.shift),
+                .v => st.paste(),
+                .home => d.moveTo(0, k.shift),
+                .end => d.moveTo(d.text().len, k.shift),
                 else => {},
             }
             return false;
         }
-        const vertical = k.code == keymap.up or k.code == keymap.down or k.code == keymap.page_up or k.code == keymap.page_down;
+        const vertical = k.key == .up or k.key == .down or k.key == .page_up or k.key == .page_down;
         if (!vertical) st.goal_x = null;
-        switch (k.code) {
-            keymap.backspace => {
+        switch (k.key) {
+            .backspace => {
                 if (d.deleteSelection()) return true;
                 if (d.cursor == 0) return false;
                 const from = d.before(d.cursor);
@@ -607,31 +606,31 @@ pub const TextArea = struct {
                 d.cursor = from;
                 return true;
             },
-            keymap.delete => {
+            .delete => {
                 if (d.deleteSelection()) return true;
                 if (d.cursor == d.text().len) return false;
                 d.remove(d.cursor, d.after(d.cursor));
                 return true;
             },
-            keymap.enter, keymap.keypad_enter => {
+            .enter, .keypad_enter => {
                 d.insert("\n");
                 return true;
             },
-            keymap.tab => {
+            .tab => {
                 d.insert("\t");
                 return true;
             },
             // Without Shift, a selection collapses to its start or end.
-            keymap.left => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[0], false) else d.moveTo(d.before(d.cursor), k.shift),
-            keymap.right => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[1], false) else d.moveTo(d.after(d.cursor), k.shift),
-            keymap.home, keymap.end => {
+            .left => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[0], false) else d.moveTo(d.before(d.cursor), k.shift),
+            .right => if (!k.shift and d.selection() != null) d.moveTo(d.selection().?[1], false) else d.moveTo(d.after(d.cursor), k.shift),
+            .home, .end => {
                 const lines = st.lines.items;
                 if (lines.len > 0) {
                     const l = lines[lineOf(lines, d.cursor)];
-                    d.moveTo(if (k.code == keymap.home) l.start else l.end, k.shift);
+                    d.moveTo(if (k.key == .home) l.start else l.end, k.shift);
                 }
             },
-            keymap.up, keymap.down, keymap.page_up, keymap.page_down => {
+            .up, .down, .page_up, .page_down => {
                 const s = self.style(n) orelse return false;
                 const lines = st.lines.items;
                 if (lines.len == 0) return false;
@@ -640,10 +639,10 @@ pub const TextArea = struct {
                 const x = st.goal_x orelse font.measure(s, d.text()[l.start..d.cursor]);
                 st.goal_x = x;
                 const page: usize = @max(1, @as(usize, @intFromFloat(@max(0, (n.size.h - 2 * pad) / s.lineHeight()))) -| 1);
-                const target: usize = switch (k.code) {
-                    keymap.up => if (li == 0) return d.moveTo(0, k.shift) != {} and false else li - 1,
-                    keymap.down => if (li + 1 >= lines.len) return d.moveTo(d.text().len, k.shift) != {} and false else li + 1,
-                    keymap.page_up => li -| page,
+                const target: usize = switch (k.key) {
+                    .up => if (li == 0) return d.moveTo(0, k.shift) != {} and false else li - 1,
+                    .down => if (li + 1 >= lines.len) return d.moveTo(d.text().len, k.shift) != {} and false else li + 1,
+                    .page_up => li -| page,
                     else => @min(li + page, lines.len - 1),
                 };
                 d.moveTo(self.offsetInLine(s, lines[target], x), k.shift);
@@ -840,32 +839,32 @@ test "typing into a text area, moving up and down, and copying" {
     };
     u.frame(500, 300, 0, App{ .doc = &d });
     const press = struct {
-        fn key(uu: *WindowUi, code: u32) void {
-            uu.keyEvent(code, true);
-            uu.keyEvent(code, false);
+        fn key(uu: *WindowUi, k: widget.KeyboardKey) void {
+            uu.keyEvent(k, true);
+            uu.keyEvent(k, false);
         }
     }.key;
     // At the start; down, then End: the end of the second line.
-    press(u, keymap.down);
+    press(u, .down);
     u.frame(500, 300, 1, App{ .doc = &d });
     try testing.expectEqual(@as(usize, 11), d.cursor);
-    press(u, keymap.end);
+    press(u, .end);
     try testing.expectEqual(d.text().len, d.cursor);
-    press(u, keymap.enter);
-    press(u, 30); // a
+    press(u, .enter);
+    press(u, .a);
     try testing.expectEqualStrings("first line\nsecond line\na", d.text());
     // Up twice: the first line; Shift+End selects it, and Ctrl+C copies.
     u.frame(500, 300, 2, App{ .doc = &d });
-    press(u, keymap.up);
-    press(u, keymap.up);
-    press(u, keymap.home);
-    u.keyEvent(keymap.left_shift, true);
-    press(u, keymap.end);
-    u.keyEvent(keymap.left_shift, false);
-    u.keyEvent(keymap.left_ctrl, true);
-    press(u, keymap.key_c);
-    u.keyEvent(keymap.left_ctrl, false);
+    press(u, .up);
+    press(u, .up);
+    press(u, .home);
+    u.keyEvent(.left_shift, true);
+    press(u, .end);
+    u.keyEvent(.left_shift, false);
+    u.keyEvent(.left_ctrl, true);
+    press(u, .c);
+    u.keyEvent(.left_ctrl, false);
     try testing.expectEqualStrings("first line", u.shared.local_clipboard.items);
-    press(u, keymap.backspace);
+    press(u, .backspace);
     try testing.expectEqualStrings("\nsecond line\na", d.text());
 }

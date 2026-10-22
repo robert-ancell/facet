@@ -18,7 +18,6 @@
 //! as an `Image`'s do.
 
 const focus = @import("focus.zig");
-const keymap = @import("keymap.zig");
 const a11y = @import("accessibility.zig");
 const std = @import("std");
 const gfx = @import("gfx");
@@ -149,11 +148,11 @@ pub const MapView = struct {
         const cam = self.cameraOf(n.state(State));
         const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
         const step = 80;
-        const delta: ?[2]f64 = switch (k.code) {
-            keymap.left => .{ -step, 0 },
-            keymap.right => .{ step, 0 },
-            keymap.up => .{ 0, -step },
-            keymap.down => .{ 0, step },
+        const delta: ?[2]f64 = switch (k.key) {
+            .left => .{ -step, 0 },
+            .right => .{ step, 0 },
+            .up => .{ 0, -step },
+            .down => .{ 0, step },
             else => null,
         };
         if (delta) |d| {
@@ -163,9 +162,9 @@ pub const MapView = struct {
             self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] - d[0], c[1] - d[1] }));
             return true;
         }
-        const by: f64 = switch (k.code) {
-            keymap.equal, keymap.keypad_plus => 1,
-            keymap.minus, keymap.keypad_minus => -1,
+        const by: f64 = switch (k.key) {
+            .equal, .keypad_plus => 1,
+            .minus, .keypad_minus => -1,
             else => return false,
         };
         if (k.pressed) self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, c, by, self.min_zoom, self.max_zoom));

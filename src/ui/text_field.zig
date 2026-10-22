@@ -17,7 +17,6 @@ const font = @import("font");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
-const keymap = @import("keymap.zig");
 const Column = @import("flex.zig").Column;
 const menu = @import("menu.zig");
 const Padding = @import("padding.zig").Padding;
@@ -272,21 +271,21 @@ pub const TextField = struct {
         /// Edits for a key; returns whether the text changed.
         fn key(s: *State, k: Event.Key, max: usize) bool {
             if (k.ctrl) {
-                switch (k.code) {
-                    keymap.key_a => s.selectAll(),
-                    keymap.key_c => s.copy(),
-                    keymap.key_x => if (!s.isObscured() and s.selection() != null) {
+                switch (k.key) {
+                    .a => s.selectAll(),
+                    .c => s.copy(),
+                    .x => if (!s.isObscured() and s.selection() != null) {
                         s.copy();
                         return s.deleteSelection();
                     },
                     // The text comes later (see `pasted`).
-                    keymap.key_v => s.paste(),
+                    .v => s.paste(),
                     else => {},
                 }
                 return false;
             }
-            switch (k.code) {
-                keymap.backspace => {
+            switch (k.key) {
+                .backspace => {
                     if (s.deleteSelection()) return true;
                     if (s.cursor == 0) return false;
                     const from = s.before(s.cursor);
@@ -294,17 +293,17 @@ pub const TextField = struct {
                     s.cursor = from;
                     return true;
                 },
-                keymap.delete => {
+                .delete => {
                     if (s.deleteSelection()) return true;
                     if (s.cursor == s.len) return false;
                     s.remove(s.cursor, s.after(s.cursor));
                     return true;
                 },
                 // Without Shift, a selection collapses to its start or end.
-                keymap.left => if (!k.shift and s.selection() != null) s.moveTo(s.selection().?[0], false) else s.moveTo(s.before(s.cursor), k.shift),
-                keymap.right => if (!k.shift and s.selection() != null) s.moveTo(s.selection().?[1], false) else s.moveTo(s.after(s.cursor), k.shift),
-                keymap.home => s.moveTo(0, k.shift),
-                keymap.end => s.moveTo(s.len, k.shift),
+                .left => if (!k.shift and s.selection() != null) s.moveTo(s.selection().?[0], false) else s.moveTo(s.before(s.cursor), k.shift),
+                .right => if (!k.shift and s.selection() != null) s.moveTo(s.selection().?[1], false) else s.moveTo(s.after(s.cursor), k.shift),
+                .home => s.moveTo(0, k.shift),
+                .end => s.moveTo(s.len, k.shift),
                 else => if (k.char) |c| {
                     var enc: [4]u8 = undefined;
                     const n = std.unicode.utf8Encode(c, &enc) catch return false;
@@ -609,7 +608,7 @@ pub const TextField = struct {
             },
             .key => |k| {
                 if (!k.pressed) return true;
-                if (k.code == keymap.enter or k.code == keymap.keypad_enter) {
+                if (k.key == .enter or k.key == .keypad_enter) {
                     if (self.on_submit) |f| f.call();
                     return true;
                 }
@@ -729,18 +728,18 @@ test "typing into a text field" {
     u.pointerButton(at, .left, false);
     try testing.expect(u.focused != null);
     // Shift-A, b, 1, then Backspace, Left, X: "AXb".
-    u.keyEvent(keymap.left_shift, true);
-    for ([_]u32{ 30, 30 }, [_]bool{ true, false }) |code, down| u.keyEvent(code, down);
-    u.keyEvent(keymap.left_shift, false);
-    for ([_]u32{ 48, 2, keymap.backspace, keymap.left }) |code| {
-        u.keyEvent(code, true);
-        u.keyEvent(code, false);
+    u.keyEvent(.left_shift, true);
+    for ([_]widget.KeyboardKey{ .a, .a }, [_]bool{ true, false }) |key, down| u.keyEvent(key, down);
+    u.keyEvent(.left_shift, false);
+    for ([_]widget.KeyboardKey{ .b, .digit_1, .backspace, .left }) |key| {
+        u.keyEvent(key, true);
+        u.keyEvent(key, false);
     }
-    u.keyEvent(keymap.left_shift, true);
-    u.keyEvent(45, true);
-    u.keyEvent(keymap.left_shift, false);
+    u.keyEvent(.left_shift, true);
+    u.keyEvent(.x, true);
+    u.keyEvent(.left_shift, false);
     try testing.expectEqualStrings("AXb", sink.text[0..sink.len]);
-    u.keyEvent(keymap.enter, true);
+    u.keyEvent(.enter, true);
     try testing.expectEqual(@as(u32, 1), sink.submitted);
     // It keeps its text between frames, and paints (obscured) without
     // overflowing.
@@ -753,7 +752,7 @@ test "typing into a text field" {
     u.pointerButton(.{ 300, 150 }, .left, true);
     u.pointerButton(.{ 300, 150 }, .left, false);
     try testing.expect(u.focused == null);
-    u.keyEvent(30, true);
+    u.keyEvent(.a, true);
     try testing.expectEqualStrings("AXb", sink.text[0..sink.len]);
 }
 
@@ -816,15 +815,15 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
             uu.pointerButton(at, button, true);
             uu.pointerButton(at, button, false);
         }
-        fn keys(uu: *WindowUi, ctrl: bool, shift: bool, codes: []const u32) void {
-            if (ctrl) uu.keyEvent(keymap.left_ctrl, true);
-            if (shift) uu.keyEvent(keymap.left_shift, true);
+        fn keys(uu: *WindowUi, ctrl: bool, shift: bool, codes: []const widget.KeyboardKey) void {
+            if (ctrl) uu.keyEvent(.left_ctrl, true);
+            if (shift) uu.keyEvent(.left_shift, true);
             for (codes) |c| {
                 uu.keyEvent(c, true);
                 uu.keyEvent(c, false);
             }
-            if (shift) uu.keyEvent(keymap.left_shift, false);
-            if (ctrl) uu.keyEvent(keymap.left_ctrl, false);
+            if (shift) uu.keyEvent(.left_shift, false);
+            if (ctrl) uu.keyEvent(.left_ctrl, false);
         }
         fn field(uu: *WindowUi, i: usize) *TextField.State {
             var n = uu.root.?;
@@ -846,30 +845,30 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
 
     // All of the first copied, and pasted into the second.
     T.click(u, .{ 60, rows[0] }, .left);
-    T.keys(u, true, false, &.{ keymap.key_a, keymap.key_c });
+    T.keys(u, true, false, &.{ .a, .c });
     try testing.expectEqualStrings("hello world", board.text[0..board.len]);
     T.click(u, .{ 60, rows[1] }, .left);
-    T.keys(u, true, false, &.{keymap.key_v});
+    T.keys(u, true, false, &.{.v});
     // The text comes later (from another app, say): then it is pasted.
     try testing.expectEqual(@as(usize, 0), T.field(u, 1).len);
     board.deliver();
     try testing.expect(u.needs_frame);
     try testing.expectEqualStrings("hello world", sinks[1].text[0..sinks[1].len]);
     // Shift and Left select the last five characters; Ctrl+X cuts them.
-    T.keys(u, false, true, &.{ keymap.left, keymap.left, keymap.left, keymap.left, keymap.left });
+    T.keys(u, false, true, &.{ .left, .left, .left, .left, .left });
     try testing.expectEqual([2]usize{ 6, 11 }, T.field(u, 1).selection().?);
     T.frame(u, &sinks, &now);
-    T.keys(u, true, false, &.{keymap.key_x});
+    T.keys(u, true, false, &.{.x});
     try testing.expectEqualStrings("hello ", sinks[1].text[0..sinks[1].len]);
     try testing.expectEqualStrings("world", board.text[0..board.len]);
     // Typing replaces a selection.
-    T.keys(u, false, true, &.{keymap.home});
-    T.keys(u, false, false, &.{48}); // b
+    T.keys(u, false, true, &.{.home});
+    T.keys(u, false, false, &.{.b});
     try testing.expectEqualStrings("b", sinks[1].text[0..sinks[1].len]);
 
     // A password cannot be copied out.
     T.click(u, .{ 60, rows[2] }, .left);
-    T.keys(u, true, false, &.{ keymap.key_a, keymap.key_c, keymap.key_x });
+    T.keys(u, true, false, &.{ .a, .c, .x });
     try testing.expectEqualStrings("world", board.text[0..board.len]);
     try testing.expectEqualStrings("secret", T.field(u, 2).text());
 
@@ -906,7 +905,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     try testing.expect(u.menu == null);
     try testing.expect(u.focused != null);
     T.click(u, .{ 60, rows[1] }, .right);
-    u.keyEvent(keymap.escape, true);
+    u.keyEvent(.escape, true);
     try testing.expect(u.menu == null);
 
     // Holding the left button down does not show it (the right button
@@ -1025,8 +1024,8 @@ test "a field asked for takes the keyboard by itself, once" {
     u.frame(400, 200, 0, App{ .sink = &sink });
     try testing.expect(u.focused != null);
     // Typing goes into it, without a click.
-    u.keyEvent(30, true); // A
-    u.keyEvent(30, false);
+    u.keyEvent(.a, true);
+    u.keyEvent(.a, false);
     try testing.expectEqualStrings("a", text[0..len]);
     // Given up, it does not take the keyboard back.
     u.focus(null);
@@ -1059,37 +1058,37 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
     };
     u.frame(400, 200, 0, App{ .sink = &sink });
     const press = struct {
-        fn key(uu: *WindowUi, code: u32) void {
-            uu.keyEvent(code, true);
-            uu.keyEvent(code, false);
+        fn key(uu: *WindowUi, k: widget.KeyboardKey) void {
+            uu.keyEvent(k, true);
+            uu.keyEvent(k, false);
         }
     }.key;
     // Shift+3, AltGr+4, Shift+', #.
-    u.keyEvent(keymap.left_shift, true);
-    press(u, 4);
-    u.keyEvent(keymap.left_shift, false);
-    u.keyEvent(keymap.right_alt, true);
-    press(u, 5);
-    u.keyEvent(keymap.right_alt, false);
-    u.keyEvent(keymap.left_shift, true);
-    press(u, 40);
-    u.keyEvent(keymap.left_shift, false);
-    press(u, 43);
+    u.keyEvent(.left_shift, true);
+    press(u, .digit_3);
+    u.keyEvent(.left_shift, false);
+    u.keyEvent(.right_alt, true);
+    press(u, .digit_4);
+    u.keyEvent(.right_alt, false);
+    u.keyEvent(.left_shift, true);
+    press(u, .apostrophe);
+    u.keyEvent(.left_shift, false);
+    press(u, .backslash);
     try testing.expectEqualStrings("£€@#", text[0..len]);
     // Left over #, @ and €, then Backspace takes the £ whole.
-    press(u, keymap.left);
-    press(u, keymap.left);
-    press(u, keymap.left);
-    press(u, keymap.backspace);
+    press(u, .left);
+    press(u, .left);
+    press(u, .left);
+    press(u, .backspace);
     try testing.expectEqualStrings("€@#", text[0..len]);
     // Delete takes the € whole.
-    press(u, keymap.delete);
+    press(u, .delete);
     try testing.expectEqualStrings("@#", text[0..len]);
     // A US keyboard types what the US has there.
     try u.loadKeymap(@import("window").xkb.testdata.us);
-    u.keyEvent(keymap.left_shift, true);
-    press(u, 4);
-    u.keyEvent(keymap.left_shift, false);
+    u.keyEvent(.left_shift, true);
+    press(u, .digit_3);
+    u.keyEvent(.left_shift, false);
     try testing.expectEqualStrings("#@#", text[0..len]);
 }
 

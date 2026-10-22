@@ -124,8 +124,7 @@ pub const Event = union(enum) {
     context: Point,
 
     pub const Key = struct {
-        /// A Linux key code (see keymap.zig).
-        code: u32,
+        key: KeyboardKey,
         pressed: bool,
         /// The character it types, by the keymap (the window's, or
         /// `WindowUi.loadKeymap`'s), if any: none while Control is held.
@@ -135,6 +134,9 @@ pub const Event = union(enum) {
         shift: bool = false,
     };
 };
+
+/// The key in `Event.key`.
+pub const KeyboardKey = window_mod.KeyboardKey;
 
 /// The pointer button in `Event.press` and `.release`.
 pub const PointerButton = window_mod.PointerButton;

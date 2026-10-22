@@ -126,6 +126,133 @@ pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
     };
 }
 
+/// A key of the keyboard, by where it is and what it is called on a common
+/// keyboard, whatever the layout: `.a` is the key that types "a" on a US
+/// keyboard. Its keymap says what it types (`InputEvent.key`'s `char`).
+pub const KeyboardKey = enum {
+    escape,
+    f1,
+    f2,
+    f3,
+    f4,
+    f5,
+    f6,
+    f7,
+    f8,
+    f9,
+    f10,
+    f11,
+    f12,
+    f13,
+    f14,
+    f15,
+    f16,
+    f17,
+    f18,
+    f19,
+    f20,
+    f21,
+    f22,
+    f23,
+    f24,
+    print_screen,
+    scroll_lock,
+    pause,
+    grave,
+    digit_1,
+    digit_2,
+    digit_3,
+    digit_4,
+    digit_5,
+    digit_6,
+    digit_7,
+    digit_8,
+    digit_9,
+    digit_0,
+    minus,
+    equal,
+    backspace,
+    tab,
+    q,
+    w,
+    e,
+    r,
+    t,
+    y,
+    u,
+    i,
+    o,
+    p,
+    left_bracket,
+    right_bracket,
+    backslash,
+    caps_lock,
+    a,
+    s,
+    d,
+    f,
+    g,
+    h,
+    j,
+    k,
+    l,
+    semicolon,
+    apostrophe,
+    enter,
+    left_shift,
+    /// The key by the left Shift on some keyboards.
+    intl_backslash,
+    z,
+    x,
+    c,
+    v,
+    b,
+    n,
+    m,
+    comma,
+    period,
+    slash,
+    right_shift,
+    left_ctrl,
+    left_super,
+    left_alt,
+    space,
+    right_alt,
+    right_super,
+    menu,
+    right_ctrl,
+    insert,
+    delete,
+    home,
+    end,
+    page_up,
+    page_down,
+    up,
+    down,
+    left,
+    right,
+    num_lock,
+    keypad_divide,
+    keypad_multiply,
+    keypad_minus,
+    keypad_plus,
+    keypad_enter,
+    keypad_equal,
+    keypad_decimal,
+    keypad_0,
+    keypad_1,
+    keypad_2,
+    keypad_3,
+    keypad_4,
+    keypad_5,
+    keypad_6,
+    keypad_7,
+    keypad_8,
+    keypad_9,
+    /// Any other.
+    other,
+};
+
 /// A button of the pointer (a mouse's), in `InputEvent.button`.
 pub const PointerButton = enum {
     left,
@@ -212,9 +339,9 @@ pub const InputEvent = union(enum) {
     motion: [2]f32,
     /// A pointer button went down or up, with the pointer at `pos`.
     button: struct { pos: [2]f32, button: PointerButton, pressed: bool },
-    /// A key went down or up: its Linux key code (KEY_A, ...), what it types
-    /// (from the keymap) and the modifiers held, if the window has a keymap.
-    key: struct { code: u32, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },
+    /// A key went down or up: which it is, what it types (from the keymap)
+    /// and the modifiers held, if the window has a keymap.
+    key: struct { key: KeyboardKey, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },
     /// The wheel turned: by `dy` logical pixels down (and `dx` right), with
     /// the pointer at `pos`.
     scroll: struct { pos: [2]f32, dx: f32, dy: f32 },
@@ -1368,6 +1495,8 @@ pub const WindowControls = struct {
 
 /// Keymaps: what each key types, from the compositor.
 pub const xkb = @import("xkb.zig");
+/// Linux's key codes, which `xkb` keymaps are in, and the `KeyboardKey`s they are.
+pub const evdev = @import("evdev.zig");
 /// Dead keys and the Compose key.
 pub const compose = @import("compose.zig");
 pub const dbus = @import("dbus.zig");
@@ -1520,6 +1649,7 @@ test {
     }.f;
     _ = present;
     _ = sys;
+    _ = evdev;
     _ = @import("win32_keys.zig");
     _ = positioner_mod;
     switch (@import("builtin").os.tag) {

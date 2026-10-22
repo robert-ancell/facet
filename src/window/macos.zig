@@ -5,8 +5,7 @@
 //! Frames are drawn on the CPU into one of three buffers in turn (so the
 //! damage tracking draws only what changed, as on Wayland) and shown as
 //! the contents of the view's Core Animation layer. AppKit's events become
-//! facet's `InputEvent`s: macOS key codes become the Linux ones the
-//! toolkit uses, and Command counts as Control (so Command and C copies).
+//! facet's `InputEvent`s: macOS key codes become `KeyboardKey`s, and Command counts as Control (so Command and C copies).
 //! What the toolkit waits on as well (`window.Source`s: image loads,
 //! wakes) is watched through the main run loop, so it sleeps until there
 //! is something to do, and read through the app's `std.Io` once it is
@@ -837,8 +836,8 @@ pub const MacWindow = struct {
         const w = ofView(view) orelse return;
         const flags = msg(u64, event, "modifierFlags", .{});
         w.modifiers = flags;
-        // A key with no Linux code of its own still types what it does.
-        const code = linuxKey(msg(u16, event, "keyCode", .{})) orelse 0;
+        // A key the toolkit has no name for still types what it does.
+        const which_key = window.evdev.keyOf(linuxKey(msg(u16, event, "keyCode", .{})) orelse 0);
         // What it types (none for controls and function keys).
         var char: ?u21 = null;
         if (pressed) {
@@ -848,8 +847,8 @@ pub const MacWindow = struct {
             } else |_| {};
         }
         const ctrl = flags & (flag_control | flag_command) != 0;
-        if (code == 0 and (char == null or ctrl)) return;
-        w.push(.{ .key = .{ .code = code, .pressed = pressed, .char = if (ctrl) null else char, .shift = flags & flag_shift != 0, .ctrl = ctrl } });
+        if (which_key == .other and (char == null or ctrl)) return;
+        w.push(.{ .key = .{ .key = which_key, .pressed = pressed, .char = if (ctrl) null else char, .shift = flags & flag_shift != 0, .ctrl = ctrl } });
     }
 
     const view_methods = struct {
@@ -1267,7 +1266,7 @@ fn cgFunctions() ?CG {
 
 // --- Keys ------------------------------------------------------------------------------
 
-/// The Linux key code (as the toolkit has them) of a macOS one.
+/// The Linux key code (which `window.evdev` makes a `KeyboardKey` of) of a macOS one.
 pub fn linuxKey(mac: u16) ?u32 {
     return switch (mac) {
         0 => 30, // A
@@ -1367,18 +1366,17 @@ pub fn linuxKey(mac: u16) ?u32 {
     };
 }
 
-test "macOS keys become the Linux ones the toolkit has" {
-    const keymap = struct {
-        const escape = 1;
-        const tab = 15;
-        const enter = 28;
-        const left = 105;
-    };
-    try std.testing.expectEqual(@as(?u32, keymap.escape), linuxKey(53));
-    try std.testing.expectEqual(@as(?u32, keymap.tab), linuxKey(48));
-    try std.testing.expectEqual(@as(?u32, keymap.enter), linuxKey(36));
-    try std.testing.expectEqual(@as(?u32, keymap.left), linuxKey(123));
-    try std.testing.expectEqual(@as(?u32, 46), linuxKey(8)); // C, for Command and C
+test "macOS keys become the keyboard keys the toolkit has" {
+    const keyOf = struct {
+        fn f(mac: u16) window.KeyboardKey {
+            return window.evdev.keyOf(linuxKey(mac) orelse 0);
+        }
+    }.f;
+    try std.testing.expectEqual(window.KeyboardKey.escape, keyOf(53));
+    try std.testing.expectEqual(window.KeyboardKey.tab, keyOf(48));
+    try std.testing.expectEqual(window.KeyboardKey.enter, keyOf(36));
+    try std.testing.expectEqual(window.KeyboardKey.left, keyOf(123));
+    try std.testing.expectEqual(window.KeyboardKey.c, keyOf(8)); // for Command and C
     try std.testing.expect(linuxKey(200) == null);
 }
 

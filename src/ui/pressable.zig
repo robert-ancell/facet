@@ -3,7 +3,6 @@
 
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const keymap = @import("keymap.zig");
 const focus = @import("focus.zig");
 const Painter = @import("painter.zig").Painter;
 
@@ -59,7 +58,7 @@ pub const Pressable = struct {
                 return true;
             },
             .key => |k| {
-                if (k.code != keymap.space and k.code != keymap.enter and k.code != keymap.keypad_enter) return false;
+                if (k.key != .space and k.key != .enter and k.key != .keypad_enter) return false;
                 const f = self.on_press orelse return false;
                 if (k.pressed) f.call();
                 return true;
