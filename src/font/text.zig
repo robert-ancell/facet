@@ -168,7 +168,7 @@ const Key = struct {
 };
 
 /// A rasterized glyph.
-pub const Bitmap = struct {
+pub const GlyphBitmap = struct {
     /// Offset of the mask's top left from the pen position on the baseline.
     left: i32,
     top: i32,
@@ -179,7 +179,7 @@ pub const Bitmap = struct {
 
 pub const GlyphCache = struct {
     gpa: std.mem.Allocator,
-    map: std.AutoHashMapUnmanaged(Key, Bitmap) = .empty,
+    map: std.AutoHashMapUnmanaged(Key, GlyphBitmap) = .empty,
 
     pub fn init(gpa: std.mem.Allocator) GlyphCache {
         return .{ .gpa = gpa };
@@ -193,7 +193,7 @@ pub const GlyphCache = struct {
 
     /// The glyph rasterized at `size` pixels per em, shifted right by
     /// `subpixel` quarter pixels.
-    pub fn get(cache: *GlyphCache, font: *const Font, glyph: u16, size: f32, subpixel: u2) !Bitmap {
+    pub fn get(cache: *GlyphCache, font: *const Font, glyph: u16, size: f32, subpixel: u2) !GlyphBitmap {
         const key: Key = .{ .font = @intFromPtr(font), .glyph = glyph, .size = @intFromFloat(size * 64), .subpixel = subpixel };
         if (cache.map.get(key)) |b| return b;
         const b = try rasterizeGlyph(cache.gpa, font, glyph, size, @as(f32, @floatFromInt(subpixel)) / 4);
@@ -260,7 +260,7 @@ pub fn rasterizeGlyphWith(bounds: GlyphBounds, font: *const Font, glyph: u16, dx
 }
 
 /// Rasterizes one glyph, shifted right by `dx` pixels (0 <= dx < 1).
-pub fn rasterizeGlyph(gpa: std.mem.Allocator, font: *const Font, glyph: u16, size: f32, dx: f32) !Bitmap {
+pub fn rasterizeGlyph(gpa: std.mem.Allocator, font: *const Font, glyph: u16, size: f32, dx: f32) !GlyphBitmap {
     const bounds = glyphBounds(font, glyph, size, dx) orelse return .{ .left = 0, .top = 0, .width = 0, .height = 0, .mask = &.{} };
     const acc = try gpa.alloc(f32, @as(usize, bounds.width) * bounds.height + 4);
     defer gpa.free(acc);
@@ -481,7 +481,7 @@ test "subpixel offsets move ink right" {
     const f = try Font.init(fira);
     const g = f.glyphIndex('I');
     const centroid = struct {
-        fn x(b: Bitmap) f32 {
+        fn x(b: GlyphBitmap) f32 {
             var sum: f32 = 0;
             var total: f32 = 0;
             for (0..b.height) |y| for (0..b.width) |xi| {
