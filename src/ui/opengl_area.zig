@@ -7,7 +7,6 @@ const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const decorated = @import("decorated.zig");
 const Painter = @import("painter.zig").Painter;
 
 const Size = geometry.Size;
@@ -18,7 +17,6 @@ const Node = widget.WidgetNode;
 const Event = widget.Event;
 const PointerCursor = widget.PointerCursor;
 const ValueCallback = widget.ValueCallback;
-const Border = decorated.Border;
 
 /// A widget that draws a scene of the app's with an OpenGL context into the area it takes.
 pub fn OpenGlArea(comptime Scene: type) type {
@@ -33,10 +31,6 @@ pub fn OpenGlArea(comptime Scene: type) type {
         /// The colour the area is cleared to before the scene is drawn (the
         /// theme's surface container if not given).
         clear_color: ?gfx.Color = null,
-        /// The corners' radii of the area.
-        radius: gfx.CornerRadii = .all(12),
-        /// An outline around the area (none, if null).
-        border: ?Border = null,
         /// Called with how far the pointer moved while it is dragged over the
         /// area; without it the area is not draggable.
         on_drag: ?ValueCallback(Point) = null,
@@ -171,10 +165,7 @@ pub fn OpenGlArea(comptime Scene: type) type {
 
             if (st.gl_ctx == null) {
                 const c = p.canvas();
-                c.fillRoundedRect(.{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, self.radius, bg);
-                if (self.border) |b| {
-                    c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = n.size.w - 1, .h = n.size.h - 1 }, self.radius, b.width, b.color);
-                }
+                c.fillRect(.{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, bg);
                 return;
             }
 
@@ -198,11 +189,6 @@ pub fn OpenGlArea(comptime Scene: type) type {
             // The scene is drawn over a clear and copied in, replacing every
             // pixel of the box.
             p.gpuWithDirect(.{ .key = draw_key, .fills = true }, payload, drawGpu, drawDirect);
-
-            if (self.border) |b| {
-                const c = p.canvas();
-                c.strokeRoundedRect(.{ .x = 0.5, .y = 0.5, .w = n.size.w - 1, .h = n.size.h - 1 }, self.radius, b.width, b.color);
-            }
         }
 
         /// Drawn on the GPU into a frame the Vulkan renderer draws straight

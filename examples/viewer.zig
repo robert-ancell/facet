@@ -239,18 +239,20 @@ pub fn Viewer(comptime Backend: type) type {
                     .spacing = 20,
                     .children = cx.makeAll(.{
                         facet.Expanded{
-                            .child = cx.make(Backend.Area(Scene){
-                                .scene = .{
-                                    .shape = state.shape,
-                                    .yaw = state.yaw,
-                                    .pitch = state.pitch,
-                                    .roll = state.roll,
-                                    .look = state.look,
-                                },
-                                .samples = state.samples,
+                            .child = cx.make(facet.Decorated{
                                 .border = .{ .width = 1, .color = t.outline_variant },
-                                .on_drag = .of(state, State.orbit),
-                                .child = badge,
+                                .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Backend.Area(Scene){
+                                    .scene = .{
+                                        .shape = state.shape,
+                                        .yaw = state.yaw,
+                                        .pitch = state.pitch,
+                                        .roll = state.roll,
+                                        .look = state.look,
+                                    },
+                                    .samples = state.samples,
+                                    .on_drag = .of(state, State.orbit),
+                                    .child = badge,
+                                }) }),
                             }),
                         },
                         facet.Card{
