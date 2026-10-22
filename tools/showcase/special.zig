@@ -57,16 +57,16 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     return common.page(cx, &.{ qr, painting, a11y, anim });
 }
 
-const Easing = struct { []const u8, facet.tween.Easing };
+const Named = struct { []const u8, facet.Easing };
 
-const easings = [_]Easing{
-    .{ "linear", facet.tween.linear },
-    .{ "inOutCubic", facet.tween.inOutCubic },
-    .{ "outBack", facet.tween.outBack },
-    .{ "outBounce", facet.tween.outBounce },
-    .{ "standard", facet.tween.standard },
-    .{ "emphasized", facet.tween.emphasized_decelerate },
-    .{ "steps(5)", facet.tween.steps(5) },
+const easings = [_]Named{
+    .{ "linear", .linear },
+    .{ "inOutCubic", .inOutCubic },
+    .{ "outBack", .outBack },
+    .{ "outBounce", .outBounce },
+    .{ "standard", .standard },
+    .{ "emphasized", .emphasized_decelerate },
+    .{ "steps(5)", facet.Easing.steps(5) },
 };
 
 fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
@@ -103,9 +103,9 @@ fn animation(cx: *facet.Context, s: *State) []const facet.Widget {
 
 /// A dot across its track, eased `t` of the way along (inset a little,
 /// for easings that overshoot).
-fn dot(e: *const Easing, cx: *facet.Context, t: f32) facet.Widget {
+fn dot(e: *const Named, cx: *facet.Context, t: f32) facet.Widget {
     return cx.make(facet.Align{
-        .alignment = .{ .x = facet.tween.lerp(@as(f32, -0.8), 0.8, e[1](t)), .y = 0 },
+        .alignment = .{ .x = e[1].lerp(@as(f32, -0.8), 0.8, t), .y = 0 },
         .child = cx.make(facet.SizedBox{ .width = 20, .height = 20, .child = cx.make(facet.Decorated{
             .color = cx.theme().primary,
             .radius = .all(10),
@@ -116,11 +116,11 @@ fn dot(e: *const Easing, cx: *facet.Context, t: f32) facet.Widget {
 /// A bar growing and changing colour, and back.
 fn pulse(cx: *facet.Context, t: f32) facet.Widget {
     const th = cx.theme();
-    const e = facet.tween.inOutSine(t);
+    const ease = facet.Easing.inOutSine;
     return cx.make(facet.Align{
         .alignment = .center_left,
-        .child = cx.make(facet.SizedBox{ .width = facet.tween.lerp(@as(f32, 40), 240, e), .height = 28, .child = cx.make(facet.Decorated{
-            .color = facet.tween.lerp(th.primary, th.@"error", e),
+        .child = cx.make(facet.SizedBox{ .width = ease.lerp(@as(f32, 40), 240, t), .height = 28, .child = cx.make(facet.Decorated{
+            .color = ease.lerp(th.primary, th.@"error", t),
             .radius = .all(14),
         }) }),
     });

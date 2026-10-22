@@ -1,11 +1,11 @@
 //! AnimatedWidget: a child made afresh each frame of an animation, from how
 //! far through it the frame is: `t`, from 0 at the start to 1 at the end of
-//! `duration_ns`. Shape `t` with an easing from tween.zig, and turn it into
-//! positions, sizes and colours with `tween.lerp`:
+//! `duration_ns`. Shape `t` with an `Easing`, and turn it into positions,
+//! sizes and colours with `Easing.lerp`:
 //!
 //!     fn slide(state: *State, cx: *Context, t: f32) Widget {
 //!         return cx.make(Align{
-//!             .alignment = .{ .x = tween.lerp(-1, 1, tween.outCubic(t)), .y = 0 },
+//!             .alignment = .{ .x = Easing.outCubic.lerp(-1, 1, t), .y = 0 },
 //!             .child = ...,
 //!         });
 //!     }

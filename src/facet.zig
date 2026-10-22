@@ -140,8 +140,7 @@ pub const TilePainter = ui.TilePainter;
 pub const MapLabelStyle = ui.MapLabelStyle;
 pub const MapNight = ui.MapNight;
 pub const AnimatedWidget = ui.AnimatedWidget;
-/// Easing functions and interpolation for `AnimatedWidget`.
-pub const tween = ui.tween;
+pub const Easing = ui.Easing;
 pub const OpenGlArea = ui.OpenGlArea;
 pub const VulkanArea = ui.VulkanArea;
 pub const MetalArea = ui.MetalArea;
