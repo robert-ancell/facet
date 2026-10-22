@@ -59,6 +59,9 @@ pub const State = struct {
     fn zoomOut(s: *State) void {
         s.position.zoom = @max(s.position.zoom - 1, 0);
     }
+    fn move(s: *State, v: kete.MapPosition) void {
+        s.position = v;
+    }
     fn goWorld(s: *State) void {
         s.position = world_view;
     }
@@ -112,7 +115,8 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                     .child = cx.make(kete.Padding{ .padding = .all(1), .child = cx.make(kete.MapView{
                         .source = source,
                         .style = style,
-                        .position = &s.position,
+                        .position = s.position,
+                        .on_move = .of(s, State.move),
                         .show_globe = s.globe,
                         .atmosphere = s.atmosphere,
                         .night = night,

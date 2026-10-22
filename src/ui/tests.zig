@@ -2203,10 +2203,15 @@ const MapApp = struct {
     show_globe: bool,
     style: ?*const ui.MapStyle = null,
 
+    fn move(position: *ui.MapPosition, to: ui.MapPosition) void {
+        position.* = to;
+    }
+
     pub fn build(self: *const MapApp, cx: *Context) Widget {
         return cx.make(ui.MapView{
             .source = .of(self.tiles, .{}),
-            .position = self.position,
+            .position = self.position.*,
+            .on_move = .of(self.position, move),
             .show_globe = self.show_globe,
             .style = self.style,
             .space = .rgb(0x000000),
@@ -2257,6 +2262,28 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xff00ff00), img.at(200, 150));
     img.deinit();
+}
+
+test "a map view without a handler for moves is not moved" {
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
+    defer u.destroy();
+    var tiles: MapTiles = .{ .pictures = .{
+        gfx.Image.init(&.{0xffff0000}, 1, 1),
+        gfx.Image.init(&.{0xff0000ff}, 1, 1),
+    } };
+    const Still = struct {
+        tiles: *MapTiles,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(ui.MapView{ .source = .of(self.tiles, .{}), .position = .{ .zoom = 1 }, .show_globe = false });
+        }
+    };
+    u.frame(400, 300, 0, Still{ .tiles = &tiles });
+    u.pointerMotion(.{ 200, 150 });
+    try testing.expect(u.cursor() != ui.PointerCursor.grab);
+    u.pointerButton(.{ 200, 150 }, .left, true);
+    try testing.expect(u.cursor() != ui.PointerCursor.grabbing);
+    u.pointerMotion(.{ 250, 150 });
+    u.pointerButton(.{ 250, 150 }, .left, false);
 }
 
 test "a map view is dragged and zoomed" {
