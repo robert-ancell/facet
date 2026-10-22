@@ -595,7 +595,7 @@ pub const WindowUi = struct {
     pub fn backend(ui: *const WindowUi) widget.BackendInfo {
         return .{
             .platform = if (ui.win) |w| w.platform() else .headless,
-            .extensions = if (ui.win) |w| w.extensions() else &.{},
+            .wayland_extensions = if (ui.win) |w| w.waylandExtensions() else &.{},
             .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
             .keyboard = ui.keyboard,
         };

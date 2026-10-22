@@ -753,7 +753,7 @@ pub const WaylandWindow = struct {
         return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(w.refresh_ns));
     }
 
-    pub fn extensions(w: *const WaylandWindow) []const []const u8 {
+    pub fn waylandExtensions(w: *const WaylandWindow) []const []const u8 {
         return w.extensions_buf[0..w.extensions_len];
     }
 
@@ -3212,7 +3212,7 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     try std.testing.expect(fs.fifo_v1);
     try std.testing.expect(fs.commit_timing_v1);
 
-    const exts = win.extensions();
+    const exts = win.waylandExtensions();
     try std.testing.expectEqual(@as(usize, 5), exts.len);
     var has_fifo = false;
     var has_commit_timing = false;

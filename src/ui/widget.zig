@@ -440,7 +440,7 @@ pub const BuildContext = struct {
         cx.ui.needs_frame = true;
     }
 
-    /// What the app runs on: the windowing platform, its extensions, the
+    /// What the app runs on: the windowing platform, its Wayland extensions, the
     /// 2D renderer (`software`, `opengl`, `vulkan`, ...), and the keyboard's
     /// layout.
     pub fn backend(cx: *const BuildContext) BackendInfo {
@@ -460,18 +460,18 @@ pub const BuildContext = struct {
 pub const BackendInfo = struct {
     /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
     platform: window_mod.WindowPlatform = .headless,
-    /// The window system's protocol extensions used (for Wayland, the
-    /// global interfaces bound).
-    extensions: []const []const u8 = &.{},
+    /// The Wayland protocol extensions used: the global interfaces bound
+    /// (none on other platforms).
+    wayland_extensions: []const []const u8 = &.{},
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `metal`,
     /// `d3d11`, `custom`).
     renderer: gfx.RenderBackend = .software,
     /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
     keyboard: window_mod.KeyboardLayout = .{},
 
-    /// Whether the window system's protocol extensions include `ext_name`.
-    pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
-        for (info.extensions) |ext| {
+    /// Whether the Wayland protocol extensions include `ext_name`.
+    pub fn hasWaylandExtension(info: BackendInfo, ext_name: []const u8) bool {
+        for (info.wayland_extensions) |ext| {
             if (std.mem.eql(u8, ext, ext_name)) return true;
         }
         return false;

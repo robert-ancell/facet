@@ -599,7 +599,7 @@ pub const Window = struct {
         bufferSync: *const fn (ptr: *anyopaque) WindowBufferSync,
         frameSync: *const fn (ptr: *anyopaque) WindowFrameSync,
         refreshHz: *const fn (ptr: *anyopaque) f32,
-        extensions: *const fn (ptr: *anyopaque) []const []const u8,
+        waylandExtensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) WindowDecorations,
         title: *const fn (ptr: *anyopaque) []const u8,
         setTitle: *const fn (ptr: *anyopaque, title: []const u8) void,
@@ -703,8 +703,8 @@ pub const Window = struct {
                 }
                 return 0.0;
             }
-            fn extensionsFn(p: *anyopaque) []const []const u8 {
-                if (@hasDecl(T, "extensions")) return self(p).extensions();
+            fn waylandExtensionsFn(p: *anyopaque) []const []const u8 {
+                if (@hasDecl(T, "waylandExtensions")) return self(p).waylandExtensions();
                 return &.{};
             }
             fn decorationsFn(p: *anyopaque) WindowDecorations {
@@ -920,7 +920,7 @@ pub const Window = struct {
                 .bufferSync = bufferSyncFn,
                 .frameSync = frameSyncFn,
                 .refreshHz = refreshHzFn,
-                .extensions = extensionsFn,
+                .waylandExtensions = waylandExtensionsFn,
                 .decorations = decorationsFn,
                 .title = titleFn,
                 .setTitle = setTitleFn,
@@ -1004,10 +1004,10 @@ pub const Window = struct {
     pub fn refreshHz(w: Window) f32 {
         return w.vtable.refreshHz(w.ptr);
     }
-    /// The window system's protocol extensions the window uses (for
-    /// Wayland, the global interfaces bound; none elsewhere).
-    pub fn extensions(w: Window) []const []const u8 {
-        return w.vtable.extensions(w.ptr);
+    /// The Wayland protocol extensions the window uses: the global
+    /// interfaces bound (none on other platforms).
+    pub fn waylandExtensions(w: Window) []const []const u8 {
+        return w.vtable.waylandExtensions(w.ptr);
     }
     /// Who draws the window's title bar and borders: the toolkit, the window system
     /// or no one.

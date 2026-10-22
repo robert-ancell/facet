@@ -1515,10 +1515,10 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
         try testing.expect(win_info.frame_sync.presentation_time);
         try testing.expect(win_info.frame_sync.fifo_v1);
         try testing.expect(!win_info.frame_sync.commit_timing_v1);
-        try testing.expect(info.hasExtension("xdg_wm_base"));
-        try testing.expect(info.hasExtension("wp_presentation"));
-        try testing.expect(info.hasExtension("wp_fifo_manager_v1"));
-        try testing.expect(!info.hasExtension("wp_commit_timing_manager_v1"));
+        try testing.expect(info.hasWaylandExtension("xdg_wm_base"));
+        try testing.expect(info.hasWaylandExtension("wp_presentation"));
+        try testing.expect(info.hasWaylandExtension("wp_fifo_manager_v1"));
+        try testing.expect(!info.hasWaylandExtension("wp_commit_timing_manager_v1"));
         try testing.expectEqual(expected_renderer, info.renderer);
         try testing.expectEqual([2]u32{ 800, 600 }, win_info.logical_size);
         try testing.expectEqual([2]u32{ 1600, 1200 }, win_info.physical_size);
