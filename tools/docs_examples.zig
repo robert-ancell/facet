@@ -305,23 +305,6 @@ fn tabBar(cx: *BuildContext) Widget {
     }) });
 }
 
-fn titleBar(cx: *BuildContext) Widget {
-    return cx.make(facet.SizedBox{ .width = 360, .child = cx.make(facet.TitleBar{
-        .title = "Untitled",
-        .on_close = .of(state, State.save),
-        .on_minimize = .of(state, State.save),
-        .on_maximize = .of(state, State.save),
-        .maximized = false,
-    }) });
-}
-
-fn barButton(cx: *BuildContext) Widget {
-    return cx.make(facet.Row{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
-        facet.BarButton{ .icon = .minimize, .size = 34, .on_press = .of(state, State.save) },
-        facet.BarButton{ .icon = .close, .size = 34, .on_press = .of(state, State.save) },
-    }) });
-}
-
 // --- Feedback ----------------------------------------------------------------
 
 fn snackbar(cx: *BuildContext) Widget {
@@ -532,8 +515,6 @@ pub const all = .{
     Example("Divider", divider, .{}),
     Example("NavigationRail", navigationRail, .{}),
     Example("TabBar", tabBar, .{}),
-    Example("TitleBar", titleBar, .{}),
-    Example("BarButton", barButton, .{}),
     Example("Snackbar", snackbar, .{}),
     Example("Dialog", dialog, .{ .width = 440, .height = 300 }),
     Example("Tooltip", tooltip, .{ .width = 200, .height = 110, .after = hoverTooltip }),

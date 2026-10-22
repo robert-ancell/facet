@@ -28,19 +28,9 @@ const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 
 /// A window's title bar, drawn by the toolkit where the window system does
-/// not: its title, and buttons to minimize, maximize and close it.
-///
-/// ![The TitleBar example](images/TitleBar.png)
-///
-/// ```zig
-/// return cx.make(facet.SizedBox{ .width = 360, .child = cx.make(facet.TitleBar{
-///     .title = "Untitled",
-///     .on_close = .of(state, State.save),
-///     .on_minimize = .of(state, State.save),
-///     .on_maximize = .of(state, State.save),
-///     .maximized = false,
-/// }) });
-/// ```
+/// not: its title, and buttons to minimize, maximize and close it. The toolkit
+/// adds it to a window itself (see `WindowInfo.decorations`), so apps do not
+/// make one.
 pub const TitleBar = struct {
     /// The text in the bar.
     title: []const u8,
