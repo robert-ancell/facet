@@ -1,6 +1,6 @@
 //! Images: pixels in memory, and PNG, JPEG, GIF and WebP files loaded in
 //! the background, from bytes or a URL, with what shows while they load
-//! and if they cannot be, and parts of them.
+//! and if they cannot be, and parts of them; and QR codes.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -44,6 +44,8 @@ pub const State = struct {
     /// How many times it was loaded again (each a URL of its own, so it is
     /// not the one kept from before).
     reloads: u32 = 0,
+    /// The text the QR code encodes, when it has been typed.
+    qr: Text = .{},
     /// The part of the photo shown on its own: its top left.
     part_x: f32 = 96,
     part_y: f32 = 40,
@@ -53,6 +55,10 @@ pub const State = struct {
     }
     fn setPartY(s: *State, v: f32) void {
         s.part_y = v;
+    }
+
+    fn setQr(s: *State, v: []const u8) void {
+        s.qr.set(v);
     }
 
     fn setUrl(s: *State, v: []const u8) void {
@@ -97,6 +103,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const base = if (s.url_loaded.len > 0) s.url_loaded.buf[0..s.url_loaded.len] else default_url;
     const url = if (s.reloads == 0) base else cx.fmt("{s}{s}again={d}", .{ base, if (std.mem.indexOfScalar(u8, base, '?') != null) "&" else "?", s.reloads });
     const photo = formats[0][2];
+    const qr_text = if (s.qr.len > 0) s.qr.buf[0..s.qr.len] else "https://github.com/robert-ancell/facet";
     // The part of the photo on its own: 80 × 60, where the sliders put it.
     const part_size = [2]f32{ 80, 60 };
     const part: facet.Image.Region = .{ .x = @intFromFloat(@round(s.part_x)), .y = @intFromFloat(@round(s.part_y)), .w = 80, .h = 60 };
@@ -163,6 +170,16 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                 onChecks(cx, 160, 90, cx.make(facet.Image{ .source = .{ .bytes = "not an image" }, .failed = .func(failed) })),
                 onChecks(cx, 160, 90, cx.make(facet.Image{ .source = .{ .file = "/no/such/picture.png" } })),
             } },
+        })),
+        common.section(cx, "QR code", "Text encoded as a QR code, made as it is typed", cx.makeAll(.{
+            facet.Row{ .spacing = 24, .cross_axis_alignment = .center, .children = cx.makeAll(.{
+                facet.QrCode{ .text = qr_text, .size = 160 },
+                facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
+                    facet.TextField{ .placeholder = "Text to encode", .initial = s.qr.buf[0..s.qr.len], .max_len = 127, .width = 300, .on_changed = .of(s, State.setQr) },
+                    facet.Text{ .text = cx.fmt("{d} bytes", .{qr_text.len}), .style = .{ .size = 13, .color = t.on_surface_variant } },
+                    facet.QrCode{ .text = "Small", .size = 64 },
+                }) },
+            }) },
         })),
     });
 }

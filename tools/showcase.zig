@@ -1,7 +1,6 @@
 //! A tour of every widget in facet, grouped into pages by what they are
 //! for (`zig build run-showcase`): buttons, selection, text, feedback,
-//! containers, layout, images, icons, maps, 3D, and special widgets such
-//! as QR codes.
+//! containers, layout, images (and QR codes), icons, maps, animation, 2D and 3D.
 
 const std = @import("std");
 const facet = @import("facet");
@@ -14,8 +13,9 @@ const layout = @import("showcase/layout.zig");
 const images = @import("showcase/images.zig");
 const icons = @import("showcase/icons.zig");
 const maps = @import("showcase/maps.zig");
+const animation = @import("showcase/animation.zig");
+const two_d = @import("showcase/two_d.zig");
 const three_d = @import("showcase/three_d.zig");
-const special = @import("showcase/special.zig");
 
 pub const Page = enum {
     buttons,
@@ -27,8 +27,9 @@ pub const Page = enum {
     images,
     icons,
     maps,
+    animation,
+    two_d,
     three_d,
-    special,
 
     fn title(p: Page) []const u8 {
         return switch (p) {
@@ -41,8 +42,9 @@ pub const Page = enum {
             .images => "Images",
             .icons => "Icons",
             .maps => "Maps",
+            .animation => "Animation",
+            .two_d => "2D",
             .three_d => "3D",
-            .special => "Special",
         };
     }
 
@@ -57,8 +59,9 @@ pub const Page = enum {
             .images => .image,
             .icons => .interests,
             .maps => .public,
+            .animation => .animation,
+            .two_d => .draw,
             .three_d => .@"3d_rotation",
-            .special => .auto_awesome,
         };
     }
 
@@ -70,11 +73,12 @@ pub const Page = enum {
             .feedback => "Progress, counts, questions and messages",
             .containers => "Grouping, listing and scrolling content",
             .layout => "Arranging, sizing, decorating, pressing and dragging",
-            .images => "Pixels in memory, and PNG, JPEG, GIF and WebP files loaded in the background",
+            .images => "Pixels in memory, PNG, JPEG, GIF and WebP files loaded in the background, and QR codes",
             .icons => "Material's icons, at any size and colour",
             .maps => "A slippy map of tiles from a source, zoomed out a globe",
+            .animation => "Widgets made afresh each frame as their time passes, eased in different ways",
+            .two_d => "A widget of the app's own, painting shapes and lines on the canvas",
             .three_d => if (@import("builtin").os.tag == .macos) "A scene drawn on the GPU with Metal" else "Scenes drawn on the GPU with Vulkan and OpenGL",
-            .special => "QR codes, custom painting, accessibility and animation",
         };
     }
 };
@@ -100,8 +104,9 @@ pub const Showcase = struct {
         images: images.State = .{},
         icons: icons.State = .{},
         maps: maps.State = .{},
+        animation: animation.State = .{},
+        two_d: two_d.State = .{},
         three_d: three_d.State = .{},
-        special: special.State = .{},
 
         pub fn deinit(s: *State) void {
             s.maps.deinit();
@@ -142,8 +147,9 @@ pub const Showcase = struct {
             .images => images.build(cx, &s.images),
             .icons => icons.build(cx, &s.icons),
             .maps => maps.build(cx, &s.maps),
+            .animation => animation.build(cx, &s.animation),
+            .two_d => two_d.build(cx, &s.two_d),
             .three_d => three_d.build(cx, &s.three_d),
-            .special => special.build(cx, &s.special),
         };
 
         const header = cx.make(facet.Padding{
