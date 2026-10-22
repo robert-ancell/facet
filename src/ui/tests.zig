@@ -2199,14 +2199,14 @@ const MapTiles = struct {
 
 const MapApp = struct {
     tiles: *MapTiles,
-    camera: *ui.MapCamera,
+    position: *ui.MapPosition,
     projection: ui.MapProjection,
     style: ?*const ui.MapStyle = null,
 
     pub fn build(self: *const MapApp, cx: *Context) Widget {
         return cx.make(ui.MapView{
             .source = .of(self.tiles, .{}),
-            .camera = self.camera,
+            .position = self.position,
             .projection = self.projection,
             .style = self.style,
             .space = .rgb(0x000000),
@@ -2224,15 +2224,15 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     } };
     // Flat, at zoom 1 (the world 512 across), with 0° in the middle: the
     // western tiles (red) left of it, the eastern (blue) right.
-    var camera: ui.MapCamera = .{ .zoom = 1 };
-    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat });
+    var position: ui.MapPosition = .{ .zoom = 1 };
+    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat });
     var img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xffff0000), img.at(100, 150));
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(300, 150));
     img.deinit();
     // Those not there yet: the one further out that is (red) instead.
     tiles.ready_to = 0;
-    u.frame(400, 300, 1, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat });
+    u.frame(400, 300, 1, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xffff0000), img.at(300, 150));
     img.deinit();
@@ -2240,8 +2240,8 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
 
     // Zoomed out, a globe in space: at its middle the tile there, and
     // black around it.
-    camera = .{ .center = .{ .lon = 45 }, .zoom = 1 };
-    u.frame(400, 300, 2, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .globe });
+    position = .{ .center = .{ .lon = 45 }, .zoom = 1 };
+    u.frame(400, 300, 2, MapApp{ .tiles = &tiles, .position = &position, .projection = .globe });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(200, 150));
     try testing.expectEqual(@as(u32, 0xff000000), img.at(5, 5));
@@ -2253,7 +2253,7 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     const shapes: ui.MapVectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
     tiles.shapes = &shapes;
     const style: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .source_layer = "land", .draw = .{ .fill = .rgb(0x00ff00) } }} };
-    u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .camera = &camera, .projection = .flat, .style = &style });
+    u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat, .style = &style });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xff00ff00), img.at(200, 150));
     img.deinit();
@@ -2266,8 +2266,8 @@ test "a map view is dragged and zoomed" {
         gfx.Image.init(&.{0xffff0000}, 1, 1),
         gfx.Image.init(&.{0xff0000ff}, 1, 1),
     } };
-    var camera: ui.MapCamera = .{ .center = .{ .lon = 45 }, .zoom = 1 };
-    const app: MapApp = .{ .tiles = &tiles, .camera = &camera, .projection = .flat };
+    var position: ui.MapPosition = .{ .center = .{ .lon = 45 }, .zoom = 1 };
+    const app: MapApp = .{ .tiles = &tiles, .position = &position, .projection = .flat };
     u.frame(400, 300, 0, app);
     // Dragged 50 pixels right: the world (512 across) moves with it.
     u.pointerMotion(.{ 200, 150 });
@@ -2275,28 +2275,28 @@ test "a map view is dragged and zoomed" {
     try testing.expectEqual(ui.PointerCursor.grabbing, u.cursor());
     u.pointerMotion(.{ 250, 150 });
     u.pointerButton(.{ 250, 150 }, .left, false);
-    try testing.expectApproxEqAbs(45 - 50.0 / 512.0 * 360.0, camera.center.lon, 1e-6);
-    try testing.expectApproxEqAbs(0, camera.center.lat, 1e-6);
+    try testing.expectApproxEqAbs(45 - 50.0 / 512.0 * 360.0, position.center.lon, 1e-6);
+    try testing.expectApproxEqAbs(0, position.center.lat, 1e-6);
     // The wheel zooms in about the pointer: what is under it stays.
     u.frame(400, 300, 1, app);
-    const before = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).unproject(.{ 300, 100 }).?;
+    const before = ui.map_view.View.init(position, .{ 400, 300 }, .flat).unproject(.{ 300, 100 }).?;
     u.pointerScroll(.{ 300, 100 }, 0, -30);
-    try testing.expectApproxEqAbs(2, camera.zoom, 1e-6);
-    const after = ui.map_view.View.init(camera, .{ 400, 300 }, .flat).projectCoordinate(before);
+    try testing.expectApproxEqAbs(2, position.zoom, 1e-6);
+    const after = ui.map_view.View.init(position, .{ 400, 300 }, .flat).projectCoordinate(before);
     try testing.expectApproxEqAbs(300, after.pos[0], 1e-3);
     try testing.expectApproxEqAbs(100, after.pos[1], 1e-3);
 
     // Dragged on the globe, north and east: it turns, and the zoom stays.
-    camera = .{ .center = .{ .lat = 10, .lon = 20 }, .zoom = 2.5 };
-    const globe: MapApp = .{ .tiles = &tiles, .camera = &camera, .projection = .globe };
+    position = .{ .center = .{ .lat = 10, .lon = 20 }, .zoom = 2.5 };
+    const globe: MapApp = .{ .tiles = &tiles, .position = &position, .projection = .globe };
     u.frame(400, 300, 2, globe);
     // (Away from the last press, so it is not a double click.)
     u.pointerMotion(.{ 220, 130 });
     u.pointerButton(.{ 220, 130 }, .left, true);
     for (1..6) |i| u.pointerMotion(.{ 220 - 10 * @as(f32, @floatFromInt(i)), 130 + 12 * @as(f32, @floatFromInt(i)) });
     u.pointerButton(.{ 170, 190 }, .left, false);
-    try testing.expect(camera.center.lat > 20 and camera.center.lon > 20);
-    try testing.expectEqual(@as(f64, 2.5), camera.zoom);
+    try testing.expect(position.center.lat > 20 and position.center.lon > 20);
+    try testing.expectEqual(@as(f64, 2.5), position.zoom);
 }
 
 /// A window whose two buffers are drawn in turn, as a compositor gives

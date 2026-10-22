@@ -4,13 +4,13 @@
 //! it is a globe (as the `projection` says), turned by dragging, that
 //! becomes the flat map as it is zoomed in.
 //!
-//! Where it looks is a `MapCamera`: the app's (to move it, or show where it
+//! Where it looks is a `MapPosition`: the app's (to move it, or show where it
 //! is), or the view's own.
 //!
 //!     cx.make(ui.MapView{
 //!         .source = .of(&state.tiles, .{ .max_level = 14, .attribution = "© Someone" }),
 //!         .style = &my_style,
-//!         .camera = &state.camera,
+//!         .position = &state.position,
 //!     })
 //!
 //! Tiles that are not there yet are drawn from the nearest level out
@@ -39,7 +39,7 @@ const Callback = widget.Callback;
 const Painter = painter_mod.Painter;
 const Color = gfx.Color;
 
-pub const MapCamera = projection.MapCamera;
+pub const MapPosition = projection.MapPosition;
 pub const MapCoordinate = projection.MapCoordinate;
 pub const MapProjection = projection.MapProjection;
 pub const View = projection.View;
@@ -83,9 +83,9 @@ pub const MapView = struct {
     style: ?*const MapStyle = null,
     /// What it shows: the app's, which it moves, or its own if null
     /// (starting at `initial`).
-    camera: ?*MapCamera = null,
-    /// Where its own camera starts, when it is not given the app's.
-    initial: MapCamera = .{},
+    position: ?*MapPosition = null,
+    /// Where its own position starts, when it is not given the app's.
+    initial: MapPosition = .{},
     /// How the world is shown: as a globe when zoomed out, or flat.
     projection: MapProjection = .globe,
     /// The furthest out it can be zoomed.
@@ -115,7 +115,7 @@ pub const MapView = struct {
     height: f32 = 320,
 
     pub const State = struct {
-        own: ?MapCamera = null,
+        own: ?MapPosition = null,
         /// The place grabbed, while dragging.
         grab: ?MapCoordinate = null,
         /// The pointer's last moves (where, and when): how fast it was
@@ -127,8 +127,8 @@ pub const MapView = struct {
         last_ns: u64 = 0,
     };
 
-    fn cameraOf(self: *const MapView, st: *State) *MapCamera {
-        if (self.camera) |c| return c;
+    fn positionOf(self: *const MapView, st: *State) *MapPosition {
+        if (self.position) |c| return c;
         if (st.own == null) st.own = self.initial;
         return &st.own.?;
     }
@@ -137,9 +137,9 @@ pub const MapView = struct {
         return .{ n.size.w, n.size.h };
     }
 
-    /// Sets the camera (kept in bounds), and says it moved.
-    fn moveTo(self: *const MapView, n: *Node, cam: MapCamera) void {
-        const c = self.cameraOf(n.state(State));
+    /// Sets the position (kept in bounds), and says it moved.
+    fn moveTo(self: *const MapView, n: *Node, cam: MapPosition) void {
+        const c = self.positionOf(n.state(State));
         c.* = .{
             .center = .{ .lat = std.math.clamp(cam.center.lat, -projection.max_lat, projection.max_lat), .lon = projection.wrapLon(cam.center.lon) },
             .zoom = std.math.clamp(cam.zoom, self.min_zoom, self.max_zoom),
@@ -154,7 +154,7 @@ pub const MapView = struct {
 
     /// The keys: arrows move it, plus and minus zoom.
     fn key(self: *const MapView, n: *Node, k: Event.Key) bool {
-        const cam = self.cameraOf(n.state(State));
+        const cam = self.positionOf(n.state(State));
         const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
         const step = 80;
         const delta: ?[2]f64 = switch (k.key) {
@@ -183,7 +183,7 @@ pub const MapView = struct {
     pub fn accessible(self: *const MapView, n: *Node) ?a11y.Info {
         // An interactive widget of its own kind (its keys move it): an
         // application, called a map.
-        const c = self.cameraOf(n.state(State)).*;
+        const c = self.positionOf(n.state(State)).*;
         const where = std.fmt.allocPrint(n.ui.arena(), "{d:.4}, {d:.4}, zoom {d:.1}", .{ c.center.lat, c.center.lon, c.zoom }) catch "";
         return .{ .role = .application, .roledescription = "map", .label = "Map", .description = where };
     }
@@ -205,7 +205,7 @@ pub const MapView = struct {
 
     pub fn event(self: *const MapView, n: *Node, e: Event) bool {
         const st = n.state(State);
-        const cam = self.cameraOf(st);
+        const cam = self.positionOf(st);
         switch (e) {
             .press => |pr| {
                 if (pr.button != .left) return false;
@@ -285,7 +285,7 @@ pub const MapView = struct {
         n.ui.needs_frame = true;
         const dt = std.math.clamp(@as(f64, @floatFromInt(now -| st.last_ns)) / std.time.ns_per_s, 0, 0.05);
         if (dt <= 0) return;
-        const cam = self.cameraOf(st);
+        const cam = self.positionOf(st);
         const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
         if (View.init(cam.*, size(n), self.projection).unproject(c)) |place| {
             self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] + st.velocity[0] * dt, c[1] + st.velocity[1] * dt }));
@@ -307,7 +307,7 @@ pub const MapView = struct {
         what: union(enum) { image: *const gfx.Image, vector: *const MapVectorTile },
     };
 
-    /// The tiles' level at a zoom: the same wherever the camera looks, so
+    /// The tiles' level at a zoom: the same wherever it is centred, so
     /// the tiles stay the same size as the globe turns.
     fn level(self: *const MapView, zoom: f64) u8 {
         const z = zoom - std.math.log2(@as(f64, @max(self.source.tile_size, 1)) / 256);
@@ -401,7 +401,7 @@ pub const MapView = struct {
     pub fn paint(self: *const MapView, n: *Node, p: *Painter) void {
         self.fling(n);
         const st = n.state(State);
-        const cam = self.cameraOf(st).*;
+        const cam = self.positionOf(st).*;
         const t = n.theme();
         const v = View.init(cam, size(n), self.projection);
         const arena = n.ui.arena();

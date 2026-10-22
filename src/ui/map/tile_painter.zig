@@ -117,7 +117,7 @@ pub const MapTilePainter = struct {
     span: f64,
     /// The tile's coordinates' extent (`MapVectorTile.extent`).
     extent: f32,
-    /// The camera's zoom.
+    /// The map position's zoom.
     zoom: f64,
     /// The labels already placed, so that they do not overlap.
     labels: *Labels,

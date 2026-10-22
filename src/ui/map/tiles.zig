@@ -64,7 +64,7 @@ pub const MapSource = struct {
     ctx: *anyopaque,
     /// Gives the tile for a request.
     tile_fn: *const fn (ctx: *anyopaque, req: Request) MapTile,
-    /// The tiles' width (and height) in pixels: at `MapCamera.zoom` z, tiles
+    /// The tiles' width (and height) in pixels: at `MapPosition.zoom` z, tiles
     /// of level z − log2(tile_size / 256) are drawn at about their size.
     tile_size: f32 = 256,
     /// The lowest level it has tiles for: zoomed further out, it is asked for

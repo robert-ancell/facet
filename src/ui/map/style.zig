@@ -38,7 +38,7 @@ pub const MapStyle = struct {
         source_layer: ?[]const u8 = null,
         /// Which of them it draws: all, if null.
         filter: ?Filter = null,
-        /// The zooms it is drawn at (`MapCamera.zoom`), from `min_zoom` up to
+        /// The zooms it is drawn at (`MapPosition.zoom`), from `min_zoom` up to
         /// `max_zoom`.
         min_zoom: f32 = 0,
         max_zoom: f32 = std.math.inf(f32),

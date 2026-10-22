@@ -16,10 +16,10 @@ const Point = MapVectorTile.Point;
 pub const Kind = enum { vector, images };
 pub const Look = enum { atlas, night, blueprint };
 
-const world_view: facet.MapCamera = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
+const world_view: facet.MapPosition = .{ .center = .{ .lat = 25, .lon = 10 }, .zoom = 2 };
 
 pub const State = struct {
-    camera: facet.MapCamera = world_view,
+    position: facet.MapPosition = world_view,
     kind: Kind = .vector,
     look: Look = .atlas,
     globe: bool = true,
@@ -54,16 +54,16 @@ pub const State = struct {
         s.hours = v;
     }
     fn zoomIn(s: *State) void {
-        s.camera.zoom = @min(s.camera.zoom + 1, max_zoom);
+        s.position.zoom = @min(s.position.zoom + 1, max_zoom);
     }
     fn zoomOut(s: *State) void {
-        s.camera.zoom = @max(s.camera.zoom - 1, 0);
+        s.position.zoom = @max(s.position.zoom - 1, 0);
     }
     fn goWorld(s: *State) void {
-        s.camera = world_view;
+        s.position = world_view;
     }
     fn goNullIsland(s: *State) void {
-        s.camera = .{ .center = .{}, .zoom = 8 };
+        s.position = .{ .center = .{}, .zoom = 8 };
     }
 };
 
@@ -97,11 +97,11 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     const wall: f64 = @floatFromInt(std.Io.Clock.real.now(cx.ui.io).nanoseconds);
     const unix = wall / std.time.ns_per_s + s.hours * 3600;
     const night: ?facet.MapNight = if (s.night) .at(unix) else null;
-    const c = s.camera.center;
+    const c = s.position.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
-        @abs(c.lat),   if (c.lat >= 0) "N" else "S",
-        @abs(c.lon),   if (c.lon >= 0) "E" else "W",
-        s.camera.zoom,
+        @abs(c.lat),     if (c.lat >= 0) "N" else "S",
+        @abs(c.lon),     if (c.lon >= 0) "E" else "W",
+        s.position.zoom,
     });
 
     return common.page(cx, &.{
@@ -112,7 +112,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                     .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(facet.MapView{
                         .source = source,
                         .style = style,
-                        .camera = &s.camera,
+                        .position = &s.position,
                         .projection = if (s.globe) .globe else .flat,
                         .atmosphere = s.atmosphere,
                         .night = night,
