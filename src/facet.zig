@@ -67,7 +67,6 @@ pub const Draggable = ui.Draggable;
 pub const DropTarget = ui.DropTarget;
 pub const MainAxisAlignment = ui.MainAxisAlignment;
 pub const CrossAxisAlignment = ui.CrossAxisAlignment;
-pub const MainAxisSize = ui.MainAxisSize;
 
 pub const Text = ui.Text;
 pub const TextStyle = ui.TextStyle;

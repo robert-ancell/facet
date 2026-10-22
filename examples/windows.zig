@@ -45,7 +45,7 @@ const MainView = struct {
 
     pub fn build(self: *const MainView, cx: *facet.Context) facet.Widget {
         return cx.make(facet.Align.center(cx.make(facet.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
@@ -77,7 +77,7 @@ const Counter = struct {
 
     pub fn build(_: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
         return cx.make(facet.Align.center(cx.make(facet.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{

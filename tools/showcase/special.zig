@@ -37,7 +37,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const qr = common.section(cx, "QR code", "Text encoded as a QR code, made as it is typed", cx.makeAll(.{
         facet.Row{ .spacing = 24, .cross_axis_alignment = .center, .children = cx.makeAll(.{
             facet.QrCode{ .text = qr_text, .size = 160 },
-            facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
+            facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 8, .children = cx.makeAll(.{
                 facet.TextField{ .placeholder = "Text to encode", .initial = s.qr.buf[0..s.qr.len], .max_len = 127, .width = 300, .on_changed = .of(s, State.setQr) },
                 facet.Text{ .text = cx.fmt("{d} bytes", .{qr_text.len}), .style = .{ .size = 13, .color = t.on_surface_variant } },
                 facet.QrCode{ .text = "Small", .size = 64 },

@@ -259,7 +259,7 @@ pub fn Viewer(comptime Backend: type) type {
                             .child = cx.make(facet.SizedBox{
                                 .width = 264,
                                 .child = cx.make(facet.Column{
-                                    .main_axis_size = .min,
+                                    .fill = false,
                                     .cross_axis_alignment = .start,
                                     .spacing = 4,
                                     .children = cx.makeAll(.{
@@ -333,7 +333,7 @@ pub fn Viewer(comptime Backend: type) type {
                                             }),
                                         },
                                         facet.Row{
-                                            .main_axis_size = .min,
+                                            .fill = false,
                                             .spacing = 8,
                                             .children = cx.makeAll(.{
                                                 facet.ConstrainedBox{

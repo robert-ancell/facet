@@ -53,14 +53,6 @@ pub const CrossAxisAlignment = enum {
     stretch,
 };
 
-/// How much of its main axis a `Row` or `Column` takes.
-pub const MainAxisSize = enum {
-    /// Just the children.
-    min,
-    /// All the space there is (if bounded).
-    max,
-};
-
 /// Children one after another, left to right.
 pub const Row = Flex(.horizontal);
 /// Children one after another, top to bottom.
@@ -83,7 +75,9 @@ fn Flex(comptime axis: Axis) type {
         children: []const Widget = &.{},
         main_axis_alignment: MainAxisAlignment = .start,
         cross_axis_alignment: CrossAxisAlignment = .center,
-        main_axis_size: MainAxisSize = .max,
+        /// Whether it takes all the room there is along its main axis (if that
+        /// is bounded), or only as much as its children need.
+        fill: bool = true,
         /// Space between children.
         spacing: f32 = 0,
 
@@ -150,7 +144,7 @@ fn Flex(comptime axis: Axis) type {
                 }
             }
 
-            const main_size = std.math.clamp(if (self.main_axis_size == .max and bounded) max_main else used, min_main, max_main);
+            const main_size = std.math.clamp(if (self.fill and bounded) max_main else used, min_main, max_main);
             const final_cross = std.math.clamp(if (stretch) max_cross else cross_size, min_cross, max_cross);
 
             // Where the children go: with too little space, from the start

@@ -136,7 +136,6 @@ pub const Draggable = drag.Draggable;
 pub const DropTarget = drag.DropTarget;
 pub const MainAxisAlignment = flex.MainAxisAlignment;
 pub const CrossAxisAlignment = flex.CrossAxisAlignment;
-pub const MainAxisSize = flex.MainAxisSize;
 
 pub const Text = text.Text;
 pub const TextStyle = text.TextStyle;

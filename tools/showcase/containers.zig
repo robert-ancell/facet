@@ -58,7 +58,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             .selected = s.card == i,
             .on_press = choose(cx, &s.card, i),
             .child = cx.make(facet.Column{
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .start,
                 .spacing = 6,
                 .children = cx.makeAll(.{
@@ -88,7 +88,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                     .children = cx.makeAll(.{
                         facet.Icon{ .icon = .auto_awesome, .size = 40, .color = t.primary },
                         facet.Expanded{ .child = cx.make(facet.Column{
-                            .main_axis_size = .min,
+                            .fill = false,
                             .cross_axis_alignment = .start,
                             .spacing = 4,
                             .children = cx.makeAll(.{
@@ -107,7 +107,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 .variant = .outlined,
                 .padding = .all(4),
                 .child = cx.make(facet.Column{
-                    .main_axis_size = .min,
+                    .fill = false,
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
                         facet.ListItem{ .headline = "One line", .selected = s.item == 0, .on_press = choose(cx, &s.item, 0) },
@@ -199,7 +199,7 @@ fn scrollRows(cx: *facet.Context, s: *State) facet.Widget {
             .on_press = choose(cx, &s.row, i),
         });
     }
-    return cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .stretch, .children = rows });
+    return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .stretch, .children = rows });
 }
 
 fn gridCell(s: *State, cx: *facet.Context, i: usize) facet.Widget {

@@ -27,7 +27,7 @@ pub const PillBar = struct {
     children: []const Widget,
 
     pub fn build(self: *const PillBar, cx: *Context) Widget {
-        return cx.make(Row{ .main_axis_size = .min, .children = self.children });
+        return cx.make(Row{ .fill = false, .children = self.children });
     }
 
     pub fn paintOver(_: *const PillBar, n: *Node, p: *Painter) void {
@@ -81,7 +81,7 @@ pub const PillButton = struct {
         });
         const inner = if (self.icon) |ic|
             cx.make(Row{
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .spacing = 8,
                 .children = cx.makeAll(.{

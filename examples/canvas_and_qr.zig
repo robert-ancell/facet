@@ -91,7 +91,7 @@ pub const CanvasAndQrDemo = struct {
                     facet.Card{
                         .variant = .outlined,
                         .child = cx.make(facet.Column{
-                            .main_axis_size = .min,
+                            .fill = false,
                             .cross_axis_alignment = .start,
                             .spacing = 12,
                             .children = cx.makeAll(.{
@@ -123,7 +123,7 @@ pub const CanvasAndQrDemo = struct {
                     facet.Card{
                         .variant = .outlined,
                         .child = cx.make(facet.Column{
-                            .main_axis_size = .min,
+                            .fill = false,
                             .cross_axis_alignment = .center,
                             .spacing = 12,
                             .children = cx.makeAll(.{

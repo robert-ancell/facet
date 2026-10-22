@@ -86,7 +86,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         card.* = cx.make(facet.Card{
             .variant = .outlined,
             .padding = .all(8),
-            .child = cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 6, .children = cx.makeAll(.{
+            .child = cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 6, .children = cx.makeAll(.{
                 onChecks(cx, 192, 108, cx.make(facet.Image{ .source = .{ .bytes = f[2] }, .loading = .func(loading), .failed = .func(failed) })),
                 facet.Text{ .text = f[0], .style = .{ .size = 14, .color = t.on_surface }, .wrap = false },
                 facet.Text{ .text = f[1], .style = .{ .size = 12, .color = t.on_surface_variant } },
@@ -178,7 +178,7 @@ fn onChecks(cx: *facet.Context, w: f32, h: f32, image: facet.Widget) facet.Widge
 /// The photo in a box `w` by `h`, outlined to show the space it has.
 fn framed(cx: *facet.Context, w: f32, h: f32, photo: []const u8) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 4, .children = cx.makeAll(.{
+    return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = cx.makeAll(.{
         facet.Decorated{ .border = .{ .width = 1, .color = t.outline }, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Align.center(cx.make(facet.Image{ .source = .{ .bytes = photo }, .loading = .func(loading) }))) }) },
         facet.Text{ .text = cx.fmt("{d:.0} × {d:.0}", .{ w, h }), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
     }) });
@@ -190,7 +190,7 @@ fn loading(cx: *facet.Context) facet.Widget {
 
 fn failed(cx: *facet.Context) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = cx.makeAll(.{
+    return cx.make(facet.Column{ .fill = false, .spacing = 4, .children = cx.makeAll(.{
         facet.Icon{ .icon = .image, .size = 32, .color = t.outline },
         facet.Text{ .text = "Could not be loaded", .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
     }) });

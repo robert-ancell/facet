@@ -165,7 +165,7 @@ pub fn wrap(cx: *facet.Context, s: *State, child: facet.Widget) facet.Widget {
             .icon = .notifications,
             .title = "Ringtone",
             .description = "Choose the sound played for incoming calls.",
-            .content = cx.make(facet.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 4, .children = &radios }),
+            .content = cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = &radios }),
             .confirm_label = "OK",
             .on_confirm = .of(s, State.confirmDialog),
             .dismiss_label = "Cancel",

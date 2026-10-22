@@ -50,7 +50,7 @@ pub fn layerAlpha(i: PointerInteraction, enabled: bool) f32 {
 pub fn control(cx: *Context, interaction: *PointerInteraction, on_press: ?Callback, mark: Widget, label: []const u8, gap: f32) Widget {
     const t = cx.theme();
     const content = if (label.len == 0) mark else cx.make(Row{
-        .main_axis_size = .min,
+        .fill = false,
         .spacing = gap,
         .children = cx.makeAll(.{
             mark,

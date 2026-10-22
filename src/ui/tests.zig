@@ -660,7 +660,7 @@ const RevealApp = struct {
         for (rows, 0..) |*r, i| r.* = cx.make(ui.SizedBox{ .height = 30 }).withKey(1000 + @as(u64, i));
         return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = cx.make(ui.ScrollView{
             .reveal = self.reveal,
-            .child = cx.make(ui.Column{ .main_axis_size = .min, .children = rows }),
+            .child = cx.make(ui.Column{ .fill = false, .children = rows }),
         }) }) });
     }
 };
@@ -690,7 +690,7 @@ test "icons are drawn from the icon font, in their box" {
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .main_axis_size = .min, .children = cx.makeAll(.{
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.Row{ .fill = false, .children = cx.makeAll(.{
                 ui.Icon{ .icon = .folder, .size = 48, .color = red },
                 ui.OutlinedButton{ .label = "Up", .icon = .arrow_upward },
                 ui.OutlinedButton{ .icon = .close },
@@ -2340,7 +2340,7 @@ test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
         pub fn build(self: *const @This(), cx: *Context) Widget {
             var lines: [3]Widget = undefined;
             for (&lines, self.sizes) |*l, size| l.* = cx.make(ui.Text{ .text = "abcdefghijklm", .style = .{ .size = size }, .wrap = false });
-            return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .spacing = 160, .children = cx.arena.dupe(Widget, &lines) catch &.{} });
+            return cx.make(ui.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 160, .children = cx.arena.dupe(Widget, &lines) catch &.{} });
         }
     };
     var lines: Lines = .{ .sizes = @splat(20) };
@@ -2413,7 +2413,7 @@ const A11yApp = struct {
     }
 
     pub fn build(self: *const A11yApp, cx: *Context) Widget {
-        return cx.make(ui.Column{ .main_axis_size = .min, .cross_axis_alignment = .start, .children = cx.makeAll(.{
+        return cx.make(ui.Column{ .fill = false, .cross_axis_alignment = .start, .children = cx.makeAll(.{
             ui.Accessible{ .role = .heading, .level = 1, .label = "Settings", .child = cx.make(ui.Text{ .text = "Settings" }) },
             ui.Text{ .text = "Hello" },
             ui.FilledButton{ .label = "OK", .on_press = .of(self.pressed, press) },
@@ -2515,7 +2515,7 @@ const FocusApp = struct {
 
     pub fn build(self: *const FocusApp, cx: *Context) Widget {
         return cx.make(ui.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .start,
             .children = cx.makeAll(.{
                 ui.FilledButton{ .label = "A", .on_press = .of(self.pressed, press) },

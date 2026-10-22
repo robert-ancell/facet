@@ -82,7 +82,7 @@ pub const ListItem = struct {
         });
         const text_col = if (self.supporting_text.len > 0)
             cx.make(Column{
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .start,
                 .spacing = 2,
                 .children = cx.makeAll(.{

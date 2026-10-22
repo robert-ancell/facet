@@ -77,11 +77,11 @@ pub const TabBar = struct {
             child.* = if (self.expand) cx.make(Expanded{ .child = item }) else item;
         }
         return cx.make(Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .stretch,
             .children = cx.makeAll(.{
                 Row{
-                    .main_axis_size = if (self.expand) .max else .min,
+                    .fill = self.expand,
                     .children = children,
                 },
                 Divider{},
@@ -117,7 +117,7 @@ const TabItem = struct {
         var content = if (self.tab.icon) |ic|
             cx.make(Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     Icon{ .icon = ic, .size = 18, .color = color },
@@ -130,7 +130,7 @@ const TabItem = struct {
         if (self.tab.badge) |b| {
             content = cx.make(Row{
                 .spacing = 6,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     content,

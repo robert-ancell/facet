@@ -51,7 +51,7 @@ pub const Counter = struct {
 
     pub fn build(_: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
         return cx.make(facet.Align.center(cx.make(facet.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{
@@ -62,7 +62,7 @@ pub const Counter = struct {
                     .text = cx.fmt("Count: {d}", .{state.count}),
                 },
                 facet.Row{
-                    .main_axis_size = .min,
+                    .fill = false,
                     .spacing = 12,
                     .children = cx.makeAll(.{
                         facet.OutlinedButton{

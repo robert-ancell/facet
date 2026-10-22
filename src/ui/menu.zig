@@ -61,7 +61,7 @@ pub const Menu = struct {
             .radius = .all(4),
             .child = cx.make(SizedBox{ .width = width, .child = cx.make(Padding{
                 .padding = .symmetric(0, padding),
-                .child = cx.make(Column{ .main_axis_size = .min, .cross_axis_alignment = .stretch, .children = rows }),
+                .child = cx.make(Column{ .fill = false, .cross_axis_alignment = .stretch, .children = rows }),
             }) }),
         });
     }

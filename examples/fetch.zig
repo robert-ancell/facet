@@ -85,7 +85,7 @@ const FetchView = struct {
             .failed => |why| cx.fmt("Failed: {s}", .{why}),
         };
         return cx.make(facet.Align.center(cx.make(facet.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .center,
             .spacing = 16,
             .children = cx.makeAll(.{

@@ -12,7 +12,7 @@ pub fn page(cx: *facet.Context, sections: []const facet.Widget) facet.Widget {
         if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(facet.Divider{});
     }
     return cx.make(facet.Column{
-        .main_axis_size = .min,
+        .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 20,
         .children = children,
@@ -24,7 +24,7 @@ pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demo
     const t = cx.theme();
     const children = cx.arena.alloc(facet.Widget, demos.len + 1) catch return cx.make(facet.SizedBox.empty);
     children[0] = cx.make(facet.Column{
-        .main_axis_size = .min,
+        .fill = false,
         .cross_axis_alignment = .start,
         .spacing = 4,
         .children = cx.makeAll(.{
@@ -34,7 +34,7 @@ pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demo
     });
     @memcpy(children[1..], demos);
     return cx.make(facet.Column{
-        .main_axis_size = .min,
+        .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 14,
         .children = children,

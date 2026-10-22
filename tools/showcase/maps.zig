@@ -122,7 +122,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.Decorated{
                     .color = t.surface.withAlpha(0.9),
                     .radius = .all(20),
-                    .child = cx.make(facet.Column{ .main_axis_size = .min, .children = cx.makeAll(.{
+                    .child = cx.make(facet.Column{ .fill = false, .children = cx.makeAll(.{
                         facet.Accessible{ .label = "Zoom in", .child = cx.make(facet.IconButton{ .icon = .add, .on_press = .of(s, State.zoomIn) }) },
                         facet.Accessible{ .label = "Zoom out", .child = cx.make(facet.IconButton{ .icon = .remove, .on_press = .of(s, State.zoomOut) }) },
                     }) }),

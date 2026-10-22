@@ -85,7 +85,7 @@ const ThemePanel = struct {
             .border = .{ .width = 1, .color = t.outline_variant },
             .radius = .all(12),
             .child = cx.make(facet.Padding{ .padding = .all(12), .child = cx.make(facet.Column{
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .start,
                 .spacing = 10,
                 .children = cx.makeAll(.{
@@ -114,7 +114,7 @@ fn fruitPill(cx: *facet.Context, name: []const u8, in_basket: bool) facet.Widget
         .color = if (in_basket) t.primary_container else t.surface_container_highest,
         .radius = .all(16),
         .child = cx.make(facet.Padding{ .padding = .symmetric(12, 6), .child = cx.make(facet.Row{
-            .main_axis_size = .min,
+            .fill = false,
             .spacing = 6,
             .cross_axis_alignment = .center,
             .children = cx.makeAll(.{

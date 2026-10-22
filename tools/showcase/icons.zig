@@ -40,7 +40,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
     const colours = [_]facet.Color{ t.on_surface, t.primary, t.@"error", .rgb(0x66bb6a), .rgb(0xffa726) };
     var sizes: [5]facet.Widget = undefined;
     for (&sizes, [_]f32{ 16, 24, 32, 48, 64 }) |*w, size| {
-        w.* = cx.make(facet.Column{ .main_axis_size = .min, .spacing = 4, .children = cx.makeAll(.{
+        w.* = cx.make(facet.Column{ .fill = false, .spacing = 4, .children = cx.makeAll(.{
             facet.Icon{ .icon = s.chosen, .size = size, .color = t.on_surface },
             facet.Text{ .text = cx.fmt("{d:.0}", .{size}), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
         }) });

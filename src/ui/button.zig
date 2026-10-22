@@ -194,7 +194,7 @@ fn buildButton(cx: *Context, state: anytype, b: anytype, look: Look) Widget {
     const content = b.child orelse switch (n) {
         0 => label,
         1 => parts[0],
-        else => cx.make(Row{ .spacing = 8, .main_axis_size = .min, .cross_axis_alignment = .center, .children = parts[0..n] }),
+        else => cx.make(Row{ .spacing = 8, .fill = false, .cross_axis_alignment = .center, .children = parts[0..n] }),
     };
     const icon_only = b.child == null and b.label.len == 0 and n == 1;
     const h_pad: f32 = if (icon_only) (height - icon_size) / 2 else look.padding;

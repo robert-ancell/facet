@@ -133,7 +133,7 @@ pub const Chip = struct {
                         .padding = .{ .left = left_pad, .right = right_pad },
                         .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = cx.make(Row{
                             .spacing = 6,
-                            .main_axis_size = .min,
+                            .fill = false,
                             .cross_axis_alignment = .center,
                             .children = parts[0..count],
                         }) }),

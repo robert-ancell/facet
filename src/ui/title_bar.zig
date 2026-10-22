@@ -91,7 +91,7 @@ pub const TitleBar = struct {
             .title = self.title,
             .children = cx.makeAll(.{
                 Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true },
-                Row{ .spacing = spacing, .main_axis_size = .min, .children = buttons[0..n] },
+                Row{ .spacing = spacing, .fill = false, .children = buttons[0..n] },
             }),
         }) }) });
     }

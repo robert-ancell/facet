@@ -157,7 +157,7 @@ pub const Chip = struct {
             .color = t.secondary_container,
             .border = .{ .width = 1, .color = t.outline_variant },
             .radius = .all(16),
-            .child = cx.make(Padding{ .padding = .symmetric(12, 6), .child = cx.make(Row{ .spacing = 8, .main_axis_size = .min, .children = if (self.icon) |ic|
+            .child = cx.make(Padding{ .padding = .symmetric(12, 6), .child = cx.make(Row{ .spacing = 8, .fill = false, .children = if (self.icon) |ic|
                 cx.makeAll(.{ Icon{ .icon = ic, .size = 20, .color = t.on_surface }, text })
             else
                 &.{text} }) }),

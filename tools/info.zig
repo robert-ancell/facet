@@ -22,7 +22,7 @@ const Info = struct {
 fn sectionHeading(cx: *facet.Context, title: []const u8, subtitle: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Column{
-        .main_axis_size = .min,
+        .fill = false,
         .cross_axis_alignment = .start,
         .spacing = 4,
         .children = cx.makeAll(.{
@@ -120,14 +120,14 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             }
             rows_list[row_count] = cx.make(facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = row_chips[0..chip_count],
             });
             row_count += 1;
         }
         break :blk cx.make(facet.Column{
-            .main_axis_size = .min,
+            .fill = false,
             .cross_axis_alignment = .start,
             .spacing = 8,
             .children = rows_list[0..row_count],
@@ -138,7 +138,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
     });
 
     return cx.make(facet.Column{
-        .main_axis_size = .min,
+        .fill = false,
         .cross_axis_alignment = .stretch,
         .spacing = 18,
         .children = cx.makeAll(.{
@@ -155,7 +155,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
-                                .main_axis_size = .min,
+                                .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
@@ -177,7 +177,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
-                                .main_axis_size = .min,
+                                .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
@@ -199,7 +199,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                         .child = cx.make(facet.Card{
                             .variant = .elevated,
                             .child = cx.make(facet.Column{
-                                .main_axis_size = .min,
+                                .fill = false,
                                 .cross_axis_alignment = .start,
                                 .spacing = 6,
                                 .children = cx.makeAll(.{
@@ -223,7 +223,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, synchronization, decoration mode, and rendering pipeline"),
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -236,7 +236,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             },
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -248,7 +248,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             },
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -259,7 +259,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             },
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -271,7 +271,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             },
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -282,7 +282,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             },
             facet.Row{
                 .spacing = 8,
-                .main_axis_size = .min,
+                .fill = false,
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Renderer:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
@@ -306,7 +306,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                 .variant = .outlined,
                 .padding = .all(4),
                 .child = cx.make(facet.Column{
-                    .main_axis_size = .min,
+                    .fill = false,
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
                         facet.ListItem{
