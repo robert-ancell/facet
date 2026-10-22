@@ -185,13 +185,13 @@ pub const Showcase = struct {
                     .on_select = .of(s, State.selectPage),
                     .extended = s.extended_rail,
                 },
-                kete.Divider{ .axis = .vertical },
+                kete.VerticalDivider{},
                 kete.Expanded{
                     .child = cx.make(kete.Column{
                         .cross_axis_alignment = .stretch,
                         .children = cx.makeAll(.{
                             header,
-                            kete.Divider{},
+                            kete.HorizontalDivider{},
                             kete.Expanded{
                                 // A view for each page, so each starts at the top.
                                 .child = cx.make(kete.ScrollView{

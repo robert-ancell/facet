@@ -111,7 +111,7 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
                         kete.ListItem{ .headline = "One line", .selected = s.item == 0, .on_press = choose(cx, &s.item, 0) },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Leading icon and trailing text",
                             .supporting_text = "With a second line of supporting text",
@@ -120,7 +120,7 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                             .selected = s.item == 1,
                             .on_press = choose(cx, &s.item, 1),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Trailing icon",
                             .supporting_text = "Goes somewhere else",
@@ -129,7 +129,7 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                             .selected = s.item == 2,
                             .on_press = choose(cx, &s.item, 2),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Wi-Fi",
                             .supporting_text = if (s.wifi) "Connected" else "Off",
@@ -141,9 +141,9 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
             },
         })),
         common.section(cx, "Dividers", "Lines between content, across or down, full width or inset", cx.makeAll(.{
-            kete.Divider{},
-            kete.Divider{ .inset = 48 },
-            kete.Divider{ .thickness = 4, .color = t.primary },
+            kete.HorizontalDivider{},
+            kete.HorizontalDivider{ .inset = 48 },
+            kete.HorizontalDivider{ .thickness = 4, .color = t.primary },
             kete.SizedBox{
                 .height = 32,
                 .child = cx.make(kete.Row{
@@ -151,9 +151,9 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
                         kete.Align.center(cx.make(kete.Text{ .text = "Left", .style = .{ .color = t.on_surface } })),
-                        kete.Divider{ .axis = .vertical },
+                        kete.VerticalDivider{},
                         kete.Align.center(cx.make(kete.Text{ .text = "Middle", .style = .{ .color = t.on_surface } })),
-                        kete.Divider{ .axis = .vertical },
+                        kete.VerticalDivider{},
                         kete.Align.center(cx.make(kete.Text{ .text = "Right", .style = .{ .color = t.on_surface } })),
                     }),
                 }),

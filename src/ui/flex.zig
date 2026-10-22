@@ -134,7 +134,7 @@ pub const Column = struct {
 };
 
 /// A direction of layout: a `Row` is laid out along `.horizontal` and a
-/// `Column` along `.vertical`, and a `Divider` runs along one.
+/// `Column` along `.vertical`.
 pub const Axis = enum {
     /// Left to right, across.
     horizontal,

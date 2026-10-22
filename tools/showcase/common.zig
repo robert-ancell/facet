@@ -9,7 +9,7 @@ pub fn page(cx: *kete.BuildContext, sections: []const kete.Widget) kete.Widget {
     const children = cx.arena.alloc(kete.Widget, sections.len * 2 -| 1) catch return cx.make(kete.SizedBox.empty);
     for (sections, 0..) |s, i| {
         children[i * 2] = s;
-        if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(kete.Divider{});
+        if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(kete.HorizontalDivider{});
     }
     return cx.make(kete.Column{
         .fill = false,

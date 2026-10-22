@@ -69,7 +69,7 @@ pub const NavigationDemo = struct {
                     .selected = state.section,
                     .on_select = .of(state, State.selectSection),
                 },
-                kete.Divider{ .axis = .vertical },
+                kete.VerticalDivider{},
                 kete.Expanded{
                     .child = cx.make(kete.Column{
                         .cross_axis_alignment = .stretch,
@@ -121,7 +121,7 @@ pub const NavigationDemo = struct {
                                                             .trailing_icon = .chevron_right,
                                                             .on_press = .of(state, State.markOneRead),
                                                         },
-                                                        kete.Divider{},
+                                                        kete.HorizontalDivider{},
                                                         kete.ListItem{
                                                             .headline = "System Status",
                                                             .supporting_text = "All rendering backends healthy",

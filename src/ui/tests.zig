@@ -1075,7 +1075,7 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
                         .on_select = .of(state, State.setRail),
                         .extended = false,
                     },
-                    ui.Divider{ .axis = .vertical },
+                    ui.VerticalDivider{},
                     ui.Expanded{
                         .child = cx.make(ui.Column{
                             .cross_axis_alignment = .stretch,

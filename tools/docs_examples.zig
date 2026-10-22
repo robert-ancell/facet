@@ -270,11 +270,19 @@ fn spinner(cx: *BuildContext) Widget {
     return cx.make(kete.Spinner{ .size = 40 });
 }
 
-fn divider(cx: *BuildContext) Widget {
+fn horizontalDivider(cx: *BuildContext) Widget {
     return cx.make(kete.SizedBox{ .width = 240, .child = cx.make(kete.Column{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
         kete.Text{ .text = "Above" },
-        kete.Divider{},
+        kete.HorizontalDivider{},
         kete.Text{ .text = "Below" },
+    }) }) });
+}
+
+fn verticalDivider(cx: *BuildContext) Widget {
+    return cx.make(kete.SizedBox{ .height = 40, .child = cx.make(kete.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+        kete.Text{ .text = "Left" },
+        kete.VerticalDivider{},
+        kete.Text{ .text = "Right" },
     }) }) });
 }
 
@@ -512,7 +520,8 @@ pub const all = .{
     Example("Badge", badge, .{}),
     Example("ProgressBar", progressBar, .{}),
     Example("Spinner", spinner, .{}),
-    Example("Divider", divider, .{}),
+    Example("HorizontalDivider", horizontalDivider, .{}),
+    Example("VerticalDivider", verticalDivider, .{}),
     Example("NavigationRail", navigationRail, .{}),
     Example("TabBar", tabBar, .{}),
     Example("Snackbar", snackbar, .{}),

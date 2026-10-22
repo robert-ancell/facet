@@ -17,7 +17,7 @@ const focus_mod = @import("focus.zig");
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
 const RoundedBox = @import("rounded_box.zig").RoundedBox;
-const Divider = @import("divider.zig").Divider;
+const HorizontalDivider = @import("divider.zig").HorizontalDivider;
 const Icon = @import("icon.zig").Icon;
 const SizedBox = @import("sized_box.zig").SizedBox;
 const Padding = @import("padding.zig").Padding;
@@ -333,7 +333,7 @@ const MenuPanel = struct {
         }
         for (self.items, rows, 0..) |it, *row, i| {
             row.* = if (it.kind == .divider)
-                cx.make(Padding{ .padding = .symmetric(0, 4), .child = cx.make(Divider{}) })
+                cx.make(Padding{ .padding = .symmetric(0, 4), .child = cx.make(HorizontalDivider{}) })
             else
                 cx.make(MenuRow{ .item = it, .menu = self.menu, .level = self.level, .index = i, .leading_slot = leading });
         }

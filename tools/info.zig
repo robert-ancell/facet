@@ -217,7 +217,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                     },
                 }),
             },
-            kete.Divider{},
+            kete.HorizontalDivider{},
             sectionHeading(cx, "Backend Matrix", "Checkmarks indicate the active platform, buffer protocol, synchronization, decoration mode, and rendering pipeline"),
             kete.Row{
                 .spacing = 8,
@@ -289,14 +289,14 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                     kete.Chip{ .label = "Direct3D 11", .selected = info.renderer == .d3d11 },
                 }),
             },
-            kete.Divider{},
+            kete.HorizontalDivider{},
             sectionHeading(
                 cx,
                 "Wayland Extensions",
                 cx.fmt("{d} active Wayland protocol extensions bound by the window backend", .{win.wayland_extensions.len}),
             ),
             ext_section,
-            kete.Divider{},
+            kete.HorizontalDivider{},
             sectionHeading(cx, "Surface & Window Properties", "Live geometry, DPI scale, VSync & synchronization, window decorations, window state, and input configuration"),
             kete.Card{
                 .variant = .outlined,
@@ -314,28 +314,28 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                                 .color = t.primary,
                             }),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "VSync & Frame Synchronization",
                             .supporting_text = sync_text,
                             .leading_icon = .speed,
                             .trailing = cx.make(kete.Badge{ .label = vsync_badge, .color = t.primary }),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Window Decorations",
                             .supporting_text = decorations_desc,
                             .leading_icon = .widgets,
                             .trailing = cx.make(kete.Badge{ .label = win.decorations.name(), .color = t.primary }),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "2D Rendering Pipeline",
                             .supporting_text = renderer_desc,
                             .leading_icon = .memory,
                             .trailing = cx.make(kete.Badge{ .label = info.renderer.name(), .color = t.primary }),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Surface Resolution & HiDPI Scale",
                             .supporting_text = cx.fmt(
@@ -345,7 +345,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                             .leading_icon = .fullscreen,
                             .trailing_text = cx.fmt("{d}x scale", .{win.scale}),
                         },
-                        kete.Divider{ .inset = 16 },
+                        kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
                             .headline = "Window State & Keyboard Layout",
                             .supporting_text = cx.fmt("State: {s}  ·  Keyboard: {s}", .{ window_state, info.keyboard.name() }),

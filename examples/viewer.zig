@@ -274,7 +274,7 @@ pub fn Viewer(comptime Backend: type) type {
                                         radios[2],
                                         radios[3],
                                         radios[4],
-                                        kete.Divider{},
+                                        kete.HorizontalDivider{},
                                         kete.Text{
                                             .text = "Shader Options",
                                             .style = .{ .size = 16 },
@@ -289,7 +289,7 @@ pub fn Viewer(comptime Backend: type) type {
                                             .on_changed = .of(state, State.setTexturing),
                                             .label = "Checkerboard Texture",
                                         },
-                                        kete.Divider{},
+                                        kete.HorizontalDivider{},
                                         kete.Text{
                                             .text = "Anti-Aliasing (MSAA)",
                                             .style = .{ .size = 14, .color = t.on_surface_variant },
@@ -320,7 +320,7 @@ pub fn Viewer(comptime Backend: type) type {
                                                 },
                                             }),
                                         },
-                                        kete.Divider{},
+                                        kete.HorizontalDivider{},
                                         kete.Text{
                                             .text = cx.fmt("Rotation Speed ({d:.1}×)", .{state.speed}),
                                             .style = .{ .size = 14, .color = t.on_surface_variant },

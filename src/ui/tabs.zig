@@ -9,7 +9,7 @@ const Badge = @import("badge.zig").Badge;
 const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
 const RoundedBox = @import("rounded_box.zig").RoundedBox;
-const Divider = @import("divider.zig").Divider;
+const HorizontalDivider = @import("divider.zig").HorizontalDivider;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
@@ -104,7 +104,7 @@ pub const TabBar = struct {
                     .fill = self.expand,
                     .children = children,
                 },
-                Divider{},
+                HorizontalDivider{},
             }),
         });
     }
