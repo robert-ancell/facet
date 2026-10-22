@@ -60,7 +60,6 @@ pub const Expanded = ui.Expanded;
 pub const Grid = ui.Grid;
 pub const Overlay = ui.Overlay;
 pub const Decorated = ui.Decorated;
-pub const Border = ui.Border;
 pub const Pressable = ui.Pressable;
 pub const PointerInteraction = ui.PointerInteraction;
 pub const Draggable = ui.Draggable;

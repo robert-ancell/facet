@@ -129,7 +129,8 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                     facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
                         .padding = .{ .left = @round(s.part_x), .top = @round(s.part_y) },
                         .child = cx.make(facet.Decorated{
-                            .border = .{ .width = 2, .color = t.primary },
+                            .border_width = 2,
+                            .border_color = t.primary,
                             .child = cx.make(facet.SizedBox{ .width = part_size[0], .height = part_size[1] }),
                         }),
                     }) },
@@ -179,7 +180,7 @@ fn onChecks(cx: *facet.BuildContext, w: f32, h: f32, image: facet.Widget) facet.
 fn framed(cx: *facet.BuildContext, w: f32, h: f32, photo: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Column{ .fill = false, .cross_axis_alignment = .start, .spacing = 4, .children = cx.makeAll(.{
-        facet.Decorated{ .border = .{ .width = 1, .color = t.outline }, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Align.center(cx.make(facet.Image{ .source = .{ .bytes = photo }, .loading = .func(loading) }))) }) },
+        facet.Decorated{ .border_color = t.outline, .child = cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Align.center(cx.make(facet.Image{ .source = .{ .bytes = photo }, .loading = .func(loading) }))) }) },
         facet.Text{ .text = cx.fmt("{d:.0} × {d:.0}", .{ w, h }), .style = .{ .size = 12, .color = t.on_surface_variant }, .wrap = false },
     }) });
 }

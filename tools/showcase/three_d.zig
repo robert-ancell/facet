@@ -89,7 +89,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 fn area(cx: *facet.BuildContext, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Decorated{
-        .border = .{ .width = 1, .color = t.outline_variant },
+        .border_color = t.outline_variant,
         .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Area(cube.Scene(api)){
             .scene = .{ .angle = s.angle, .tilt = s.tilt },
             .samples = @backingInt(s.samples),

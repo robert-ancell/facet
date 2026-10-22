@@ -215,7 +215,7 @@ pub fn Viewer(comptime Backend: type) type {
                     .child = cx.make(facet.Decorated{
                         .color = t.surface_container_highest.withAlpha(0.88),
                         .radius = .all(8),
-                        .border = .{ .width = 1, .color = t.outline_variant },
+                        .border_color = t.outline_variant,
                         .child = cx.make(facet.Padding{
                             .padding = .symmetric(12, 6),
                             .child = cx.make(facet.Text{
@@ -240,7 +240,7 @@ pub fn Viewer(comptime Backend: type) type {
                     .children = cx.makeAll(.{
                         facet.Expanded{
                             .child = cx.make(facet.Decorated{
-                                .border = .{ .width = 1, .color = t.outline_variant },
+                                .border_color = t.outline_variant,
                                 .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Backend.Area(Scene){
                                     .scene = .{
                                         .shape = state.shape,

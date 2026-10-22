@@ -10,21 +10,15 @@ const Point = geometry.Point;
 const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 
-/// An outline.
-pub const Border = struct {
-    /// Its thickness in pixels.
-    width: f32 = 1,
-    /// Its colour.
-    color: gfx.Color,
-};
-
 /// A rounded rectangle behind the child: filled, outlined, or both. It is
 /// the child's size, or as big as allowed without one.
 pub const Decorated = struct {
     /// The fill (none, if null).
     color: ?gfx.Color = null,
-    /// The outline (none, if null).
-    border: ?Border = null,
+    /// The colour of the outline (none, if null).
+    border_color: ?gfx.Color = null,
+    /// The thickness of the outline, in pixels.
+    border_width: f32 = 1,
     /// The corners' radii.
     radius: gfx.CornerRadii = .{},
     /// The widget in it.
@@ -34,7 +28,7 @@ pub const Decorated = struct {
         const c = p.canvas();
         const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };
         if (self.color) |col| c.fillRoundedRect(r, self.radius, col);
-        if (self.border) |b| c.strokeRoundedRect(r, self.radius, b.width, b.color);
+        if (self.border_color) |col| c.strokeRoundedRect(r, self.radius, self.border_width, col);
     }
 
     /// Filled, it takes the pointer (what is under it cannot be clicked).

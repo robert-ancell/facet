@@ -10,7 +10,6 @@ const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
-const Border = @import("decorated.zig").Border;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
@@ -80,10 +79,9 @@ pub const Chip = struct {
         else
             null;
 
-        const border: ?Border = if (self.selected)
+        const border: ?Color = if (self.selected)
             null
-        else
-            .{ .width = 1, .color = if (enabled) t.outline else t.on_surface.withAlpha(0.12) };
+        else if (enabled) t.outline else t.on_surface.withAlpha(0.12);
 
         const leading_icon: ?icons.IconName = if (self.selected) .check else self.icon;
 
@@ -129,7 +127,7 @@ pub const Chip = struct {
             .focus_radius = 8,
             .child = cx.make(Decorated{
                 .color = bg,
-                .border = border,
+                .border_color = border,
                 .radius = .all(8),
                 .child = cx.make(ConstrainedBox{
                     .constraints = .{ .min_h = height },

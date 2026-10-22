@@ -23,7 +23,6 @@ const Widget = widget.Widget;
 const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
-const Border = decorated.Border;
 const Decorated = decorated.Decorated;
 
 /// Every button's height, and the size of its icons.
@@ -128,7 +127,7 @@ pub const OutlinedButton = struct {
         return buildButton(cx, state, self, .{
             .fg = if (enabled) accent else t.on_surface.withAlpha(0.38),
             .bg = if (layer > 0) accent.withAlpha(layer) else null,
-            .border = .{ .color = if (enabled) t.outline else t.on_surface.withAlpha(0.12) },
+            .border = if (enabled) t.outline else t.on_surface.withAlpha(0.12),
         });
     }
 };
@@ -170,7 +169,7 @@ pub const TextButton = struct {
 const Look = struct {
     fg: Color,
     bg: ?Color = null,
-    border: ?Border = null,
+    border: ?Color = null,
     /// Either side of the label.
     padding: f32 = 24,
 };
@@ -219,7 +218,7 @@ fn buildButton(cx: *Context, state: anytype, b: anytype, look: Look) Widget {
         .interaction = &state.interaction,
         .child = cx.make(Decorated{
             .color = look.bg,
-            .border = look.border,
+            .border_color = look.border,
             .radius = .all(height / 2),
             .child = cx.make(ConstrainedBox{
                 .constraints = .{ .min_w = if (icon_only) height else 48, .min_h = height },

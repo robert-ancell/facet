@@ -50,7 +50,7 @@ pub const Bubble = struct {
         const t = cx.theme();
         return cx.make(Decorated{
             .color = t.surface_container_highest,
-            .border = .{ .width = 1, .color = t.outline_variant },
+            .border_color = t.outline_variant,
             .radius = .all(6),
             .child = cx.make(Padding{
                 .padding = .symmetric(10, 6),

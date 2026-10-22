@@ -8,7 +8,6 @@ const icons = @import("icons");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const Decorated = @import("decorated.zig").Decorated;
-const Border = @import("decorated.zig").Border;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
@@ -91,8 +90,8 @@ pub const IconButton = struct {
         else
             null;
 
-        const border: ?Border = if (self.variant == .outlined and !self.selected)
-            .{ .width = 1, .color = if (enabled) t.outline else t.on_surface.withAlpha(0.12) }
+        const border: ?Color = if (self.variant == .outlined and !self.selected)
+            (if (enabled) t.outline else t.on_surface.withAlpha(0.12))
         else
             null;
 
@@ -102,7 +101,7 @@ pub const IconButton = struct {
             .interaction = &state.interaction,
             .child = cx.make(Decorated{
                 .color = bg,
-                .border = border,
+                .border_color = border,
                 .radius = .all(self.size / 2),
                 .child = cx.make(SizedBox{
                     .width = self.size,

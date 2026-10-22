@@ -98,7 +98,7 @@ pub const Snackbar = struct {
 
         const bar = cx.make(Decorated{
             .color = t.surface_container_highest,
-            .border = .{ .width = 1, .color = t.outline_variant },
+            .border_color = t.outline_variant,
             .radius = .all(8),
             .child = sized,
         });

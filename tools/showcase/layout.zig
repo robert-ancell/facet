@@ -82,7 +82,7 @@ const ThemePanel = struct {
         const t = cx.theme();
         return cx.make(facet.Decorated{
             .color = t.surface,
-            .border = .{ .width = 1, .color = t.outline_variant },
+            .border_color = t.outline_variant,
             .radius = .all(12),
             .child = cx.make(facet.Padding{ .padding = .all(12), .child = cx.make(facet.Column{
                 .fill = false,
@@ -240,8 +240,8 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                 facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(12) }) },
                 facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(24) }) },
                 facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border = .{ .width = 2, .color = t.primary }, .radius = .all(12) }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border = .{ .width = 4, .color = t.outline }, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border_width = 2, .border_color = t.primary, .radius = .all(12) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border_width = 4, .border_color = t.outline, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) },
             }) },
         })),
         common.section(cx, "Themes", "Themed gives the widgets below it a theme of its own: here the opposite one, and one with colours changed", cx.makeAll(.{

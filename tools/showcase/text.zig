@@ -131,7 +131,7 @@ fn area(cx: *facet.BuildContext, doc: *facet.TextDocument, highlighter: ?facet.T
         .height = height,
         .child = cx.make(facet.Decorated{
             .color = t.surface_container,
-            .border = .{ .width = 1, .color = t.outline_variant },
+            .border_color = t.outline_variant,
             .radius = .all(8),
             .child = cx.make(facet.TextArea{ .doc = doc, .highlighter = highlighter }),
         }),

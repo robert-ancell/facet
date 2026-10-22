@@ -320,7 +320,7 @@ const MenuPanel = struct {
         }
         return cx.make(Decorated{
             .color = t.surface_container,
-            .border = .{ .width = 1, .color = t.outline_variant },
+            .border_color = t.outline_variant,
             .radius = .all(4),
             .child = cx.make(SizedBox{ .width = width, .child = cx.make(Padding{
                 .padding = .symmetric(0, padding),

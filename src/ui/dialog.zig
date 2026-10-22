@@ -121,7 +121,7 @@ pub const Dialog = struct {
         const card = cx.make(SurfaceBlocker{
             .child = cx.make(Decorated{
                 .color = t.surface_container_highest,
-                .border = .{ .width = 1, .color = t.outline_variant },
+                .border_color = t.outline_variant,
                 .radius = .all(20),
                 .child = cx.make(SizedBox{
                     .width = self.width,

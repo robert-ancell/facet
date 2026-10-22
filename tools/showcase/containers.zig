@@ -168,7 +168,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
             facet.SizedBox{
                 .height = 180,
                 .child = cx.make(facet.Decorated{
-                    .border = .{ .width = 1, .color = t.outline_variant },
+                    .border_color = t.outline_variant,
                     .radius = .all(8),
                     .child = cx.make(facet.ScrollView{ .child = scrollRows(cx, s) }),
                 }),

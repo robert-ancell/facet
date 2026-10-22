@@ -5,7 +5,6 @@ const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Decorated = @import("decorated.zig").Decorated;
-const Border = @import("decorated.zig").Border;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
@@ -61,15 +60,15 @@ pub const Card = struct {
         };
         const bg: Color = if (layer > 0) blendOver(base_bg, t.on_surface.withAlpha(layer)) else base_bg;
 
-        const border: ?Border = switch (self.variant) {
-            .outlined => .{ .width = 1, .color = if (self.selected) t.primary else t.outline_variant },
-            .elevated => .{ .width = 1, .color = t.outline_variant.withAlpha(0.5) },
-            .filled => if (self.selected) .{ .width = 1, .color = t.primary } else null,
+        const border: ?Color = switch (self.variant) {
+            .outlined => if (self.selected) t.primary else t.outline_variant,
+            .elevated => t.outline_variant.withAlpha(0.5),
+            .filled => if (self.selected) t.primary else null,
         };
 
         const inner = cx.make(Decorated{
             .color = bg,
-            .border = border,
+            .border_color = border,
             .radius = .all(self.radius),
             .child = cx.make(Padding{
                 .padding = self.padding,

@@ -58,7 +58,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
             facet.SizedBox{
                 .height = 340,
                 .child = cx.make(facet.Decorated{
-                    .border = .{ .width = 1, .color = t.outline_variant },
+                    .border_color = t.outline_variant,
                     .radius = .all(8),
                     .child = if (s.match_count == 0)
                         cx.make(facet.Align.center(cx.make(facet.Text{ .text = "No icon has that in its name", .style = .{ .color = t.on_surface_variant } })))

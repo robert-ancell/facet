@@ -129,7 +129,6 @@ pub const Expanded = expanded.Expanded;
 pub const Grid = grid.Grid;
 pub const Overlay = overlay.Overlay;
 pub const Decorated = decorated.Decorated;
-pub const Border = decorated.Border;
 pub const Pressable = pressable.Pressable;
 pub const PointerInteraction = pressable.PointerInteraction;
 pub const Draggable = drag.Draggable;
