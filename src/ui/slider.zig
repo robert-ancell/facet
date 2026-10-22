@@ -155,7 +155,7 @@ pub const Slider = struct {
                 return false;
             },
             .press => |pr| {
-                if (pr.button != widget.btn_left) return false;
+                if (pr.button != .left) return false;
                 const on_changed = self.on_changed orelse return false;
                 st.pressed = true;
                 on_changed.call(self.valueAt(n.size.w, pr.pos[0]));
@@ -182,7 +182,7 @@ pub const Slider = struct {
                 return true;
             },
             .release => |rel| {
-                if (rel.button == widget.btn_left and st.pressed) {
+                if (rel.button == .left and st.pressed) {
                     st.pressed = false;
                     return true;
                 }

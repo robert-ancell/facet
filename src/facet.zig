@@ -52,8 +52,7 @@ pub const Insets = ui.Insets;
 pub const Alignment = ui.Alignment;
 pub const Color = gfx.Color;
 pub const Radii = gfx.Radii;
-pub const btn_left = ui.btn_left;
-pub const btn_right = ui.btn_right;
+pub const PointerButton = ui.PointerButton;
 
 pub const SizedBox = ui.SizedBox;
 pub const ConstrainedBox = ui.ConstrainedBox;

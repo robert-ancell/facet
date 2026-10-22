@@ -78,7 +78,7 @@ pub const Draggable = struct {
             .enter => i.hovered = true,
             .leave => i.hovered = false,
             .press => |p| {
-                if (p.button != widget.btn_left) return false;
+                if (p.button != .left) return false;
                 i.pressed = true;
                 st.start = .{ origin[0] + p.pos[0], origin[1] + p.pos[1] };
                 return true;

@@ -126,6 +126,18 @@ pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
     };
 }
 
+/// A button of the pointer (a mouse's), in `InputEvent.button`.
+pub const PointerButton = enum {
+    left,
+    right,
+    middle,
+    /// The buttons at the side of a mouse, for going back and forward.
+    back,
+    forward,
+    /// Any other.
+    other,
+};
+
 /// The pointer shape the window shows (`Window.setCursor`). macOS has no
 /// shape for `wait`, `progress`, `help`, `nwse_resize` or `nesw_resize`, and
 /// shows the arrow for them.
@@ -198,8 +210,8 @@ pub const TextInputState = struct {
 pub const InputEvent = union(enum) {
     /// The pointer moved to (or entered at) a position in the window.
     motion: [2]f32,
-    /// A Linux button code (BTN_LEFT, ...), and where the pointer was.
-    button: struct { pos: [2]f32, code: u32, pressed: bool },
+    /// A pointer button went down or up, with the pointer at `pos`.
+    button: struct { pos: [2]f32, button: PointerButton, pressed: bool },
     /// A key went down or up: its Linux key code (KEY_A, ...), what it types
     /// (from the keymap) and the modifiers held, if the window has a keymap.
     key: struct { code: u32, pressed: bool, char: ?u21 = null, shift: bool = false, ctrl: bool = false },

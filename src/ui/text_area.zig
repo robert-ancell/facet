@@ -485,7 +485,7 @@ pub const TextArea = struct {
         const d = self.doc;
         switch (e) {
             .press => |pr| {
-                if (pr.button != widget.btn_left) return false;
+                if (pr.button != .left) return false;
                 n.ui.focus(n);
                 // A click places the cursor, a double click selects a word,
                 // and a triple click everything; a fourth starts over.

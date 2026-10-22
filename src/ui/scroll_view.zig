@@ -14,7 +14,6 @@ const std = @import("std");
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const btn_left = widget.btn_left;
 const painter_mod = @import("painter.zig");
 
 const Size = geometry.Size;
@@ -157,7 +156,7 @@ pub const ScrollView = struct {
             },
             .press => |pr| {
                 const t = self.thumb(s) orelse return false;
-                if (pr.button != btn_left or pr.pos[0] < n.size.w - self.bar_width) return false;
+                if (pr.button != .left or pr.pos[0] < n.size.w - self.bar_width) return false;
                 // On the thumb, it is dragged from there; elsewhere on the
                 // bar, it jumps to the pointer first.
                 s.grab = if (pr.pos[1] >= t.y and pr.pos[1] < t.y + t.h) pr.pos[1] - t.y else t.h / 2;

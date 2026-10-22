@@ -200,7 +200,7 @@ pub const MapView = struct {
         const cam = self.cameraOf(st);
         switch (e) {
             .press => |pr| {
-                if (pr.button != widget.btn_left) return false;
+                if (pr.button != .left) return false;
                 const at: [2]f64 = .{ pr.pos[0], pr.pos[1] };
                 st.velocity = .{ 0, 0 };
                 if (pr.clicks == 2) {

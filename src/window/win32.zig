@@ -44,12 +44,6 @@ const WPARAM = w32.WPARAM;
 const LPARAM = w32.LPARAM;
 const LRESULT = w32.LRESULT;
 
-const btn_left = 0x110;
-const btn_right = 0x111;
-const btn_middle = 0x112;
-const btn_side = 0x113;
-const btn_extra = 0x114;
-
 // Messages.
 const WM_DESTROY = 0x0002;
 const WM_SIZE = 0x0005;
@@ -751,19 +745,19 @@ pub const Win32Window = struct {
     /// A button message (on the window, or a popup: `hwnd`), at `pos` in the
     /// window's coordinates.
     fn button(w: *Win32Window, u: *const w32.User32, hwnd: HWND, pos: [2]f32, message: UINT, wparam: WPARAM) void {
-        const code: u32, const pressed: bool = switch (message) {
-            WM_LBUTTONDOWN => .{ btn_left, true },
-            WM_LBUTTONUP => .{ btn_left, false },
-            WM_RBUTTONDOWN => .{ btn_right, true },
-            WM_RBUTTONUP => .{ btn_right, false },
-            WM_MBUTTONDOWN => .{ btn_middle, true },
-            WM_MBUTTONUP => .{ btn_middle, false },
-            else => .{ if ((wparam >> 16) & 0xffff == 1) btn_side else btn_extra, message == WM_XBUTTONDOWN },
+        const which: window.PointerButton, const pressed: bool = switch (message) {
+            WM_LBUTTONDOWN => .{ .left, true },
+            WM_LBUTTONUP => .{ .left, false },
+            WM_RBUTTONDOWN => .{ .right, true },
+            WM_RBUTTONUP => .{ .right, false },
+            WM_MBUTTONDOWN => .{ .middle, true },
+            WM_MBUTTONUP => .{ .middle, false },
+            else => .{ if ((wparam >> 16) & 0xffff == 1) .back else .forward, message == WM_XBUTTONDOWN },
         };
         w.last_pointer = pos;
         // The window has the mouse while a button is held (a drag goes on
         // outside it).
-        const bit: u32 = @as(u32, 1) << @intCast(code - btn_left);
+        const bit: u32 = @as(u32, 1) << @backingInt(which);
         if (pressed) {
             if (w.buttons_held == 0) _ = u.SetCapture(hwnd);
             w.buttons_held |= bit;
@@ -771,7 +765,7 @@ pub const Win32Window = struct {
             w.buttons_held &= ~bit;
             if (w.buttons_held == 0) _ = u.ReleaseCapture();
         }
-        w.push(.{ .button = .{ .pos = pos, .code = code, .pressed = pressed } });
+        w.push(.{ .button = .{ .pos = pos, .button = which, .pressed = pressed } });
     }
 
     fn key(w: *Win32Window, u: *const w32.User32, wparam: WPARAM, lparam: LPARAM, pressed: bool) void {

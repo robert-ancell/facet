@@ -96,8 +96,8 @@ pub const Event = union(enum) {
     /// gets the release, wherever that is. `clicks` counts the presses in
     /// quick succession at about the same place: 2 for the second of a
     /// double click, 3 for a triple click, and so on.
-    press: struct { pos: Point, button: u32, clicks: u8 = 1 },
-    release: struct { pos: Point, button: u32, inside: bool },
+    press: struct { pos: Point, button: PointerButton, clicks: u8 = 1 },
+    release: struct { pos: Point, button: PointerButton, inside: bool },
     /// The pointer moved, over it or while it has the pointer.
     motion: Point,
     /// The wheel turned over it: by `dy` pixels down (and `dx` right).
@@ -136,10 +136,8 @@ pub const Event = union(enum) {
     };
 };
 
-/// The left mouse button (a Linux button code), in `Event.press` and
-/// `.release`.
-pub const btn_left = 0x110;
-pub const btn_right = 0x111;
+/// The pointer button in `Event.press` and `.release`.
+pub const PointerButton = window_mod.PointerButton;
 
 /// Something to call later, typically a method of a widget's state:
 /// `Callback.of(state, State.increment)`.

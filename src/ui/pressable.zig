@@ -49,7 +49,7 @@ pub const Pressable = struct {
             .enter => i.hovered = true,
             .leave => i.hovered = false,
             .press => |p| {
-                if (p.button != widget.btn_left or self.on_press == null) return false;
+                if (p.button != .left or self.on_press == null) return false;
                 i.pressed = true;
                 return true;
             },

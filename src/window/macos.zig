@@ -31,11 +31,6 @@ const Id = objc.Id;
 const msg = objc.msg;
 const InputEvent = window.InputEvent;
 
-// Linux's button codes (as the toolkit has them).
-const btn_left = 0x110;
-const btn_right = 0x111;
-const btn_middle = 0x112;
-
 // AppKit's modifier flags.
 const flag_shift = 1 << 17;
 const flag_control = 1 << 18;
@@ -831,11 +826,11 @@ pub const MacWindow = struct {
         return false;
     }
 
-    fn mouse(view: Id, event: Id, code: u32, pressed: bool) void {
+    fn mouse(view: Id, event: Id, button: window.PointerButton, pressed: bool) void {
         const w = ofView(view) orelse return;
         const pos = w.locate(event);
         w.push(.{ .motion = pos });
-        w.push(.{ .button = .{ .pos = pos, .code = code, .pressed = pressed } });
+        w.push(.{ .button = .{ .pos = pos, .button = button, .pressed = pressed } });
     }
 
     fn key(view: Id, event: Id, pressed: bool) void {
@@ -862,22 +857,22 @@ pub const MacWindow = struct {
             return objc.yes;
         }
         fn mouseDown(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_left, true);
+            mouse(v, e, .left, true);
         }
         fn mouseUp(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_left, false);
+            mouse(v, e, .left, false);
         }
         fn rightMouseDown(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_right, true);
+            mouse(v, e, .right, true);
         }
         fn rightMouseUp(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_right, false);
+            mouse(v, e, .right, false);
         }
         fn otherMouseDown(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_middle, true);
+            mouse(v, e, .middle, true);
         }
         fn otherMouseUp(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
-            mouse(v, e, btn_middle, false);
+            mouse(v, e, .middle, false);
         }
         fn mouseMoved(v: Id, _: objc.Sel, e: Id) callconv(.c) void {
             const w = ofView(v) orelse return;

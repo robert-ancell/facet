@@ -952,4 +952,8 @@ pub const input = struct {
     pub const btn_left = 0x110;
     pub const btn_right = 0x111;
     pub const btn_middle = 0x112;
+    pub const btn_side = 0x113;
+    pub const btn_extra = 0x114;
+    pub const btn_forward = 0x115;
+    pub const btn_back = 0x116;
 };

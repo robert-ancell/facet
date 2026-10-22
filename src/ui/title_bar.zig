@@ -20,7 +20,6 @@ const Row = @import("flex.zig").Row;
 const SizedBox = @import("sized_box.zig").SizedBox;
 const BarButton = @import("bar_button.zig").BarButton;
 const Text = @import("text.zig").Text;
-const btn_left = @import("widget.zig").btn_left;
 
 const Node = widget.Node;
 const Context = widget.Context;
@@ -140,7 +139,7 @@ const DragArea = struct {
 
     pub fn event(self: *const DragArea, _: *Node, e: widget.Event) bool {
         switch (e) {
-            .press => |p| if (p.button == btn_left) {
+            .press => |p| if (p.button == .left) {
                 const double = p.clicks % 2 == 0 and self.on_maximize != null;
                 if (if (double) self.on_maximize else self.on_drag) |f| f.call();
             },
@@ -186,13 +185,13 @@ test "the title bar's buttons, and dragging it" {
     // The bar is across the top, 44 high; the button at its right end.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(app.closed);
     // Elsewhere on the bar starts a drag (and closes nothing).
     app.closed = false;
     u.pointerMotion(.{ 400, 22 });
-    u.pointerButton(.{ 400, 22 }, btn_left, true);
+    u.pointerButton(.{ 400, 22 }, .left, true);
     try testing.expect(!app.closed);
     try testing.expectEqual(@as(u32, 1), app.drags);
     // The shell takes the pointer for the drag, so no release comes; the
@@ -200,8 +199,8 @@ test "the title bar's buttons, and dragging it" {
     // button.
     const max_at: geometry.Point = .{ 800 - 8 - 34 - 4 - 17, 22 };
     u.pointerMotion(max_at);
-    u.pointerButton(max_at, btn_left, true);
-    u.pointerButton(max_at, btn_left, false);
+    u.pointerButton(max_at, .left, true);
+    u.pointerButton(max_at, .left, false);
     try testing.expectEqual(@as(u32, 1), app.maximizes);
     try testing.expectEqual(@as(u32, 1), app.drags);
 }
@@ -237,21 +236,21 @@ test "double clicking the title bar toggles maximize, instead of dragging" {
     u.pointerMotion(at);
     // The first press drags; the shell takes the pointer, so no release
     // comes. The second, soon after, maximizes.
-    u.pointerButtonAt(at, btn_left, true, 1000 * ms);
-    u.pointerButtonAt(at, btn_left, true, 1200 * ms);
+    u.pointerButtonAt(at, .left, true, 1000 * ms);
+    u.pointerButtonAt(at, .left, true, 1200 * ms);
     try testing.expectEqual(@as(u32, 1), app.drags);
     try testing.expectEqual(@as(u32, 1), app.maximizes);
     // A third drags again, and a fourth restores.
-    u.pointerButtonAt(at, btn_left, true, 1400 * ms);
-    u.pointerButtonAt(at, btn_left, true, 1600 * ms);
+    u.pointerButtonAt(at, .left, true, 1400 * ms);
+    u.pointerButtonAt(at, .left, true, 1600 * ms);
     try testing.expectEqual(@as(u32, 2), app.drags);
     try testing.expectEqual(@as(u32, 2), app.maximizes);
     // Presses too slow, or too far apart, are separate clicks.
-    u.pointerButtonAt(at, btn_left, true, 3000 * ms);
-    u.pointerButtonAt(at, btn_left, true, 3000 * ms + WindowUi.multi_click_ns + 1);
+    u.pointerButtonAt(at, .left, true, 3000 * ms);
+    u.pointerButtonAt(at, .left, true, 3000 * ms + WindowUi.multi_click_ns + 1);
     const away: geometry.Point = .{ 400 + WindowUi.multi_click_slop + 1, 22 };
     u.pointerMotion(away);
-    u.pointerButtonAt(away, btn_left, true, 3000 * ms + WindowUi.multi_click_ns + 100 * ms);
+    u.pointerButtonAt(away, .left, true, 3000 * ms + WindowUi.multi_click_ns + 100 * ms);
     try testing.expectEqual(@as(u32, 5), app.drags);
     try testing.expectEqual(@as(u32, 2), app.maximizes);
 }
@@ -279,15 +278,15 @@ test "a fullscreen window has no title bar" {
     // Where its close button would be, there is nothing to press.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(!closed);
     // Out of fullscreen, it is back.
     u.fullscreen = false;
     u.frame(800, 600, 1, Root{ .closed = &closed });
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(closed);
 }
 
@@ -309,8 +308,8 @@ test "the title bar defaults to the UI's window controls" {
     u.frame(800, 600, 0, Root{});
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(controls.close_requested);
 }
 
@@ -350,8 +349,8 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
     // Clicking the automatic title bar's close button triggers controls.close_requested.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(controls.close_requested);
 
     // When the compositor negotiates server-side decorations, TitleBar is not added.
@@ -421,8 +420,8 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
     // The first button minimizes.
     const at: geometry.Point = .{ first_button + TitleBar.button_size / 2, TitleBar.height / 2 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expectEqual(@as(u32, 1), win.minimized);
 
     // So the title is never squeezed to less than that.

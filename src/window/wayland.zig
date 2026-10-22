@@ -679,6 +679,18 @@ pub const WaylandDisplay = struct {
     }
 };
 
+/// The pointer button a Linux button code (linux/input-event-codes.h) is.
+fn pointerButtonOf(code: u32) window_mod.PointerButton {
+    return switch (code) {
+        p.input.btn_left => .left,
+        p.input.btn_right => .right,
+        p.input.btn_middle => .middle,
+        p.input.btn_side, p.input.btn_back => .back,
+        p.input.btn_extra, p.input.btn_forward => .forward,
+        else => .other,
+    };
+}
+
 pub const WaylandWindow = struct {
     pub const platform: window_mod.WindowPlatform = .wayland;
 
@@ -2627,7 +2639,7 @@ pub const WaylandWindow = struct {
             p.wl_pointer.event.button => {
                 const serial = r.uint() catch return;
                 _ = r.uint() catch return;
-                const code = r.uint() catch return;
+                const button = pointerButtonOf(r.uint() catch return);
                 const state = r.uint() catch return;
                 const pressed = state == p.wl_pointer.button_state.pressed;
                 if (pressed) {
@@ -2638,7 +2650,7 @@ pub const WaylandWindow = struct {
                     w.press_serial = 0;
                 }
                 const on_window = w.pointer_surface == w.surface.id or w.pointer_surface == 0;
-                if (pressed and code == p.input.btn_left and on_window) {
+                if (pressed and button == .left and on_window) {
                     const edges = w.edgesAt(w.pointer_pos);
                     if (edges != 0) if (w.seat) |seat| {
                         var m = w.toplevel.request(p.xdg_toplevel.request.resize) catch return;
@@ -2648,10 +2660,10 @@ pub const WaylandWindow = struct {
                     };
                 }
                 if (pressed and w.buttons_down == 0 and on_window and !w.isInsideContent(w.pointer_pos)) return;
-                const bit = @as(u32, 1) << @intCast(@min(code -% p.input.btn_left, 31));
+                const bit = @as(u32, 1) << @backingInt(button);
                 w.buttons_down = if (pressed) w.buttons_down | bit else w.buttons_down & ~bit;
                 if (!pressed and w.buttons_down == 0) w.updateCursor();
-                w.pushInput(.{ .button = .{ .pos = w.pointer_pos, .code = code, .pressed = pressed } });
+                w.pushInput(.{ .button = .{ .pos = w.pointer_pos, .button = button, .pressed = pressed } });
             },
             p.wl_pointer.event.axis => {
                 _ = r.uint() catch return;
@@ -3512,4 +3524,17 @@ test "dead keys and Compose combine with the keys after them" {
     _ = win.compose_state.feed(&win.compose_table.?, compose.multi_key);
     send(&win, &disp, ev.leave, &.{ 13, 0 });
     try std.testing.expect(!win.compose_state.composing());
+}
+
+test "Linux button codes are the pointer buttons" {
+    const PointerButton = window_mod.PointerButton;
+    try std.testing.expectEqual(PointerButton.left, pointerButtonOf(p.input.btn_left));
+    try std.testing.expectEqual(PointerButton.right, pointerButtonOf(p.input.btn_right));
+    try std.testing.expectEqual(PointerButton.middle, pointerButtonOf(p.input.btn_middle));
+    // Both codes a mouse's side buttons are known by.
+    try std.testing.expectEqual(PointerButton.back, pointerButtonOf(p.input.btn_side));
+    try std.testing.expectEqual(PointerButton.back, pointerButtonOf(p.input.btn_back));
+    try std.testing.expectEqual(PointerButton.forward, pointerButtonOf(p.input.btn_extra));
+    try std.testing.expectEqual(PointerButton.forward, pointerButtonOf(p.input.btn_forward));
+    try std.testing.expectEqual(PointerButton.other, pointerButtonOf(0x117));
 }

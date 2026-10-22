@@ -18,7 +18,6 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 const keymap = @import("keymap.zig");
-const btn_left = widget.btn_left;
 const Column = @import("flex.zig").Column;
 const menu = @import("menu.zig");
 const Padding = @import("padding.zig").Padding;
@@ -548,7 +547,7 @@ pub const TextField = struct {
                 }
             },
             .press => |pr| {
-                if (pr.button != btn_left) return false;
+                if (pr.button != .left) return false;
                 if (self.inToggle(n, pr.pos)) {
                     st.toggle_pressed = true;
                     st.toggle_hovered = true;
@@ -726,8 +725,8 @@ test "typing into a text field" {
     u.frame(400, 200, 0, App{ .sink = &sink, .obscure = false });
     const at: geometry.Point = .{ 40, 40 };
     u.pointerMotion(at);
-    u.pointerButton(at, btn_left, true);
-    u.pointerButton(at, btn_left, false);
+    u.pointerButton(at, .left, true);
+    u.pointerButton(at, .left, false);
     try testing.expect(u.focused != null);
     // Shift-A, b, 1, then Backspace, Left, X: "AXb".
     u.keyEvent(keymap.left_shift, true);
@@ -751,8 +750,8 @@ test "typing into a text field" {
     try testing.expectEqualStrings("AXb", n.state(TextField.State).text());
     // Clicking elsewhere takes the keyboard away: keys go nowhere.
     u.pointerMotion(.{ 300, 150 });
-    u.pointerButton(.{ 300, 150 }, btn_left, true);
-    u.pointerButton(.{ 300, 150 }, btn_left, false);
+    u.pointerButton(.{ 300, 150 }, .left, true);
+    u.pointerButton(.{ 300, 150 }, .left, false);
     try testing.expect(u.focused == null);
     u.keyEvent(30, true);
     try testing.expectEqualStrings("AXb", sink.text[0..sink.len]);
@@ -812,7 +811,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
             n.* += 16 * std.time.ns_per_ms;
             uu.frame(500, 400, n.*, App{ .sinks = s });
         }
-        fn click(uu: *WindowUi, at: geometry.Point, button: u32) void {
+        fn click(uu: *WindowUi, at: geometry.Point, button: widget.PointerButton) void {
             uu.pointerMotion(at);
             uu.pointerButton(at, button, true);
             uu.pointerButton(at, button, false);
@@ -846,10 +845,10 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     const rows = [3]f32{ 42, 96, 150 };
 
     // All of the first copied, and pasted into the second.
-    T.click(u, .{ 60, rows[0] }, btn_left);
+    T.click(u, .{ 60, rows[0] }, .left);
     T.keys(u, true, false, &.{ keymap.key_a, keymap.key_c });
     try testing.expectEqualStrings("hello world", board.text[0..board.len]);
-    T.click(u, .{ 60, rows[1] }, btn_left);
+    T.click(u, .{ 60, rows[1] }, .left);
     T.keys(u, true, false, &.{keymap.key_v});
     // The text comes later (from another app, say): then it is pasted.
     try testing.expectEqual(@as(usize, 0), T.field(u, 1).len);
@@ -869,7 +868,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     try testing.expectEqualStrings("b", sinks[1].text[0..sinks[1].len]);
 
     // A password cannot be copied out.
-    T.click(u, .{ 60, rows[2] }, btn_left);
+    T.click(u, .{ 60, rows[2] }, .left);
     T.keys(u, true, false, &.{ keymap.key_a, keymap.key_c, keymap.key_x });
     try testing.expectEqualStrings("world", board.text[0..board.len]);
     try testing.expectEqualStrings("secret", T.field(u, 2).text());
@@ -877,9 +876,9 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     // Dragging over the first field selects what it goes over.
     T.frame(u, &sinks, &now);
     u.pointerMotion(.{ 34, rows[0] });
-    u.pointerButton(.{ 34, rows[0] }, btn_left, true);
+    u.pointerButton(.{ 34, rows[0] }, .left, true);
     u.pointerMotion(.{ 200, rows[0] });
-    u.pointerButton(.{ 200, rows[0] }, btn_left, false);
+    u.pointerButton(.{ 200, rows[0] }, .left, false);
     const sel = T.field(u, 0).selection().?;
     try testing.expectEqual(@as(usize, 0), sel[0]);
     try testing.expect(sel[1] > 5);
@@ -887,12 +886,12 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     // The right button on the second field: a menu, with Cut and Copy
     // dimmed (nothing is selected), over the window. Paste in it pastes.
     T.frame(u, &sinks, &now);
-    T.click(u, .{ 60, rows[1] }, widget.btn_right);
+    T.click(u, .{ 60, rows[1] }, .right);
     T.frame(u, &sinks, &now);
     const m = u.menu_root.?;
     try testing.expect(T.findText(m, "Copy") != null and T.findText(m, "Ctrl+V") != null);
     try testing.expect(!m.overflow.any());
-    T.click(u, T.middle(T.findText(m, "Paste").?), btn_left);
+    T.click(u, T.middle(T.findText(m, "Paste").?), .left);
     board.deliver();
     try testing.expect(u.menu == null);
     T.frame(u, &sinks, &now);
@@ -901,22 +900,22 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
 
     // A press outside the menu closes it, and does nothing else; so does
     // Escape.
-    T.click(u, .{ 60, rows[1] }, widget.btn_right);
+    T.click(u, .{ 60, rows[1] }, .right);
     T.frame(u, &sinks, &now);
-    T.click(u, .{ 480, 380 }, btn_left);
+    T.click(u, .{ 480, 380 }, .left);
     try testing.expect(u.menu == null);
     try testing.expect(u.focused != null);
-    T.click(u, .{ 60, rows[1] }, widget.btn_right);
+    T.click(u, .{ 60, rows[1] }, .right);
     u.keyEvent(keymap.escape, true);
     try testing.expect(u.menu == null);
 
     // Holding the left button down does not show it (the right button
     // does)...
     u.pointerMotion(.{ 60, rows[0] });
-    u.pointerButton(.{ 60, rows[0] }, btn_left, true);
+    u.pointerButton(.{ 60, rows[0] }, .left, true);
     for (0..40) |_| T.frame(u, &sinks, &now);
     try testing.expect(u.menu == null);
-    u.pointerButton(.{ 60, rows[0] }, btn_left, false);
+    u.pointerButton(.{ 60, rows[0] }, .left, false);
     // ...but holding a touch does, once it has been held for a while; it
     // coming up is not a tap.
     u.touchDown(1, .{ 60, rows[0] });
@@ -1124,9 +1123,9 @@ test "a password field has a visibility toggle button on the right hand side" {
     const toggle_at: geometry.Point = .{ pos[0] + field_node.size.w - 20, pos[1] + field_node.size.h / 2 };
     u.pointerMotion(toggle_at);
     try testing.expect(st.toggle_hovered);
-    u.pointerButton(toggle_at, btn_left, true);
+    u.pointerButton(toggle_at, .left, true);
     try testing.expect(st.toggle_pressed);
-    u.pointerButton(toggle_at, btn_left, false);
+    u.pointerButton(toggle_at, .left, false);
     try testing.expect(!st.toggle_pressed);
     try testing.expect(st.revealed);
     try testing.expect(!tf.isObscured(st));
@@ -1140,8 +1139,8 @@ test "a password field has a visibility toggle button on the right hand side" {
 
     // Clicking the toggle button again hides the password back to dots, blocking copy.
     u.shared.local_clipboard.clearRetainingCapacity();
-    u.pointerButton(toggle_at, btn_left, true);
-    u.pointerButton(toggle_at, btn_left, false);
+    u.pointerButton(toggle_at, .left, true);
+    u.pointerButton(toggle_at, .left, false);
     try testing.expect(!st.revealed);
     try testing.expect(tf.isObscured(st));
     try testing.expectEqualStrings("••••••", tf.shown(st, &buf, st.text()));
@@ -1205,23 +1204,23 @@ test "double click selects current word, triple click selects all, and selection
     // Single click places cursor without selecting.
     const ms = std.time.ns_per_ms;
     u.pointerMotion(click_at);
-    u.pointerButtonAt(click_at, btn_left, true, 200 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 210 * ms);
+    u.pointerButtonAt(click_at, .left, true, 200 * ms);
+    u.pointerButtonAt(click_at, .left, false, 210 * ms);
     try testing.expect(st.selection() == null);
 
     // Second click within WindowUi.multi_click_ns selects the word ("https").
-    u.pointerButtonAt(click_at, btn_left, true, 300 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 310 * ms);
+    u.pointerButtonAt(click_at, .left, true, 300 * ms);
+    u.pointerButtonAt(click_at, .left, false, 310 * ms);
     try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
 
     // Third click within WindowUi.multi_click_ns selects all text.
-    u.pointerButtonAt(click_at, btn_left, true, 400 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 410 * ms);
+    u.pointerButtonAt(click_at, .left, true, 400 * ms);
+    u.pointerButtonAt(click_at, .left, false, 410 * ms);
     try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
 
     // A fourth starts over, placing the cursor.
-    u.pointerButtonAt(click_at, btn_left, true, 500 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 510 * ms);
+    u.pointerButtonAt(click_at, .left, true, 500 * ms);
+    u.pointerButtonAt(click_at, .left, false, 510 * ms);
     try testing.expect(st.selection() == null);
 
     // A click long after the last is a single click, however stale the
@@ -1229,14 +1228,14 @@ test "double click selects current word, triple click selects all, and selection
     // the field to its end.)
     st.moveTo(0, false);
     u.frame(300, 140, 600 * ms, App{});
-    u.pointerButtonAt(click_at, btn_left, true, 2000 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 2010 * ms);
+    u.pointerButtonAt(click_at, .left, true, 2000 * ms);
+    u.pointerButtonAt(click_at, .left, false, 2010 * ms);
     try testing.expect(st.selection() == null);
-    u.pointerButtonAt(click_at, btn_left, true, 2100 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 2110 * ms);
+    u.pointerButtonAt(click_at, .left, true, 2100 * ms);
+    u.pointerButtonAt(click_at, .left, false, 2110 * ms);
     try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
-    u.pointerButtonAt(click_at, btn_left, true, 2200 * ms);
-    u.pointerButtonAt(click_at, btn_left, false, 2210 * ms);
+    u.pointerButtonAt(click_at, .left, true, 2200 * ms);
+    u.pointerButtonAt(click_at, .left, false, 2210 * ms);
     try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
 
     // Render frame with full selection on overflowing text and verify no pixels

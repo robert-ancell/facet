@@ -157,9 +157,9 @@ const Scrim = struct {
 
     pub fn event(self: *const Scrim, _: *Node, e: Event) bool {
         switch (e) {
-            .press => |pr| return pr.button == widget.btn_left,
+            .press => |pr| return pr.button == .left,
             .release => |rel| {
-                if (rel.button == widget.btn_left and rel.inside) {
+                if (rel.button == .left and rel.inside) {
                     if (self.on_dismiss) |cb| cb.call();
                 }
                 return true;

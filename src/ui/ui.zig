@@ -118,8 +118,7 @@ pub const TextInputInfo = widget.TextInputInfo;
 pub const Callback = widget.Callback;
 pub const ValueCallback = widget.ValueCallback;
 
-pub const btn_left = widget.btn_left;
-pub const btn_right = widget.btn_right;
+pub const PointerButton = widget.PointerButton;
 
 pub const SizedBox = sized_box.SizedBox;
 pub const ConstrainedBox = constrained_box.ConstrainedBox;

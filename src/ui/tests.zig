@@ -166,8 +166,8 @@ fn click(u: *ui.WindowUi, n: *Node) void {
     const at = n.position();
     const p: ui.Point = .{ at[0] + n.size.w / 2, at[1] + n.size.h / 2 };
     u.pointerMotion(p);
-    u.pointerButton(p, ui.btn_left, true);
-    u.pointerButton(p, ui.btn_left, false);
+    u.pointerButton(p, .left, true);
+    u.pointerButton(p, .left, false);
 }
 
 test "buttons call back, state lasts between frames, and hovering tints" {
@@ -200,20 +200,20 @@ test "buttons call back, state lasts between frames, and hovering tints" {
     const b = buttons.items[0];
     const at = b.position();
     u.pointerMotion(.{ at[0] + 5, at[1] + 20 });
-    u.pointerButton(.{ at[0] + 5, at[1] + 20 }, ui.btn_left, true);
+    u.pointerButton(.{ at[0] + 5, at[1] + 20 }, .left, true);
     u.pointerMotion(.{ 299, 199 });
-    u.pointerButton(.{ 299, 199 }, ui.btn_left, false);
+    u.pointerButton(.{ 299, 199 }, .left, false);
     try testing.expectEqual(@as(u32, 2), u.root.?.state(Counter.State).count);
 
     // Another button going up while the left is held is not a click; the
     // left going up is.
     const over: ui.Point = .{ at[0] + 5, at[1] + 20 };
     u.pointerMotion(over);
-    u.pointerButton(over, ui.btn_left, true);
-    u.pointerButton(over, ui.btn_right, true);
-    u.pointerButton(over, ui.btn_right, false);
+    u.pointerButton(over, .left, true);
+    u.pointerButton(over, .right, true);
+    u.pointerButton(over, .right, false);
     try testing.expectEqual(@as(u32, 2), u.root.?.state(Counter.State).count);
-    u.pointerButton(over, ui.btn_left, false);
+    u.pointerButton(over, .left, false);
     try testing.expectEqual(@as(u32, 3), u.root.?.state(Counter.State).count);
 }
 
@@ -307,8 +307,8 @@ test "an overlay's top layer takes the pointer where it has something" {
     u.frame(200, 200, 0, Root(S.f){});
     for ([_]ui.Point{ .{ 10, 10 }, .{ 100, 100 }, .{ 20, 40 } }) |p| {
         u.pointerMotion(p);
-        u.pointerButton(p, ui.btn_left, true);
-        u.pointerButton(p, ui.btn_left, false);
+        u.pointerButton(p, .left, true);
+        u.pointerButton(p, .left, false);
     }
     try testing.expectEqual(@as(u32, 2), S.above);
     try testing.expectEqual(@as(u32, 1), S.below);
@@ -407,8 +407,8 @@ const Controls = struct {
 
 fn clickAt(u: *ui.WindowUi, p: ui.Point) void {
     u.pointerMotion(p);
-    u.pointerButton(p, ui.btn_left, true);
-    u.pointerButton(p, ui.btn_left, false);
+    u.pointerButton(p, .left, true);
+    u.pointerButton(p, .left, false);
 }
 
 test "checkboxes, switches and radio buttons report changes, and their labels press them" {
@@ -643,8 +643,8 @@ test "a lazy grid makes only the rows that show, as it scrolls" {
     try testing.expect(grid.child(3).paint.valid);
     // Pressing one presses the right item.
     u.pointerMotion(.{ 70, 15 });
-    u.pointerButton(.{ 70, 15 }, ui.btn_left, true);
-    u.pointerButton(.{ 70, 15 }, ui.btn_left, false);
+    u.pointerButton(.{ 70, 15 }, .left, true);
+    u.pointerButton(.{ 70, 15 }, .left, false);
     try testing.expectEqual(@as(?usize, 61), items.pressed);
 
     // Not in a scroll view: all of it shows.
@@ -832,12 +832,12 @@ test "a scroll view scrolls with the wheel and its bar, and paints only what sho
     // Pressing the bar below the thumb (90 tall: 300 of 1000) jumps there,
     // centred on the pointer; dragging moves it.
     u.pointerMotion(.{ 194, 255 });
-    u.pointerButton(.{ 194, 255 }, ui.btn_left, true);
+    u.pointerButton(.{ 194, 255 }, .left, true);
     // The thumb's top at 210 of the 210 it can travel: the end.
     try testing.expectEqual(@as(f32, 700), st.offset);
     u.pointerMotion(.{ 194, 150 });
     try testing.expectEqual(@as(f32, 350), st.offset);
-    u.pointerButton(.{ 194, 150 }, ui.btn_left, false);
+    u.pointerButton(.{ 194, 150 }, .left, false);
     try testing.expect(st.grab == null);
     u.frame(400, 400, 4, Root(build){});
     try testing.expectEqual(ui.Point{ 0, -350 }, column.offset);
@@ -974,15 +974,15 @@ test "dragging onto a target that takes it drops it there; a click is still a cl
     u.frame(300, 100, 0, w);
     // Pressed and let go without moving: clicked.
     u.pointerMotion(.{ 40, 40 });
-    u.pointerButton(.{ 40, 40 }, ui.btn_left, true);
+    u.pointerButton(.{ 40, 40 }, .left, true);
     u.pointerMotion(.{ 43, 42 });
-    u.pointerButton(.{ 43, 42 }, ui.btn_left, false);
+    u.pointerButton(.{ 43, 42 }, .left, false);
     try testing.expectEqual(@as(u32, 1), clicked);
     try testing.expect(u.drag == null);
 
     // Dragged to the target: the chip follows, the target lights up, and
     // it gets 7 (no click).
-    u.pointerButton(.{ 40, 40 }, ui.btn_left, true);
+    u.pointerButton(.{ 40, 40 }, .left, true);
     u.pointerMotion(.{ 120, 40 });
     try testing.expectEqualStrings("seven", u.drag.?.label);
     try testing.expect(u.drag.?.target == null);
@@ -991,7 +991,7 @@ test "dragging onto a target that takes it drops it there; a click is still a cl
     u.frame(300, 100, 1, w);
     try testing.expect(u.drag_root != null);
     try testing.expectEqualStrings("seven", find(u.drag_root.?, ui.Text).?.widget.as(ui.Text).?.text);
-    u.pointerButton(.{ 200, 40 }, ui.btn_left, false);
+    u.pointerButton(.{ 200, 40 }, .left, false);
     try testing.expectEqual(@as(?usize, 7), dropped);
     try testing.expectEqual(@as(u32, 1), clicked);
     try testing.expect(u.drag == null);
@@ -1001,16 +1001,16 @@ test "dragging onto a target that takes it drops it there; a click is still a cl
     // 8 is not taken: no target, nothing dropped.
     dropped = null;
     u.pointerMotion(.{ 120, 40 });
-    u.pointerButton(.{ 120, 40 }, ui.btn_left, true);
+    u.pointerButton(.{ 120, 40 }, .left, true);
     u.pointerMotion(.{ 200, 40 });
     try testing.expect(u.drag.?.target == null);
-    u.pointerButton(.{ 200, 40 }, ui.btn_left, false);
+    u.pointerButton(.{ 200, 40 }, .left, false);
     try testing.expect(dropped == null);
 
     // If the pointer leaves the window during a press or drag, it is cancelled
     // cleanly so later clicks still work.
     u.pointerMotion(.{ 40, 40 });
-    u.pointerButton(.{ 40, 40 }, ui.btn_left, true);
+    u.pointerButton(.{ 40, 40 }, .left, true);
     try testing.expect(u.captured != null);
     u.pointerLeave();
     try testing.expect(u.captured == null);
@@ -1189,9 +1189,9 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
         const x0 = pos[0] + ui.Slider.halo_radius;
         const x1 = pos[0] + s0.size.w - ui.Slider.halo_radius;
         u.pointerMotion(.{ x0 + (x1 - x0) * 0.5, pos[1] + 10 });
-        u.pointerButton(.{ x0 + (x1 - x0) * 0.5, pos[1] + 10 }, ui.btn_left, true);
+        u.pointerButton(.{ x0 + (x1 - x0) * 0.5, pos[1] + 10 }, .left, true);
         u.pointerMotion(.{ x0 + (x1 - x0) * 0.75, pos[1] + 10 });
-        u.pointerButton(.{ x0 + (x1 - x0) * 0.75, pos[1] + 10 }, ui.btn_left, false);
+        u.pointerButton(.{ x0 + (x1 - x0) * 0.75, pos[1] + 10 }, .left, false);
         try testing.expectApproxEqAbs(@as(f32, 0.75), st.slider_val, 0.01);
 
         const s1 = sliders.items[1];
@@ -1316,10 +1316,10 @@ test "widget cursor shapes reflect hovered and captured widgets" {
     const dr_pos = dr.position();
     u.pointerMotion(.{ dr_pos[0] + 10, dr_pos[1] + 10 });
     try testing.expectEqual(ui.PointerCursor.grab, u.cursor());
-    u.pointerButton(.{ dr_pos[0] + 10, dr_pos[1] + 10 }, ui.btn_left, true);
+    u.pointerButton(.{ dr_pos[0] + 10, dr_pos[1] + 10 }, .left, true);
     u.pointerMotion(.{ dr_pos[0] + 40, dr_pos[1] + 10 });
     try testing.expectEqual(ui.PointerCursor.grabbing, u.cursor());
-    u.pointerButton(.{ dr_pos[0] + 40, dr_pos[1] + 10 }, ui.btn_left, false);
+    u.pointerButton(.{ dr_pos[0] + 40, dr_pos[1] + 10 }, .left, false);
 }
 
 test "zwp_text_input_v3 events commit text, render preedit, and delete surrounding bytes in TextField" {
@@ -1771,8 +1771,8 @@ test "menus and tooltips go in popups of their own when the window has them" {
     // closes it (and its popup).
     const item: ui.Point = .{ 350 + 20, 40 + 8 + 20 };
     u.pointerMotion(item);
-    u.pointerButton(item, ui.btn_left, true);
-    u.pointerButton(item, ui.btn_left, false);
+    u.pointerButton(item, .left, true);
+    u.pointerButton(item, .left, false);
     try testing.expect(pressed);
     try testing.expect(u.menu == null);
     u.frame(win.width, win.height, 3, HelpRoot{});
@@ -2291,10 +2291,10 @@ test "a map view is dragged and zoomed" {
     u.frame(400, 300, 0, app);
     // Dragged 50 pixels right: the world (512 across) moves with it.
     u.pointerMotion(.{ 200, 150 });
-    u.pointerButton(.{ 200, 150 }, ui.btn_left, true);
+    u.pointerButton(.{ 200, 150 }, .left, true);
     try testing.expectEqual(ui.PointerCursor.grabbing, u.cursor());
     u.pointerMotion(.{ 250, 150 });
-    u.pointerButton(.{ 250, 150 }, ui.btn_left, false);
+    u.pointerButton(.{ 250, 150 }, .left, false);
     try testing.expectApproxEqAbs(45 - 50.0 / 512.0 * 360.0, camera.center.lon, 1e-6);
     try testing.expectApproxEqAbs(0, camera.center.lat, 1e-6);
     // The wheel zooms in about the pointer: what is under it stays.
@@ -2312,9 +2312,9 @@ test "a map view is dragged and zoomed" {
     u.frame(400, 300, 2, globe);
     // (Away from the last press, so it is not a double click.)
     u.pointerMotion(.{ 220, 130 });
-    u.pointerButton(.{ 220, 130 }, ui.btn_left, true);
+    u.pointerButton(.{ 220, 130 }, .left, true);
     for (1..6) |i| u.pointerMotion(.{ 220 - 10 * @as(f32, @floatFromInt(i)), 130 + 12 * @as(f32, @floatFromInt(i)) });
-    u.pointerButton(.{ 170, 190 }, ui.btn_left, false);
+    u.pointerButton(.{ 170, 190 }, .left, false);
     try testing.expect(camera.center.lat > 20 and camera.center.lon > 20);
     try testing.expectEqual(@as(f64, 2.5), camera.zoom);
 }
@@ -2618,8 +2618,8 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
 
     // The pointer pressed: the ring goes.
     u.pointerMotion(.{ 399, 599 });
-    u.pointerButton(.{ 399, 599 }, ui.btn_left, true);
-    u.pointerButton(.{ 399, 599 }, ui.btn_left, false);
+    u.pointerButton(.{ 399, 599 }, .left, true);
+    u.pointerButton(.{ 399, 599 }, .left, false);
     try testing.expect(!u.focus_visible);
 
     // What assistive technologies are told: the check box takes the

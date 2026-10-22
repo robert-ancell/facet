@@ -100,7 +100,7 @@ pub fn MetalArea(comptime Scene: type) type {
             const st = n.state(State);
             switch (e) {
                 .press => |pr| {
-                    if (pr.button != widget.btn_left) return false;
+                    if (pr.button != .left) return false;
                     st.dragging = true;
                     st.last_pos = pr.pos;
                     n.ui.needs_frame = true;

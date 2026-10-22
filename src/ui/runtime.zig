@@ -319,9 +319,9 @@ pub const WindowUi = struct {
     captured: ?*Node = null,
     /// The button that went down when it was taken (only its release
     /// gives it back).
-    captured_button: u32 = widget.btn_left,
+    captured_button: widget.PointerButton = .left,
     /// The last press, to count the clicks of a double click.
-    last_press: ?struct { ns: u64, pos: Point, button: u32, clicks: u8 } = null,
+    last_press: ?struct { ns: u64, pos: Point, button: widget.PointerButton, clicks: u8 } = null,
     /// The widget keys go to.
     focused: ?*Node = null,
     /// Whether the focus was moved by the keyboard (so its ring shows),
@@ -1285,7 +1285,7 @@ pub const WindowUi = struct {
         ui.inputs +%= 1;
         switch (e) {
             .motion => |pos| ui.pointerMotion(pos),
-            .button => |b| ui.pointerButton(b.pos, b.code, b.pressed),
+            .button => |b| ui.pointerButton(b.pos, b.button, b.pressed),
             .scroll => |s| ui.pointerScroll(s.pos, s.dx, s.dy),
             .key => |k| if (ui.loaded_keymap != null)
                 ui.keyEvent(k.code, k.pressed)
@@ -1359,12 +1359,12 @@ pub const WindowUi = struct {
     pub const multi_click_ns = 400 * std.time.ns_per_ms;
     pub const multi_click_slop = 6;
 
-    pub fn pointerButton(ui: *WindowUi, pos: Point, button: u32, pressed: bool) void {
+    pub fn pointerButton(ui: *WindowUi, pos: Point, button: widget.PointerButton, pressed: bool) void {
         ui.pointerButtonAt(pos, button, pressed, ui.clockNs());
     }
 
     /// `pointerButton`, at a time on the monotonic clock (`window.nowNs`).
-    pub fn pointerButtonAt(ui: *WindowUi, pos: Point, button: u32, pressed: bool, now_ns: u64) void {
+    pub fn pointerButtonAt(ui: *WindowUi, pos: Point, button: widget.PointerButton, pressed: bool, now_ns: u64) void {
         ui.pointer = pos;
         ui.updateHover(pos);
         ui.needs_frame = true;
@@ -1383,7 +1383,7 @@ pub const WindowUi = struct {
                 @abs(pos[1] - last.pos[1]) <= multi_click_slop) last.clicks +| 1 else 1 else 1;
             ui.last_press = .{ .ns = now_ns, .pos = pos, .button = button, .clicks = clicks };
             if (ui.focused) |f| if (std.mem.indexOfScalar(*Node, ui.hovered.items, f) == null) ui.focus(null);
-            if (button == widget.btn_right) for (ui.hovered.items) |n| if (send(n, .{ .context = local(n, pos) })) return;
+            if (button == .right) for (ui.hovered.items) |n| if (send(n, .{ .context = local(n, pos) })) return;
             for (ui.hovered.items) |n| if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button, .clicks = clicks } })) {
                 ui.captured = n;
                 ui.captured_button = button;
@@ -1406,7 +1406,7 @@ pub const WindowUi = struct {
     pub fn touchDown(ui: *WindowUi, id: i32, pos: Point) void {
         if (ui.touch != null) return;
         ui.touch = .{ .id = id, .start = pos, .last = pos };
-        ui.pointerButton(pos, widget.btn_left, true);
+        ui.pointerButton(pos, .left, true);
         if (ui.captured) |n| ui.hold = .{ .node = n, .pos = pos };
     }
 
@@ -1436,7 +1436,7 @@ pub const WindowUi = struct {
     pub fn touchUp(ui: *WindowUi, id: i32) void {
         const t = ui.touch orelse return;
         if (t.id != id) return;
-        if (!t.panning) ui.pointerButton(t.last, widget.btn_left, false);
+        if (!t.panning) ui.pointerButton(t.last, .left, false);
         ui.touch = null;
         ui.hold = null;
         ui.swallow_release = false;

@@ -330,8 +330,8 @@ test "what is drawn again on every page matches drawing it all, in buffers given
             // Not on the rail, which would change the page.
             3 => if (pos[0] > 220) {
                 u.pointerMotion(pos);
-                u.pointerButton(pos, facet.btn_left, true);
-                u.pointerButton(pos, facet.btn_left, false);
+                u.pointerButton(pos, .left, true);
+                u.pointerButton(pos, .left, false);
             },
             4 => u.pointerScroll(pos, 0, 40),
             5 => u.pointerScroll(pos, 0, -40),
