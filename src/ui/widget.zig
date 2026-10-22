@@ -457,8 +457,12 @@ pub const BuildContext = struct {
 /// What the app runs on: the same for all its windows (see `WindowInfo`
 /// for a window's own).
 pub const BackendInfo = struct {
-    /// Windowing platform (`wayland`, `headless`, `windows`, `macos`, `custom`).
-    platform: window_mod.WindowPlatform = .headless,
+    /// The windowing system the app runs on (`wayland`, `headless`,
+    /// `windows`, `macos`, `custom`).
+    pub const Platform = window_mod.WindowPlatform;
+
+    /// Windowing platform.
+    platform: Platform = .headless,
     /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `metal`,
     /// `d3d11`, `custom`).
     renderer: gfx.RenderBackend = .software,
@@ -471,19 +475,29 @@ pub const BackendInfo = struct {
 pub const WindowInfo = struct {
     /// How the frames reach the window system (`memory`, `linux_dmabuf`,
     /// `swapchain`, `custom`).
-    buffer_transport: window_mod.WindowBufferTransport = .memory,
+    pub const BufferTransport = window_mod.WindowBufferTransport;
     /// How the window system knows a GPU buffer is finished (`none`,
     /// `implicit`, `explicit`).
-    buffer_sync: window_mod.WindowBufferSync = .none,
+    pub const BufferSync = window_mod.WindowBufferSync;
     /// How frames are paced and synchronized with the display.
-    frame_sync: window_mod.WindowFrameSync = .{},
+    pub const FrameSync = window_mod.WindowFrameSync;
+    /// Who draws a window's title bar and borders (`none`, `toolkit`,
+    /// `system`).
+    pub const Decorations = window_mod.WindowDecorations;
+
+    /// How the frames reach the window system.
+    buffer_transport: BufferTransport = .memory,
+    /// How the window system knows a GPU buffer is finished.
+    buffer_sync: BufferSync = .none,
+    /// How frames are paced and synchronized with the display.
+    frame_sync: FrameSync = .{},
     /// The refresh rate of the display it is on, in Hz, or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
     /// The Wayland protocol extensions the window uses: the global
     /// interfaces it bound (none on other platforms).
     wayland_extensions: []const []const u8 = &.{},
-    /// Window decoration mode (`none`, `client`, `server`).
-    decorations: window_mod.WindowDecorations = .none,
+    /// Who draws its title bar and borders.
+    decorations: Decorations = .none,
     /// Logical window size in pixels.
     logical_size: [2]u32 = .{ 0, 0 },
     /// Physical target buffer size in pixels (`logical_size * scale`).

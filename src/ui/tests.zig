@@ -1507,7 +1507,7 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 1, Probe{ .out = &info, .win = &win_info });
         try testing.expectEqual(window.WindowPlatform.wayland, info.platform);
-        try testing.expectEqual(window.WindowDecorations.client, win_info.decorations);
+        try testing.expectEqual(window.WindowDecorations.toolkit, win_info.decorations);
         try testing.expectEqual(window.WindowBufferTransport.memory, win_info.buffer_transport);
         try testing.expectEqual(window.WindowBufferSync.none, win_info.buffer_sync);
         try testing.expect(win_info.frame_sync.vsync);
@@ -1524,10 +1524,10 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
         try testing.expectEqual([2]u32{ 1600, 1200 }, win_info.physical_size);
         try testing.expectEqual(@as(u32, 2), win_info.scale);
 
-        wl_win.server_decorations = true;
+        wl_win.system_decorations = true;
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 2, Probe{ .out = &info, .win = &win_info });
-        try testing.expectEqual(window.WindowDecorations.server, win_info.decorations);
+        try testing.expectEqual(window.WindowDecorations.system, win_info.decorations);
     }
 }
 

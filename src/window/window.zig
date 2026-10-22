@@ -481,23 +481,23 @@ pub const WindowBufferTransport = enum {
 };
 
 /// Whether window decorations (title bar, drop shadows, resize borders) are
-/// drawn by the toolkit (`client`), the compositor/window manager (`server`),
-/// or not at all (`none`).
+/// drawn by the toolkit (`toolkit`), the window system (`system`), or not at
+/// all (`none`).
 pub const WindowDecorations = enum {
     /// There are none: the window has no title bar or borders.
     none,
-    /// The toolkit draws them (a `TitleBar` in the window, and its shadow
-    /// and resize borders): on Wayland, where the compositor does not.
-    client,
-    /// The window system draws them: macOS and Windows, and the Wayland
-    /// compositors that do.
-    server,
+    /// The toolkit draws them: a `TitleBar` in the window, with a shadow and
+    /// resize borders of its own. Used where the window system does not
+    /// draw them.
+    toolkit,
+    /// The window system draws them.
+    system,
 
     pub fn name(d: WindowDecorations) []const u8 {
         return switch (d) {
             .none => "None",
-            .client => "Client-side (CSD)",
-            .server => "Server-side (SSD)",
+            .toolkit => "Toolkit",
+            .system => "System",
         };
     }
 };
@@ -721,9 +721,9 @@ pub const Window = struct {
                 }
                 if (@hasField(T, "decorations")) return self(p).decorations;
                 return switch (platformFn(p)) {
-                    .wayland => .client,
+                    .wayland => .toolkit,
                     .headless => .none,
-                    else => .server,
+                    else => .system,
                 };
             }
             fn titleFn(p: *anyopaque) []const u8 {

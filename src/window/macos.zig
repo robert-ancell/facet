@@ -1,6 +1,6 @@
 //! MacWindow: a native macOS window: AppKit's NSWindow, with the system's
-//! own title bar, buttons, resizing and full screen (server-side
-//! decorations), and a view of kete's in it.
+//! own title bar, buttons, resizing and full screen (the system draws
+//! the decorations), and a view of kete's in it.
 //!
 //! Frames are drawn on the CPU into one of three buffers in turn (so the
 //! damage tracking draws only what changed, as on Wayland) and shown as
@@ -118,7 +118,7 @@ pub const MacWindow = struct {
     };
 
     pub const platform: window.WindowPlatform = .macos;
-    pub const decorations: window.WindowDecorations = .server;
+    pub const decorations: window.WindowDecorations = .system;
 
     const Buffer = struct {
         pixels: ?*Pixels = null,

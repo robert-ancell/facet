@@ -118,11 +118,6 @@ pub const VulkanArea = ui.VulkanArea;
 pub const MetalArea = ui.MetalArea;
 pub const D3D11Area = ui.D3D11Area;
 
-pub const WindowPlatform = window.WindowPlatform;
-pub const WindowBufferTransport = window.WindowBufferTransport;
-pub const WindowBufferSync = window.WindowBufferSync;
-pub const WindowFrameSync = window.WindowFrameSync;
-pub const WindowDecorations = window.WindowDecorations;
 pub const Window = window.Window;
 pub const WindowControls = window.WindowControls;
 

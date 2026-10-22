@@ -376,7 +376,7 @@ pub const WindowUi = struct {
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).
     controls: ?*window_mod.WindowControls = null,
-    /// Automatic client-side title bar node (used on Wayland when `decorations == .client`).
+    /// Automatic title bar node (used when `decorations == .toolkit`).
     title_bar_root: ?*Node = null,
     /// The system's clipboard (the app gives it); without one, text is
     /// copied within the app (`local_clipboard`).
@@ -584,11 +584,11 @@ pub const WindowUi = struct {
         ui.scale = scale;
     }
 
-    /// True when the toolkit should automatically add a client-side `TitleBar`
-    /// above the application's root widget (in a window with client-side
-    /// decorations, when not fullscreen).
-    pub fn hasClientTitleBar(ui: *const WindowUi) bool {
-        return ui.win != null and ui.decorations == .client and !ui.fullscreen;
+    /// True when the toolkit should automatically add a `TitleBar` above the
+    /// application's root widget (in a window whose decorations it draws,
+    /// when not fullscreen).
+    pub fn hasToolkitTitleBar(ui: *const WindowUi) bool {
+        return ui.win != null and ui.decorations == .toolkit and !ui.fullscreen;
     }
 
     /// What the app runs on (see `widget.BackendInfo`).
@@ -839,7 +839,7 @@ pub const WindowUi = struct {
     }
 
     fn buildTitleBar(ui: *WindowUi) ?*Node {
-        if (!ui.hasClientTitleBar()) {
+        if (!ui.hasToolkitTitleBar()) {
             if (ui.title_bar_root) |n| n.destroy();
             ui.title_bar_root = null;
             return null;

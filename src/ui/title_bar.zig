@@ -4,10 +4,10 @@
 //! long for the bar ends in "…", and the bar is never narrower than its
 //! buttons either side of a "…".
 //!
-//! On Wayland with client-side decorations (`decorations == .client`), `WindowUi`
-//! automatically adds `TitleBar` above the app's root widget; when the
-//! compositor provides server-side decorations (`decorations == .server`) or
-//! the window is fullscreen, no client-side `TitleBar` is added.
+//! When the toolkit draws the window's decorations (`decorations == .toolkit`),
+//! `WindowUi` automatically adds `TitleBar` above the app's root widget; when
+//! the window system draws them (`decorations == .system`) or the window is
+//! fullscreen, no `TitleBar` is added.
 
 const a11y = @import("accessibility.zig");
 const std = @import("std");
@@ -319,7 +319,7 @@ test "the title bar defaults to the UI's window controls" {
     try testing.expect(controls.close_requested);
 }
 
-test "WindowUi automatically adds TitleBar on Wayland with client-side decorations and omits it with server-side decorations" {
+test "WindowUi automatically adds TitleBar when the toolkit draws the decorations and omits it when the system does" {
     const WindowUi = @import("runtime.zig").WindowUi;
     const window_mod = @import("window");
     const font = @import("font");
@@ -331,7 +331,7 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
         pub const platform: window_mod.WindowPlatform = .wayland;
         pub const buffer_transport: window_mod.WindowBufferTransport = .memory;
         title: []const u8 = "Kete Test",
-        decorations: window_mod.WindowDecorations = .client,
+        decorations: window_mod.WindowDecorations = .toolkit,
         width: u32 = 800,
         height: u32 = 600,
     };
@@ -345,12 +345,12 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
         }
     };
 
-    // With client-side decorations on Wayland, TitleBar is added automatically above root.
+    // With the toolkit drawing the decorations, TitleBar is added automatically above root.
     u.frame(800, 600, 0, Root{});
     try testing.expect(u.title_bar_root != null);
     try testing.expectEqual(@as(f32, TitleBar.height), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600 - TitleBar.height), u.root.?.size.h);
-    try testing.expectEqual(window_mod.WindowDecorations.client, u.windowInfo().decorations);
+    try testing.expectEqual(window_mod.WindowDecorations.toolkit, u.windowInfo().decorations);
 
     // Clicking the automatic title bar's close button triggers controls.close_requested.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
@@ -359,15 +359,15 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
     u.pointerButton(at, .left, false);
     try testing.expect(controls.close_requested);
 
-    // When the compositor negotiates server-side decorations, TitleBar is not added.
+    // When the system draws the decorations, TitleBar is not added.
     controls.close_requested = false;
-    mock_win.decorations = .server;
+    mock_win.decorations = .system;
     u.syncWindow(&mock_win);
     u.frame(800, 600, 1, Root{});
     try testing.expect(u.title_bar_root == null);
     try testing.expectEqual(@as(f32, 0), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600), u.root.?.size.h);
-    try testing.expectEqual(window_mod.WindowDecorations.server, u.windowInfo().decorations);
+    try testing.expectEqual(window_mod.WindowDecorations.system, u.windowInfo().decorations);
 }
 
 fn findText(n: *Node) ?*Node {
@@ -385,7 +385,7 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
     const MockWin = struct {
         pub const platform: window_mod.WindowPlatform = .wayland;
         title: []const u8 = "A very long window title that cannot possibly fit in a narrow window",
-        decorations: window_mod.WindowDecorations = .client,
+        decorations: window_mod.WindowDecorations = .toolkit,
         width: u32 = 300,
         height: u32 = 200,
         min_size: [2]u32 = .{ 0, 0 },
@@ -443,7 +443,7 @@ test "a window that cannot be minimized has no minimize button" {
     const MockWin = struct {
         pub const platform: window_mod.WindowPlatform = .wayland;
         title: []const u8 = "Title",
-        decorations: window_mod.WindowDecorations = .client,
+        decorations: window_mod.WindowDecorations = .toolkit,
         width: u32 = 400,
         height: u32 = 200,
         pub fn setMaximized(_: *@This(), _: bool) void {}

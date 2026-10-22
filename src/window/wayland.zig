@@ -758,7 +758,7 @@ pub const WaylandWindow = struct {
     }
 
     pub fn decorations(w: *const WaylandWindow) window_mod.WindowDecorations {
-        return if (w.server_decorations) .server else .client;
+        return if (w.system_decorations) .system else .toolkit;
     }
 
     pub fn getTitle(w: *const WaylandWindow) []const u8 {
@@ -801,7 +801,7 @@ pub const WaylandWindow = struct {
     height: u32 = default_size[1],
     min_size: [2]u32 = .{ 0, 0 },
     scale: u32 = 1,
-    server_decorations: bool = false,
+    system_decorations: bool = false,
     decoration_changed: bool = false,
     last_geometry: ?[3]u32 = null,
     next_size: [2]i32 = .{ 0, 0 },
@@ -1495,20 +1495,20 @@ pub const WaylandWindow = struct {
         return !w.maximized and !w.fullscreen and !w.tiled;
     }
 
-    /// True when the window is floating and draws client-side drop shadows,
-    /// rounded corners, and an outer resize border. False when using
-    /// server-side decorations (`zxdg_toplevel_decoration_v1`), or when
-    /// maximized, fullscreen, or tiled.
-    pub fn hasClientDecorations(w: *const WaylandWindow) bool {
-        return !w.server_decorations and w.isFloating();
+    /// True when the window is floating and the toolkit draws its drop
+    /// shadows, rounded corners, and an outer resize border. False when the
+    /// compositor draws the decorations (`zxdg_toplevel_decoration_v1`), or
+    /// when maximized, fullscreen, or tiled.
+    pub fn hasToolkitDecorations(w: *const WaylandWindow) bool {
+        return !w.system_decorations and w.isFloating();
     }
 
     pub fn frameMargin(w: *const WaylandWindow) u32 {
-        return if (w.hasClientDecorations()) shadow_margin else 0;
+        return if (w.hasToolkitDecorations()) shadow_margin else 0;
     }
 
     pub fn edgesAt(w: *const WaylandWindow, pos: [2]f32) u32 {
-        if (!w.hasClientDecorations()) return 0;
+        if (!w.hasToolkitDecorations()) return 0;
         const width: f32 = @floatFromInt(w.width);
         const height: f32 = @floatFromInt(w.height);
         const x = pos[0];
@@ -2456,7 +2456,7 @@ pub const WaylandWindow = struct {
         const width: f32 = @floatFromInt(w.width);
         const height: f32 = @floatFromInt(w.height);
         if (pos[0] < 0 or pos[1] < 0 or pos[0] >= width or pos[1] >= height) return false;
-        if (w.hasClientDecorations()) {
+        if (w.hasToolkitDecorations()) {
             const hx = @max(width * 0.5 - corner_radius, 0.0);
             const hy = @max(height * 0.5 - corner_radius, 0.0);
             if (sdfRoundedBox(pos[0] - width * 0.5, pos[1] - height * 0.5, hx, hy, corner_radius) > 0.0) return false;
@@ -2892,8 +2892,8 @@ pub const WaylandWindow = struct {
         if (opcode == p.zxdg_toplevel_decoration_v1.event.configure) {
             const mode = r.uint() catch return;
             const ssd = mode == p.zxdg_toplevel_decoration_v1.mode.server_side;
-            if (w.server_decorations != ssd) {
-                w.server_decorations = ssd;
+            if (w.system_decorations != ssd) {
+                w.system_decorations = ssd;
                 w.decoration_changed = true;
             }
         }
@@ -3070,24 +3070,24 @@ test "edgesAt detects resize edges only outside the window content and respects 
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -15, 150 }));
     // Maximized, fullscreen, or tiled window has no resize edges and zero frame margin.
     win.maximized = true;
-    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expect(!win.hasToolkitDecorations());
     try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
     win.maximized = false;
     win.tiled = true;
-    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expect(!win.hasToolkitDecorations());
     try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
-    // Server-side decorations disable client shadow margin and outer resize edges even when floating.
+    // Decorations by the compositor disable the toolkit shadow margin and outer resize edges even when floating.
     win.tiled = false;
     var disp: client.Display = undefined;
     const ssd_msg = [_]u32{p.zxdg_toplevel_decoration_v1.mode.server_side};
     var r_ssd = wire.Reader{ .data = std.mem.sliceAsBytes(&ssd_msg), .c = undefined };
     WaylandWindow.decorationEvent(&win, &disp, 1, p.zxdg_toplevel_decoration_v1.event.configure, &r_ssd);
-    try std.testing.expect(win.server_decorations);
+    try std.testing.expect(win.system_decorations);
     try std.testing.expect(win.decoration_changed);
-    try std.testing.expectEqual(window_mod.WindowDecorations.server, win.decorations());
-    try std.testing.expect(!win.hasClientDecorations());
+    try std.testing.expectEqual(window_mod.WindowDecorations.system, win.decorations());
+    try std.testing.expect(!win.hasToolkitDecorations());
     try std.testing.expectEqual(@as(u32, 0), win.frameMargin());
     try std.testing.expectEqual(@as(u32, 0), win.edgesAt(.{ -5, 150 }));
 }

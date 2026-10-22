@@ -100,7 +100,7 @@ pub const DmabufTarget = struct {
     content: [2]u32,
     cpu: CpuAccess,
     /// The window's frame to draw around the content, if it has one (a
-    /// floating window with client-side decorations).
+    /// floating window whose decorations the toolkit draws).
     frame: ?WindowFrame = null,
 
     /// Maps the frame for the CPU (`begin`: the frame's pixels, as for the

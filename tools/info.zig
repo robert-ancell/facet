@@ -62,8 +62,8 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
     };
 
     const decorations_desc = switch (win.decorations) {
-        .client => "Toolkit TitleBar, drop shadows & rounded corners (CSD)",
-        .server => "Compositor / window manager frame (zxdg_decoration_v1 SSD)",
+        .toolkit => "Toolkit TitleBar, drop shadows & rounded corners",
+        .system => "Title bar and borders drawn by the window system",
         .none => "No window decorations (headless / offscreen)",
     };
 
@@ -73,8 +73,8 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
         "Maximized"
     else if (win.tiled)
         "Tiled"
-    else if (win.decorations == .client)
-        "Floating (with CSD shadow & rounded corners)"
+    else if (win.decorations == .toolkit)
+        "Floating (with toolkit shadow & rounded corners)"
     else
         "Floating";
 
@@ -271,8 +271,8 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     kete.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    kete.Chip{ .label = "Client-side (CSD)", .selected = win.decorations == .client },
-                    kete.Chip{ .label = "Server-side (SSD)", .selected = win.decorations == .server },
+                    kete.Chip{ .label = "Toolkit", .selected = win.decorations == .toolkit },
+                    kete.Chip{ .label = "System", .selected = win.decorations == .system },
                     kete.Chip{ .label = "None", .selected = win.decorations == .none },
                 }),
             },
