@@ -10,7 +10,7 @@ const common = @import("common.zig");
 
 const gpa = std.heap.smp_allocator;
 const Color = kete.Color;
-const MapVectorTile = kete.MapVectorTile;
+const MapVectorTile = kete.MapSource.VectorTile;
 const Point = MapVectorTile.Point;
 
 pub const Kind = enum { vector, images };
@@ -99,7 +99,7 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
     // The sun now (or as many hours from now as chosen).
     const wall: f64 = @floatFromInt(std.Io.Clock.real.now(cx.ui.io).nanoseconds);
     const unix = wall / std.time.ns_per_s + s.hours * 3600;
-    const night: ?kete.MapNight = if (s.night) .at(unix) else null;
+    const night: ?f64 = if (s.night) unix else null;
     const c = s.position.center;
     const where = cx.fmt("{d:.4}°{s} {d:.4}°{s} · zoom {d:.1}", .{
         @abs(c.lat),     if (c.lat >= 0) "N" else "S",
@@ -263,7 +263,7 @@ fn degrees(buf: []u8, v: f64, pos: []const u8, neg: []const u8) []const u8 {
 }
 
 /// Makes the shapes of tile `id` in `arena`.
-fn makeTile(arena: std.mem.Allocator, id: kete.MapTileId) !MapVectorTile {
+fn makeTile(arena: std.mem.Allocator, id: kete.MapSource.TileId) !MapVectorTile {
     const n = std.math.exp2(@as(f64, @floatFromInt(id.z)));
     const fx: f64 = @floatFromInt(id.x);
     const fy: f64 = @floatFromInt(id.y);
@@ -376,19 +376,19 @@ fn makeTile(arena: std.mem.Allocator, id: kete.MapTileId) !MapVectorTile {
 /// Tiles kept while they are being shown, and a while after.
 fn Cache(comptime Entry: type) type {
     return struct {
-        entries: std.AutoHashMapUnmanaged(kete.MapTileId, *Entry) = .empty,
+        entries: std.AutoHashMapUnmanaged(kete.MapSource.TileId, *Entry) = .empty,
 
         const Self = @This();
         const keep = 400;
         const unused_ns = 2 * std.time.ns_per_s;
 
-        fn get(c: *Self, id: kete.MapTileId, now: u64) ?*Entry {
+        fn get(c: *Self, id: kete.MapSource.TileId, now: u64) ?*Entry {
             const e = c.entries.get(id) orelse return null;
             e.used_ns = now;
             return e;
         }
 
-        fn put(c: *Self, id: kete.MapTileId, e: *Entry, now: u64) void {
+        fn put(c: *Self, id: kete.MapSource.TileId, e: *Entry, now: u64) void {
             c.trim(now);
             c.entries.put(gpa, id, e) catch e.deinit();
         }
@@ -396,7 +396,7 @@ fn Cache(comptime Entry: type) type {
         /// Lets go of tiles not shown for a while, when there are many.
         fn trim(c: *Self, now: u64) void {
             if (c.entries.count() < keep) return;
-            var stale: std.ArrayList(kete.MapTileId) = .empty;
+            var stale: std.ArrayList(kete.MapSource.TileId) = .empty;
             defer stale.deinit(gpa);
             var it = c.entries.iterator();
             while (it.next()) |kv| if (now -| kv.value_ptr.*.used_ns > unused_ns) stale.append(gpa, kv.key_ptr.*) catch break;
@@ -427,7 +427,7 @@ const VectorTiles = struct {
         }
     };
 
-    pub fn tile(s: *VectorTiles, req: kete.MapSource.Request) kete.MapTile {
+    pub fn tile(s: *VectorTiles, req: kete.MapSource.Request) kete.MapSource.Tile {
         const now = kete.window.nowNs(s.io);
         if (s.cache.get(req.id, now)) |e| return .{ .vector = &e.tile };
         const e = gpa.create(Shapes) catch return .none;
@@ -491,7 +491,7 @@ const ImageTiles = struct {
         p.palette = palette;
     }
 
-    pub fn tile(p: *ImageTiles, req: kete.MapSource.Request) kete.MapTile {
+    pub fn tile(p: *ImageTiles, req: kete.MapSource.Request) kete.MapSource.Tile {
         const now = kete.window.nowNs(p.io);
         if (p.cache.get(req.id, now)) |e| return .{ .image = .{ .image = &e.image } };
         if (now -| p.window_ns > 12 * std.time.ns_per_ms) {
@@ -508,7 +508,7 @@ const ImageTiles = struct {
         return .{ .image = .{ .image = &e.image } };
     }
 
-    fn draw(p: *ImageTiles, id: kete.MapTileId, now: u64) !*Picture {
+    fn draw(p: *ImageTiles, id: kete.MapSource.TileId, now: u64) !*Picture {
         const style = &(p.style orelse return error.NoStyle);
         if (p.drawing == null) {
             p.drawing = .{
@@ -524,7 +524,7 @@ const ImageTiles = struct {
         d.canvas.begin(size, size);
         // The tiles around, made too, for their labels that reach into it.
         const Around = struct {
-            fn get(ctx: *anyopaque, other: kete.MapTileId) ?*const MapVectorTile {
+            fn get(ctx: *anyopaque, other: kete.MapSource.TileId) ?*const MapVectorTile {
                 const a: *std.heap.ArenaAllocator = @ptrCast(@alignCast(ctx));
                 const t = a.allocator().create(MapVectorTile) catch return null;
                 t.* = makeTile(a.allocator(), other) catch return null;

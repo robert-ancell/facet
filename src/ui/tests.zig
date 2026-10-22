@@ -2188,9 +2188,9 @@ const MapTiles = struct {
     pictures: [2]gfx.Image,
     /// Levels further in than this are not there yet.
     ready_to: u8 = 30,
-    shapes: ?*const ui.MapVectorTile = null,
+    shapes: ?*const ui.MapSource.VectorTile = null,
 
-    pub fn tile(s: *MapTiles, req: ui.MapSource.Request) ui.MapTile {
+    pub fn tile(s: *MapTiles, req: ui.MapSource.Request) ui.MapSource.Tile {
         if (req.id.z > s.ready_to) return .pending;
         if (s.shapes) |v| return .{ .vector = v };
         return .{ .image = .{ .image = &s.pictures[req.id.x % 2] } };
@@ -2253,9 +2253,9 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     img.deinit();
 
     // Shapes, in a style: the tile filled green.
-    const outline = [_]ui.MapVectorTile.Point{ .{ 0, 0 }, .{ 4096, 0 }, .{ 4096, 4096 }, .{ 0, 4096 } };
-    const land = [_]ui.MapVectorTile.Feature{.{ .geometry = .{ .polygon = &.{&outline} } }};
-    const shapes: ui.MapVectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
+    const outline = [_]ui.MapSource.VectorTile.Point{ .{ 0, 0 }, .{ 4096, 0 }, .{ 4096, 4096 }, .{ 0, 4096 } };
+    const land = [_]ui.MapSource.VectorTile.Feature{.{ .geometry = .{ .polygon = &.{&outline} } }};
+    const shapes: ui.MapSource.VectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
     tiles.shapes = &shapes;
     const style: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .source_layer = "land", .draw = .{ .fill = .rgb(0x00ff00) } }} };
     u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &style });

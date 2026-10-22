@@ -28,6 +28,11 @@ const Color = gfx.Color;
 /// How the vector tiles of a map are drawn: a background, and layers that draw
 /// some of the tiles' features each.
 pub const MapStyle = struct {
+    /// How the labels of a layer are drawn.
+    pub const LabelStyle = tile_painter.MapLabelStyle;
+    /// What a layer's own drawing function draws with.
+    pub const TilePainter = tile_painter.MapTilePainter;
+
     /// Under the tiles: the globe, and wherever there is nothing.
     background: Color,
     /// What is drawn, from the bottom up.

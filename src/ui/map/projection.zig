@@ -19,6 +19,9 @@ pub const MapCoordinate = struct {
 
 /// What a map view shows: the place at its centre, and how close.
 pub const MapPosition = struct {
+    /// A place on the Earth, as `center` is.
+    pub const Coordinate = MapCoordinate;
+
     /// The place at the middle of the view.
     center: MapCoordinate = .{},
     /// At zoom z the flat map is 256 × 2^z pixels across, and the globe

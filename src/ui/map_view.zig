@@ -105,10 +105,12 @@ pub const MapView = struct {
     atmosphere: bool = true,
     /// The colour of that glow: the theme's primary, faint, if null.
     atmosphere_color: ?Color = null,
-    /// Night where the sun has set, from where it is overhead
-    /// (`MapNight.at` gives it for a time), shaded on the globe (fading
-    /// as the globe becomes the flat map); none if null.
-    night: ?MapNight = null,
+    /// Night where the sun has set, shaded on the globe (fading as the globe
+    /// becomes the flat map): the time to show it for, in seconds since
+    /// 1970 UTC; none if null.
+    night: ?f64 = null,
+    /// The colour of that shade: a dark blue if null.
+    night_color: ?Color = null,
     /// Its width, in pixels, if it is not told how big to be.
     width: f32 = 480,
     /// Its height, in pixels, if it is not told how big to be.
@@ -484,7 +486,11 @@ pub const MapView = struct {
         const plain = MapStyle.plainLayers(t);
         const layers = if (self.style) |s| s.layers else &plain;
         for ([_]bool{ false, true }) |label_pass| {
-            if (label_pass) if (self.night) |night| drawNight(c, &v, night, arena);
+            if (label_pass) if (self.night) |when| {
+                var night = MapNight.at(when);
+                if (self.night_color) |color| night.color = color;
+                drawNight(c, &v, night, arena);
+            };
             for (layers) |*l| {
                 if ((l.draw == .label) != label_pass) continue;
                 for (shapes.items) |*sh| MapStyle.drawLayer(l, &sh.tp, sh.tile);

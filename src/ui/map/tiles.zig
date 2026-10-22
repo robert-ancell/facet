@@ -60,6 +60,13 @@ pub const MapTile = union(enum) {
 
 /// Where a map's tiles come from: anything with a `tile` method.
 pub const MapSource = struct {
+    /// What a source makes for a tile: a picture, or shapes to draw.
+    pub const Tile = MapTile;
+    /// Which tile: its level and place.
+    pub const TileId = MapTileId;
+    /// The shapes in a tile, in layers.
+    pub const VectorTile = MapVectorTile;
+
     /// What `tile_fn` is called with.
     ctx: *anyopaque,
     /// Gives the tile for a request.
