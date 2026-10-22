@@ -1503,6 +1503,7 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
             .min_size = .{ 1, 1 },
             .scale = 2,
         };
+        for ([_][]const u8{ "xdg_wm_base", "wp_presentation", "wp_fifo_manager_v1" }, 1..) |name, id| wl_win.globals.add(@intCast(id), name, 1);
         wl_win.updateExtensions();
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 1, Probe{ .out = &info, .win = &win_info });
@@ -1515,10 +1516,10 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
         try testing.expect(win_info.frame_sync.presentation_time);
         try testing.expect(win_info.frame_sync.fifo);
         try testing.expect(!win_info.frame_sync.timed_presentation);
-        try testing.expect(win_info.hasWaylandExtension("xdg_wm_base"));
-        try testing.expect(win_info.hasWaylandExtension("wp_presentation"));
-        try testing.expect(win_info.hasWaylandExtension("wp_fifo_manager_v1"));
-        try testing.expect(!win_info.hasWaylandExtension("wp_commit_timing_manager_v1"));
+        try testing.expect(info.hasWaylandExtension("xdg_wm_base"));
+        try testing.expect(info.hasWaylandExtension("wp_presentation"));
+        try testing.expect(info.hasWaylandExtension("wp_fifo_manager_v1"));
+        try testing.expect(!info.hasWaylandExtension("wp_commit_timing_manager_v1"));
         try testing.expectEqual(expected_renderer, info.renderer);
         try testing.expectEqual([2]u32{ 800, 600 }, win_info.logical_size);
         try testing.expectEqual([2]u32{ 1600, 1200 }, win_info.physical_size);

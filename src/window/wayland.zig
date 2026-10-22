@@ -753,6 +753,7 @@ pub const WaylandWindow = struct {
         return @as(f32, @floatFromInt(std.time.ns_per_s)) / @as(f32, @floatFromInt(w.refresh_ns));
     }
 
+    /// The extensions the compositor offers that kete can use.
     pub fn waylandExtensions(w: *const WaylandWindow) []const []const u8 {
         return w.extensions_buf[0..w.extensions_len];
     }
@@ -1090,50 +1091,27 @@ pub const WaylandWindow = struct {
         return w;
     }
 
+    /// The extensions kete uses when the compositor has them.
+    const known_extensions = [_][]const u8{
+        p.xdg_wm_base.name,
+        p.zwp_linux_dmabuf_v1.name,
+        p.wp_linux_drm_syncobj_manager_v1.name,
+        p.wp_presentation.name,
+        p.wp_fifo_manager_v1.name,
+        p.wp_commit_timing_manager_v1.name,
+        p.zxdg_decoration_manager_v1.name,
+        p.wp_cursor_shape_manager_v1.name,
+        p.zwp_text_input_manager_v3.name,
+        p.zwp_pointer_constraints_v1.name,
+        p.zwp_relative_pointer_manager_v1.name,
+    };
+
+    /// Notes which of `known_extensions` the compositor announced.
     pub fn updateExtensions(w: *WaylandWindow) void {
         var n: usize = 0;
-        if (w.wm_base.id != 0) {
-            w.extensions_buf[n] = p.xdg_wm_base.name;
-            n += 1;
-        }
-        if (w.usingDmabuf()) {
-            w.extensions_buf[n] = p.zwp_linux_dmabuf_v1.name;
-            n += 1;
-        }
-        if (w.usingDrmSyncobj()) {
-            w.extensions_buf[n] = p.wp_linux_drm_syncobj_manager_v1.name;
-            n += 1;
-        }
-        if (w.presentation != null) {
-            w.extensions_buf[n] = p.wp_presentation.name;
-            n += 1;
-        }
-        if (w.fifo != null) {
-            w.extensions_buf[n] = p.wp_fifo_manager_v1.name;
-            n += 1;
-        }
-        if (w.commit_timer != null) {
-            w.extensions_buf[n] = p.wp_commit_timing_manager_v1.name;
-            n += 1;
-        }
-        if (w.decoration_manager != null) {
-            w.extensions_buf[n] = p.zxdg_decoration_manager_v1.name;
-            n += 1;
-        }
-        if (w.cursor_shape_manager != null) {
-            w.extensions_buf[n] = p.wp_cursor_shape_manager_v1.name;
-            n += 1;
-        }
-        if (w.text_input_manager != null) {
-            w.extensions_buf[n] = p.zwp_text_input_manager_v3.name;
-            n += 1;
-        }
-        if (w.pointer_constraints != null) {
-            w.extensions_buf[n] = p.zwp_pointer_constraints_v1.name;
-            n += 1;
-        }
-        if (w.relative_pointer_manager != null) {
-            w.extensions_buf[n] = p.zwp_relative_pointer_manager_v1.name;
+        for (known_extensions) |name| {
+            if (w.globals.find(name) == null) continue;
+            w.extensions_buf[n] = name;
             n += 1;
         }
         w.extensions_len = n;
@@ -3186,7 +3164,7 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
     }
 }
 
-test "WaylandWindow reports active Wayland extensions, synchronization protocols, and presentation refresh rate" {
+test "WaylandWindow reports the Wayland extensions offered, synchronization protocols, and presentation refresh rate" {
     var win: WaylandWindow = .{
         .gpa = std.testing.allocator,
         .conn = undefined,
@@ -3203,6 +3181,7 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
         .drm_syncobj_manager = .{ .id = 10 },
         .syncobj_surface = .{ .id = 11 },
     };
+    for ([_][]const u8{ p.xdg_wm_base.name, p.wp_presentation.name, p.wp_fifo_manager_v1.name, p.wp_commit_timing_manager_v1.name, p.wp_linux_drm_syncobj_manager_v1.name }, 1..) |name, id| win.globals.add(@intCast(id), name, 1);
     win.updateExtensions();
 
     try std.testing.expect(win.vsync);

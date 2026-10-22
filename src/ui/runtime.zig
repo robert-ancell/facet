@@ -595,6 +595,7 @@ pub const WindowUi = struct {
     pub fn backend(ui: *const WindowUi) widget.BackendInfo {
         return .{
             .platform = if (ui.win) |w| w.platform() else .headless,
+            .wayland_extensions = if (ui.win) |w| waylandExtensionsOf(w) else &.{},
             .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
             .keyboard = ui.keyboard,
         };
@@ -617,7 +618,6 @@ pub const WindowUi = struct {
             .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
             .frame_sync = if (ui.win) |w| w.frameSync() else .{},
             .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
-            .wayland_extensions = if (ui.win) |w| waylandExtensionsOf(w) else &.{},
             .decorations = ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },

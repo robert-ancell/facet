@@ -211,17 +211,22 @@ pub const Globals = struct {
         return null;
     }
 
-    fn event(ptr: ?*anyopaque, _: *Display, _: u32, opcode: u16, r: *wire.Reader) void {
-        const g: *Globals = @ptrCast(@alignCast(ptr.?));
-        if (opcode != protocol.wl_registry.event.global or g.len == g.list.len) return;
-        const name = r.uint() catch return;
-        const interface = (r.string() catch return) orelse return;
-        const version = r.uint() catch return;
-        if (interface.len > 64) return;
+    /// Notes a global the registry announced (`name` is its number).
+    pub fn add(g: *Globals, name: u32, interface: []const u8, version: u32) void {
+        if (g.len == g.list.len or interface.len > 64) return;
         var entry: Global = .{ .name = name, .interface = undefined, .interface_len = interface.len, .version = version };
         @memcpy(entry.interface[0..interface.len], interface);
         g.list[g.len] = entry;
         g.len += 1;
+    }
+
+    fn event(ptr: ?*anyopaque, _: *Display, _: u32, opcode: u16, r: *wire.Reader) void {
+        const g: *Globals = @ptrCast(@alignCast(ptr.?));
+        if (opcode != protocol.wl_registry.event.global) return;
+        const name = r.uint() catch return;
+        const interface = (r.string() catch return) orelse return;
+        const version = r.uint() catch return;
+        g.add(name, interface, version);
     }
 
     /// Gets the registry and waits for its globals. `g` must stay in place
