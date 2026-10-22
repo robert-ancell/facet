@@ -1,7 +1,7 @@
 //! MapView: a slippy map. The world, from a `MapSource`'s tiles (pictures,
 //! or shapes drawn in a `MapStyle`), dragged about and zoomed with the
 //! wheel (or a double click); flung, it carries on a little. Zoomed out,
-//! it is a globe (as the `projection` says), turned by dragging, that
+//! it is a globe (unless `show_globe` is off), turned by dragging, that
 //! becomes the flat map as it is zoomed in.
 //!
 //! Where it looks is a `MapPosition`: the app's (to move it, or show where it
@@ -86,8 +86,9 @@ pub const MapView = struct {
     position: ?*MapPosition = null,
     /// Where its own position starts, when it is not given the app's.
     initial: MapPosition = .{},
-    /// How the world is shown: as a globe when zoomed out, or flat.
-    projection: MapProjection = .globe,
+    /// Whether the world is a globe when zoomed far out (it becomes the flat
+    /// map as it is zoomed in), or the flat map at every zoom.
+    show_globe: bool = true,
     /// The furthest out it can be zoomed.
     min_zoom: f64 = 0,
     /// The furthest in it can be zoomed.
@@ -126,6 +127,10 @@ pub const MapView = struct {
         velocity: [2]f64 = .{ 0, 0 },
         last_ns: u64 = 0,
     };
+
+    fn projectionOf(self: *const MapView) MapProjection {
+        return if (self.show_globe) .globe else .flat;
+    }
 
     fn positionOf(self: *const MapView, st: *State) *MapPosition {
         if (self.position) |c| return c;
@@ -166,9 +171,9 @@ pub const MapView = struct {
         };
         if (delta) |d| {
             if (!k.pressed) return true;
-            const place = View.init(cam.*, size(n), self.projection).unproject(c) orelse return true;
+            const place = View.init(cam.*, size(n), self.projectionOf()).unproject(c) orelse return true;
             // What is that way comes to the middle.
-            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] - d[0], c[1] - d[1] }));
+            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projectionOf(), place, .{ c[0] - d[0], c[1] - d[1] }));
             return true;
         }
         const by: f64 = switch (k.key) {
@@ -176,7 +181,7 @@ pub const MapView = struct {
             .minus, .keypad_minus => -1,
             else => return false,
         };
-        if (k.pressed) self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, c, by, self.min_zoom, self.max_zoom));
+        if (k.pressed) self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projectionOf(), c, by, self.min_zoom, self.max_zoom));
         return true;
     }
 
@@ -212,10 +217,10 @@ pub const MapView = struct {
                 const at: [2]f64 = .{ pr.pos[0], pr.pos[1] };
                 st.velocity = .{ 0, 0 };
                 if (pr.clicks == 2) {
-                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, at, 1, self.min_zoom, self.max_zoom));
+                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projectionOf(), at, 1, self.min_zoom, self.max_zoom));
                     return true;
                 }
-                st.grab = View.init(cam.*, size(n), self.projection).unproject(at);
+                st.grab = View.init(cam.*, size(n), self.projectionOf()).unproject(at);
                 st.trail[0] = .{ .pos = at, .ns = n.ui.clockNs() };
                 st.trail_len = 1;
                 n.ui.needs_frame = true;
@@ -224,7 +229,7 @@ pub const MapView = struct {
             .motion => |pos| {
                 const place = st.grab orelse return false;
                 const at: [2]f64 = .{ pos[0], pos[1] };
-                self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, at));
+                self.moveTo(n, projection.moveTo(cam.*, size(n), self.projectionOf(), place, at));
                 if (st.trail_len == st.trail.len) {
                     std.mem.copyForwards(@TypeOf(st.trail[0]), st.trail[0 .. st.trail.len - 1], st.trail[1..]);
                     st.trail_len -= 1;
@@ -247,10 +252,10 @@ pub const MapView = struct {
                 if (sc.touch) {
                     // A finger: the map follows it.
                     const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
-                    const place = View.init(cam.*, size(n), self.projection).unproject(c) orelse return true;
-                    self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] - sc.dx, c[1] - sc.dy }));
+                    const place = View.init(cam.*, size(n), self.projectionOf()).unproject(c) orelse return true;
+                    self.moveTo(n, projection.moveTo(cam.*, size(n), self.projectionOf(), place, .{ c[0] - sc.dx, c[1] - sc.dy }));
                 } else {
-                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projection, .{ sc.pos[0], sc.pos[1] }, -sc.dy / 30, self.min_zoom, self.max_zoom));
+                    self.moveTo(n, projection.zoomAbout(cam.*, size(n), self.projectionOf(), .{ sc.pos[0], sc.pos[1] }, -sc.dy / 30, self.min_zoom, self.max_zoom));
                 }
                 return true;
             },
@@ -287,8 +292,8 @@ pub const MapView = struct {
         if (dt <= 0) return;
         const cam = self.positionOf(st);
         const c: [2]f64 = .{ n.size.w / 2, n.size.h / 2 };
-        if (View.init(cam.*, size(n), self.projection).unproject(c)) |place| {
-            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projection, place, .{ c[0] + st.velocity[0] * dt, c[1] + st.velocity[1] * dt }));
+        if (View.init(cam.*, size(n), self.projectionOf()).unproject(c)) |place| {
+            self.moveTo(n, projection.moveTo(cam.*, size(n), self.projectionOf(), place, .{ c[0] + st.velocity[0] * dt, c[1] + st.velocity[1] * dt }));
         }
         const k = @exp(-dt * 4);
         st.velocity = .{ st.velocity[0] * k, st.velocity[1] * k };
@@ -403,7 +408,7 @@ pub const MapView = struct {
         const st = n.state(State);
         const cam = self.positionOf(st).*;
         const t = n.theme();
-        const v = View.init(cam, size(n), self.projection);
+        const v = View.init(cam, size(n), self.projectionOf());
         const arena = n.ui.arena();
         const background = self.background orelse if (self.style) |s| s.background else t.surface_container;
         const old_clip = p.clipTo(.{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h });

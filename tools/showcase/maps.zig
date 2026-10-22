@@ -113,7 +113,7 @@ pub fn build(cx: *kete.BuildContext, s: *State) kete.Widget {
                         .source = source,
                         .style = style,
                         .position = &s.position,
-                        .projection = if (s.globe) .globe else .flat,
+                        .show_globe = s.globe,
                         .atmosphere = s.atmosphere,
                         .night = night,
                         .max_zoom = max_zoom,

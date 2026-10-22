@@ -2200,14 +2200,14 @@ const MapTiles = struct {
 const MapApp = struct {
     tiles: *MapTiles,
     position: *ui.MapPosition,
-    projection: ui.MapProjection,
+    show_globe: bool,
     style: ?*const ui.MapStyle = null,
 
     pub fn build(self: *const MapApp, cx: *Context) Widget {
         return cx.make(ui.MapView{
             .source = .of(self.tiles, .{}),
             .position = self.position,
-            .projection = self.projection,
+            .show_globe = self.show_globe,
             .style = self.style,
             .space = .rgb(0x000000),
             .atmosphere = false,
@@ -2225,14 +2225,14 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     // Flat, at zoom 1 (the world 512 across), with 0° in the middle: the
     // western tiles (red) left of it, the eastern (blue) right.
     var position: ui.MapPosition = .{ .zoom = 1 };
-    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat });
+    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false });
     var img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xffff0000), img.at(100, 150));
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(300, 150));
     img.deinit();
     // Those not there yet: the one further out that is (red) instead.
     tiles.ready_to = 0;
-    u.frame(400, 300, 1, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat });
+    u.frame(400, 300, 1, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xffff0000), img.at(300, 150));
     img.deinit();
@@ -2241,7 +2241,7 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     // Zoomed out, a globe in space: at its middle the tile there, and
     // black around it.
     position = .{ .center = .{ .lon = 45 }, .zoom = 1 };
-    u.frame(400, 300, 2, MapApp{ .tiles = &tiles, .position = &position, .projection = .globe });
+    u.frame(400, 300, 2, MapApp{ .tiles = &tiles, .position = &position, .show_globe = true });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xff0000ff), img.at(200, 150));
     try testing.expectEqual(@as(u32, 0xff000000), img.at(5, 5));
@@ -2253,7 +2253,7 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     const shapes: ui.MapVectorTile = .{ .layers = &.{.{ .name = "land", .features = &land }} };
     tiles.shapes = &shapes;
     const style: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .source_layer = "land", .draw = .{ .fill = .rgb(0x00ff00) } }} };
-    u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .position = &position, .projection = .flat, .style = &style });
+    u.frame(400, 300, 3, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &style });
     img = try Image.init(u, 400, 300);
     try testing.expectEqual(@as(u32, 0xff00ff00), img.at(200, 150));
     img.deinit();
@@ -2267,7 +2267,7 @@ test "a map view is dragged and zoomed" {
         gfx.Image.init(&.{0xff0000ff}, 1, 1),
     } };
     var position: ui.MapPosition = .{ .center = .{ .lon = 45 }, .zoom = 1 };
-    const app: MapApp = .{ .tiles = &tiles, .position = &position, .projection = .flat };
+    const app: MapApp = .{ .tiles = &tiles, .position = &position, .show_globe = false };
     u.frame(400, 300, 0, app);
     // Dragged 50 pixels right: the world (512 across) moves with it.
     u.pointerMotion(.{ 200, 150 });
@@ -2288,7 +2288,7 @@ test "a map view is dragged and zoomed" {
 
     // Dragged on the globe, north and east: it turns, and the zoom stays.
     position = .{ .center = .{ .lat = 10, .lon = 20 }, .zoom = 2.5 };
-    const globe: MapApp = .{ .tiles = &tiles, .position = &position, .projection = .globe };
+    const globe: MapApp = .{ .tiles = &tiles, .position = &position, .show_globe = true };
     u.frame(400, 300, 2, globe);
     // (Away from the last press, so it is not a double click.)
     u.pointerMotion(.{ 220, 130 });

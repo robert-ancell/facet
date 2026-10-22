@@ -197,7 +197,6 @@ pub const MapTileId = map_view.MapTileId;
 pub const MapVectorTile = map_view.MapVectorTile;
 pub const MapStyle = map_view.MapStyle;
 pub const MapPosition = map_view.MapPosition;
-pub const MapProjection = map_view.MapProjection;
 pub const MapCoordinate = map_view.MapCoordinate;
 pub const MapTilePainter = map_view.MapTilePainter;
 pub const MapLabelStyle = map_view.MapLabelStyle;

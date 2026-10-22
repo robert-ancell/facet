@@ -119,7 +119,6 @@ pub const MapTileId = ui.MapTileId;
 pub const MapVectorTile = ui.MapVectorTile;
 pub const MapStyle = ui.MapStyle;
 pub const MapPosition = ui.MapPosition;
-pub const MapProjection = ui.MapProjection;
 pub const MapCoordinate = ui.MapCoordinate;
 pub const MapTilePainter = ui.MapTilePainter;
 pub const MapLabelStyle = ui.MapLabelStyle;
