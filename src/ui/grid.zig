@@ -30,6 +30,21 @@ const Context = widget.BuildContext;
 
 /// A grid of equal cells, as many to a row as fit its width, left to right and
 /// top to bottom, that makes only the items in view when it is in a scroll view.
+///
+/// ![The Grid example](images/Grid.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 260, .height = 140, .child = cx.make(facet.Grid.fixed(cx, &.{
+///     box(cx, "1", 0, 0),
+///     box(cx, "2", 0, 0),
+///     box(cx, "3", 0, 0),
+///     box(cx, "4", 0, 0),
+///     box(cx, "5", 0, 0),
+///     box(cx, "6", 0, 0),
+/// }, .{ .w = 80, .h = 60 }, 8)) });
+/// ```
 pub const Grid = struct {
     /// How many items there are.
     count: usize,

@@ -22,6 +22,15 @@ const target = control.target;
 /// A checkbox on its own: Material 3 leaves its label to the text beside
 /// it (`CheckboxRow` has one), so name it for assistive technologies with
 /// `Accessible`.
+///
+/// ![The Checkbox example](images/Checkbox.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     facet.Checkbox{ .value = true, .on_changed = .of(state, State.setOn) },
+///     facet.Checkbox{ .value = false, .on_changed = .of(state, State.setOn) },
+/// }) });
+/// ```
 pub const Checkbox = struct {
     /// Whether it is checked. The app holds it: the checkbox reports a
     /// change through `on_changed` and shows the new value from the next
@@ -48,6 +57,12 @@ pub const Checkbox = struct {
 };
 
 /// A checkbox with its label beside it: pressing either toggles it.
+///
+/// ![The CheckboxRow example](images/CheckboxRow.png)
+///
+/// ```zig
+/// return cx.make(facet.CheckboxRow{ .value = true, .label = "Send me updates", .on_changed = .of(state, State.setOn) });
+/// ```
 pub const CheckboxRow = struct {
     /// Whether it is checked (see `Checkbox.value`).
     value: bool,

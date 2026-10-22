@@ -29,6 +29,15 @@ const Size = geometry.Size;
 
 /// Material 3's text field: one line of text to edit, with a placeholder, a
 /// selection, copy and paste.
+///
+/// ![The TextField example](images/TextField.png)
+///
+/// ```zig
+/// return cx.make(facet.Column{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     facet.TextField{ .placeholder = "Search", .on_changed = .of(state, State.setText) },
+///     facet.TextField{ .initial = "Ada Lovelace", .on_changed = .of(state, State.setText) },
+/// }) });
+/// ```
 pub const TextField = struct {
     /// Shown, dimmed, while it is empty.
     placeholder: []const u8 = "",

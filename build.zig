@@ -368,7 +368,24 @@ pub fn build(b: *std.Build) void {
         .install_dir = .prefix,
         .install_subdir = "docs",
     });
-    b.step("docs", "Generate the API reference into zig-out/docs").dependOn(&install_docs.step);
+    // The images in it: each widget's example, drawn on the CPU.
+    const images_exe = b.addExecutable(.{
+        .name = "docs-images",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/docs_images.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "facet", .module = mods.facet }},
+        }),
+    });
+    const images_run = b.addRunArtifact(images_exe);
+    const install_images = b.addInstallDirectory(.{
+        .source_dir = images_run.addOutputDirectoryArg("images"),
+        .install_dir = .prefix,
+        .install_subdir = "docs/images",
+    });
+    install_images.step.dependOn(&install_docs.step);
+    b.step("docs", "Generate the API reference into zig-out/docs").dependOn(&install_images.step);
 
     for ([_]*std.Build.Module{
         mods.font,

@@ -34,6 +34,12 @@ const Size = geometry.Size;
 
 /// A picture (PNG, JPEG, GIF or WebP), loaded in the background and decoded in
 /// pure Zig, or pixels the app has made.
+///
+/// ![The Image example](images/Image.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 160, .height = 100, .child = cx.make(facet.Image{ .source = .{ .image = &photo } }) });
+/// ```
 pub const Image = struct {
     /// What to show: pixels in memory, a file, a URL, or an image file's bytes.
     source: Source,

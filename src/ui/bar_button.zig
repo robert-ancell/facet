@@ -17,6 +17,15 @@ const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
 /// A round button with an icon, highlighted under the pointer.
+///
+/// ![The BarButton example](images/BarButton.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
+///     facet.BarButton{ .icon = .minimize, .size = 34, .on_press = .of(state, State.save) },
+///     facet.BarButton{ .icon = .close, .size = 34, .on_press = .of(state, State.save) },
+/// }) });
+/// ```
 pub const BarButton = struct {
     /// Called when it is pressed.
     on_press: widget.Callback,

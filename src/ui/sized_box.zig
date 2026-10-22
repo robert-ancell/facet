@@ -10,6 +10,15 @@ const Node = widget.WidgetNode;
 
 /// A box of a given width and/or height (within its constraints); the
 /// child, if any, is made to fit it.
+///
+/// ![The SizedBox example](images/SizedBox.png)
+///
+/// ```zig
+/// return cx.make(facet.RoundedBox{
+///     .border_color = cx.theme().outline,
+///     .child = cx.make(facet.SizedBox{ .width = 160, .height = 64, .child = cx.make(facet.Align.center(cx.make(facet.Text{ .text = "160 by 64", .wrap = false }))) }),
+/// });
+/// ```
 pub const SizedBox = struct {
     /// Its width (the child's, or as big as allowed, if null).
     width: ?f32 = null,

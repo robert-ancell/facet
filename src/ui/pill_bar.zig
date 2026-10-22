@@ -23,6 +23,16 @@ const Callback = widget.Callback;
 
 /// A connected segmented pill bar: a `Row` of `PillButton` segments with a
 /// rounded outline around the bar and vertical dividers between segments.
+///
+/// ![The PillBar example](images/PillBar.png)
+///
+/// ```zig
+/// return cx.make(facet.PillBar{ .children = cx.makeAll(.{
+///     facet.PillButton{ .label = "Day", .selected = true, .first = true, .on_press = .of(state, State.save) },
+///     facet.PillButton{ .label = "Week", .selected = false, .on_press = .of(state, State.save) },
+///     facet.PillButton{ .label = "Month", .selected = false, .last = true, .on_press = .of(state, State.save) },
+/// }) });
+/// ```
 pub const PillBar = struct {
     /// The segments, from left to right (`PillButton`s).
     children: []const Widget,

@@ -50,6 +50,12 @@ pub const Matrix = struct {
 };
 
 /// Widget that renders a QR code for `text` with a quiet zone.
+///
+/// ![The QrCode example](images/QrCode.png)
+///
+/// ```zig
+/// return cx.make(facet.QrCode{ .text = "https://example.com", .size = 120 });
+/// ```
 pub const QrCode = struct {
     /// What the code says.
     text: []const u8,

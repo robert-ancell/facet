@@ -9,6 +9,20 @@ const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 
 /// Adds constraints of its own to the child's (within its parent's).
+///
+/// ![The ConstrainedBox example](images/ConstrainedBox.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.RoundedBox{
+///     .border_color = cx.theme().outline,
+///     .child = cx.make(facet.ConstrainedBox{
+///         .constraints = .{ .min_w = 200, .min_h = 56 },
+///         .child = box(cx, "Small", 60, 24),
+///     }),
+/// });
+/// ```
 pub const ConstrainedBox = struct {
     /// What it adds to the parent's.
     constraints: Constraints,

@@ -19,6 +19,16 @@ const Node = widget.WidgetNode;
 const Color = gfx.Color;
 
 /// Material 3's badge: a count, a label or a dot on the corner of a widget.
+///
+/// ![The Badge example](images/Badge.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 24, .children = cx.makeAll(.{
+///     facet.Badge{ .count = 3, .child = cx.make(facet.Icon{ .icon = .mail }) },
+///     facet.Badge{ .count = 128, .child = cx.make(facet.Icon{ .icon = .notifications }) },
+///     facet.Badge{ .label = "", .child = cx.make(facet.Icon{ .icon = .chat }) },
+/// }) });
+/// ```
 pub const Badge = struct {
     /// When set, shows the count (or "99+" above 99); when null and `label`
     /// is empty, shows a small 8px status dot.

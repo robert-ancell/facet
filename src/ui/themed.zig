@@ -15,6 +15,17 @@ const Widget = widget.Widget;
 const Context = widget.BuildContext;
 
 /// Gives the widgets below it a theme of their own (a changed `cx.theme()`, say).
+///
+/// ![The Themed example](images/Themed.png)
+///
+/// ```zig
+/// return cx.make(facet.Themed{ .theme = .dark, .child = cx.make(facet.Card{
+///     .child = cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///         facet.Text{ .text = "Dark inside", .wrap = false },
+///         facet.FilledButton{ .label = "Go", .on_press = .of(state, State.save) },
+///     }) }),
+/// }) });
+/// ```
 pub const Themed = struct {
     /// The theme the widgets below it are in.
     theme: Theme,

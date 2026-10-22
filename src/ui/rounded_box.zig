@@ -12,6 +12,17 @@ const Node = widget.WidgetNode;
 
 /// A rounded rectangle behind the child: filled, outlined, or both. It is
 /// the child's size, or as big as allowed without one.
+///
+/// ![The RoundedBox example](images/RoundedBox.png)
+///
+/// ```zig
+/// const t = cx.theme();
+/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     facet.RoundedBox{ .color = t.primary_container, .radius = .all(16), .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
+///     facet.RoundedBox{ .border_color = t.primary, .border_width = 2, .radius = .all(28), .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
+///     facet.RoundedBox{ .color = t.secondary_container, .radius = .{ .tl = 4, .tr = 24, .br = 4, .bl = 24 }, .child = cx.make(facet.SizedBox{ .width = 72, .height = 56 }) },
+/// }) });
+/// ```
 pub const RoundedBox = struct {
     /// The fill (none, if null).
     color: ?gfx.Color = null,

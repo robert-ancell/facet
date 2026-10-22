@@ -31,6 +31,12 @@ pub const icon_size = 18;
 
 /// Material 3's filled button: a primary pill button for the main action on
 /// a page or in a dialog.
+///
+/// ![The FilledButton example](images/FilledButton.png)
+///
+/// ```zig
+/// return cx.make(facet.FilledButton{ .label = "Save", .icon = .check, .on_press = .of(state, State.save) });
+/// ```
 pub const FilledButton = struct {
     /// The label (or give a `child` instead).
     label: []const u8 = "",
@@ -63,6 +69,12 @@ pub const FilledButton = struct {
 
 /// Material 3's filled tonal button: a secondary container pill button with
 /// medium emphasis between `FilledButton` and `OutlinedButton`.
+///
+/// ![The TonalButton example](images/TonalButton.png)
+///
+/// ```zig
+/// return cx.make(facet.TonalButton{ .label = "Add to cart", .icon = .shopping_cart, .on_press = .of(state, State.save) });
+/// ```
 pub const TonalButton = struct {
     /// The text of the button (or give a `child` instead).
     label: []const u8 = "",
@@ -95,6 +107,12 @@ pub const TonalButton = struct {
 
 /// Material 3's outlined button: a pill with an outline, for important
 /// actions that are not the main one.
+///
+/// ![The OutlinedButton example](images/OutlinedButton.png)
+///
+/// ```zig
+/// return cx.make(facet.OutlinedButton{ .label = "Cancel", .on_press = .of(state, State.save) });
+/// ```
 pub const OutlinedButton = struct {
     /// The text of the button (or give a `child` instead).
     label: []const u8 = "",
@@ -134,6 +152,12 @@ pub const OutlinedButton = struct {
 
 /// Material 3's text button: a low-emphasis button without an outline or
 /// background until hovered or pressed, for secondary dialog actions.
+///
+/// ![The TextButton example](images/TextButton.png)
+///
+/// ```zig
+/// return cx.make(facet.TextButton{ .label = "Learn more", .trailing_icon = .arrow_forward, .on_press = .of(state, State.save) });
+/// ```
 pub const TextButton = struct {
     /// The text of the button (or give a `child` instead).
     label: []const u8 = "",

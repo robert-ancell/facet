@@ -25,6 +25,15 @@ const Color = gfx.Color;
 /// A switch on its own: Material 3 leaves its label to the text beside it
 /// (`SwitchRow` has one), so name it for assistive technologies with
 /// `Accessible`.
+///
+/// ![The Switch example](images/Switch.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     facet.Switch{ .value = true, .on_changed = .of(state, State.setOn) },
+///     facet.Switch{ .value = false, .on_changed = .of(state, State.setOn) },
+/// }) });
+/// ```
 pub const Switch = struct {
     /// Whether it is on. The app holds it: the switch reports a change
     /// through `on_changed` and shows the new value from the next build.
@@ -56,6 +65,12 @@ pub const Switch = struct {
 };
 
 /// A switch with its label beside it: pressing either toggles it.
+///
+/// ![The SwitchRow example](images/SwitchRow.png)
+///
+/// ```zig
+/// return cx.make(facet.SwitchRow{ .value = true, .label = "Wi-Fi", .on_changed = .of(state, State.setOn) });
+/// ```
 pub const SwitchRow = struct {
     /// Whether it is on (see `Switch.value`).
     value: bool,

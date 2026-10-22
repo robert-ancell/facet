@@ -12,6 +12,17 @@ const Node = widget.WidgetNode;
 /// Places the child within itself. It is as big as allowed (or a
 /// multiple of the child's size, with the factors), or the child's size
 /// where unbounded.
+///
+/// ![The Align example](images/Align.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 240, .height = 120, .child = cx.make(facet.RoundedBox{
+///     .border_color = cx.theme().outline,
+///     .child = cx.make(facet.Align{ .alignment = .bottom_right, .child = box(cx, "Corner", 72, 36) }),
+/// }) });
+/// ```
 pub const Align = struct {
     alignment: Alignment = .center,
     width_factor: ?f32 = null,

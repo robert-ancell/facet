@@ -54,6 +54,22 @@ pub const CrossAxisAlignment = enum {
 };
 
 /// Children one after another, left to right.
+///
+/// ![The Row example](images/Row.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 320, .child = cx.make(facet.Row{
+///     .main_axis_alignment = .space_between,
+///     .cross_axis_alignment = .center,
+///     .children = cx.makeAll(.{
+///         box(cx, "A", 48, 48),
+///         box(cx, "B", 48, 80),
+///         box(cx, "C", 48, 32),
+///     }),
+/// }) });
+/// ```
 pub const Row = struct {
     /// The widgets, from left to right.
     children: []const Widget = &.{},
@@ -78,6 +94,22 @@ pub const Row = struct {
 };
 
 /// Children one after another, top to bottom.
+///
+/// ![The Column example](images/Column.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .height = 200, .child = cx.make(facet.Column{
+///     .main_axis_alignment = .space_between,
+///     .cross_axis_alignment = .start,
+///     .children = cx.makeAll(.{
+///         box(cx, "A", 80, 40),
+///         box(cx, "B", 120, 40),
+///         box(cx, "C", 60, 40),
+///     }),
+/// }) });
+/// ```
 pub const Column = struct {
     /// The widgets, from top to bottom.
     children: []const Widget = &.{},

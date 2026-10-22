@@ -26,6 +26,21 @@ const ValueCallback = widget.ValueCallback;
 
 /// Material 3's navigation rail: a column of destinations, one of them selected,
 /// in a narrow bar or an extended one.
+///
+/// ![The NavigationRail example](images/NavigationRail.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .height = 180, .child = cx.make(facet.NavigationRail{
+///     .items = &.{
+///         .{ .label = "Home", .icon = .home },
+///         .{ .label = "Inbox", .icon = .mail, .badge = 4 },
+///         .{ .label = "Settings", .icon = .settings },
+///     },
+///     .selected = 0,
+///     .on_select = .of(state, State.select),
+///     .width = 220,
+/// }) });
+/// ```
 pub const NavigationRail = struct {
     /// One destination of a `NavigationRail`.
     pub const Item = struct {

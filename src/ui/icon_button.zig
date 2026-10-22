@@ -19,6 +19,17 @@ const Callback = widget.Callback;
 const Color = gfx.Color;
 
 /// Material 3's icon button: a round button with only an icon.
+///
+/// ![The IconButton example](images/IconButton.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     facet.IconButton{ .icon = .favorite, .on_press = .of(state, State.save) },
+///     facet.IconButton{ .icon = .favorite, .variant = .filled, .on_press = .of(state, State.save) },
+///     facet.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) },
+///     facet.IconButton{ .icon = .favorite, .variant = .outlined, .selected = true, .on_press = .of(state, State.save) },
+/// }) });
+/// ```
 pub const IconButton = struct {
     /// Material 3's four kinds of icon button.
     pub const Variant = enum {

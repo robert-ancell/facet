@@ -11,6 +11,16 @@ const Widget = widget.Widget;
 const Context = widget.BuildContext;
 
 /// Material 3's divider: a thin line between content.
+///
+/// ![The Divider example](images/Divider.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.Column{ .fill = false, .spacing = 8, .children = cx.makeAll(.{
+///     facet.Text{ .text = "Above" },
+///     facet.Divider{},
+///     facet.Text{ .text = "Below" },
+/// }) }) });
+/// ```
 pub const Divider = struct {
     /// Which way it runs: across (a line between rows), or down.
     axis: Axis = .horizontal,

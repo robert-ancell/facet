@@ -37,6 +37,20 @@ pub const Tab = struct {
 };
 
 /// Material 3's tab bar: tabs along a bar, one of them selected.
+///
+/// ![The TabBar example](images/TabBar.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 480, .child = cx.make(facet.TabBar{
+///     .tabs = &.{
+///         .{ .label = "Flights", .icon = .flight },
+///         .{ .label = "Hotels", .icon = .hotel, .badge = 2 },
+///         .{ .label = "Cars", .icon = .directions_car },
+///     },
+///     .selected = 1,
+///     .on_select = .of(state, State.select),
+/// }) });
+/// ```
 pub const TabBar = struct {
     /// The tabs, from left to right.
     tabs: []const Tab,

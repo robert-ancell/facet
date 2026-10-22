@@ -19,6 +19,15 @@ const Event = widget.Event;
 
 /// Material 3's plain tooltip: a short hint shown while the pointer is over
 /// the child.
+///
+/// ![The Tooltip example](images/Tooltip.png)
+///
+/// ```zig
+/// return cx.make(facet.Tooltip{
+///     .text = "Add to favourites",
+///     .child = cx.make(facet.IconButton{ .icon = .favorite, .variant = .tonal, .on_press = .of(state, State.save) }),
+/// });
+/// ```
 pub const Tooltip = struct {
     /// What the tooltip says.
     text: []const u8,

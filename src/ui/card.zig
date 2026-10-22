@@ -16,6 +16,16 @@ const Callback = widget.Callback;
 const Color = gfx.Color;
 
 /// Material 3's card: a rounded surface that holds content.
+///
+/// ![The Card example](images/Card.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 12, .children = cx.makeAll(.{
+///     facet.Card{ .child = cx.make(facet.Text{ .text = "Filled", .wrap = false }) },
+///     facet.Card{ .variant = .elevated, .child = cx.make(facet.Text{ .text = "Elevated", .wrap = false }) },
+///     facet.Card{ .variant = .outlined, .child = cx.make(facet.Text{ .text = "Outlined", .wrap = false }) },
+/// }) });
+/// ```
 pub const Card = struct {
     /// Material 3's three kinds of card.
     pub const Variant = enum {

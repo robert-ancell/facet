@@ -20,6 +20,16 @@ const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
 /// A Material icon.
+///
+/// ![The Icon example](images/Icon.png)
+///
+/// ```zig
+/// return cx.make(facet.Row{ .fill = false, .spacing = 16, .children = cx.makeAll(.{
+///     facet.Icon{ .icon = .home },
+///     facet.Icon{ .icon = .settings, .size = 32 },
+///     facet.Icon{ .icon = .favorite, .size = 40, .color = cx.theme().primary },
+/// }) });
+/// ```
 pub const Icon = struct {
     /// Which icon.
     icon: icons.IconName,

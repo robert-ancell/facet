@@ -204,6 +204,12 @@ const Line = struct { start: usize, end: usize };
 
 /// Several lines of text to edit, wrapped to its width and scrolled, with a
 /// selection, copy and paste and, optionally, colours (see `highlighter`).
+///
+/// ![The TextArea example](images/TextArea.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 320, .height = 96, .child = cx.make(facet.TextArea{ .doc = &document }) });
+/// ```
 pub const TextArea = struct {
     /// The text being edited (the app's: it is kept as long as it is edited).
     doc: *Document,

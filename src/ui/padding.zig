@@ -10,6 +10,17 @@ const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 
 /// Space around the child.
+///
+/// ![The Padding example](images/Padding.png)
+///
+/// (`box` stands for any widget: a labelled rounded rectangle.)
+///
+/// ```zig
+/// return cx.make(facet.RoundedBox{
+///     .border_color = cx.theme().outline,
+///     .child = cx.make(facet.Padding{ .padding = .symmetric(32, 12), .child = box(cx, "Padded", 80, 32) }),
+/// });
+/// ```
 pub const Padding = struct {
     /// The space on each side.
     padding: Insets,

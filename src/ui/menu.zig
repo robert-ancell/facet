@@ -36,6 +36,8 @@ const Event = widget.Event;
 
 /// One item of a `Menu`: an action, a choice that is checked or not, a
 /// divider, or a door to a submenu.
+///
+/// ![A menu of items](images/Menu.png)
 pub const Item = struct {
     /// The text of the item.
     label: []const u8 = "",
@@ -118,6 +120,23 @@ pub fn cloneItems(a: std.mem.Allocator, items: []const Item) std.mem.Allocator.E
 }
 
 /// The menu's items, on a surface, with the submenus open from them.
+///
+/// ![The Menu example](images/Menu.png)
+///
+/// ```zig
+/// // In a callback (with `state.anchor = cx.anchor()` taken while building):
+/// state.anchor.openMenu(&.{
+///     .{ .label = "Cut", .leading_icon = .content_cut, .shortcut = "Ctrl+X", .on_press = .of(state, State.save) },
+///     .{ .label = "Copy", .leading_icon = .content_copy, .shortcut = "Ctrl+C", .on_press = .of(state, State.save) },
+///     .{ .label = "Paste", .leading_icon = .content_paste, .shortcut = "Ctrl+V" },
+///     facet.MenuItem.divider,
+///     .{ .label = "Sort by", .leading_icon = .sort, .submenu = &.{
+///         .{ .label = "Name", .kind = .radio, .checked = true, .on_press = .of(state, State.save) },
+///         .{ .label = "Date", .kind = .radio, .on_press = .of(state, State.save) },
+///     } },
+///     .{ .label = "Delete", .leading_icon = .delete, .destructive = true, .on_press = .of(state, State.save) },
+/// });
+/// ```
 pub const Menu = struct {
     /// The menu's items, from top to bottom.
     items: []const Item,

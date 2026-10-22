@@ -26,6 +26,21 @@ const Callback = widget.Callback;
 
 /// Material 3's dialog: a card over a dimmed scrim, to ask or tell the user
 /// something before going on.
+///
+/// ![The Dialog example](images/Dialog.png)
+///
+/// ```zig
+/// return cx.make(facet.Dialog{
+///     .icon = .delete,
+///     .title = "Delete the file?",
+///     .description = "It will be removed from every device.",
+///     .confirm_label = "Delete",
+///     .on_confirm = .of(state, State.save),
+///     .dismiss_label = "Cancel",
+///     .on_dismiss = .of(state, State.save),
+///     .child = cx.make(facet.SizedBox{}),
+/// });
+/// ```
 pub const Dialog = struct {
     /// Whether the dialog is shown over its `child`.
     open: bool = true,

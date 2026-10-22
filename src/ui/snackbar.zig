@@ -24,6 +24,17 @@ const Callback = widget.Callback;
 
 /// Material 3's snackbar: a short message at the bottom of the screen, with
 /// an optional action.
+///
+/// ![The Snackbar example](images/Snackbar.png)
+///
+/// ```zig
+/// return cx.make(facet.Snackbar{
+///     .message = "Message archived",
+///     .action_label = "Undo",
+///     .on_action = .of(state, State.save),
+///     .on_dismiss = .of(state, State.save),
+/// });
+/// ```
 pub const Snackbar = struct {
     /// What it says.
     message: []const u8,

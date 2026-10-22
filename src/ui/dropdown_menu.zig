@@ -17,6 +17,21 @@ const Node = widget.WidgetNode;
 const ValueCallback = widget.ValueCallback;
 
 /// Material 3's dropdown: a button that opens a menu of choices, by index.
+///
+/// ![The DropdownMenu example](images/DropdownMenu.png)
+///
+/// ```zig
+/// return cx.make(facet.DropdownMenu{
+///     .options = &.{
+///         .{ .label = "Light", .leading_icon = .light_mode },
+///         .{ .label = "Dark", .leading_icon = .dark_mode },
+///         .{ .label = "Automatic", .leading_icon = .settings },
+///     },
+///     .selected = 1,
+///     .on_selected = .of(state, State.select),
+///     .width = 180,
+/// });
+/// ```
 pub const DropdownMenu = struct {
     /// The choices, as menu items: their `label`, `leading_icon`,
     /// `trailing_icon`, `shortcut`, `enabled`, `destructive` and `kind`
@@ -123,6 +138,21 @@ pub const DropdownMenu = struct {
 };
 
 /// A typed dropdown selector for a value of type `T` (such as an enum).
+///
+/// ![The Select example](images/Select.png)
+///
+/// ```zig
+/// return cx.make(facet.Select(Quality){
+///     .options = &.{
+///         .labeled(.low, "Low"),
+///         .labeled(.medium, "Medium"),
+///         .labeled(.high, "High"),
+///     },
+///     .value = .medium,
+///     .on_changed = .of(state, State.setQuality),
+///     .width = 180,
+/// });
+/// ```
 pub fn Select(comptime T: type) type {
     return struct {
         /// One choice: the value it stands for, and how it shows in the menu.

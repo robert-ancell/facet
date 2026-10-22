@@ -25,6 +25,15 @@ const Color = gfx.Color;
 
 /// Material 3's list item: a row with a headline and, optionally, supporting
 /// text and things at its start and end.
+///
+/// ![The ListItem example](images/ListItem.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 320, .child = cx.make(facet.Column{ .fill = false, .children = cx.makeAll(.{
+///     facet.ListItem{ .headline = "Photos", .supporting_text = "Jan 9, 2026", .leading_icon = .image, .trailing_icon = .chevron_right, .on_press = .of(state, State.save) },
+///     facet.ListItem{ .headline = "Documents", .supporting_text = "Updated yesterday", .leading_icon = .folder, .trailing_text = "12 items", .selected = true, .on_press = .of(state, State.save) },
+/// }) }) });
+/// ```
 pub const ListItem = struct {
     /// The main text.
     headline: []const u8,

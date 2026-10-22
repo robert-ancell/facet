@@ -19,6 +19,12 @@ const Painter = painter.Painter;
 
 /// Material 3's slider: a handle on a track, that is dragged (or moved with the
 /// arrow keys) to choose a value from `min` to `max`.
+///
+/// ![The Slider example](images/Slider.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 240, .child = cx.make(facet.Slider{ .value = 0.4, .on_changed = .of(state, State.setAmount) }) });
+/// ```
 pub const Slider = struct {
     /// Where the handle is, from `min` to `max`. The app holds it: the
     /// slider reports a change through `on_changed` and shows the new value

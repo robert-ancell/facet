@@ -12,6 +12,12 @@ const Color = gfx.Color;
 /// Material's indeterminate circular progress indicator: an arc that turns
 /// as it grows and shrinks, for work that takes a while. It asks for frames
 /// while it is shown.
+///
+/// ![The Spinner example](images/Spinner.png)
+///
+/// ```zig
+/// return cx.make(facet.Spinner{ .size = 40 });
+/// ```
 pub const Spinner = struct {
     /// Its diameter.
     size: f32 = 48,

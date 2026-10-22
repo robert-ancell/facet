@@ -24,6 +24,23 @@ const Event = widget.Event;
 const Painter = painter_mod.Painter;
 
 /// Scrolls its child, with a bar, by the wheel, touch or keyboard.
+///
+/// ![The ScrollView example](images/ScrollView.png)
+///
+/// ```zig
+/// return cx.make(facet.SizedBox{ .width = 240, .height = 140, .child = cx.make(facet.ScrollView{ .child = cx.make(facet.Column{
+///     .fill = false,
+///     .cross_axis_alignment = .stretch,
+///     .children = cx.makeAll(.{
+///         facet.ListItem{ .headline = "One" },
+///         facet.ListItem{ .headline = "Two" },
+///         facet.ListItem{ .headline = "Three" },
+///         facet.ListItem{ .headline = "Four" },
+///         facet.ListItem{ .headline = "Five" },
+///         facet.ListItem{ .headline = "Six" },
+///     }),
+/// }) }) });
+/// ```
 pub const ScrollView = struct {
     /// The widget that scrolls (as tall as it needs to be).
     child: Widget,
