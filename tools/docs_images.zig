@@ -24,7 +24,7 @@ pub fn main(init: std.process.Init) !void {
     var out = try std.Io.Dir.cwd().createDirPathOpen(io, out_path, .{});
     defer out.close(io);
 
-    const u = try facet.WindowUi.createDefault(gpa, io);
+    const u = try facet.ui.WindowUi.createDefault(gpa, io);
     defer u.destroy();
     u.theme = facet.Theme.light;
     u.scale = scale;

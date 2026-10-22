@@ -8,7 +8,7 @@ const facet = @import("facet");
 
 const Widget = facet.Widget;
 const BuildContext = facet.BuildContext;
-const Ui = facet.WindowUi;
+const Ui = facet.ui.WindowUi;
 
 /// What the examples' callbacks are: they do nothing.
 const State = struct {

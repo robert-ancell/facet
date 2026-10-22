@@ -237,7 +237,7 @@ pub fn main(init: std.process.Init) !void {
 
 test "every page fits the smallest window and lays out without overflowing, at it and a large size, in both themes" {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
+    const u = try facet.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
     defer notes.deinit();
@@ -282,7 +282,7 @@ test {
 
 test "what is drawn again on every page matches drawing it all, in buffers given back in any order" {
     const fira = try facet.font.Font.init(facet.font.default_font_data);
-    const u = try facet.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
+    const u = try facet.ui.WindowUi.create(std.testing.allocator, std.testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.shared.software_renderer.renderer(), false);
     var notes = try facet.TextDocument.init(std.testing.allocator, text.initial_notes);
