@@ -2265,6 +2265,56 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
     img.deinit();
 }
 
+test "a map view draws its vector tiles' pictures, keeps them as it moves, and draws them again in a new style" {
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
+    defer u.destroy();
+    // Every tile: a red line down its west edge, 6 wide (half of it in the
+    // tile to the west).
+    const edge = [_]ui.MapSource.VectorTile.Point{ .{ 0, 0 }, .{ 0, 4096 } };
+    const lines = [_]ui.MapSource.VectorTile.Feature{.{ .geometry = .{ .lines = &.{&edge} } }};
+    const shapes: ui.MapSource.VectorTile = .{ .layers = &.{.{ .name = "edges", .features = &lines }} };
+    var tiles: MapTiles = .{ .pictures = undefined, .shapes = &shapes };
+    const red_lines: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .draw = .{ .line = .{ .color = .rgb(0xff0000), .width = 6 } } }} };
+    // Flat at zoom 1: the world 512 across, 0° (the tiles' edge) in the
+    // middle.
+    var position: ui.MapPosition = .{ .zoom = 1 };
+    u.frame(400, 300, 0, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &red_lines });
+    const map = find(u.root.?, ui.MapView).?;
+    const pics = map.state(ui.MapView.State).pictures.?;
+    // Those there was no time for in a frame come in the next ones (drawn
+    // as shapes meanwhile).
+    var frame_no: u64 = 1;
+    while (pics.entries.count() < 4 and frame_no < 20) : (frame_no += 1) {
+        try testing.expect(u.needs_frame);
+        u.frame(400, 300, frame_no, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &red_lines });
+    }
+    try testing.expectEqual(@as(u32, 4), pics.entries.count());
+    // The line on both sides of the edge: the west tile's picture has the
+    // half of it in it from the east tile.
+    var img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xffff0000), img.at(198, 150));
+    try testing.expectEqual(@as(u32, 0xffff0000), img.at(201, 150));
+    try testing.expectEqual(@as(u32, 0xffffffff), img.at(190, 150));
+    img.deinit();
+
+    // Moved a little: the same pictures.
+    const before = pics.entries.get(.{ .z = 1, .x = 0, .y = 0 }).?;
+    position.center.lon = 10;
+    u.frame(400, 300, frame_no, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &red_lines });
+    try testing.expectEqual(before, pics.entries.get(.{ .z = 1, .x = 0, .y = 0 }).?);
+
+    // In another style: drawn again, in it.
+    const blue_lines: ui.MapStyle = .{ .background = .rgb(0xffffff), .layers = &.{.{ .draw = .{ .line = .{ .color = .rgb(0x0000ff), .width = 6 } } }} };
+    position.center.lon = 0;
+    while (frame_no < 40) : (frame_no += 1) {
+        u.frame(400, 300, frame_no + 1, MapApp{ .tiles = &tiles, .position = &position, .show_globe = false, .style = &blue_lines });
+        if (!u.needs_frame) break;
+    }
+    img = try Image.init(u, 400, 300);
+    try testing.expectEqual(@as(u32, 0xff0000ff), img.at(198, 150));
+    img.deinit();
+}
+
 test "a map view without a handler for moves is not moved" {
     const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();

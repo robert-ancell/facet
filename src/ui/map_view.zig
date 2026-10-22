@@ -16,7 +16,9 @@
 //!
 //! Tiles that are not there yet are drawn from the nearest level out
 //! that is (bigger, and blurrier); picture tiles load in the background,
-//! as an `Image`'s do.
+//! as an `Image`'s do. Vector tiles are drawn once into pictures of their
+//! own (see `map/pictures.zig`), which later frames draw, with the labels
+//! drawn over them.
 
 const focus = @import("focus.zig");
 const a11y = @import("accessibility.zig");
@@ -29,6 +31,7 @@ const projection = @import("map/projection.zig");
 const tiles = @import("map/tiles.zig");
 const style_mod = @import("map/style.zig");
 const tile_painter = @import("map/tile_painter.zig");
+const pictures_mod = @import("map/pictures.zig");
 
 const Size = geometry.Size;
 const Point = geometry.Point;
@@ -130,6 +133,24 @@ pub const MapView = struct {
         /// A fling's speed, in pixels a second.
         velocity: [2]f64 = .{ 0, 0 },
         last_ns: u64 = 0,
+        /// The vector tiles' pictures (made when first wanted).
+        pictures: ?*pictures_mod.Pictures = null,
+
+        pub fn deinit(st: *State) void {
+            const p = st.pictures orelse return;
+            const gpa = p.gpa;
+            p.deinit();
+            gpa.destroy(p);
+        }
+
+        fn picturesOf(st: *State, gpa: std.mem.Allocator) ?*pictures_mod.Pictures {
+            if (st.pictures == null) {
+                const p = gpa.create(pictures_mod.Pictures) catch return null;
+                p.* = .init(gpa);
+                st.pictures = p;
+            }
+            return st.pictures;
+        }
     };
 
     fn projectionOf(self: *const MapView) MapProjection {
@@ -456,19 +477,57 @@ pub const MapView = struct {
         // drawn for several further in).
         for (drawn.items) |d| if (d.what == .image) drawImageTile(c, &v, d, arena);
         var labels: tile_painter.Labels = .{ .arena = arena, .area = whole, .font = n.ui.font, .atlas = n.ui.atlas };
-        const Shapes = struct { tp: MapTilePainter, tile: *const MapVectorTile };
+        const plain = MapStyle.plainLayers(t);
+        const layers = if (self.style) |s| s.layers else &plain;
+        // Vector tiles' pictures, where they will do (or there is time to
+        // draw them): their shapes are not drawn, only their labels.
+        const pictures = n.state(State).picturesOf(n.ui.gpa);
+        if (pictures) |pics| pics.beginFrame(n.ui.frame_no, pictures_mod.styleHash(background, layers));
+        const Near = struct {
+            view: *const MapView,
+            node: *Node,
+            fn get(ctx: *anyopaque, other: MapTileId) ?*const MapVectorTile {
+                const near: *@This() = @ptrCast(@alignCast(ctx));
+                return switch (near.view.source.tile(.{ .id = other, .waker = near.node.ui.waker() })) {
+                    .vector => |vt| vt,
+                    else => null,
+                };
+            }
+        };
+        var near: Near = .{ .view = self, .node = n };
+        const Shapes = struct { tp: MapTilePainter, tile: *const MapVectorTile, pictured: bool };
         var shapes: std.ArrayList(Shapes) = .empty;
         for (drawn.items, 0..) |d, i| {
             const vt = switch (d.what) {
                 .vector => |vt| vt,
                 .image => continue,
             };
+            const pictured = if (pictures) |pics| blk: {
+                const shown_size = @round(256 * std.math.exp2(cam.zoom - @as(f64, @floatFromInt(d.from.z))));
+                if (!(shown_size < 1e5)) break :blk false;
+                const got = pics.get(.{
+                    .id = d.from,
+                    .tile = vt,
+                    .size = @intFromFloat(shown_size),
+                    .scale = @max(n.ui.scale, 1),
+                    .zoom = cam.zoom,
+                    .background = background,
+                    .layers = layers,
+                    .nearby = .{ .ctx = &near, .get = Near.get },
+                    .atlas = n.ui.atlas,
+                    .io = n.ui.io,
+                });
+                if (got.more) n.ui.needs_frame = true;
+                const img = got.image orelse break :blk false;
+                drawImageTile(c, &v, .{ .shown = d.shown, .from = d.from, .what = .{ .image = img } }, arena);
+                break :blk true;
+            } else false;
             const dup = for (drawn.items[0..i]) |e| {
                 if (std.meta.eql(e.from, d.from) and e.shown.copy == d.shown.copy and e.what == .vector) break true;
             } else false;
             if (dup) continue;
             const span = 1 / @as(f64, @floatFromInt(d.from.count()));
-            shapes.append(arena, .{ .tile = vt, .tp = .{
+            shapes.append(arena, .{ .tile = vt, .pictured = pictured, .tp = .{
                 .canvas = c,
                 .arena = arena,
                 .view = &v,
@@ -480,11 +539,10 @@ pub const MapView = struct {
                 .labels = &labels,
             } }) catch break;
         }
-        // Each layer of the style across all the tiles before the next (so
-        // a tile's fills do not cover the lines of those before it), then
-        // night over them, and labels last, over everything.
-        const plain = MapStyle.plainLayers(t);
-        const layers = if (self.style) |s| s.layers else &plain;
+        // Each layer of the style across all the tiles not in pictures
+        // before the next (so a tile's fills do not cover the lines of
+        // those before it), then night over them, and labels last, over
+        // everything.
         for ([_]bool{ false, true }) |label_pass| {
             if (label_pass) if (self.night) |when| {
                 var night = MapNight.at(when);
@@ -493,7 +551,7 @@ pub const MapView = struct {
             };
             for (layers) |*l| {
                 if ((l.draw == .label) != label_pass) continue;
-                for (shapes.items) |*sh| MapStyle.drawLayer(l, &sh.tp, sh.tile);
+                for (shapes.items) |*sh| if (label_pass or !sh.pictured) MapStyle.drawLayer(l, &sh.tp, sh.tile);
             }
         }
 
