@@ -26,7 +26,20 @@ pub const MapLabelStyle = struct {
     /// And how much further (in pixels).
     offset: [2]f32 = .{ 0, 0 },
 
-    pub const Anchor = enum { center, left, right, top, bottom };
+    /// Which part of the text is at the point it is drawn from (and so where
+    /// the rest of it goes).
+    pub const Anchor = enum {
+        /// The middle of the text, so it is all around the point.
+        center,
+        /// The left end of the text, so it runs right from the point.
+        left,
+        /// The right end of the text, so it runs left from the point.
+        right,
+        /// The top of the text, so it is below the point.
+        top,
+        /// The bottom of the text, so it is above the point.
+        bottom,
+    };
 };
 
 /// The labels drawn in a frame of a map, so that they do not overlap: a

@@ -111,8 +111,13 @@ pub const Radii = struct {
     }
 };
 
+/// What a `Batch` of a canvas's drawing is, which says how a renderer
+/// draws it.
 pub const BatchKind = enum {
+    /// The corners of rounded shapes, smoothed by their distance from the
+    /// edge.
     shape,
+    /// Solid triangles, blended with what is behind them.
     solid,
     /// Solid triangles opaque all over, drawn without blending.
     @"opaque",

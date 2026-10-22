@@ -20,10 +20,17 @@ const Callback = widget.Callback;
 const Color = gfx.Color;
 
 pub const IconButton = struct {
+    /// Material 3's four kinds of icon button.
     pub const Variant = enum {
+        /// Only the icon, which takes the primary colour when selected.
         standard,
+        /// On a circle of the primary colour.
         filled,
+        /// On a circle of the secondary container colour, which becomes the
+        /// primary container colour when selected.
         tonal,
+        /// With a 1 pixel outline, which is filled with the primary colour
+        /// when selected.
         outlined,
     };
 

@@ -24,6 +24,7 @@ pub const MapCamera = struct {
     zoom: f64 = 2,
 };
 
+/// How a map view shows the world.
 pub const MapProjection = enum {
     /// A globe zoomed out (up to `globe_until`, or further in if the
     /// globe does not cover the view by then), becoming the flat map over

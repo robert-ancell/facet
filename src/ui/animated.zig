@@ -34,6 +34,7 @@ pub const AnimatedWidget = struct {
     /// Waits this long before starting (with `t` = 0 meanwhile).
     delay_ns: u64 = 0,
 
+    /// Whether an animation runs once, or over and over.
     pub const Repeat = enum {
         /// Once, ending at `t` = 1.
         once,

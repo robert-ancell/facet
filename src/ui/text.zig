@@ -24,7 +24,15 @@ pub const TextStyle = struct {
     font: ?*const font.Font = null,
 };
 
-pub const TextAlign = enum { start, center, end };
+/// Where each line of a `Text` sits in the width it has.
+pub const TextAlign = enum {
+    /// At the start of the width (the left).
+    start,
+    /// In the middle of it.
+    center,
+    /// At the end of it (the right).
+    end,
+};
 
 pub const Line = struct {
     text: []const u8,

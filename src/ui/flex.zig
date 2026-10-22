@@ -11,8 +11,49 @@ const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Node = widget.Node;
 
-pub const MainAxisAlignment = enum { start, center, end, space_between, space_around, space_evenly };
-pub const CrossAxisAlignment = enum { start, center, end, stretch };
+/// Where a `Row` or `Column` puts its children along its main axis (left to
+/// right for a `Row`, top to bottom for a `Column`) when they take up less
+/// room than it has. The `spacing` between them is kept, and the room left
+/// over is placed as this says. With too little room, the children start
+/// at the start and overflow at the end, whatever this is.
+pub const MainAxisAlignment = enum {
+    /// Together at the start.
+    start,
+    /// Together in the middle.
+    center,
+    /// Together at the end.
+    end,
+    /// Spread out, the first at the start and the last at the end, with the
+    /// room left over shared equally between each two (a single child is at
+    /// the start).
+    space_between,
+    /// Spread out, with the room left over shared equally around each
+    /// child: half a share before the first and after the last, a whole
+    /// one between each two.
+    space_around,
+    /// Spread out, with the room left over shared in equal parts before the
+    /// first child, between each two, and after the last.
+    space_evenly,
+};
+
+/// Where a `Row` or `Column` puts each child across its cross axis (top to
+/// bottom for a `Row`, left to right for a `Column`), within the room the
+/// biggest child takes, or the room there is for `stretch`.
+pub const CrossAxisAlignment = enum {
+    /// At the start of the cross axis: the top of a `Row`, the left of a
+    /// `Column`.
+    start,
+    /// In the middle of the cross axis.
+    center,
+    /// At the end of the cross axis: the bottom of a `Row`, the right of a
+    /// `Column`.
+    end,
+    /// Made as big across as the room there is, if that is bounded (if
+    /// not, like `start`).
+    stretch,
+};
+
+/// How much of its main axis a `Row` or `Column` takes.
 pub const MainAxisSize = enum {
     /// Just the children.
     min,
@@ -23,7 +64,14 @@ pub const MainAxisSize = enum {
 pub const Row = Flex(.horizontal);
 pub const Column = Flex(.vertical);
 
-pub const Axis = enum { horizontal, vertical };
+/// A direction of layout: a `Row` is laid out along `.horizontal` and a
+/// `Column` along `.vertical`, and a `Divider` runs along one.
+pub const Axis = enum {
+    /// Left to right, across.
+    horizontal,
+    /// Top to bottom, down.
+    vertical,
+};
 
 /// Children one after another, left to right (`Row`) or top to bottom
 /// (`Column`).

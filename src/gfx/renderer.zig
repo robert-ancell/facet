@@ -247,11 +247,17 @@ pub fn covers(damage: ?[]const Viewport, vp: Viewport) bool {
 
 /// Identifies the 2D rendering backend implementation.
 pub const RenderBackend = enum {
+    /// On the CPU (`SoftwareRenderer`).
     software,
+    /// OpenGL (`OpenGlRenderer`).
     opengl,
+    /// Vulkan (`VulkanRenderer`).
     vulkan,
+    /// Metal (`MetalRenderer`).
     metal,
+    /// Direct3D 11 (`D3D11Renderer`).
     d3d11,
+    /// A renderer of the app's own that does not say.
     custom,
 
     pub fn name(b: RenderBackend) []const u8 {

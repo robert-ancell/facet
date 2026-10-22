@@ -17,9 +17,14 @@ const Callback = widget.Callback;
 const Color = gfx.Color;
 
 pub const Card = struct {
+    /// Material 3's three kinds of card.
     pub const Variant = enum {
+        /// On the highest container colour, with no outline (until it is
+        /// selected).
         filled,
+        /// On a container colour a step above the page, with a faint outline.
         elevated,
+        /// On the page's own colour, with a 1 pixel outline.
         outlined,
     };
 

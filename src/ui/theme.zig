@@ -11,7 +11,9 @@ pub const settings_file = "/data/apps/.appearance";
 
 /// Whether the system uses the dark or light Material 3 colour scheme.
 pub const ThemeMode = enum {
+    /// The dark scheme.
     dark,
+    /// The light scheme.
     light,
 
     pub fn name(m: ThemeMode) []const u8 {
@@ -112,7 +114,12 @@ pub const Watch = struct {
 };
 
 /// Whether a scheme is light (dark on light) or dark (light on dark).
-pub const ThemeBrightness = enum { light, dark };
+pub const ThemeBrightness = enum {
+    /// Dark on light.
+    light,
+    /// Light on dark.
+    dark,
+};
 
 /// A Material 3 colour scheme, and text sizes in pixels. The app's (`WindowUi`'s)
 /// is the light or dark baseline, as the system asks; `Themed` gives the
@@ -204,18 +211,25 @@ pub const Theme = struct {
 
 /// What a piece of code is, for its colour (plain text is `on_surface`).
 pub const SyntaxHighlight = enum(u8) {
+    /// Anything else: it has no colour of its own.
     plain,
+    /// A word the language reserves: `if`, `fn`, `const`.
     keyword,
+    /// The name of a type.
     type,
+    /// The name of a function, where it is declared or called.
     function,
     /// Built into the language: Zig's @functions, Python's print and len.
     builtin,
+    /// A string or character literal.
     string,
+    /// A number literal.
     number,
     /// true, false, null and the like.
     constant,
     /// A JSON object's names.
     property,
+    /// A comment.
     comment,
 };
 

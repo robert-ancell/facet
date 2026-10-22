@@ -157,7 +157,9 @@ pub const KeyboardKey = enum {
     f24,
     print_screen,
     scroll_lock,
+    /// Pause or Break.
     pause,
+    /// The key left of 1: ` and ~ on a US keyboard.
     grave,
     digit_1,
     digit_2,
@@ -169,7 +171,9 @@ pub const KeyboardKey = enum {
     digit_8,
     digit_9,
     digit_0,
+    /// - on a US keyboard.
     minus,
+    /// = on a US keyboard.
     equal,
     backspace,
     tab,
@@ -183,9 +187,13 @@ pub const KeyboardKey = enum {
     i,
     o,
     p,
+    /// [ on a US keyboard.
     left_bracket,
+    /// ] on a US keyboard.
     right_bracket,
+    /// \ on a US keyboard.
     backslash,
+    /// The Caps Lock key.
     caps_lock,
     a,
     s,
@@ -196,7 +204,9 @@ pub const KeyboardKey = enum {
     j,
     k,
     l,
+    /// ; on a US keyboard.
     semicolon,
+    /// ' on a US keyboard.
     apostrophe,
     enter,
     left_shift,
@@ -214,11 +224,14 @@ pub const KeyboardKey = enum {
     slash,
     right_shift,
     left_ctrl,
+    /// The Windows, Command or Super key, on the left.
     left_super,
     left_alt,
     space,
     right_alt,
+    /// The Windows, Command or Super key, on the right.
     right_super,
+    /// The key that asks for a context menu.
     menu,
     right_ctrl,
     insert,
@@ -255,8 +268,11 @@ pub const KeyboardKey = enum {
 
 /// A button of the pointer (a mouse's), in `InputEvent.button`.
 pub const PointerButton = enum {
+    /// The main button, to press and select with.
     left,
+    /// The second button, to ask for a context menu with.
     right,
+    /// The wheel, pressed.
     middle,
     /// The buttons at the side of a mouse, for going back and forward.
     back,
@@ -279,6 +295,7 @@ pub const PointerCursor = enum {
     grab,
     /// ...and a closed one, while it is.
     grabbing,
+    /// A cross, to point exactly.
     crosshair,
     /// Something is being moved.
     move,
@@ -288,12 +305,15 @@ pub const PointerCursor = enum {
     wait,
     /// The app is busy but can still be used.
     progress,
+    /// A question mark: help is there to be had.
     help,
-    /// Resizing left and right, up and down, or along either diagonal
-    /// (top left to bottom right, top right to bottom left).
+    /// Resizing left and right.
     ew_resize,
+    /// Resizing up and down.
     ns_resize,
+    /// Resizing along the diagonal from the top left to the bottom right.
     nwse_resize,
+    /// Resizing along the diagonal from the top right to the bottom left.
     nesw_resize,
 };
 
@@ -316,7 +336,13 @@ pub const TextInputState = struct {
     /// The cursor in window coordinates, in logical pixels (`[x, y, width, height]`).
     cursor_rect: [4]i32 = .{ 0, 0, 1, 20 },
 
-    pub const ChangeCause = enum { input_method, other };
+    /// What made the last change to the text, for the input method.
+    pub const ChangeCause = enum {
+        /// The input method (its commit, or its deletion around the cursor).
+        input_method,
+        /// The app, or the user editing directly.
+        other,
+    };
 
     /// Whether two are the same, so a window need only be told of a change.
     pub fn eql(a: TextInputState, b: TextInputState) bool {
@@ -397,10 +423,13 @@ pub const InputEvent = union(enum) {
 pub const WindowPlatform = enum {
     /// No window system: the app has no window.
     headless,
+    /// Wayland (`WaylandWindow`).
     wayland,
     /// X11 (there is no built-in backend for it: a custom one can say so).
     x11,
+    /// Windows (`Win32Window`).
     windows,
+    /// macOS (`MacWindow`).
     macos,
     /// A backend of the app's own that does not say.
     custom,
@@ -446,8 +475,13 @@ pub const WindowBufferTransport = enum {
 /// drawn by the toolkit (`client`), the compositor/window manager (`server`),
 /// or not at all (`none`).
 pub const WindowDecorations = enum {
+    /// There are none: the window has no title bar or borders.
     none,
+    /// The toolkit draws them (a `TitleBar` in the window, and its shadow
+    /// and resize borders): on Wayland, where the compositor does not.
     client,
+    /// The window system draws them: macOS and Windows, and the Wayland
+    /// compositors that do.
     server,
 
     pub fn name(d: WindowDecorations) []const u8 {
@@ -499,7 +533,12 @@ pub const WindowFrameSync = packed struct(u8) {
 /// What a popup is for. A menu takes the keyboard and the pointer, and
 /// goes when they are used outside the app; a tooltip takes no input (the
 /// pointer goes through it).
-pub const PopupKind = enum { menu, tooltip };
+pub const PopupKind = enum {
+    /// A menu.
+    menu,
+    /// A tooltip.
+    tooltip,
+};
 
 /// Where a popup goes (`Window.openPopup`), in the window's coordinates
 /// (logical pixels). Where there is no room on the screen, it flips to the
@@ -514,6 +553,7 @@ pub const PopupPlacement = struct {
     /// How far it is from the anchor.
     gap: i32 = 0,
 
+    /// Which side of the anchor a popup goes.
     pub const Side = enum {
         /// Down and to the right of the anchor's top left corner (a menu at
         /// a point: a 1 by 1 anchor).

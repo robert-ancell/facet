@@ -133,8 +133,12 @@ pub const Role = enum {
 
 /// ARIA's tristate (`aria-checked`, `aria-pressed`).
 pub const Tristate = enum {
+    /// Off, unchecked or not pressed.
     false,
+    /// On, checked or pressed.
     true,
+    /// Neither: some of what it covers is on (a checkbox over others that
+    /// are only partly checked).
     mixed,
 
     pub fn of(v: bool) Tristate {
@@ -143,9 +147,27 @@ pub const Tristate = enum {
 };
 
 /// What a popup it opens is (`aria-haspopup`).
-pub const Popup = enum { menu, listbox, tree, grid, dialog };
+pub const Popup = enum {
+    /// A menu of actions.
+    menu,
+    /// A list of options to choose from.
+    listbox,
+    /// A tree of items.
+    tree,
+    /// A grid of cells.
+    grid,
+    /// A dialog.
+    dialog,
+};
 
-pub const Orientation = enum { horizontal, vertical };
+/// Whether an object lies across or up and down (`aria-orientation`): a
+/// slider, a scrollbar, a separator, a tab list.
+pub const Orientation = enum {
+    /// Across.
+    horizontal,
+    /// Up and down.
+    vertical,
+};
 
 /// Sets an object's value (for assistive technologies that move a slider).
 pub const ValueSetter = struct {
