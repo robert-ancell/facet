@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kete</title>
+<meta name="description" content="Kete is a declarative UI toolkit for Zig, with the look of Material 3.">
+<style>
+  :root {
+    --bg: #fffbfe;
+    --fg: #1c1b1f;
+    --muted: #49454f;
+    --accent: #6750a4;
+    --on-accent: #ffffff;
+    --border: #cac4d0;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141218;
+      --fg: #e6e0e9;
+      --muted: #cac4d0;
+      --accent: #d0bcff;
+      --on-accent: #381e72;
+      --border: #49454f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 64rem; margin: 0 auto; padding: 4rem 1rem 3rem; }
+  h1 { font-size: 3rem; margin: 0; letter-spacing: -0.02em; }
+  .say { color: var(--muted); font-size: 1rem; margin: 0.25rem 0 1.5rem; }
+  .lead { font-size: 1.25rem; max-width: 40rem; margin: 0 0 1.5rem; }
+  nav { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 3rem; }
+  nav a {
+    padding: 0.6rem 1.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  nav a.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  nav a:hover, nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 1.5rem; }
+  .shots img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--border); }
+  footer { margin-top: 3rem; color: var(--muted); font-size: 0.9rem; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kete</h1>
+  <p class="say">pronounced KEH-teh</p>
+  <p class="lead">A fast, efficient and beautiful declarative UI toolkit for Zig. Describe your interface in plain Zig code and get native desktop applications with a Material 3 look on Linux, macOS and Windows.</p>
+  <nav>
+    <a class="primary" href="docs/">Documentation</a>
+    <a href="https://github.com/robert-ancell/kete">GitHub</a>
+  </nav>
+  <div class="shots">
+    <picture>
+      <source srcset="images/selection-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="images/selection-light.png" width="2000" height="1320" alt="The showcase app's page of selection controls: checkboxes, switches, radio buttons, sliders and dropdowns" loading="lazy">
+    </picture>
+    <picture>
+      <source srcset="images/maps-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="images/maps-light.png" width="2000" height="1320" alt="The showcase app's page with an interactive map" loading="lazy">
+    </picture>
+    <picture>
+      <source srcset="images/navigation-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="images/navigation-light.png" width="1600" height="1040" alt="An inbox app with a navigation rail, tabs and a list of messages" loading="lazy">
+    </picture>
+    <picture>
+      <source srcset="images/editor-dark.png" media="(prefers-color-scheme: dark)">
+      <img src="images/editor-light.png" width="1440" height="1040" alt="A code editor with Zig syntax highlighting" loading="lazy">
+    </picture>
+  </div>
+  <footer>Kete is open source. See the <a href="https://github.com/robert-ancell/kete">repository</a> for the code and licence.</footer>
+</main>
+</body>
+</html>

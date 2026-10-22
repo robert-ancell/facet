@@ -387,6 +387,49 @@ pub fn build(b: *std.Build) void {
     install_images.step.dependOn(&install_docs.step);
     b.step("docs", "Generate the API reference into zig-out/docs").dependOn(&install_images.step);
 
+    // The project's website: its page, images of the example apps (the
+    // showcase and two examples, drawn on the CPU), and the API reference.
+    const site_mod = b.createModule(.{
+        .root_source_file = b.path("tools/site_images.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "kete", .module = mods.kete }},
+    });
+    const showcase_mod = b.createModule(.{
+        .root_source_file = b.path("tools/showcase.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "kete", .module = mods.kete }},
+    });
+    showcase_mod.addAnonymousImport("cube_vulkan.spv", .{ .root_source_file = cube_vulkan_spv });
+    showcase_mod.addAnonymousImport("cube_opengl.spv", .{ .root_source_file = cube_opengl_spv });
+    if (target.result.os.tag == .windows) addSceneDxbc(b, showcase_mod, "cube", "tools/showcase/shaders/cube.hlsl");
+    site_mod.addImport("showcase", showcase_mod);
+    for ([_][]const u8{ "navigation", "editor" }) |example| {
+        site_mod.addImport(example, b.createModule(.{
+            .root_source_file = b.path(b.fmt("examples/{s}.zig", .{example})),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "kete", .module = mods.kete }},
+        }));
+    }
+    const site_exe = b.addExecutable(.{ .name = "site-images", .root_module = site_mod });
+    const site_run = b.addRunArtifact(site_exe);
+    const install_site_images = b.addInstallDirectory(.{
+        .source_dir = site_run.addOutputDirectoryArg("images"),
+        .install_dir = .prefix,
+        .install_subdir = "images",
+    });
+    const install_page = b.addInstallDirectory(.{
+        .source_dir = b.path("website"),
+        .install_dir = .prefix,
+        .install_subdir = "",
+    });
+    const site_step = b.step("site", "Build the website (its page, images and the API reference) into the install prefix");
+    site_step.dependOn(&install_page.step);
+    site_step.dependOn(&install_site_images.step);
+    site_step.dependOn(&install_images.step);
+
     for ([_]*std.Build.Module{
         mods.font,
         mods.icons,
