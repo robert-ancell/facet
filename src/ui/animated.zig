@@ -22,11 +22,14 @@ const widget = @import("widget.zig");
 const Widget = widget.Widget;
 const Context = widget.Context;
 
+/// A widget made afresh each frame of an animation, from how far through it
+/// the frame is (`t`, from 0 to 1).
 pub const AnimatedWidget = struct {
     /// How long it takes, from `t` = 0 to 1.
     duration_ns: u64,
     /// Makes the child for each frame, given `t`.
     builder: Builder,
+    /// Whether it runs once, or over and over.
     repeat: Repeat = .once,
     /// Starts it over when this changes: a count of presses of a "Play"
     /// button, say.

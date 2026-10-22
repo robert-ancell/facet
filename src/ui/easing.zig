@@ -12,6 +12,7 @@ const gfx = @import("gfx");
 /// An easing: progress in, reshaped progress out. The curves are its
 /// constants (`Easing.outCubic`), and `lerp` mixes values by one.
 pub const Easing = struct {
+    /// The function that maps progress to eased progress.
     f: *const fn (t: f32) f32,
 
     /// An easing of your own, from a function that maps 0 to 0 and 1 to 1.

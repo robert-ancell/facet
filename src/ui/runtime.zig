@@ -60,7 +60,9 @@ const Segment = painter_mod.Segment;
 /// The system's clipboard, for text: `Clipboard.of(&app_clipboard)`, for
 /// a type with `copy(self, text)` and `paste(self, sink)`.
 pub const Clipboard = struct {
+    /// The clipboard's owner, which `vtable` acts on.
     ptr: *anyopaque,
+    /// The functions that copy and paste.
     vtable: *const VTable,
 
     pub const Sink = struct {
@@ -73,6 +75,7 @@ pub const Clipboard = struct {
         paste: *const fn (*anyopaque, Sink) void,
     };
 
+    /// A clipboard that calls `copy` and `paste` on `ptr`, which must last as long as it is used.
     pub fn of(impl: anytype) Clipboard {
         const T = @typeInfo(@TypeOf(impl)).pointer.child;
         return .{ .ptr = impl, .vtable = &struct {
@@ -94,9 +97,12 @@ pub const Clipboard = struct {
 /// `App.waker` or `WindowUi.waker`; good for as long as
 /// that is.
 pub const Waker = struct {
+    /// What the display waits on, once there is one (see `SharedResources.waker`).
     wake_: ?sys.Wake = null,
+    /// Set when the UI is woken, in case it is not waiting on `wake_`.
     woken: ?*std.atomic.Value(bool) = null,
 
+    /// Wakes the UI for a frame. Safe from any thread.
     pub fn wake(w: Waker) void {
         if (w.woken) |f| f.store(true, .release);
         if (w.wake_) |x| x.signal();
@@ -282,25 +288,34 @@ pub const WindowUi = struct {
     /// What the app's windows share (see `SharedResources`), and whether this UI
     /// made it for itself (`create`: a UI of its own, with no others).
     shared: *SharedResources,
+    /// Whether it made `shared` for itself, and so lets it go with itself.
     owns_shared: bool = false,
     /// From `shared`, which they are: what allocates, and what does the
     /// I/O and tells the time (the app's `Io`).
     gpa: std.mem.Allocator,
+    /// The app's `Io`, which does the I/O and tells the time.
     io: std.Io,
     /// Text is drawn in it; without one, text takes no space (`shared`'s).
     font: ?*const font.Font,
     /// Icons are drawn with it (see `Icon`), glyphs kept in the atlas, and
     /// images loaded in the background (for `Image`): `shared`'s.
     icon_font: *const font.Font,
+    /// The glyphs and icons drawn, as images (`shared`'s).
     atlas: *gfx.Atlas,
+    /// The images loaded in the background (`shared`'s).
     images: *image_loader.Cache,
+    /// The theme widgets are drawn in (see `Themed` for another below a widget).
     theme: Theme = .dark,
+    /// The colour of the theme's surface when last seen, to redraw everything if it changes.
     last_surface: ?gfx.Color = null,
+    /// The node of the root widget (made by the first `frame`).
     root: ?*Node = null,
     /// Widgets are made in one while the other holds the last frame's
     /// (which events between frames still use).
     arenas: [2]std.heap.ArenaAllocator,
+    /// How many frames it has made.
     frame_no: u64 = 0,
+    /// The time of the frame being made, on the monotonic clock (`window.nowNs`).
     now_ns: u64 = 0,
     /// Something changed (input, or a widget asked for another frame).
     needs_frame: bool = true,
@@ -308,11 +323,15 @@ pub const WindowUi = struct {
     inputs: u64 = 0,
     /// The frame's drawing: canvases (kept for reuse) and GPU draws.
     canvases: std.ArrayList(*gfx.Canvas) = .empty,
+    /// How many of `canvases` this frame has drawn on.
     canvases_used: usize = 0,
+    /// What the frame draws, in order: 2D canvases and GPU draws.
     segments: std.ArrayList(Segment) = .empty,
+    /// Where the pointer is, if it is over the window.
     pointer: ?Point = null,
     /// Event handlers under the pointer, deepest first.
     hovered: std.ArrayList(*Node) = .empty,
+    /// Where the nodes under the pointer are found, before `hovered` takes them.
     hover_scratch: std.ArrayList(*Node) = .empty,
     /// The handler that took the pointer when a button went down.
     captured: ?*Node = null,
@@ -330,6 +349,7 @@ pub const WindowUi = struct {
     /// has it again when the menu closes), and that the menu is to be
     /// given it once it is made.
     focus_before_menu: ?*Node = null,
+    /// Whether the menu is to be given the focus when it is made.
     menu_focus_pending: bool = false,
     /// The keyboard layout in use (from the window, or `loaded_keymap`).
     keyboard: window_mod.KeyboardLayout = .{},
@@ -342,6 +362,7 @@ pub const WindowUi = struct {
     a11y_tree: ?*accessibility.Tree = null,
     /// The id of its window in the accessibility tree.
     a11y_window_id: u32 = accessibility.window_id,
+    /// The modifiers and keys held, for `loaded_keymap`.
     key_state: window_mod.xkb.State = .{},
     /// The window fills the screen: title bars are not drawn.
     fullscreen: bool = false,
@@ -372,13 +393,16 @@ pub const WindowUi = struct {
         at: Point,
         owner: *Node,
     } = null,
+    /// The node of the menu or popup shown, if any.
     menu_root: ?*Node = null,
     /// The menu and tooltip in popups of their own, when the window has
     /// them (`Window.openPopup`); otherwise they are drawn in the window.
     menu_popup: ?PopupLayer = null,
+    /// The tooltip in a popup of its own, when the window has them.
     tooltip_popup: ?PopupLayer = null,
-    /// Where the menu and tooltip built this frame want to be, if in popups.
+    /// Where the menu built this frame wants to be, if in popups.
     wanted_menu: ?window_mod.PopupPlacement = null,
+    /// Where the tooltip built this frame wants to be, if in popups.
     wanted_tooltip: ?window_mod.PopupPlacement = null,
     /// How many of `segments` are the window's (the rest are popups').
     main_segments: usize = 0,
@@ -387,8 +411,11 @@ pub const WindowUi = struct {
     /// What is being dragged, if anything (see drag.zig), and the chip
     /// that follows the pointer.
     drag: ?drag_mod.Drag = null,
+    /// The node of the chip that follows the pointer while dragging.
     drag_root: ?*Node = null,
+    /// Where the nodes under the pointer are found while dragging.
     drag_scratch: std.ArrayList(*Node) = .empty,
+    /// The node of the tooltip shown, if any.
     tooltip_root: ?*Node = null,
     /// A touch held down on a widget, which becomes a long press
     /// (`Event.context`) if it stays there.
@@ -474,6 +501,7 @@ pub const WindowUi = struct {
         return ui;
     }
 
+    /// Lets it go: its nodes, and the arenas. Its `shared` too if it made it.
     pub fn destroy(ui: *WindowUi) void {
         const shared = ui.shared;
         if (std.mem.indexOfScalar(*WindowUi, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
@@ -1013,6 +1041,7 @@ pub const WindowUi = struct {
 
     // --- Menus ------------------------------------------------------------------
 
+    /// Opens a menu of `items` (copied) at `at`, for `owner`; any menu open is closed.
     pub fn openMenu(ui: *WindowUi, owner: *Node, at: Point, items: []const menu_mod.Item) void {
         ui.closeMenu();
         ui.focusMenuWhenMade();
@@ -1021,6 +1050,7 @@ pub const WindowUi = struct {
         ui.needs_frame = true;
     }
 
+    /// Opens a popup made by `popup` at `at`, for `owner`; any menu open is closed.
     pub fn openPopup(ui: *WindowUi, owner: *Node, at: Point, popup: PopupBuilder) void {
         ui.closeMenu();
         ui.focusMenuWhenMade();
@@ -1028,6 +1058,7 @@ pub const WindowUi = struct {
         ui.needs_frame = true;
     }
 
+    /// Closes the menu or popup, if one is open.
     pub fn closeMenu(ui: *WindowUi) void {
         const menu = ui.menu orelse return;
         switch (menu.content) {
@@ -1055,6 +1086,7 @@ pub const WindowUi = struct {
 
     // --- Dragging -----------------------------------------------------------------
 
+    /// Starts dragging `d`: it follows the pointer until `endDrag`.
     pub fn startDrag(ui: *WindowUi, d: drag_mod.Drag) void {
         ui.endDrag(false);
         var drag = d;
@@ -1064,6 +1096,7 @@ pub const WindowUi = struct {
         ui.moveDrag(d.pos);
     }
 
+    /// Moves the drag to `pos`, finding what it is over.
     pub fn moveDrag(ui: *WindowUi, pos: Point) void {
         const d = &(ui.drag orelse return);
         d.pos = pos;
@@ -1073,6 +1106,7 @@ pub const WindowUi = struct {
         ui.needs_frame = true;
     }
 
+    /// Ends the drag; if `drop`, it is dropped on what it is over, if that takes it.
     pub fn endDrag(ui: *WindowUi, drop: bool) void {
         const d = ui.drag orelse return;
         ui.drag = null;
@@ -1086,6 +1120,7 @@ pub const WindowUi = struct {
 
     // --- Copy and paste -----------------------------------------------------------
 
+    /// Copies `text` to the clipboard (the window's, or the app's own if there is none).
     pub fn copyText(ui: *WindowUi, text: []const u8) void {
         if (ui.clipboard) |c| return c.vtable.copy(c.ptr, text);
         if (ui.win) |w| if (w.hasClipboard()) return w.copy(text);
@@ -1093,6 +1128,8 @@ pub const WindowUi = struct {
         ui.shared.local_clipboard.appendSlice(ui.gpa, text) catch {};
     }
 
+    /// Asks for the clipboard's text, which is given to `on_text` (null if
+    /// there is none) while `owner` is there.
     pub fn pasteText(ui: *WindowUi, owner: *Node, on_text: widget.ValueCallback([]const u8)) void {
         ui.paste = .{ .owner = owner, .on_text = on_text };
         if (ui.clipboard) |c| return c.vtable.paste(c.ptr, .{ .ctx = ui, .f = pasted });
@@ -1129,6 +1166,7 @@ pub const WindowUi = struct {
         }
     }
 
+    /// The canvas the next 2D drawing goes on (a new one after a GPU draw).
     pub fn currentCanvas(ui: *WindowUi) *gfx.Canvas {
         if (ui.segments.items.len > 0) switch (ui.segments.items[ui.segments.items.len - 1]) {
             .canvas => |c| return c,
@@ -1162,18 +1200,22 @@ pub const WindowUi = struct {
         return c;
     }
 
+    /// Adds a GPU draw to the frame, after what is drawn so far.
     pub fn addGpu(ui: *WindowUi, d: painter_mod.GpuDraw) void {
         ui.segments.append(ui.gpa, .{ .gpu = d }) catch {};
     }
 
+    /// Whether anything on the screen changed in the last frame.
     pub fn changed(ui: *const WindowUi) bool {
         return !ui.damage.frame.isEmpty();
     }
 
+    /// The parts of the screen that changed in the last frame.
     pub fn damaged(ui: *const WindowUi) []const geometry.Rect {
         return ui.damage.frame.slice();
     }
 
+    /// `damaged`, as viewports in `out`.
     pub fn damagedViewports(ui: *const WindowUi, out: *[damage_mod.Region.max_rects]gfx.Viewport) []const gfx.Viewport {
         const rects = ui.damaged();
         for (rects, out[0..rects.len]) |r, *v| v.* = .{
@@ -1185,10 +1227,12 @@ pub const WindowUi = struct {
         return out[0..rects.len];
     }
 
+    /// The parts that have to be drawn for a buffer last drawn `age` frames ago.
     pub fn repaint(ui: *const WindowUi, age: u32) damage_mod.Region {
         return ui.damage.repaint(age);
     }
 
+    /// `region`'s parts, as viewports in `out`.
     pub fn regionViewports(region: *const damage_mod.Region, out: *[damage_mod.Region.max_rects]gfx.Viewport) []const gfx.Viewport {
         for (region.slice(), out[0..region.len]) |r, *v| v.* = .{
             .x = @intFromFloat(r.x),
@@ -1280,6 +1324,7 @@ pub const WindowUi = struct {
 
     // --- Input ------------------------------------------------------------------
 
+    /// Handles an input event from the window.
     pub fn handleInput(ui: *WindowUi, e: window_mod.InputEvent) void {
         ui.inputs +%= 1;
         switch (e) {
@@ -1334,6 +1379,7 @@ pub const WindowUi = struct {
         }
     }
 
+    /// Takes the input from `win` (a `Window`, or a pointer to a window) and handles it.
     pub fn takeInput(ui: *WindowUi, win: anytype) void {
         const w = window_mod.Window.from(win);
         ui.syncWindow(w);
@@ -1341,6 +1387,7 @@ pub const WindowUi = struct {
         ui.syncCursor(w);
     }
 
+    /// The pointer moved to `pos` (in the window).
     pub fn pointerMotion(ui: *WindowUi, pos: Point) void {
         ui.pointer = pos;
         ui.updateHover(pos);
@@ -1354,10 +1401,11 @@ pub const WindowUi = struct {
     }
 
     /// Presses this close together, in time and space, are one double
-    /// (or triple...) click.
+    /// click (or a triple click, or more).
     pub const multi_click_ns = 400 * std.time.ns_per_ms;
     pub const multi_click_slop = 6;
 
+    /// A pointer button went down or up at `pos`.
     pub fn pointerButton(ui: *WindowUi, pos: Point, button: widget.PointerButton, pressed: bool) void {
         ui.pointerButtonAt(pos, button, pressed, ui.clockNs());
     }
@@ -1402,6 +1450,7 @@ pub const WindowUi = struct {
 
     // --- Touch ----------------------------------------------------------------------
 
+    /// A touch went down at `pos`; one at a time is followed, and acts as the left button.
     pub fn touchDown(ui: *WindowUi, id: i32, pos: Point) void {
         if (ui.touch != null) return;
         ui.touch = .{ .id = id, .start = pos, .last = pos };
@@ -1409,6 +1458,7 @@ pub const WindowUi = struct {
         if (ui.captured) |n| ui.hold = .{ .node = n, .pos = pos };
     }
 
+    /// The touch `id` moved to `pos`.
     pub fn touchMotion(ui: *WindowUi, id: i32, pos: Point) void {
         const t = &(ui.touch orelse return);
         if (t.id != id) return;
@@ -1432,6 +1482,7 @@ pub const WindowUi = struct {
         ui.pointerMotion(pos);
     }
 
+    /// The touch `id` came up.
     pub fn touchUp(ui: *WindowUi, id: i32) void {
         const t = ui.touch orelse return;
         if (t.id != id) return;
@@ -1442,6 +1493,7 @@ pub const WindowUi = struct {
         ui.pointerLeave();
     }
 
+    /// The touches were cancelled.
     pub fn touchCancel(ui: *WindowUi) void {
         ui.cancelPress();
         ui.touch = null;
@@ -1466,6 +1518,7 @@ pub const WindowUi = struct {
         ui.needs_frame = true;
     }
 
+    /// The wheel turned at `pos`: by `dy` pixels down and `dx` right.
     pub fn pointerScroll(ui: *WindowUi, pos: Point, dx: f32, dy: f32) void {
         ui.pointer = pos;
         ui.updateHover(pos);
@@ -1475,6 +1528,7 @@ pub const WindowUi = struct {
         };
     }
 
+    /// Gives the keyboard focus to `n` (or to none), telling the nodes losing and gaining it.
     pub fn focus(ui: *WindowUi, n: ?*Node) void {
         if (ui.focused == n) return;
         if (ui.focused) |old| _ = send(old, .blur);
@@ -1553,6 +1607,7 @@ pub const WindowUi = struct {
         }
     }
 
+    /// The pointer left the window.
     pub fn pointerLeave(ui: *WindowUi) void {
         ui.cancelPress();
         ui.hold = null;
@@ -1608,6 +1663,7 @@ pub const WindowUi = struct {
         return x >= 0 and y >= 0 and x < m.size.w and y < m.size.h;
     }
 
+    /// Drops what refers to `n`, which is going: a menu it opened, a drag from it, a paste for it.
     pub fn forget(ui: *WindowUi, n: *Node) void {
         if (ui.menu) |m| if (m.owner == n) ui.closeMenu();
         if (ui.drag) |*d| {
@@ -1663,33 +1719,44 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
 /// on while `step` waits: a fetch started with `io.async`, which wakes
 /// the UI (`SharedResources.waker`) when it is done.
 pub const App = struct {
+    /// What the app allocates with.
     gpa: std.mem.Allocator,
+    /// What does the app's I/O and tells the time.
     io: std.Io,
+    /// The process's environment.
     environ: std.process.Environ,
+    /// The connection to the window system, which its windows are opened on.
     display: window_mod.Display,
     /// Whether `deinit` closes `display` (it was opened by `init`).
     owns_display: bool = false,
+    /// What its windows share.
     shared: *SharedResources,
     /// Its windows, open and closed (until destroyed).
     windows: std.ArrayList(*Window) = .empty,
-    /// How many of them are open, and whether the last was closed since
-    /// `step` last saw.
+    /// How many of them are open.
     open_windows: usize = 0,
+    /// Whether the last open one was closed since `step` last saw.
     last_window_closed: bool = false,
+    /// The name the window system knows the app by (the first window's `app_id`).
     app_id: ?[]const u8 = null,
+    /// What is done when the system asks the app to quit.
     on_quit_request: OnQuitRequest = .ignore,
+    /// What is done when the last open window is closed.
     on_last_window_closed: OnLastWindowClosed = .ignore,
     /// `quit` was called: `step` returns false.
     quitting: bool = false,
+    /// The theme the app is set to (from the system's settings, or `setTheme`).
     appearance: theme_mod.Settings = .{},
+    /// Watches the settings for a change of theme.
     theme_watch: theme_mod.Watch = .{},
     /// The system's appearance (dark or not) when last seen, for windows
     /// that say (macOS): the theme follows it when it changes.
     system_dark: ?bool = null,
-    /// Whether the display waits on the image loader, the `Waker`s, and the
-    /// accessibility bus.
+    /// Whether the display waits on the image loader.
     watching_images: bool = false,
+    /// Whether the display waits on the `Waker`s.
     watching_wake: bool = false,
+    /// Whether the display waits on the accessibility bus.
     watching_a11y: bool = false,
     /// Each frame's timings written to stderr (`FACET_TRACE=1`).
     trace: bool = false,
@@ -1902,6 +1969,7 @@ pub const App = struct {
         };
     }
 
+    /// Sets the theme (light or dark) of all its windows.
     pub fn setTheme(a: *App, mode: theme_mod.ThemeMode) void {
         a.appearance.theme = mode;
         _ = a.theme_watch.changed(a.io);

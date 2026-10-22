@@ -8,17 +8,24 @@ pub const Rect = gfx.Rect;
 
 pub const inf = std.math.inf(f32);
 
+/// A width and height in pixels.
 pub const Size = struct {
+    /// The width.
     w: f32 = 0,
+    /// The height.
     h: f32 = 0,
 };
 
 /// The sizes a parent allows a child: from `min` to `max` in each
 /// direction. A max may be infinite (unbounded).
 pub const Constraints = struct {
+    /// The narrowest width allowed.
     min_w: f32 = 0,
+    /// The widest width allowed (infinite: any).
     max_w: f32 = inf,
+    /// The shortest height allowed.
     min_h: f32 = 0,
+    /// The tallest height allowed (infinite: any).
     max_h: f32 = inf,
 
     pub const unbounded: Constraints = .{};
@@ -48,14 +55,17 @@ pub const Constraints = struct {
         return .{ .w = if (std.math.isFinite(c.max_w)) c.max_w else c.min_w, .h = if (std.math.isFinite(c.max_h)) c.max_h else c.min_h };
     }
 
+    /// The smallest size allowed.
     pub fn smallest(c: Constraints) Size {
         return .{ .w = c.min_w, .h = c.min_h };
     }
 
+    /// Whether the width has a limit.
     pub fn boundedWidth(c: Constraints) bool {
         return std.math.isFinite(c.max_w);
     }
 
+    /// Whether the height has a limit.
     pub fn boundedHeight(c: Constraints) bool {
         return std.math.isFinite(c.max_h);
     }
@@ -104,11 +114,16 @@ pub const Constraints = struct {
 
 /// Space around a box's sides.
 pub const Insets = struct {
+    /// The space on the left.
     left: f32 = 0,
+    /// The space above.
     top: f32 = 0,
+    /// The space on the right.
     right: f32 = 0,
+    /// The space below.
     bottom: f32 = 0,
 
+    /// The same on every side.
     pub fn all(v: f32) Insets {
         return .{ .left = v, .top = v, .right = v, .bottom = v };
     }
@@ -118,10 +133,12 @@ pub const Insets = struct {
         return .{ .left = h, .top = v, .right = h, .bottom = v };
     }
 
+    /// The space on the left and right together.
     pub fn horizontal(in: Insets) f32 {
         return in.left + in.right;
     }
 
+    /// The space above and below together.
     pub fn vertical(in: Insets) f32 {
         return in.top + in.bottom;
     }
@@ -130,7 +147,9 @@ pub const Insets = struct {
 /// A point in a box: -1 is the left or top edge, 0 the centre, 1 the right
 /// or bottom edge.
 pub const Alignment = struct {
+    /// Across: -1 is the left edge, 0 the middle and 1 the right.
     x: f32,
+    /// Down: -1 is the top edge, 0 the middle and 1 the bottom.
     y: f32,
 
     pub const top_left: Alignment = .{ .x = -1, .y = -1 };

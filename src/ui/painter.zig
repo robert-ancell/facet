@@ -32,10 +32,14 @@ pub const stripe_colors = [2]gfx.Color{ gfx.Color.argb(0xbf000000), gfx.Color.ar
 pub const stripe_depth = 8;
 const stripe_period = 12;
 
+/// What a widget paints with: the canvas to draw on, text and icons, and
+/// GPU draws, with the origin at the widget's top left and its clip applied.
 pub const Painter = struct {
+    /// The UI (a window's) being painted.
     ui: *WindowUi,
-    /// The node being painted, and its top left in the frame.
+    /// The node being painted.
     node: *Node,
+    /// Where the node's top left is in the frame.
     origin: Point = .{ 0, 0 },
     /// What may be drawn on, in the frame's pixels.
     clip: ?Rect = null,
@@ -83,6 +87,7 @@ pub const Painter = struct {
         return old;
     }
 
+    /// Goes back to the limit `clipTo` returned.
     pub fn restoreClip(p: *Painter, old: ?Rect) void {
         p.clip = old;
         p.syncCanvasClip();
@@ -117,6 +122,7 @@ pub const Painter = struct {
         fills: bool = false,
     };
 
+    /// `gpu` with `options`.
     pub fn gpuWith(p: *Painter, options: GpuOptions, ctx: anytype, comptime f: anytype) void {
         const Ctx = @TypeOf(ctx);
         const FnInfo = @typeInfo(@TypeOf(f)).@"fn";

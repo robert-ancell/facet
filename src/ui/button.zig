@@ -39,6 +39,7 @@ pub const FilledButton = struct {
     icon: ?icons.IconName = null,
     /// An icon after the label (for menu or forward buttons).
     trailing_icon: ?icons.IconName = null,
+    /// Used in place of the label and icons, if given.
     child: ?Widget = null,
     /// Without it the button is disabled.
     on_press: ?Callback = null,
@@ -64,10 +65,15 @@ pub const FilledButton = struct {
 /// Material 3's filled tonal button: a secondary container pill button with
 /// medium emphasis between `FilledButton` and `OutlinedButton`.
 pub const TonalButton = struct {
+    /// The text of the button (or give a `child` instead).
     label: []const u8 = "",
+    /// An icon before the label (or alone, without one).
     icon: ?icons.IconName = null,
+    /// An icon after the label (for menu or forward buttons).
     trailing_icon: ?icons.IconName = null,
+    /// Used in place of the label and icons, if given.
     child: ?Widget = null,
+    /// Without it the button is disabled.
     on_press: ?Callback = null,
 
     pub const State = struct {
@@ -91,13 +97,18 @@ pub const TonalButton = struct {
 /// Material 3's outlined button: a pill with an outline, for important
 /// actions that are not the main one.
 pub const OutlinedButton = struct {
+    /// The text of the button (or give a `child` instead).
     label: []const u8 = "",
+    /// An icon before the label (or alone, without one).
     icon: ?icons.IconName = null,
+    /// An icon after the label (for menu or forward buttons).
     trailing_icon: ?icons.IconName = null,
+    /// Used in place of the label and icons, if given.
     child: ?Widget = null,
     /// Destructive action (e.g. delete or remove): shown in the theme's
     /// error colour when enabled.
     destructive: bool = false,
+    /// Without it the button is disabled.
     on_press: ?Callback = null,
 
     pub const State = struct {
@@ -125,10 +136,15 @@ pub const OutlinedButton = struct {
 /// Material 3's text button: a low-emphasis button without an outline or
 /// background until hovered or pressed, for secondary dialog actions.
 pub const TextButton = struct {
+    /// The text of the button (or give a `child` instead).
     label: []const u8 = "",
+    /// An icon before the label (or alone, without one).
     icon: ?icons.IconName = null,
+    /// An icon after the label (for menu or forward buttons).
     trailing_icon: ?icons.IconName = null,
+    /// Used in place of the label and icons, if given.
     child: ?Widget = null,
+    /// Without it the button is disabled.
     on_press: ?Callback = null,
 
     pub const State = struct {

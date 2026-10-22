@@ -14,6 +14,7 @@ const Constraints = geometry.Constraints;
 const Node = widget.WidgetNode;
 const Painter = painter_mod.Painter;
 
+/// How a `Text` is drawn.
 pub const TextStyle = struct {
     /// Pixels per em (the theme's body size if not given).
     size: ?f32 = null,
@@ -39,9 +40,14 @@ pub const Line = struct {
     width: f32,
 };
 
+/// Text: lines of it, in the theme's text colour and body size unless the
+/// `style` says otherwise.
 pub const Text = struct {
+    /// What it says (UTF-8; `\n` starts a new line).
     text: []const u8,
+    /// Its size, colour and font.
     style: TextStyle = .{},
+    /// Where each line sits in the width it has.
     text_align: TextAlign = .start,
     /// Wrap at spaces to fit the width (otherwise only `\n` breaks lines).
     wrap: bool = true,

@@ -34,15 +34,18 @@ const Point = geometry.Point;
 /// The text being edited, with the cursor and selection: the app's, kept
 /// as long as it is edited.
 pub const Document = struct {
+    /// What allocates its text.
     gpa: std.mem.Allocator,
+    /// The text, as UTF-8.
     bytes: std.ArrayList(u8) = .empty,
-    /// Where typing goes (a byte index), and the other end of the
-    /// selection, if there is one.
+    /// Where typing goes (a byte index).
     cursor: usize = 0,
+    /// The other end of the selection (a byte index), if there is one.
     anchor: ?usize = null,
     /// Counts the changes to the text (the app saves when it changes).
     version: u64 = 0,
 
+    /// A document holding a copy of `initial`, with the cursor at the start.
     pub fn init(gpa: std.mem.Allocator, initial: []const u8) !Document {
         var d: Document = .{ .gpa = gpa };
         try d.bytes.ensureTotalCapacity(gpa, initial.len);
@@ -52,10 +55,12 @@ pub const Document = struct {
         return d;
     }
 
+    /// Frees its text.
     pub fn deinit(d: *Document) void {
         d.bytes.deinit(d.gpa);
     }
 
+    /// The text.
     pub fn text(d: *const Document) []const u8 {
         return d.bytes.items;
     }
@@ -67,11 +72,13 @@ pub const Document = struct {
         return .{ @min(a, d.cursor), @max(a, d.cursor) };
     }
 
+    /// Selects all of the text.
     pub fn selectAll(d: *Document) void {
         d.anchor = 0;
         d.cursor = d.bytes.items.len;
     }
 
+    /// Selects the word around the byte at `index`.
     pub fn selectWordAt(d: *Document, index: usize) void {
         const t = d.bytes.items;
         if (t.len == 0) {
@@ -195,7 +202,10 @@ pub const Document = struct {
 /// end is where the next starts; a line's newline is not in it).
 const Line = struct { start: usize, end: usize };
 
+/// Several lines of text to edit, wrapped to its width and scrolled, with a
+/// selection, copy and paste and, optionally, colours (see `highlighter`).
 pub const TextArea = struct {
+    /// The text being edited (the app's: it is kept as long as it is edited).
     doc: *Document,
     /// Text size; the theme's body size if null.
     size: ?f32 = null,
@@ -302,6 +312,8 @@ pub const TextArea = struct {
         return .text;
     }
 
+    /// What the input method is told of it while it has the keyboard: the text
+    /// around the cursor and where the cursor is.
     pub fn textInput(self: *const TextArea, n: *Node) ?widget.TextInputInfo {
         const st = n.state(State);
         const d = self.doc;

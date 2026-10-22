@@ -291,9 +291,9 @@ pub const PointerCursor = enum {
     pointer,
     /// An I-beam, over text.
     text,
-    /// An open hand, over something that can be dragged...
+    /// An open hand, over something that can be dragged.
     grab,
-    /// ...and a closed one, while it is.
+    /// A closed hand, while something is being dragged.
     grabbing,
     /// A cross, to point exactly.
     crosshair,
@@ -407,12 +407,14 @@ pub const InputEvent = union(enum) {
     },
     /// An input method asked to delete bytes around the cursor.
     text_delete_surrounding: struct { before_length: u32, after_length: u32 },
-    /// Something is being dragged over the window (Wayland only), entering
-    /// at a position, moving over it, or leaving it...
+    /// Something being dragged entered the window at a position (Wayland only).
     drag_enter: [2]f32,
+    /// Something being dragged moved to a position in the window.
     drag_motion: [2]f32,
+    /// Something being dragged left the window.
     drag_leave,
-    /// ...or dropped at a position (`Window.takeDrop` has what).
+    /// Something was dropped at a position in the window (`Window.takeDrop`
+    /// has what).
     drop: [2]f32,
     /// The window system closed a popup (`Window.openPopup`), with this id:
     /// a menu, when its pointer or keyboard was used elsewhere.
@@ -527,6 +529,7 @@ pub const WindowFrameSync = packed struct(u8) {
     /// Frames can be set to be shown at a time (`wp_commit_timing_v1`: see
     /// `Window.setPresentationTime`).
     commit_timing_v1: bool = false,
+    /// Unused: it makes the struct a whole byte.
     _pad: u3 = 0,
 };
 
@@ -585,7 +588,9 @@ pub const PopupPlacement = struct {
 
 /// Generic window interface (`Window.of(&impl)`).
 pub const Window = struct {
+    /// The window it stands for (a pointer to a backend's window).
     ptr: *anyopaque,
+    /// The functions that act on `ptr`.
     vtable: *const VTable,
 
     pub const VTable = struct {
@@ -1497,15 +1502,18 @@ pub const D3D11Frame = WindowFrame(gfx.D3D11Target);
 /// What an app's title bar does to its window (for the toolkit's TitleBar:
 /// `.on_close = .of(&controls, WindowControls.close)`, and so on).
 pub const WindowControls = struct {
+    /// The window the buttons act on (none, if the controls are only used to ask to close).
     win: ?Window = null,
     /// The close button was pressed: the window should be closed (taken by
     /// the app as the window system's own request is).
     close_requested: bool = false,
 
+    /// Controls for `impl`, a `Window` or a pointer to a window.
     pub fn init(impl: anytype) WindowControls {
         return .{ .win = Window.from(impl) };
     }
 
+    /// The close button: asks for the window to be closed (see `close_requested`).
     pub fn close(c: *WindowControls) void {
         c.close_requested = true;
     }

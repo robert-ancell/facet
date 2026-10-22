@@ -17,8 +17,12 @@ const Context = widget.Context;
 const Node = widget.WidgetNode;
 const Event = widget.Event;
 
+/// Material 3's plain tooltip: a short hint shown while the pointer is over
+/// the child.
 pub const Tooltip = struct {
+    /// What the tooltip says.
     text: []const u8,
+    /// What the tooltip is for: it is shown while the pointer is over it.
     child: ?Widget = null,
 
     pub fn layout(_: *const Tooltip, n: *Node, c: Constraints) Size {

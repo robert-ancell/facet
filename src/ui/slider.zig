@@ -17,14 +17,16 @@ const Event = widget.Event;
 const ValueCallback = widget.ValueCallback;
 const Painter = painter.Painter;
 
+/// Material 3's slider: a handle on a track, that is dragged (or moved with the
+/// arrow keys) to choose a value from `min` to `max`.
 pub const Slider = struct {
     /// Where the handle is, from `min` to `max`. The app holds it: the
     /// slider reports a change through `on_changed` and shows the new value
     /// from the next build.
     value: f32,
-    /// The value at the start of the track...
+    /// The value at the start of the track.
     min: f32 = 0,
-    /// ...and at its end.
+    /// The value at the end of the track.
     max: f32 = 1,
     /// When set and greater than 0, snaps to `divisions` equal steps and
     /// draws tick marks along the track.

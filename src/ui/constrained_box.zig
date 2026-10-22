@@ -10,7 +10,9 @@ const Node = widget.WidgetNode;
 
 /// Adds constraints of its own to the child's (within its parent's).
 pub const ConstrainedBox = struct {
+    /// What it adds to the parent's.
     constraints: Constraints,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub fn layout(self: *const ConstrainedBox, n: *Node, c: Constraints) Size {

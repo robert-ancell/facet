@@ -24,8 +24,12 @@ const runtime = @import("../runtime.zig");
 
 /// A tile: its level, and where it is across and down at that level.
 pub const MapTileId = struct {
+    /// The level: 0 is the whole world in one tile, and each level has twice as
+    /// many across and down.
     z: u8,
+    /// How many tiles across from the left edge of the map.
     x: u32,
+    /// How many tiles down from the top edge of the map.
     y: u32,
 
     /// The tile at the next level out that this is a quarter of.
@@ -56,15 +60,18 @@ pub const MapTile = union(enum) {
 
 /// Where a map's tiles come from: anything with a `tile` method.
 pub const MapSource = struct {
+    /// What `tile_fn` is called with.
     ctx: *anyopaque,
+    /// Gives the tile for a request.
     tile_fn: *const fn (ctx: *anyopaque, req: Request) MapTile,
     /// The tiles' width (and height) in pixels: at `MapCamera.zoom` z, tiles
     /// of level z − log2(tile_size / 256) are drawn at about their size.
     tile_size: f32 = 256,
-    /// The levels it has tiles for: zoomed further out, it is asked for
-    /// these (more of them, smaller); further in, the last level's are
-    /// drawn bigger.
+    /// The lowest level it has tiles for: zoomed further out, it is asked for
+    /// these (more of them, smaller).
     min_level: u8 = 0,
+    /// The highest level it has tiles for: zoomed further in, the tiles of
+    /// this level are drawn bigger.
     max_level: u8 = 19,
     /// Who made the map, shown in a corner (tile servers often require it).
     attribution: []const u8 = "",
@@ -101,6 +108,7 @@ pub const MapSource = struct {
         };
     }
 
+    /// The tile for `req`.
     pub fn tile(s: MapSource, req: Request) MapTile {
         return s.tile_fn(s.ctx, req);
     }
@@ -112,6 +120,7 @@ pub const MapVectorTile = struct {
     /// Coordinates go from 0 to this across the tile and down it (and may
     /// go a little beyond, for shapes that cross its edges).
     extent: f32 = 4096,
+    /// The layers of shapes, each with a name.
     layers: []const Layer,
 
     pub const Point = [2]f32;
@@ -165,6 +174,7 @@ pub const MapVectorTile = struct {
         }
     };
 
+    /// The layer called `name`, if it has one.
     pub fn layer(t: *const MapVectorTile, name: []const u8) ?*const Layer {
         for (t.layers) |*l| if (std.mem.eql(u8, l.name, name)) return l;
         return null;

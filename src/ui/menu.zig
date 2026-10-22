@@ -26,7 +26,9 @@ const Widget = widget.Widget;
 const Context = widget.Context;
 const Callback = widget.Callback;
 
+/// One item of a `Menu`.
 pub const Item = struct {
+    /// The text of the item.
     label: []const u8,
     /// Its keyboard shortcut, shown at the right ("Ctrl+C").
     shortcut: []const u8 = "",
@@ -35,6 +37,7 @@ pub const Item = struct {
     destructive: bool = false,
     /// Shown dimmed, and not pressable, if not.
     enabled: bool = true,
+    /// Called when it is pressed.
     on_press: ?Callback = null,
 };
 
@@ -45,6 +48,7 @@ pub const padding = 8;
 
 /// The menu's items, on a surface.
 pub const Menu = struct {
+    /// The menu's items, from top to bottom.
     items: []const Item,
 
     pub fn accessible(_: *const Menu, _: *Node) ?a11y.Info {

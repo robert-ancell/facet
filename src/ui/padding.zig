@@ -11,7 +11,9 @@ const Node = widget.WidgetNode;
 
 /// Space around the child.
 pub const Padding = struct {
+    /// The space on each side.
     padding: Insets,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub fn layout(self: *const Padding, n: *Node, c: Constraints) Size {

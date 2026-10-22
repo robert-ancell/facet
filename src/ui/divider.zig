@@ -10,11 +10,15 @@ const SizedBox = @import("sized_box.zig").SizedBox;
 const Widget = widget.Widget;
 const Context = widget.Context;
 
+/// Material 3's divider: a thin line between content.
 pub const Divider = struct {
+    /// Which way it runs: across (a line between rows), or down.
     axis: Axis = .horizontal,
+    /// How thick the line is, in pixels.
     thickness: f32 = 1,
     /// Symmetric inset along the divider's length.
     inset: f32 = 0,
+    /// The line's colour (the theme's variant outline if not given).
     color: ?gfx.Color = null,
 
     pub fn build(self: *const Divider, cx: *Context) Widget {

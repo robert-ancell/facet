@@ -43,19 +43,26 @@ const Constraints = geometry.Constraints;
 const Painter = painter_mod.Painter;
 const WindowUi = runtime.WindowUi;
 
+/// A widget: a description of part of the screen, made fresh every frame
+/// by `Context.make` from any struct type (see the top of this file for what
+/// such a type can have).
 pub const Widget = struct {
+    /// The widget's value (made with `Context.make`, in the frame's arena).
     ptr: *const anyopaque,
+    /// What the toolkit calls on it: `layout`, `paint`, `event` and the rest.
     vtable: *const VTable,
     /// Matches this widget to the same node across frames when siblings
     /// come and go (otherwise matched by position).
     key: ?u64 = null,
 
+    /// The same widget with `key` set, to match it to its node when siblings come and go.
     pub fn withKey(w: Widget, key: u64) Widget {
         var out = w;
         out.key = key;
         return out;
     }
 
+    /// Whether it is a `T`.
     pub fn is(w: Widget, comptime T: type) bool {
         return w.vtable == vtableFor(T);
     }
@@ -145,9 +152,12 @@ pub const PointerButton = window_mod.PointerButton;
 /// Something to call later, typically a method of a widget's state:
 /// `Callback.of(state, State.increment)`.
 pub const Callback = struct {
+    /// What `f` is called with (the `ptr` of `of`).
     ctx: *anyopaque,
+    /// The function to call.
     f: *const fn (*anyopaque) void,
 
+    /// A callback that calls `f` with `ptr` (`ptr` must last as long as the callback is used).
     pub fn of(ptr: anytype, comptime f: fn (@TypeOf(ptr)) void) Callback {
         const P = @TypeOf(ptr);
         return .{ .ctx = @ptrCast(@constCast(ptr)), .f = struct {
@@ -157,6 +167,7 @@ pub const Callback = struct {
         }.call };
     }
 
+    /// Calls it.
     pub fn call(c: Callback) void {
         c.f(c.ctx);
     }
@@ -166,9 +177,13 @@ pub const Callback = struct {
 /// `ValueCallback(bool).of(state, State.setLighting)`.
 pub fn ValueCallback(comptime T: type) type {
     return struct {
+        /// What `f` is called with (the `ptr` of `of`).
         ctx: *anyopaque,
+        /// The function to call.
         f: *const fn (*anyopaque, T) void,
 
+        /// A callback that calls `f` with `ptr` and the value (`ptr` must last
+        /// as long as the callback is used).
         pub fn of(ptr: anytype, comptime f: fn (@TypeOf(ptr), T) void) @This() {
             const P = @TypeOf(ptr);
             return .{ .ctx = @ptrCast(@constCast(ptr)), .f = struct {
@@ -178,6 +193,7 @@ pub fn ValueCallback(comptime T: type) type {
             }.call };
         }
 
+        /// Calls it with `v`.
         pub fn call(c: @This(), v: T) void {
             c.f(c.ctx, v);
         }
@@ -333,11 +349,11 @@ const Missing = struct {
 };
 const missing: Missing = .{};
 
-/// What `build` functions get: the frame's arena, and the UI.
 /// Where a widget is (from `Context.anchor`, as it is built), to open a menu
 /// from later, as a button's callback does. Kept in the widget's `State`,
 /// it is good for as long as the widget is there.
 pub const WidgetAnchor = struct {
+    /// The node of the widget, or null if there is none.
     node: ?*WidgetNode = null,
 
     /// Opens a menu of `items` (copied) just below the widget, as a
@@ -349,6 +365,7 @@ pub const WidgetAnchor = struct {
     }
 };
 
+/// What `build` functions get: the frame's arena, and the UI.
 pub const Context = struct {
     /// The UI the widget is built in: its window's (its `theme`, the
     /// app's `io`, and what the app's windows share, as `shared`).
@@ -452,6 +469,7 @@ pub const BackendInfo = struct {
     /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
     keyboard: window_mod.KeyboardLayout = .{},
 
+    /// Whether the window system's protocol extensions include `ext_name`.
     pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
         for (info.extensions) |ext| {
             if (std.mem.eql(u8, ext, ext_name)) return true;
@@ -480,9 +498,11 @@ pub const WindowInfo = struct {
     physical_size: [2]u32 = .{ 0, 0 },
     /// HiDPI integer buffer scale factor.
     scale: u32 = 1,
-    /// Window state flags.
+    /// Whether the window fills the screen.
     maximized: bool = false,
+    /// Whether the window covers the whole display.
     fullscreen: bool = false,
+    /// Whether the window is tiled against other windows or the screen's edges.
     tiled: bool = false,
 };
 
@@ -499,13 +519,19 @@ pub const Edges = struct {
 
 /// A widget's place in the tree, kept between frames.
 pub const WidgetNode = struct {
+    /// The UI (a window's) it is in.
     ui: *WindowUi,
+    /// The widget it is the place of, from the last frame it was built in.
     widget: Widget,
+    /// The node it is a child of (null for the root).
     parent: ?*WidgetNode = null,
+    /// Its widget's state (see `state`), if the widget has a `State` type.
     state_ptr: ?*anyopaque = null,
+    /// The nodes of the widgets it is made of (its `child` or `children`, or what it builds).
     children: std.ArrayList(*WidgetNode) = .empty,
-    /// From the last layout: the size, and where it is in its parent.
+    /// From the last layout: its size.
     size: Size = .{},
+    /// From the last layout: where it is in its parent.
     offset: Point = .{ 0, 0 },
     /// What the widget drew beyond its children (text), if it can be
     /// bigger than the widget (see `setContent`).
@@ -531,10 +557,12 @@ pub const WidgetNode = struct {
         return n.theme_ptr orelse &n.ui.theme;
     }
 
+    /// Its `i`th child.
     pub fn child(n: *const WidgetNode, i: usize) *WidgetNode {
         return n.children.items[i];
     }
 
+    /// How many children it has.
     pub fn childCount(n: *const WidgetNode) usize {
         return n.children.items.len;
     }
@@ -651,6 +679,7 @@ pub const WidgetNode = struct {
 
     // --- Building -----------------------------------------------------------
 
+    /// Makes the node for `w`, in `ui`, and builds it (null if there is no memory).
     pub fn create(ui: *WindowUi, w: Widget) ?*WidgetNode {
         const n = ui.gpa.create(WidgetNode) catch return null;
         n.* = .{ .ui = ui, .widget = w };

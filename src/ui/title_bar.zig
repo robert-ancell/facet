@@ -27,7 +27,10 @@ const Widget = widget.Widget;
 const Size = geometry.Size;
 const Constraints = geometry.Constraints;
 
+/// A window's title bar, drawn by the toolkit where the window system does
+/// not: its title, and buttons to minimize, maximize and close it.
 pub const TitleBar = struct {
+    /// The text in the bar.
     title: []const u8,
     /// Pressing the close button (defaults to `cx.ui.controls` when set);
     /// without it there is none.
@@ -39,6 +42,7 @@ pub const TitleBar = struct {
     /// the screen (defaults to `cx.ui.controls` when set, if the window can
     /// be maximized); without it there is none.
     on_maximize: ?widget.Callback = null,
+    /// Whether the window is maximized (so the maximize button shows restoring).
     maximized: bool = true,
     /// A press on the bar itself, to start moving the window (defaults to
     /// `cx.ui.controls` when set).

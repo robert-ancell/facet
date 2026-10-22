@@ -51,7 +51,9 @@ pub const Matrix = struct {
 
 /// Widget that renders a QR code for `text` with a quiet zone.
 pub const QrCode = struct {
+    /// What the code says.
     text: []const u8,
+    /// Its width and height, in pixels.
     size: f32 = 132,
 
     pub const State = struct {

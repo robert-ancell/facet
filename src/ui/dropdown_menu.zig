@@ -16,6 +16,7 @@ const Context = widget.Context;
 const Node = widget.WidgetNode;
 const ValueCallback = widget.ValueCallback;
 
+/// Material 3's dropdown: a button that opens a menu of choices, by index.
 pub const DropdownMenu = struct {
     /// The text of each choice.
     options: []const []const u8,
@@ -29,7 +30,9 @@ pub const DropdownMenu = struct {
     on_selected: ?ValueCallback(usize) = null,
     /// What the button shows when no choice is made.
     placeholder: []const u8 = "",
+    /// An icon before the text on the button.
     icon: ?icons.IconName = null,
+    /// The button's least width, in pixels (as wide as its text needs, if not given).
     width: ?f32 = null,
 
     pub const height = button.height;
@@ -111,7 +114,9 @@ pub fn Select(comptime T: type) type {
         placeholder: []const u8 = "",
         /// Called with the value chosen; without it the dropdown is disabled.
         on_changed: ?ValueCallback(T) = null,
+        /// An icon before the text on the button.
         icon: ?icons.IconName = null,
+        /// The button's least width, in pixels (as wide as its text needs, if not given).
         width: ?f32 = null,
 
         pub const State = struct {

@@ -25,9 +25,12 @@ const Value = MapVectorTile.Value;
 const MapTilePainter = tile_painter.MapTilePainter;
 const Color = gfx.Color;
 
+/// How the vector tiles of a map are drawn: a background, and layers that draw
+/// some of the tiles' features each.
 pub const MapStyle = struct {
     /// Under the tiles: the globe, and wherever there is nothing.
     background: Color,
+    /// What is drawn, from the bottom up.
     layers: []const Layer,
 
     pub const Layer = struct {

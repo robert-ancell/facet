@@ -24,6 +24,7 @@ const Callback = widget.Callback;
 /// A connected segmented pill bar: a `Row` of `PillButton` segments with a
 /// rounded outline around the bar and vertical dividers between segments.
 pub const PillBar = struct {
+    /// The segments, from left to right (`PillButton`s).
     children: []const Widget,
 
     pub fn build(self: *const PillBar, cx: *Context) Widget {
@@ -46,11 +47,17 @@ pub const PillBar = struct {
 
 /// One segment of a `PillBar`.
 pub const PillButton = struct {
+    /// The text of the segment.
     label: []const u8,
+    /// An icon before the label.
     icon: ?icons.IconName = null,
+    /// Whether it is the segment chosen.
     selected: bool,
+    /// Whether it is the first of the bar (so its left corners are round).
     first: bool = false,
+    /// Whether it is the last of the bar (so its right corners are round).
     last: bool = false,
+    /// Without it the segment is disabled.
     on_press: ?Callback = null,
 
     pub const State = struct {

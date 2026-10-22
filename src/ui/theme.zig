@@ -125,18 +125,31 @@ pub const ThemeBrightness = enum {
 /// is the light or dark baseline, as the system asks; `Themed` gives the
 /// widgets below it another (changing a colour or two of `cx.theme()`, say).
 pub const Theme = struct {
+    /// Whether the scheme is light or dark.
     brightness: ThemeBrightness,
+    /// The main colour: filled buttons, selected controls, focus.
     primary: Color,
+    /// Text and icons on `primary`.
     on_primary: Color,
+    /// A lighter (or, when dark, darker) fill of the main colour.
     primary_container: Color,
+    /// Text and icons on `primary_container`.
     on_primary_container: Color,
+    /// The fill of tonal buttons, selected chips and navigation items.
     secondary_container: Color,
+    /// The background of the window and of dialogs.
     surface: Color,
+    /// A step above `surface`: elevated cards, menus.
     surface_container: Color,
+    /// The highest step above `surface`: filled cards, text fields.
     surface_container_highest: Color,
+    /// Text and icons on the surfaces.
     on_surface: Color,
+    /// Less important text and icons on the surfaces.
     on_surface_variant: Color,
+    /// Outlines: of outlined buttons, text fields and dividers.
     outline: Color,
+    /// Fainter outlines: of cards, between list items.
     outline_variant: Color,
     /// For problems and destructive actions: text, and fills (badges).
     @"error": Color,
@@ -144,8 +157,11 @@ pub const Theme = struct {
     on_error: Color,
     /// The colours of code's parts (see `SyntaxHighlight`).
     syntax: Syntax,
+    /// The size of body text, in pixels.
     body_size: f32 = 14,
+    /// The size of labels, in pixels.
     label_size: f32 = 14,
+    /// The size of titles, in pixels.
     title_size: f32 = 22,
 
     /// The baseline light scheme.

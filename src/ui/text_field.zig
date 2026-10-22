@@ -27,6 +27,8 @@ const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
+/// Material 3's text field: one line of text to edit, with a placeholder, a
+/// selection, copy and paste.
 pub const TextField = struct {
     /// Shown, dimmed, while it is empty.
     placeholder: []const u8 = "",
@@ -35,20 +37,25 @@ pub const TextField = struct {
     initial: []const u8 = "",
     /// Dots instead of the characters (for passwords).
     obscure: bool = false,
+    /// The most bytes it holds.
     max_len: usize = 63,
+    /// Its width, in pixels.
     width: f32 = 240,
     /// Text size; the theme's body size if null.
     size: ?f32 = null,
+    /// Called with the text each time it changes.
     on_changed: ?widget.ValueCallback([]const u8) = null,
     /// Enter was pressed.
     on_submit: ?widget.Callback = null,
     /// Take the keyboard when it first appears (as a field to fill in that
     /// has just been asked for does).
     autofocus: bool = false,
+    /// Whether it can be used: if not, it is dimmed and takes no input.
     enabled: bool = true,
 
     pub const capacity = 128;
 
+    /// The state it starts with: holding `initial`.
     pub fn initState(self: *const TextField) State {
         var st: State = .{};
         _ = st.insert(self.initial, self.max_len);
@@ -404,6 +411,8 @@ pub const TextField = struct {
         return .text;
     }
 
+    /// What the input method is told of it while it has the keyboard: the text
+    /// around the cursor and where the cursor is.
     pub fn textInput(self: *const TextField, n: *Node) ?widget.TextInputInfo {
         if (!self.enabled) return null;
         const st = n.state(State);

@@ -13,7 +13,9 @@ const Callback = widget.Callback;
 
 /// Whether the pointer is over a widget, and pressing it.
 pub const PointerInteraction = struct {
+    /// Whether the pointer is over it.
     hovered: bool = false,
+    /// Whether the pointer is held down on it.
     pressed: bool = false,
 };
 
@@ -24,9 +26,13 @@ pub const PointerInteraction = struct {
 /// or pressed: give it their state's). Focused from the keyboard, it has
 /// a focus ring, its corners `focus_radius` (null: round).
 pub const Pressable = struct {
+    /// Called when it is pressed; without it, it cannot be.
     on_press: ?Callback = null,
+    /// Kept up to date, for the widgets that look different when hovered or pressed.
     interaction: ?*PointerInteraction = null,
+    /// The corners' radius of the focus ring.
     focus_radius: ?f32 = null,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub fn focusable(self: *const Pressable, _: *Node) bool {

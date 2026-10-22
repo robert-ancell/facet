@@ -8,6 +8,8 @@ const Widget = widget.Widget;
 /// In a row or column, gives the child a share of the space the others
 /// leave (by `flex`). Where the space is unbounded it is like any child.
 pub const Expanded = struct {
+    /// Its share of the space, relative to the other `Expanded` children (0: none).
     flex: f32 = 1,
+    /// The widget in it.
     child: Widget,
 };

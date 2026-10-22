@@ -19,6 +19,7 @@ const Context = widget.Context;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
+/// Material 3's icon button: a round button with only an icon.
 pub const IconButton = struct {
     /// Material 3's four kinds of icon button.
     pub const Variant = enum {
@@ -34,14 +35,18 @@ pub const IconButton = struct {
         outlined,
     };
 
+    /// The icon it shows.
     icon: icons.IconName,
+    /// Without it the button is disabled.
     on_press: ?Callback = null,
+    /// Its width and height, in pixels.
     size: f32 = 40,
     /// Defaults to 60% of `size` (24px for a 40px button).
     icon_size: ?f32 = null,
     /// Whether it is shown as selected, for a button that toggles (and
     /// reported as pressed).
     selected: bool = false,
+    /// What kind of icon button it is.
     variant: Variant = .standard,
 
     pub const State = struct {

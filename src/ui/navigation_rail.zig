@@ -24,21 +24,30 @@ const Context = widget.Context;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;
 
+/// Material 3's navigation rail: a column of destinations, one of them selected,
+/// in a narrow bar or an extended one.
 pub const NavigationRail = struct {
+    /// One destination of a `NavigationRail`.
     pub const Item = struct {
+        /// The destination's name.
         label: []const u8,
+        /// Its icon.
         icon: icons.IconName,
+        /// A count shown on it, if given.
         badge: ?u32 = null,
     };
 
+    /// The destinations, from top to bottom.
     items: []const Item,
     /// The index of the item shown as selected. The app holds it and shows a
     /// change from the next build.
     selected: usize = 0,
+    /// Called with the index of the item pressed.
     on_select: ?ValueCallback(usize) = null,
     /// When true, renders full-width horizontal pill rows (like a navigation
     /// drawer/sidebar); when false, renders compact vertical icon+label items.
     extended: bool = true,
+    /// Its width, in pixels (the default one if not given).
     width: ?f32 = null,
 
     pub const max_items = 16;

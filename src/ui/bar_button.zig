@@ -18,8 +18,11 @@ const Size = geometry.Size;
 
 /// A round button with an icon, highlighted under the pointer.
 pub const BarButton = struct {
+    /// Called when it is pressed.
     on_press: widget.Callback,
+    /// Its width and height, in pixels.
     size: f32,
+    /// The icon it shows.
     icon: icons.IconName,
 
     pub const State = struct {

@@ -23,7 +23,9 @@ const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Painter = painter_mod.Painter;
 
+/// Scrolls its child, with a bar, by the wheel, touch or keyboard.
 pub const ScrollView = struct {
+    /// The widget that scrolls (as tall as it needs to be).
     child: Widget,
     /// The bar's width.
     bar_width: f32 = 12,

@@ -22,20 +22,35 @@ const PointerCursor = widget.PointerCursor;
 const ValueCallback = widget.ValueCallback;
 const Border = decorated.Border;
 
+/// A widget that draws a scene of the app's with a Metal context into the area it takes.
 pub fn MetalArea(comptime Scene: type) type {
     return struct {
         const Self = @This();
         const HasState = @hasDecl(Scene, "State");
 
+        /// The app's scene: what draws (its `render`), and its state (see the top of this file).
         scene: Scene,
+        /// How many samples per pixel are used to smooth edges (multisampling).
         samples: u8 = 4,
+        /// The colour the area is cleared to before the scene is drawn (the
+        /// theme's surface container if not given).
         clear_color: ?gfx.Color = null,
+        /// The corners' radii of the area.
         radius: gfx.CornerRadii = .all(12),
+        /// An outline around the area (none, if null).
         border: ?Border = null,
+        /// Called with how far the pointer moved while it is dragged over the
+        /// area; without it the area is not draggable.
         on_drag: ?ValueCallback(Point) = null,
+        /// The narrowest it can be, in pixels.
         min_width: f32 = 280,
+        /// The shortest it can be, in pixels.
         min_height: f32 = 260,
+        /// Identifies what is drawn: the same key as in the last frame means
+        /// the same picture, so it is not drawn again. Without one, the scene's
+        /// bytes, the clear colour and the samples decide.
         key: ?u64 = null,
+        /// A widget drawn over the area.
         child: ?Widget = null,
 
         pub const State = struct {

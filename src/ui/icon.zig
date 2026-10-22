@@ -19,8 +19,11 @@ const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
+/// A Material icon.
 pub const Icon = struct {
+    /// Which icon.
     icon: icons.IconName,
+    /// Its width and height, in pixels.
     size: f32 = 24,
     /// The theme's text colour (on_surface) if not given.
     color: ?gfx.Color = null,

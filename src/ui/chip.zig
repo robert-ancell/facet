@@ -24,11 +24,15 @@ const Context = widget.Context;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
+/// Material 3's chip: a small pill to choose, filter or remove with.
 pub const Chip = struct {
+    /// The text of the chip.
     label: []const u8,
+    /// An icon before the label.
     icon: ?icons.IconName = null,
     /// Whether it is shown as selected (and reported as pressed).
     selected: bool = false,
+    /// Called when it is pressed; without it, it cannot be.
     on_press: ?Callback = null,
     /// When set, a trailing close button is shown that invokes `on_remove`.
     on_remove: ?Callback = null,

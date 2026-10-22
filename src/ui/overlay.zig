@@ -12,6 +12,7 @@ const Node = widget.WidgetNode;
 /// get the pointer). Each layer positions its content itself (with
 /// `Align`, `Padding` and so on).
 pub const Overlay = struct {
+    /// The layers, from the bottom to the top.
     children: []const Widget = &.{},
 
     pub fn layout(_: *const Overlay, n: *Node, c: Constraints) Size {

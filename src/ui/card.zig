@@ -16,6 +16,7 @@ const Context = widget.Context;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
+/// Material 3's card: a rounded surface that holds content.
 pub const Card = struct {
     /// Material 3's three kinds of card.
     pub const Variant = enum {
@@ -28,12 +29,17 @@ pub const Card = struct {
         outlined,
     };
 
+    /// Which kind of card it is.
     variant: Variant = .filled,
+    /// The space between its edge and the child.
     padding: Insets = .all(16),
+    /// The corners' radius, in pixels.
     radius: f32 = 12,
     /// Whether it is shown as selected.
     selected: bool = false,
+    /// Called when it is pressed; without it, it cannot be.
     on_press: ?Callback = null,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub const State = struct {

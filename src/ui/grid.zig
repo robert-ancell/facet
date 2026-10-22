@@ -28,11 +28,16 @@ const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 const Context = widget.Context;
 
+/// A grid of equal cells, as many to a row as fit its width, left to right and
+/// top to bottom, that makes only the items in view when it is in a scroll view.
 pub const Grid = struct {
+    /// How many items there are.
     count: usize,
+    /// The size every cell is (and so every item).
     cell: Size,
     /// Space between cells, across and down.
     spacing: f32 = 0,
+    /// Makes the item at an index.
     item: ItemBuilder,
     /// Rows made beyond those in view, above and below, so a little
     /// scrolling needs nothing made.

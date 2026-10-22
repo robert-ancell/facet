@@ -48,15 +48,19 @@ pub const Drag = struct {
     target: ?*Node = null,
 };
 
+/// Makes its child something to drag with the pointer, to drop on a `DropTarget`.
 pub const Draggable = struct {
     /// What a target is given when this is dropped on it.
     data: usize,
-    /// What the chip that follows the pointer shows.
+    /// The text on the chip that follows the pointer.
     label: []const u8 = "",
+    /// The icon on that chip.
     icon: ?icons.IconName = null,
     /// Clicked (pressed and let go without dragging).
     on_press: ?Callback = null,
+    /// Kept up to date, as `Pressable`'s is.
     interaction: ?*PointerInteraction = null,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub const State = struct {
@@ -118,11 +122,14 @@ pub const DropTarget = struct {
     on_drop: ?ValueCallback(usize) = null,
     /// Whether it takes this (all, if null).
     accepts: ?*const fn (ctx: ?*const anyopaque, data: usize) bool = null,
+    /// What `accepts` is called with.
     accepts_ctx: ?*const anyopaque = null,
     /// The highlight's corners.
     radius: f32 = 12,
+    /// The widget in it.
     child: ?Widget = null,
 
+    /// Whether it takes `data`, if it were dropped on it.
     pub fn takes(self: *const DropTarget, data: usize) bool {
         if (self.on_drop == null) return false;
         const f = self.accepts orelse return true;

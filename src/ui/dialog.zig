@@ -24,16 +24,28 @@ const Node = widget.WidgetNode;
 const Event = widget.Event;
 const Callback = widget.Callback;
 
+/// Material 3's dialog: a card over a dimmed scrim, to ask or tell the user
+/// something before going on.
 pub const Dialog = struct {
+    /// Whether the dialog is shown over its `child`.
     open: bool = true,
+    /// An icon above the title.
     icon: ?icons.IconName = null,
+    /// The dialog's title.
     title: []const u8,
+    /// Text under the title.
     description: []const u8 = "",
+    /// A widget under the description.
     content: ?Widget = null,
+    /// The text of the confirming button.
     confirm_label: []const u8 = "OK",
+    /// Called when the confirming button is pressed.
     on_confirm: ?Callback = null,
+    /// The text of the button that dismisses the dialog (none, if empty).
     dismiss_label: []const u8 = "",
+    /// Called when the dialog is dismissed: its dismissing button, Escape, or a press outside it.
     on_dismiss: ?Callback = null,
+    /// The dialog's width, in pixels.
     width: f32 = 360,
     /// Optional underlying content; when given, the dialog overlays it
     /// when `open` is true.

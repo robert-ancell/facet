@@ -192,45 +192,68 @@ pub const ValueSetter = struct {
 /// properties (named as ARIA's, without "aria-"; null where it has none),
 /// and what facet adds (its text, its action).
 pub const Info = struct {
+    /// What it is.
     role: Role,
     // Its name and description.
+    /// Its name, for assistive technologies (`aria-label`).
     label: []const u8 = "",
+    /// A longer description of it (`aria-description`).
     description: []const u8 = "",
     /// What to call its role, if not the role's own name ("map").
     roledescription: []const u8 = "",
+    /// A hint of what to enter (`aria-placeholder`).
     placeholder: []const u8 = "",
+    /// The keyboard shortcuts that act on it (`aria-keyshortcuts`).
     keyshortcuts: []const u8 = "",
     // States.
+    /// Whether it is checked (`aria-checked`).
     checked: ?Tristate = null,
     /// A toggle button's (a `button` with it is one).
     pressed: ?Tristate = null,
+    /// Whether it is selected (`aria-selected`).
     selected: ?bool = null,
+    /// Whether what it controls is shown (`aria-expanded`).
     expanded: ?bool = null,
+    /// What kind of popup it opens (`aria-haspopup`).
     haspopup: ?Popup = null,
+    /// Whether it cannot be used (`aria-disabled`).
     disabled: bool = false,
+    /// Whether it can be read but not changed (`aria-readonly`).
     readonly: bool = false,
+    /// Whether it has to be filled in (`aria-required`).
     required: bool = false,
+    /// Whether what it holds is not valid (`aria-invalid`).
     invalid: bool = false,
+    /// Whether it is being updated (`aria-busy`).
     busy: bool = false,
+    /// Whether it blocks what is behind it, as a dialog does (`aria-modal`).
     modal: bool = false,
+    /// Whether a text box takes more than one line (`aria-multiline`).
     multiline: bool = false,
+    /// Whether it lies across or up and down (`aria-orientation`).
     orientation: ?Orientation = null,
     /// A heading's level (1 to 6), or a tree item's.
     level: ?u8 = null,
     // A range's value.
+    /// A range's value (`aria-valuenow`).
     valuenow: ?f64 = null,
+    /// The least a range's value can be (`aria-valuemin`).
     valuemin: ?f64 = null,
+    /// The most a range's value can be (`aria-valuemax`).
     valuemax: ?f64 = null,
+    /// A range's value written out, if the number is not enough (`aria-valuetext`).
     valuetext: []const u8 = "",
 
     // Not ARIA's (on the web, the page gives these):
     /// The text it shows or holds (a paragraph's, a text box's), and
     /// where its caret is in it (in characters).
     text: ?[]const u8 = null,
+    /// Where the caret is in `text`, in characters.
     caret: ?usize = null,
     /// What pressing it does (its default action), and what setting its
     /// value does, for assistive technologies that do so.
     activate: ?Callback = null,
+    /// What setting its value does, for assistive technologies that do so.
     set_value: ?ValueSetter = null,
 };
 
@@ -242,35 +265,62 @@ pub const Info = struct {
 pub const Accessible = struct {
     /// What it is; null to describe the widgets in it instead.
     role: ?Role = null,
+    /// Its name, for assistive technologies (`aria-label`).
     label: ?[]const u8 = null,
+    /// A longer description of it (`aria-description`).
     description: ?[]const u8 = null,
+    /// What to call its role, if not the role's own name ("map"; `aria-roledescription`).
     roledescription: ?[]const u8 = null,
+    /// A hint of what to enter (`aria-placeholder`).
     placeholder: ?[]const u8 = null,
+    /// The keyboard shortcuts that act on it (`aria-keyshortcuts`).
     keyshortcuts: ?[]const u8 = null,
+    /// Whether it is checked (`aria-checked`).
     checked: ?Tristate = null,
+    /// Whether a toggle button is pressed (`aria-pressed`).
     pressed: ?Tristate = null,
+    /// Whether it is selected (`aria-selected`).
     selected: ?bool = null,
+    /// Whether what it controls is shown (`aria-expanded`).
     expanded: ?bool = null,
+    /// What kind of popup it opens (`aria-haspopup`).
     haspopup: ?Popup = null,
+    /// Whether it cannot be used (`aria-disabled`).
     disabled: ?bool = null,
+    /// Whether it can be read but not changed (`aria-readonly`).
     readonly: ?bool = null,
+    /// Whether it has to be filled in (`aria-required`).
     required: ?bool = null,
+    /// Whether what it holds is not valid (`aria-invalid`).
     invalid: ?bool = null,
+    /// Whether it is being updated (`aria-busy`).
     busy: ?bool = null,
+    /// Whether it blocks what is behind it, as a dialog does (`aria-modal`).
     modal: ?bool = null,
+    /// Whether a text box takes more than one line (`aria-multiline`).
     multiline: ?bool = null,
+    /// Whether it lies across or up and down (`aria-orientation`).
     orientation: ?Orientation = null,
+    /// A heading's level (1 to 6), or a tree item's (`aria-level`).
     level: ?u8 = null,
+    /// A range's value (`aria-valuenow`).
     valuenow: ?f64 = null,
+    /// The least a range's value can be (`aria-valuemin`).
     valuemin: ?f64 = null,
+    /// The most a range's value can be (`aria-valuemax`).
     valuemax: ?f64 = null,
+    /// A range's value written out, if the number is not enough (`aria-valuetext`).
     valuetext: ?[]const u8 = null,
     /// Not reported, nor anything in it (`aria-hidden`).
     hidden: bool = false,
     // Not ARIA's (as `Info`'s).
+    /// The text it shows or holds (a paragraph's, a text box's).
     text: ?[]const u8 = null,
+    /// What pressing it does (its default action), for assistive technologies that do so.
     on_activate: ?Callback = null,
+    /// What setting its value does, for assistive technologies that do so.
     set_value: ?ValueSetter = null,
+    /// The widget it describes.
     child: ?Widget = null,
 
     pub fn accessible(self: *const Accessible, _: *Node) ?Info {

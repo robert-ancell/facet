@@ -32,7 +32,10 @@ const Painter = painter_mod.Painter;
 const Constraints = geometry.Constraints;
 const Size = geometry.Size;
 
+/// A picture (PNG, JPEG, GIF or WebP), loaded in the background and decoded in
+/// pure Zig, or pixels the app has made.
 pub const Image = struct {
+    /// What to show: pixels in memory, a file, a URL, or an image file's bytes.
     source: Source,
     /// The part of it shown, in its pixels (as it is shown: after a
     /// JPEG's EXIF orientation), and as far as it goes; all of it if null.

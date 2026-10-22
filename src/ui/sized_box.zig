@@ -11,8 +11,11 @@ const Node = widget.WidgetNode;
 /// A box of a given width and/or height (within its constraints); the
 /// child, if any, is made to fit it.
 pub const SizedBox = struct {
+    /// Its width (the child's, or as big as allowed, if null).
     width: ?f32 = null,
+    /// Its height (the child's, or as big as allowed, if null).
     height: ?f32 = null,
+    /// The widget in it, made to fit.
     child: ?Widget = null,
 
     /// Nothing, as small as allowed.

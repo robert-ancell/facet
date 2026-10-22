@@ -18,14 +18,20 @@ const Context = widget.Context;
 const Node = widget.WidgetNode;
 const Color = gfx.Color;
 
+/// Material 3's badge: a count, a label or a dot on the corner of a widget.
 pub const Badge = struct {
     /// When set, shows the count (or "99+" above 99); when null and `label`
     /// is empty, shows a small 8px status dot.
     count: ?u32 = null,
+    /// Text to show instead of a count.
     label: []const u8 = "",
+    /// Whether the badge is shown (if not, only the child).
     show: bool = true,
+    /// The badge's fill (the theme's error colour if not given).
     color: ?Color = null,
+    /// The text on it (the theme's on-error colour if not given).
     text_color: ?Color = null,
+    /// What the badge is on the corner of.
     child: ?Widget = null,
 
     pub fn build(self: *const Badge, cx: *Context) Widget {

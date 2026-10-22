@@ -22,11 +22,18 @@ const Node = widget.WidgetNode;
 const Context = widget.Context;
 const Callback = widget.Callback;
 
+/// Material 3's snackbar: a short message at the bottom of the screen, with
+/// an optional action.
 pub const Snackbar = struct {
+    /// What it says.
     message: []const u8,
+    /// The text of an action button (none, if empty).
     action_label: []const u8 = "",
+    /// Called when the action button is pressed.
     on_action: ?Callback = null,
+    /// Called when the snackbar is dismissed.
     on_dismiss: ?Callback = null,
+    /// Its width, in pixels (as wide as its message needs, if not given).
     width: ?f32 = null,
     /// Optional content to overlay the snackbar at the bottom of.
     child: ?Widget = null,

@@ -11,11 +11,16 @@ const painter = @import("painter.zig");
 
 const Color = gfx.Color;
 
+/// Material 3's linear progress bar: a track that fills as `value` goes from 0 to 1,
+/// or an animation when the `value` is null.
 pub const ProgressBar = struct {
     /// From 0 to 1, or null for an indeterminate animation.
     value: ?f32 = null,
+    /// How thick the track is, in pixels.
     height: f32 = 6,
+    /// The colour of the done part (the theme's primary if not given).
     color: ?Color = null,
+    /// The colour of the track (the theme's highest surface container if not given).
     track_color: ?Color = null,
 
     pub fn accessible(self: *const ProgressBar, _: *widget.WidgetNode) ?a11y.Info {

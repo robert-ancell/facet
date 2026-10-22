@@ -26,17 +26,24 @@ const Node = widget.WidgetNode;
 const Callback = widget.Callback;
 const ValueCallback = widget.ValueCallback;
 
+/// One tab of a `TabBar`.
 pub const Tab = struct {
+    /// The tab's name.
     label: []const u8,
+    /// An icon before the label.
     icon: ?icons.IconName = null,
+    /// A count shown on it, if given.
     badge: ?u32 = null,
 };
 
+/// Material 3's tab bar: tabs along a bar, one of them selected.
 pub const TabBar = struct {
+    /// The tabs, from left to right.
     tabs: []const Tab,
     /// The index of the tab shown as selected. The app holds it and shows a
     /// change from the next build.
     selected: usize = 0,
+    /// Called with the index of the tab pressed.
     on_select: ?ValueCallback(usize) = null,
     /// When true, each tab takes an equal share of the bar's width; when
     /// false, each tab is sized to its content.

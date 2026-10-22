@@ -23,17 +23,28 @@ const Context = widget.Context;
 const Callback = widget.Callback;
 const Color = gfx.Color;
 
+/// Material 3's list item: a row with a headline and, optionally, supporting
+/// text and things at its start and end.
 pub const ListItem = struct {
+    /// The main text.
     headline: []const u8,
+    /// A second line of smaller text under it.
     supporting_text: []const u8 = "",
+    /// An icon at the start (`leading` is used instead, if given).
     leading_icon: ?icons.IconName = null,
+    /// A widget at the start.
     leading: ?Widget = null,
+    /// Text at the end (`trailing` is used instead, if given).
     trailing_text: []const u8 = "",
+    /// An icon at the end, after the text.
     trailing_icon: ?icons.IconName = null,
+    /// A widget at the end (a `Switch`, say).
     trailing: ?Widget = null,
     /// Whether it is shown as selected (a coloured background).
     selected: bool = false,
+    /// The corners' radius of its highlight, in pixels.
     radius: f32 = 8,
+    /// Called when it is pressed; without it, it cannot be.
     on_press: ?Callback = null,
 
     pub const State = struct {

@@ -25,10 +25,15 @@ pub const Atlas = atlas_mod.Atlas;
 
 pub const Point = geometry.Point;
 
+/// A colour: red, green, blue and opacity, each from 0 to 1.
 pub const Color = struct {
+    /// The amount of red, from 0 to 1.
     r: f32,
+    /// The amount of green, from 0 to 1.
     g: f32,
+    /// The amount of blue, from 0 to 1.
     b: f32,
+    /// How opaque it is, from 0 (clear) to 1.
     a: f32 = 1,
 
     /// From 0xRRGGBB.
@@ -47,6 +52,7 @@ pub const Color = struct {
         return c;
     }
 
+    /// The colour, with opacity `a`.
     pub fn withAlpha(c: Color, a: f32) Color {
         var out = c;
         out.a = a;
@@ -97,11 +103,16 @@ pub const Rect = struct {
 
 /// Corner radii: top left, top right, bottom right, bottom left.
 pub const CornerRadii = struct {
+    /// The radius of the top left corner, in pixels.
     tl: f32 = 0,
+    /// The radius of the top right corner, in pixels.
     tr: f32 = 0,
+    /// The radius of the bottom right corner, in pixels.
     br: f32 = 0,
+    /// The radius of the bottom left corner, in pixels.
     bl: f32 = 0,
 
+    /// The same radius on every corner.
     pub fn all(r: f32) CornerRadii {
         return .{ .tl = r, .tr = r, .br = r, .bl = r };
     }

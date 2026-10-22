@@ -17,13 +17,16 @@ const Color = gfx.Color;
 
 /// How a label is drawn.
 pub const MapLabelStyle = struct {
+    /// The text size, in pixels.
     size: f32 = 12,
+    /// The text colour.
     color: Color,
     /// An outline around the letters (to read over anything).
     halo: ?Color = null,
-    /// Where the text is from the point.
+    /// Which part of the text is at the point.
     anchor: Anchor = .center,
-    /// And how much further (in pixels).
+    /// How far the text is moved from where the anchor puts it, in pixels
+    /// (across and down).
     offset: [2]f32 = .{ 0, 0 },
 
     /// Which part of the text is at the point it is drawn from (and so where
@@ -96,21 +99,27 @@ pub const Labels = struct {
     }
 };
 
+/// What the draws of a `MapStyle` paint a tile with: the canvas, where the tile is
+/// on the map, and ways to draw at points in the tile's own coordinates.
 pub const MapTilePainter = struct {
+    /// The canvas it draws on.
     canvas: *gfx.Canvas,
     /// For what is drawn in a frame (the frame's arena).
     arena: std.mem.Allocator,
+    /// The view of the map the tile is in.
     view: *const View,
     /// The tile being drawn.
     id: MapTileId,
     /// Its top left on the flat map (beyond 0 to 1 for a copy of the
-    /// world to the east or west), and its width there.
+    /// world to the east or west).
     corner: [2]f64,
+    /// Its width on the flat map.
     span: f64,
     /// The tile's coordinates' extent (`MapVectorTile.extent`).
     extent: f32,
     /// The camera's zoom.
     zoom: f64,
+    /// The labels already placed, so that they do not overlap.
     labels: *Labels,
 
     /// Where `p` (in the tile's coordinates) shows, and whether it does.
@@ -305,6 +314,8 @@ pub const MapTilePainter = struct {
         tp.canvas.fillCircle(.{ @floatCast(q.pos[0]), @floatCast(q.pos[1]) }, radius, color);
     }
 
+    /// Strokes a circle of `radius` and `width` pixels around the point `p` (in
+    /// the tile's coordinates).
     pub fn ring(tp: *MapTilePainter, p: Point, radius: f32, width: f32, color: Color) void {
         const q = tp.project(p);
         if (!q.visible) return;

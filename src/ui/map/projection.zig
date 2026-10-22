@@ -9,6 +9,7 @@
 const std = @import("std");
 const math = std.math;
 
+/// A place on the Earth: its latitude and longitude, in degrees.
 pub const MapCoordinate = struct {
     /// Degrees north (negative: south).
     lat: f64 = 0,
@@ -18,6 +19,7 @@ pub const MapCoordinate = struct {
 
 /// What a map view shows: the place at its centre, and how close.
 pub const MapCamera = struct {
+    /// The place at the middle of the view.
     center: MapCoordinate = .{},
     /// At zoom z the flat map is 256 × 2^z pixels across, and the globe
     /// as far round its equator.

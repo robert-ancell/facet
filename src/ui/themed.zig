@@ -14,8 +14,11 @@ const SizedBox = @import("sized_box.zig").SizedBox;
 const Widget = widget.Widget;
 const Context = widget.Context;
 
+/// Gives the widgets below it a theme of their own (a changed `cx.theme()`, say).
 pub const Themed = struct {
+    /// The theme the widgets below it are in.
     theme: Theme,
+    /// The widget in it.
     child: ?Widget = null,
 
     pub const State = struct {

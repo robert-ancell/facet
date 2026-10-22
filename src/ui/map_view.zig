@@ -55,6 +55,7 @@ pub const MapLabelStyle = tile_painter.MapLabelStyle;
 pub const MapNight = struct {
     /// Where the sun is overhead.
     sun: MapCoordinate,
+    /// The colour of the shade.
     color: Color = .rgb(0x000814),
     /// How dark it is where the sun is well below the horizon (and less
     /// in twilight, as it sets).
@@ -72,7 +73,10 @@ const max_tiles = 512;
 /// How far out a tile that is not there is drawn from instead.
 const max_fallback = 6;
 
+/// A map of the world made of tiles (vectors drawn by a style, or images), that
+/// can be dragged, zoomed and flung, and is a globe when zoomed far out.
 pub const MapView = struct {
+    /// Where the tiles come from.
     source: MapSource,
     /// How vector tiles are drawn: a plain style in the theme's colours if
     /// null.
@@ -80,9 +84,13 @@ pub const MapView = struct {
     /// What it shows: the app's, which it moves, or its own if null
     /// (starting at `initial`).
     camera: ?*MapCamera = null,
+    /// Where its own camera starts, when it is not given the app's.
     initial: MapCamera = .{},
+    /// How the world is shown: as a globe when zoomed out, or flat.
     projection: MapProjection = .globe,
+    /// The furthest out it can be zoomed.
     min_zoom: f64 = 0,
+    /// The furthest in it can be zoomed.
     max_zoom: f64 = 20,
     /// Called when it is moved or zoomed (by dragging, the wheel, or a
     /// fling carrying on).
@@ -93,16 +101,17 @@ pub const MapView = struct {
     /// flat map does not reach): the style's background, or the theme's
     /// surface container, if null.
     background: ?Color = null,
-    /// Whether the globe has a glow around it (its atmosphere), and its
-    /// colour: the theme's primary, faint, if null.
+    /// Whether the globe has a glow around it (its atmosphere).
     atmosphere: bool = true,
+    /// The colour of that glow: the theme's primary, faint, if null.
     atmosphere_color: ?Color = null,
     /// Night where the sun has set, from where it is overhead
     /// (`MapNight.at` gives it for a time), shaded on the globe (fading
     /// as the globe becomes the flat map); none if null.
     night: ?MapNight = null,
-    /// Its size, if not told how big to be.
+    /// Its width, in pixels, if it is not told how big to be.
     width: f32 = 480,
+    /// Its height, in pixels, if it is not told how big to be.
     height: f32 = 320,
 
     pub const State = struct {

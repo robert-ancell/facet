@@ -10,17 +10,24 @@ const Point = geometry.Point;
 const Widget = widget.Widget;
 const Node = widget.WidgetNode;
 
+/// An outline.
 pub const Border = struct {
+    /// Its thickness in pixels.
     width: f32 = 1,
+    /// Its colour.
     color: gfx.Color,
 };
 
 /// A rounded rectangle behind the child: filled, outlined, or both. It is
 /// the child's size, or as big as allowed without one.
 pub const Decorated = struct {
+    /// The fill (none, if null).
     color: ?gfx.Color = null,
+    /// The outline (none, if null).
     border: ?Border = null,
+    /// The corners' radii.
     radius: gfx.CornerRadii = .{},
+    /// The widget in it.
     child: ?Widget = null,
 
     pub fn paint(self: *const Decorated, n: *Node, p: *Painter) void {
