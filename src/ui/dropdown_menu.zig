@@ -129,7 +129,7 @@ pub fn Select(comptime T: type) type {
         pub fn build(self: *const @This(), cx: *Context, state: *State) Widget {
             state.len = @min(self.options.len, DropdownMenu.max_options);
             state.on_changed = self.on_changed;
-            const labels = cx.arena.alloc([]const u8, state.len) catch return cx.make(@import("empty.zig").Empty{});
+            const labels = cx.arena.alloc([]const u8, state.len) catch return cx.make(@import("sized_box.zig").SizedBox.empty);
             var selected: ?usize = null;
             for (self.options[0..state.len], labels, 0..) |opt, *lbl, i| {
                 lbl.* = opt.label;

@@ -55,7 +55,6 @@ pub const Radii = gfx.Radii;
 pub const btn_left = ui.btn_left;
 pub const btn_right = ui.btn_right;
 
-pub const Empty = ui.Empty;
 pub const SizedBox = ui.SizedBox;
 pub const ConstrainedBox = ui.ConstrainedBox;
 pub const Padding = ui.Padding;

@@ -34,7 +34,6 @@
 
 pub const geometry = @import("geometry.zig");
 pub const widget = @import("widget.zig");
-pub const empty = @import("empty.zig");
 pub const sized_box = @import("sized_box.zig");
 pub const constrained_box = @import("constrained_box.zig");
 pub const padding = @import("padding.zig");
@@ -121,7 +120,6 @@ pub const ValueCallback = widget.ValueCallback;
 pub const btn_left = widget.btn_left;
 pub const btn_right = widget.btn_right;
 
-pub const Empty = empty.Empty;
 pub const SizedBox = sized_box.SizedBox;
 pub const ConstrainedBox = constrained_box.ConstrainedBox;
 pub const Padding = padding.Padding;
@@ -228,7 +226,6 @@ pub const Waker = runtime.Waker;
 test {
     _ = geometry;
     _ = widget;
-    _ = empty;
     _ = sized_box;
     _ = constrained_box;
     _ = padding;

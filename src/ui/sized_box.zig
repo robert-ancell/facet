@@ -15,6 +15,9 @@ pub const SizedBox = struct {
     height: ?f32 = null,
     child: ?Widget = null,
 
+    /// Nothing, as small as allowed.
+    pub const empty: SizedBox = .{};
+
     pub fn layout(self: *const SizedBox, n: *Node, c: Constraints) Size {
         var own: Constraints = .{};
         if (self.width) |w| own = .{ .min_w = w, .max_w = w, .min_h = own.min_h, .max_h = own.max_h };

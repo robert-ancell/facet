@@ -65,7 +65,7 @@ pub const NavigationRail = struct {
         const t = cx.theme();
         state.on_select = self.on_select;
         const count = @min(self.items.len, max_items);
-        const rows = cx.arena.alloc(Widget, count) catch return cx.make(@import("empty.zig").Empty{});
+        const rows = cx.arena.alloc(Widget, count) catch return cx.make(SizedBox.empty);
         for (self.items[0..count], state.picks[0..count], rows, 0..) |item, *pick, *row, i| {
             pick.* = .{ .state = state, .index = i };
             row.* = cx.make(RailDestination{

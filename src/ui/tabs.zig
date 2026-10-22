@@ -66,7 +66,7 @@ pub const TabBar = struct {
     pub fn build(self: *const TabBar, cx: *Context, state: *State) Widget {
         state.on_select = self.on_select;
         const count = @min(self.tabs.len, max_tabs);
-        const children = cx.arena.alloc(Widget, count) catch return cx.make(@import("empty.zig").Empty{});
+        const children = cx.arena.alloc(Widget, count) catch return cx.make(SizedBox.empty);
         for (self.tabs[0..count], state.picks[0..count], children, 0..) |tab, *pick, *child, i| {
             pick.* = .{ .state = state, .index = i };
             const item = cx.make(TabItem{

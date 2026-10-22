@@ -23,7 +23,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 const loader = @import("image_loader.zig");
-const Empty = @import("empty.zig").Empty;
+const SizedBox = @import("sized_box.zig").SizedBox;
 
 const Node = widget.Node;
 const Context = widget.Context;
@@ -85,14 +85,14 @@ pub const Image = struct {
         if (self.source == .image) {
             const img = self.source.image;
             const part = if (self.region) |r| Region.within(r, img.width, img.height) catch {
-                return if (self.failed) |b| b.f(b.ctx, cx) else cx.make(Empty{});
+                return if (self.failed) |b| b.f(b.ctx, cx) else cx.make(SizedBox.empty);
             } else null;
             return cx.make(Picture{ .image = img, .part = part, .opacity = self.opacity });
         }
         return switch (cx.ui.images.getRegion(self.source, self.region, cx.now())) {
             .ready => |img| cx.make(Picture{ .image = img, .opacity = self.opacity }),
-            .loading => if (self.loading) |b| b.f(b.ctx, cx) else cx.make(Empty{}),
-            .failed => if (self.failed) |b| b.f(b.ctx, cx) else cx.make(Empty{}),
+            .loading => if (self.loading) |b| b.f(b.ctx, cx) else cx.make(SizedBox.empty),
+            .failed => if (self.failed) |b| b.f(b.ctx, cx) else cx.make(SizedBox.empty),
         };
     }
 };

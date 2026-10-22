@@ -29,7 +29,7 @@ pub const Badge = struct {
     child: ?Widget = null,
 
     pub fn build(self: *const Badge, cx: *Context) Widget {
-        if (!self.show) return self.child orelse cx.make(@import("empty.zig").Empty{});
+        if (!self.show) return self.child orelse cx.make(SizedBox.empty);
         const pill = self.makePill(cx);
         const child = self.child orelse return pill;
         return cx.make(BadgedChild{ .children = &.{ child, pill } });

@@ -123,9 +123,9 @@ fn segmented(comptime T: type, cx: *facet.Context, value: *T, options: []const S
             p.value.* = p.choice;
         }
     };
-    const buttons = cx.arena.alloc(facet.Widget, options.len) catch return cx.make(facet.Empty{});
+    const buttons = cx.arena.alloc(facet.Widget, options.len) catch return cx.make(facet.SizedBox.empty);
     for (options, buttons, 0..) |opt, *b, i| {
-        const p = cx.arena.create(Pick) catch return cx.make(facet.Empty{});
+        const p = cx.arena.create(Pick) catch return cx.make(facet.SizedBox.empty);
         p.* = .{ .value = value, .choice = opt.value };
         b.* = cx.make(facet.PillButton{
             .label = opt.label,

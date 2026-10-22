@@ -8,7 +8,6 @@ const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
-const Empty = @import("empty.zig").Empty;
 const IconButton = @import("icon_button.zig").IconButton;
 const Overlay = @import("overlay.zig").Overlay;
 const Padding = @import("padding.zig").Padding;
@@ -43,7 +42,7 @@ pub const Snackbar = struct {
     pub fn build(self: *const Snackbar, cx: *Context) Widget {
         if (self.message.len == 0) {
             if (self.child) |under| return cx.make(Overlay{ .children = &.{under} });
-            return cx.make(Empty{});
+            return cx.make(SizedBox.empty);
         }
         const t = cx.theme();
 

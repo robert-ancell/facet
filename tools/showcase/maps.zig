@@ -81,7 +81,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         .{ .value = .blueprint, .label = "Blueprint" },
     };
     const palette = paletteOf(s.look);
-    const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.Empty{});
+    const style = cx.arena.create(facet.MapStyle) catch return cx.make(facet.SizedBox.empty);
     style.* = styleOf(cx, palette);
     // Images are drawn in the style too (those drawn in another are
     // dropped, and drawn again).

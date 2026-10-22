@@ -9,7 +9,6 @@ const widget = @import("widget.zig");
 const Center = @import("center.zig").Center;
 const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
-const Empty = @import("empty.zig").Empty;
 const FilledButton = @import("button.zig").FilledButton;
 const TextButton = @import("button.zig").TextButton;
 const Icon = @import("icon.zig").Icon;
@@ -46,7 +45,7 @@ pub const Dialog = struct {
     }
 
     pub fn build(self: *const Dialog, cx: *Context) Widget {
-        if (!self.open) return self.child orelse cx.make(Empty{});
+        if (!self.open) return self.child orelse cx.make(SizedBox.empty);
         const t = cx.theme();
 
         var items: [5]Widget = undefined;

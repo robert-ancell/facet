@@ -190,7 +190,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 }
 
 fn scrollRows(cx: *facet.Context, s: *State) facet.Widget {
-    const rows = cx.arena.alloc(facet.Widget, 30) catch return cx.make(facet.Empty{});
+    const rows = cx.arena.alloc(facet.Widget, 30) catch return cx.make(facet.SizedBox.empty);
     for (rows, 0..) |*r, i| {
         r.* = cx.make(facet.ListItem{
             .headline = cx.fmt("Row {d}", .{i + 1}),

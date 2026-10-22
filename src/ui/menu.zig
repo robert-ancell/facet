@@ -53,7 +53,7 @@ pub const Menu = struct {
 
     pub fn build(self: *const Menu, cx: *Context) Widget {
         const t = cx.theme();
-        const rows = cx.ui.arena().alloc(Widget, self.items.len) catch return cx.make(@import("empty.zig").Empty{});
+        const rows = cx.ui.arena().alloc(Widget, self.items.len) catch return cx.make(SizedBox.empty);
         for (self.items, rows) |item, *row| row.* = cx.make(MenuRow{ .item = item });
         return cx.make(Decorated{
             .color = t.surface_container,

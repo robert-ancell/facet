@@ -9,7 +9,7 @@
 
 const widget = @import("widget.zig");
 const Theme = @import("theme.zig").Theme;
-const Empty = @import("empty.zig").Empty;
+const SizedBox = @import("sized_box.zig").SizedBox;
 
 const Widget = widget.Widget;
 const Context = widget.Context;
@@ -28,6 +28,6 @@ pub const Themed = struct {
         // Its node's, for the nodes below to take.
         if (cx.node) |n| n.theme_ptr = &state.theme;
         cx.theme_ptr = &state.theme;
-        return self.child orelse cx.make(Empty{});
+        return self.child orelse cx.make(SizedBox.empty);
     }
 };

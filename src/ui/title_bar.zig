@@ -61,7 +61,7 @@ pub const TitleBar = struct {
 
     pub fn build(self: *const TitleBar, cx: *Context) Widget {
         // A fullscreen window has none.
-        if (cx.ui.fullscreen) return cx.make(@import("empty.zig").Empty{});
+        if (cx.ui.fullscreen) return cx.make(@import("sized_box.zig").SizedBox.empty);
         const controls = cx.ui.controls;
         const win = cx.ui.win;
         const can_minimize = if (win) |w| w.canMinimize() else false;

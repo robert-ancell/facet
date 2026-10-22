@@ -6,7 +6,7 @@ const facet = @import("facet");
 
 /// A page: its sections one above the other, with dividers between them.
 pub fn page(cx: *facet.Context, sections: []const facet.Widget) facet.Widget {
-    const children = cx.arena.alloc(facet.Widget, sections.len * 2 -| 1) catch return cx.make(facet.Empty{});
+    const children = cx.arena.alloc(facet.Widget, sections.len * 2 -| 1) catch return cx.make(facet.SizedBox.empty);
     for (sections, 0..) |s, i| {
         children[i * 2] = s;
         if (i + 1 < sections.len) children[i * 2 + 1] = cx.make(facet.Divider{});
@@ -22,7 +22,7 @@ pub fn page(cx: *facet.Context, sections: []const facet.Widget) facet.Widget {
 /// A section: a title, a line saying what it shows, and its demos.
 pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demos: []const facet.Widget) facet.Widget {
     const t = cx.theme();
-    const children = cx.arena.alloc(facet.Widget, demos.len + 1) catch return cx.make(facet.Empty{});
+    const children = cx.arena.alloc(facet.Widget, demos.len + 1) catch return cx.make(facet.SizedBox.empty);
     children[0] = cx.make(facet.Column{
         .main_axis_size = .min,
         .cross_axis_alignment = .start,
@@ -44,7 +44,7 @@ pub fn section(cx: *facet.Context, title: []const u8, subtitle: []const u8, demo
 /// Widgets in a row, with a label at the left saying what they are.
 pub fn labelled(cx: *facet.Context, label: []const u8, widgets: []const facet.Widget) facet.Widget {
     const t = cx.theme();
-    const children = cx.arena.alloc(facet.Widget, widgets.len + 1) catch return cx.make(facet.Empty{});
+    const children = cx.arena.alloc(facet.Widget, widgets.len + 1) catch return cx.make(facet.SizedBox.empty);
     children[0] = cx.make(facet.SizedBox{
         .width = label_width,
         .child = cx.make(facet.Text{ .text = label, .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false, .ellipsis = true }),

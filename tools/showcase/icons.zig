@@ -95,7 +95,7 @@ fn cell(s: *State, cx: *facet.Context, i: usize) facet.Widget {
             c.s.chosen = c.icon;
         }
     };
-    const c = cx.arena.create(Choose) catch return cx.make(facet.Empty{});
+    const c = cx.arena.create(Choose) catch return cx.make(facet.SizedBox.empty);
     c.* = .{ .s = s, .icon = icon };
     const chosen = s.chosen == icon;
     return cx.make(facet.Tooltip{ .text = @tagName(icon), .child = cx.make(facet.Card{

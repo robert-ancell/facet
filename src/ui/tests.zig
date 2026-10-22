@@ -238,7 +238,7 @@ const Keeper = struct {
 const Keepers = struct {
     ids: []const u32,
     pub fn build(self: *const Keepers, cx: *Context) Widget {
-        var children = cx.arena.alloc(Widget, self.ids.len) catch return cx.make(ui.Empty{});
+        var children = cx.arena.alloc(Widget, self.ids.len) catch return cx.make(ui.SizedBox.empty);
         for (self.ids, 0..) |id, i| children[i] = cx.make(Keeper{ .id = id }).withKey(id);
         return cx.make(ui.Column{ .children = children });
     }
@@ -1496,7 +1496,7 @@ test "Context.backend reports platform, buffer transport, and renderer" {
         pub fn build(self: *const @This(), cx: *Context) Widget {
             self.out.* = cx.backend();
             self.win.* = cx.window();
-            return cx.make(ui.Empty{});
+            return cx.make(ui.SizedBox.empty);
         }
     };
 
