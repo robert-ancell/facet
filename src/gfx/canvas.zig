@@ -111,7 +111,7 @@ pub const Radii = struct {
     }
 };
 
-pub const Kind = enum {
+pub const BatchKind = enum {
     shape,
     solid,
     /// Solid triangles opaque all over, drawn without blending.
@@ -145,7 +145,7 @@ pub const Image = struct {
 };
 
 pub const Batch = struct {
-    kind: Kind,
+    kind: BatchKind,
     /// Vertex data, `floatsPerVertex(kind)` floats per vertex, three
     /// vertices per triangle.
     floats: std.ArrayList(f32) = .empty,
@@ -201,7 +201,7 @@ pub const Batch = struct {
     const area_gap = 2;
 };
 
-pub fn floatsPerVertex(kind: Kind) usize {
+pub fn floatsPerVertex(kind: BatchKind) usize {
     return switch (kind) {
         .shape => shaders.shape_floats,
         .solid, .@"opaque" => shaders.solid_floats,
@@ -696,7 +696,7 @@ pub const Canvas = struct {
     /// icons, each several shapes over each other) share batches: the
     /// second icon's first shape goes in the first icon's first batch, its
     /// second in the second, and so on.
-    fn batchFor(c: *Canvas, kind: Kind, bounds: Rect) ?*Batch {
+    fn batchFor(c: *Canvas, kind: BatchKind, bounds: Rect) ?*Batch {
         return c.batchOf(kind, null, bounds);
     }
 
@@ -706,7 +706,7 @@ pub const Canvas = struct {
         return c.batchOf(.image, img, bounds);
     }
 
-    fn batchOf(c: *Canvas, kind: Kind, image: ?*const Image, bounds: Rect) ?*Batch {
+    fn batchOf(c: *Canvas, kind: BatchKind, image: ?*const Image, bounds: Rect) ?*Batch {
         const items = c.batches.items;
         var found: ?*Batch = null;
         var i = items.len;
@@ -830,9 +830,9 @@ test "separate shapes batch together; overlapping ones keep their order" {
     // corners, three batches.
     for (0..3) |i| c.fillRoundedRect(.{ .x = 10 + @as(f32, @floatFromInt(i)) * 60, .y = 10, .w = 50, .h = 40 }, .all(8), Color.rgb(0x6750a4));
     try std.testing.expectEqual(@as(usize, 3), c.batches.items.len);
-    try std.testing.expectEqual(Kind.solid, c.batches.items[0].kind);
-    try std.testing.expectEqual(Kind.@"opaque", c.batches.items[1].kind);
-    try std.testing.expectEqual(Kind.shape, c.batches.items[2].kind);
+    try std.testing.expectEqual(BatchKind.solid, c.batches.items[0].kind);
+    try std.testing.expectEqual(BatchKind.@"opaque", c.batches.items[1].kind);
+    try std.testing.expectEqual(BatchKind.shape, c.batches.items[2].kind);
     // Opaque triangles are opaque at every vertex; the fringes are not.
     const o = c.batches.items[1].floats.items;
     var k: usize = 5;
@@ -858,7 +858,7 @@ test "separate shapes batch together; overlapping ones keep their order" {
     c.begin(100, 100);
     c.fillCircle(.{ 50, 50 }, 20, Color.rgb(0));
     try std.testing.expectEqual(@as(usize, 1), c.batches.items.len);
-    try std.testing.expectEqual(Kind.shape, c.batches.items[0].kind);
+    try std.testing.expectEqual(BatchKind.shape, c.batches.items[0].kind);
 }
 
 test "things drawn alike share batches, in order" {

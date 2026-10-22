@@ -18,7 +18,7 @@ const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Node = widget.Node;
 const Event = widget.Event;
-const Cursor = widget.Cursor;
+const PointerCursor = widget.PointerCursor;
 const ValueCallback = widget.ValueCallback;
 const Border = decorated.Border;
 
@@ -90,7 +90,7 @@ pub fn D3D11Area(comptime Scene: type) type {
             return c.constrain(.{ .w = self.min_width, .h = self.min_height });
         }
 
-        pub fn cursor(self: *const Self, n: *Node, _: Point) ?Cursor {
+        pub fn cursor(self: *const Self, n: *Node, _: Point) ?PointerCursor {
             if (self.on_drag == null) return null;
             return if (n.state(State).dragging) .grabbing else .grab;
         }

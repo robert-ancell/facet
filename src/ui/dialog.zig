@@ -151,7 +151,7 @@ const Scrim = struct {
     on_dismiss: ?Callback = null,
     child: ?Widget = null,
 
-    pub fn cursor(_: *const Scrim, _: *Node, _: @import("geometry.zig").Point) ?widget.Cursor {
+    pub fn cursor(_: *const Scrim, _: *Node, _: @import("geometry.zig").Point) ?widget.PointerCursor {
         return .default;
     }
 
@@ -174,7 +174,7 @@ const Scrim = struct {
 pub const SurfaceBlocker = struct {
     child: ?Widget = null,
 
-    pub fn cursor(_: *const SurfaceBlocker, _: *Node, _: @import("geometry.zig").Point) ?widget.Cursor {
+    pub fn cursor(_: *const SurfaceBlocker, _: *Node, _: @import("geometry.zig").Point) ?widget.PointerCursor {
         return .default;
     }
 

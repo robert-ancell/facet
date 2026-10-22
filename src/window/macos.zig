@@ -123,7 +123,7 @@ pub const MacWindow = struct {
         pixels: []u32 = &.{},
     };
 
-    pub const platform: window.Platform = .macos;
+    pub const platform: window.WindowPlatform = .macos;
     pub const decorations: window.WindowDecorations = .server;
 
     const Buffer = struct {
@@ -405,7 +405,7 @@ pub const MacWindow = struct {
 
     /// Frames drawn on the GPU are in the Metal layer's drawables; the
     /// CPU's in memory.
-    pub fn bufferTransport(w: *const MacWindow) window.BufferTransport {
+    pub fn bufferTransport(w: *const MacWindow) window.WindowBufferTransport {
         return if (w.on_gpu) .swapchain else .memory;
     }
 
@@ -590,7 +590,7 @@ pub const MacWindow = struct {
         if (w.fullscreen != on) msg(void, w.win, "toggleFullScreen:", .{@as(Id, null)});
     }
 
-    pub fn setCursor(_: *MacWindow, cursor: window.Cursor) void {
+    pub fn setCursor(_: *MacWindow, cursor: window.PointerCursor) void {
         const pool = objc.push();
         defer objc.pop(pool);
         const name: [*:0]const u8 = switch (cursor) {
@@ -1038,7 +1038,7 @@ pub const MacDisplay = struct {
     /// The app was asked to quit (Quit in its menu, Command and Q).
     quit_requested: bool = false,
 
-    pub const platform: window.Platform = .macos;
+    pub const platform: window.WindowPlatform = .macos;
 
     /// A source, its CFFileDescriptor and run loop source, and whether its
     /// fd has been readable since it was last read.

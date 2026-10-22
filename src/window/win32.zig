@@ -152,7 +152,7 @@ pub const Win32Display = struct {
     /// The app was asked to quit (the session ending).
     quit_requested: bool = false,
 
-    pub const platform: window.Platform = .windows;
+    pub const platform: window.WindowPlatform = .windows;
     const max_windows = 32;
 
     /// Ready to open windows (each monitor's own DPI told as it changes,
@@ -286,7 +286,7 @@ pub const Win32Window = struct {
     restore: w32.WINDOWPLACEMENT = .{},
     restore_style: isize = 0,
     min_size: [2]u32 = .{ 1, 1 },
-    cursor: window.Cursor = .default,
+    cursor: window.PointerCursor = .default,
     /// Whether the pointer is in the window (its leaving is tracked), and
     /// the buttons held (the window has the mouse while any is).
     pointer_in: bool = false,
@@ -362,7 +362,7 @@ pub const Win32Window = struct {
         shown: bool = false,
     };
 
-    pub const platform: window.Platform = .windows;
+    pub const platform: window.WindowPlatform = .windows;
     pub const decorations: window.WindowDecorations = .server;
 
     pub const Options = struct {
@@ -1024,7 +1024,7 @@ pub const Win32Window = struct {
         return w.fullscreen;
     }
 
-    pub fn setCursor(w: *Win32Window, cursor: window.Cursor) void {
+    pub fn setCursor(w: *Win32Window, cursor: window.PointerCursor) void {
         if (w.cursor == cursor) return;
         w.cursor = cursor;
         if (!w.pointer_in) return;
@@ -1032,7 +1032,7 @@ pub const Win32Window = struct {
         _ = u.SetCursor(cursorHandle(u, cursor));
     }
 
-    fn cursorHandle(u: *const w32.User32, cursor: window.Cursor) ?w32.HCURSOR {
+    fn cursorHandle(u: *const w32.User32, cursor: window.PointerCursor) ?w32.HCURSOR {
         const id: usize = switch (cursor) {
             .default => 32512, // IDC_ARROW
             .pointer => 32649, // IDC_HAND
@@ -1062,7 +1062,7 @@ pub const Win32Window = struct {
 
     /// Frames drawn on the GPU go to the swap chain; the CPU's, in memory,
     /// are shown with GDI.
-    pub fn bufferTransport(w: *const Win32Window) window.BufferTransport {
+    pub fn bufferTransport(w: *const Win32Window) window.WindowBufferTransport {
         return if (w.on_gpu) .swapchain else .memory;
     }
 

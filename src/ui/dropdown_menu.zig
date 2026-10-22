@@ -45,7 +45,7 @@ pub const DropdownMenu = struct {
     };
 
     pub const State = struct {
-        anchor: widget.Anchor = .{},
+        anchor: widget.WidgetAnchor = .{},
         on_selected: ?ValueCallback(usize) = null,
         labels: [max_options][]const u8 = undefined,
         picks: [max_options]Pick = undefined,

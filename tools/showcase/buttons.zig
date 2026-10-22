@@ -159,7 +159,7 @@ const MenuButton = struct {
     };
 
     pub const State = struct {
-        anchor: facet.Anchor = .{},
+        anchor: facet.WidgetAnchor = .{},
         log: ?*Log = null,
         actions: [5]Action = undefined,
 

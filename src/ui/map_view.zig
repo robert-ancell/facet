@@ -35,7 +35,7 @@ const Point = geometry.Point;
 const Constraints = geometry.Constraints;
 const Node = widget.Node;
 const Event = widget.Event;
-const Cursor = widget.Cursor;
+const PointerCursor = widget.PointerCursor;
 const Callback = widget.Callback;
 const Painter = painter_mod.Painter;
 const Color = gfx.Color;
@@ -191,7 +191,7 @@ pub const MapView = struct {
         return c.constrain(.{ .w = 120, .h = 90 });
     }
 
-    pub fn cursor(_: *const MapView, n: *Node, _: Point) ?Cursor {
+    pub fn cursor(_: *const MapView, n: *Node, _: Point) ?PointerCursor {
         return if (n.state(State).grab != null) .grabbing else .grab;
     }
 

@@ -333,7 +333,7 @@ pub const WindowUi = struct {
     focus_before_menu: ?*Node = null,
     menu_focus_pending: bool = false,
     /// The keyboard layout in use (from the window, or `loaded_keymap`).
-    keyboard: window_mod.Layout = .{},
+    keyboard: window_mod.KeyboardLayout = .{},
     /// A keymap of its own (`loadKeymap`), for keys from `keyEvent` that
     /// say nothing of what they type, and the modifiers it keeps.
     loaded_keymap: ?window_mod.xkb.Keymap = null,
@@ -355,7 +355,7 @@ pub const WindowUi = struct {
     /// The window attached to the UI, if any.
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).
-    controls: ?*window_mod.Controls = null,
+    controls: ?*window_mod.WindowControls = null,
     /// Automatic client-side title bar node (used on Wayland when `decorations == .client`).
     title_bar_root: ?*Node = null,
     /// The system's clipboard (the app gives it); without one, text is
@@ -524,7 +524,7 @@ pub const WindowUi = struct {
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
     /// `win` (either a `window.Window` or a pointer such as `*window.WaylandWindow`).
-    pub fn attachWindow(ui: *WindowUi, win: anytype, controls: ?*window_mod.Controls) void {
+    pub fn attachWindow(ui: *WindowUi, win: anytype, controls: ?*window_mod.WindowControls) void {
         const w = window_mod.Window.from(win);
         ui.win = w;
         ui.controls = controls;
@@ -593,7 +593,7 @@ pub const WindowUi = struct {
 
     /// The pointer cursor shape requested by the currently dragged,
     /// captured, or hovered widget.
-    pub fn cursor(ui: *const WindowUi) widget.Cursor {
+    pub fn cursor(ui: *const WindowUi) widget.PointerCursor {
         if (ui.drag != null) return .grabbing;
         if (ui.captured) |cap| {
             if (cap.widget.vtable.cursor) |f| {
@@ -1639,7 +1639,7 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
 
 /// A native toolkit app: its windows (the system's own, opened on a
 /// `window.NativeDisplay`, unless it is given a display), each with its
-/// `Controls` and a `WindowUi`, and what they share (`Shared`: the font, the
+/// `WindowControls` and a `WindowUi`, and what they share (`Shared`: the font, the
 /// renderer, the theme). The app runs them in a loop of its own:
 ///
 ///     const app = try App.init(gpa, io, environ, .{ .on_quit_request = .quit, .on_last_window_closed = .quit });
@@ -1895,7 +1895,7 @@ pub const App = struct {
         };
     }
 
-    pub fn setTheme(a: *App, mode: theme_mod.Mode) void {
+    pub fn setTheme(a: *App, mode: theme_mod.ThemeMode) void {
         a.appearance.theme = mode;
         _ = a.theme_watch.changed(a.io);
         a.applyTheme();
@@ -2034,8 +2034,8 @@ pub const App = struct {
         win: window_mod.Window,
         /// Whether `close` closes `win` (it was opened by `openWindow`).
         owns_window: bool = false,
-        /// What its title bar's buttons do (see `window.Controls`).
-        controls: window_mod.Controls,
+        /// What its title bar's buttons do (see `window.WindowControls`).
+        controls: window_mod.WindowControls,
         /// Its UI (destroyed when it is closed).
         ui: *WindowUi,
         root: Root,

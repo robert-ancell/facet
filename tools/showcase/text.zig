@@ -140,13 +140,13 @@ fn area(cx: *facet.Context, doc: *facet.TextDocument, highlighter: ?facet.TextAr
 
 /// Colours a little of Zig: comments, strings, builtins, numbers, keywords
 /// and types.
-fn highlightZig(text: []const u8, out: []facet.Highlight) void {
+fn highlightZig(text: []const u8, out: []facet.SyntaxHighlight) void {
     const keywords = [_][]const u8{ "const", "var", "fn", "pub", "return", "if", "else", "for", "while", "struct", "enum" };
     const types = [_][]const u8{ "u8", "u16", "u32", "u64", "usize", "i32", "f32", "bool", "void" };
     var i: usize = 0;
     while (i < text.len) {
         const start = i;
-        const kind: facet.Highlight = if (std.mem.startsWith(u8, text[i..], "//")) blk: {
+        const kind: facet.SyntaxHighlight = if (std.mem.startsWith(u8, text[i..], "//")) blk: {
             i = std.mem.indexOfScalarPos(u8, text, i, '\n') orelse text.len;
             break :blk .comment;
         } else if (text[i] == '"') blk: {

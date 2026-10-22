@@ -11,7 +11,7 @@
 
 const a11y = @import("accessibility.zig");
 const std = @import("std");
-const Controls = @import("window").Controls;
+const WindowControls = @import("window").WindowControls;
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Column = @import("flex.zig").Column;
@@ -66,10 +66,10 @@ pub const TitleBar = struct {
         const win = cx.ui.win;
         const can_minimize = if (win) |w| w.canMinimize() else false;
         const can_maximize = if (win) |w| w.canMaximize() else true;
-        const on_minimize = self.on_minimize orelse if (controls) |c| (if (can_minimize) widget.Callback.of(c, Controls.minimize) else null) else null;
-        const on_maximize = self.on_maximize orelse if (controls) |c| (if (can_maximize) widget.Callback.of(c, Controls.toggleMaximized) else null) else null;
-        const on_close = self.on_close orelse if (controls) |c| widget.Callback.of(c, Controls.close) else null;
-        const on_drag = self.on_drag orelse if (controls) |c| widget.Callback.of(c, Controls.drag) else null;
+        const on_minimize = self.on_minimize orelse if (controls) |c| (if (can_minimize) widget.Callback.of(c, WindowControls.minimize) else null) else null;
+        const on_maximize = self.on_maximize orelse if (controls) |c| (if (can_maximize) widget.Callback.of(c, WindowControls.toggleMaximized) else null) else null;
+        const on_close = self.on_close orelse if (controls) |c| widget.Callback.of(c, WindowControls.close) else null;
+        const on_drag = self.on_drag orelse if (controls) |c| widget.Callback.of(c, WindowControls.drag) else null;
         const maximized = if (self.on_maximize != null) self.maximized else cx.ui.maximized;
         const t = cx.theme();
         var buttons: [3]Widget = undefined;
@@ -297,7 +297,7 @@ test "the title bar defaults to the UI's window controls" {
     const f = try font.Font.init(font.default_font_data);
     const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
-    var controls: Controls = .{ .win = undefined };
+    var controls: WindowControls = .{ .win = undefined };
     u.controls = &controls;
     const Root = struct {
         pub fn build(_: *const @This(), cx: *Context) Widget {
@@ -323,15 +323,15 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
     defer u.destroy();
 
     const MockWaylandWin = struct {
-        pub const platform: window_mod.Platform = .wayland;
-        pub const buffer_transport: window_mod.BufferTransport = .wl_shm;
+        pub const platform: window_mod.WindowPlatform = .wayland;
+        pub const buffer_transport: window_mod.WindowBufferTransport = .wl_shm;
         title: []const u8 = "Facet Test",
         decorations: window_mod.WindowDecorations = .client,
         width: u32 = 800,
         height: u32 = 600,
     };
     var mock_win: MockWaylandWin = .{};
-    var controls: Controls = .init(&mock_win);
+    var controls: WindowControls = .init(&mock_win);
     u.attachWindow(&mock_win, &controls);
 
     const Root = struct {
@@ -378,7 +378,7 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
     defer u.destroy();
 
     const MockWin = struct {
-        pub const platform: window_mod.Platform = .wayland;
+        pub const platform: window_mod.WindowPlatform = .wayland;
         title: []const u8 = "A very long window title that cannot possibly fit in a narrow window",
         decorations: window_mod.WindowDecorations = .client,
         width: u32 = 300,
@@ -394,7 +394,7 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
         }
     };
     var win: MockWin = .{};
-    var controls: Controls = .init(&win);
+    var controls: WindowControls = .init(&win);
     u.attachWindow(&win, &controls);
     u.maximized = false;
     const Root = struct {
@@ -436,7 +436,7 @@ test "a window that cannot be minimized has no minimize button" {
     const u = try WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const MockWin = struct {
-        pub const platform: window_mod.Platform = .wayland;
+        pub const platform: window_mod.WindowPlatform = .wayland;
         title: []const u8 = "Title",
         decorations: window_mod.WindowDecorations = .client,
         width: u32 = 400,
@@ -448,7 +448,7 @@ test "a window that cannot be minimized has no minimize button" {
         }
     };
     var win: MockWin = .{};
-    var controls: Controls = .init(&win);
+    var controls: WindowControls = .init(&win);
     u.attachWindow(&win, &controls);
     u.frame(win.width, win.height, 0, SizedBox{ .width = 10, .height = 10 });
     var buttons: usize = 0;

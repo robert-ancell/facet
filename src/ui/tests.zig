@@ -1285,7 +1285,7 @@ test "widget cursor shapes reflect hovered and captured widgets" {
 
     // Empty background -> default cursor.
     u.pointerMotion(.{ 350, 350 });
-    try testing.expectEqual(ui.Cursor.default, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.default, u.cursor());
 
     // Enabled button -> pointer cursor; disabled button -> default cursor.
     var buttons: std.ArrayList(*Node) = .empty;
@@ -1293,32 +1293,32 @@ test "widget cursor shapes reflect hovered and captured widgets" {
     try findAll(u.root.?, ui.OutlinedButton, &buttons);
     const btn_pos = buttons.items[0].position();
     u.pointerMotion(.{ btn_pos[0] + 10, btn_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.pointer, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.pointer, u.cursor());
 
     const dis_pos = buttons.items[1].position();
     u.pointerMotion(.{ dis_pos[0] + 10, dis_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.default, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.default, u.cursor());
 
     // TextField -> text cursor.
     const tf = find(u.root.?, ui.TextField).?;
     const tf_pos = tf.position();
     u.pointerMotion(.{ tf_pos[0] + 10, tf_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.text, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.text, u.cursor());
 
     // Slider -> pointer cursor.
     const sl = find(u.root.?, ui.Slider).?;
     const sl_pos = sl.position();
     u.pointerMotion(.{ sl_pos[0] + 30, sl_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.pointer, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.pointer, u.cursor());
 
     // Draggable -> grab when hovered, grabbing while actively dragging.
     const dr = find(u.root.?, ui.Draggable).?;
     const dr_pos = dr.position();
     u.pointerMotion(.{ dr_pos[0] + 10, dr_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.grab, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.grab, u.cursor());
     u.pointerButton(.{ dr_pos[0] + 10, dr_pos[1] + 10 }, ui.btn_left, true);
     u.pointerMotion(.{ dr_pos[0] + 40, dr_pos[1] + 10 });
-    try testing.expectEqual(ui.Cursor.grabbing, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.grabbing, u.cursor());
     u.pointerButton(.{ dr_pos[0] + 40, dr_pos[1] + 10 }, ui.btn_left, false);
 }
 
@@ -1503,9 +1503,9 @@ test "Context.backend reports platform, buffer transport, and renderer" {
     var info: ui.BackendInfo = .{};
     var win_info: ui.WindowInfo = .{};
     u.frame(320, 240, 0, Probe{ .out = &info, .win = &win_info });
-    try testing.expectEqual(window.Platform.headless, info.platform);
+    try testing.expectEqual(window.WindowPlatform.headless, info.platform);
     try testing.expectEqual(window.WindowDecorations.none, win_info.decorations);
-    try testing.expectEqual(window.BufferTransport.memory, win_info.buffer_transport);
+    try testing.expectEqual(window.WindowBufferTransport.memory, win_info.buffer_transport);
     try testing.expectEqual(expected_renderer, info.renderer);
 
     // A Wayland window (Linux and macOS, where its code builds).
@@ -1526,10 +1526,10 @@ test "Context.backend reports platform, buffer transport, and renderer" {
         wl_win.updateExtensions();
         u.attachWindow(&wl_win, null);
         u.frame(800, 600, 1, Probe{ .out = &info, .win = &win_info });
-        try testing.expectEqual(window.Platform.wayland, info.platform);
+        try testing.expectEqual(window.WindowPlatform.wayland, info.platform);
         try testing.expectEqual(window.WindowDecorations.client, win_info.decorations);
-        try testing.expectEqual(window.BufferTransport.wl_shm, win_info.buffer_transport);
-        try testing.expectEqual(window.BufferSync.none, win_info.buffer_sync);
+        try testing.expectEqual(window.WindowBufferTransport.wl_shm, win_info.buffer_transport);
+        try testing.expectEqual(window.WindowBufferSync.none, win_info.buffer_sync);
         try testing.expect(win_info.frame_sync.vsync);
         try testing.expect(win_info.frame_sync.frame_callback);
         try testing.expect(win_info.frame_sync.presentation_time);
@@ -2292,7 +2292,7 @@ test "a map view is dragged and zoomed" {
     // Dragged 50 pixels right: the world (512 across) moves with it.
     u.pointerMotion(.{ 200, 150 });
     u.pointerButton(.{ 200, 150 }, ui.btn_left, true);
-    try testing.expectEqual(ui.Cursor.grabbing, u.cursor());
+    try testing.expectEqual(ui.PointerCursor.grabbing, u.cursor());
     u.pointerMotion(.{ 250, 150 });
     u.pointerButton(.{ 250, 150 }, ui.btn_left, false);
     try testing.expectApproxEqAbs(45 - 50.0 / 512.0 * 360.0, camera.center.lon, 1e-6);
@@ -2878,7 +2878,7 @@ test "an anchor opens a menu just below its widget, and one taken from no widget
     const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const S = struct {
-        var anchor: ui.Anchor = .{};
+        var anchor: ui.WidgetAnchor = .{};
         fn build(cx: *Context) Widget {
             return cx.make(ui.Padding{ .padding = .all(20), .child = cx.make(ui.Align{
                 .alignment = .top_left,
@@ -2893,7 +2893,7 @@ test "an anchor opens a menu just below its widget, and one taken from no widget
         };
     };
     u.frame(200, 200, 0, Root(S.build){});
-    (ui.Anchor{}).openMenu(&.{.{ .label = "Nothing" }});
+    (ui.WidgetAnchor{}).openMenu(&.{.{ .label = "Nothing" }});
     try testing.expect(u.menu == null);
     S.anchor.openMenu(&.{.{ .label = "Cut" }});
     try testing.expect(u.menu != null);

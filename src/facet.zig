@@ -6,7 +6,7 @@
 //!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,
 //!   `VulkanRenderer`, `MetalRenderer` (macOS) and `D3D11Renderer`
 //!   (Windows) backends
-//! * `window`: generic `Window` interface, `Controls`, `InputEvent`,
+//! * `window`: generic `Window` interface, `WindowControls`, `InputEvent`,
 //!   `Clipboard`, and the built-in backends: `WaylandWindow` (Linux),
 //!   `MacWindow` (macOS) and `Win32Window` (Windows), `NativeWindow` being
 //!   the one built for
@@ -27,12 +27,12 @@ pub const Shared = ui.Shared;
 pub const App = ui.App;
 pub const Widget = ui.Widget;
 pub const Context = ui.Context;
-pub const Anchor = ui.Anchor;
+pub const WidgetAnchor = ui.WidgetAnchor;
 pub const BackendInfo = ui.BackendInfo;
 pub const WindowInfo = ui.WindowInfo;
 pub const Node = ui.Node;
 pub const Event = ui.Event;
-pub const Cursor = ui.Cursor;
+pub const PointerCursor = ui.PointerCursor;
 pub const Callback = ui.Callback;
 pub const ValueCallback = ui.ValueCallback;
 pub const Painter = ui.Painter;
@@ -40,7 +40,7 @@ pub const GpuArea = ui.GpuArea;
 pub const Theme = ui.Theme;
 pub const ThemeBrightness = ui.ThemeBrightness;
 pub const Themed = ui.Themed;
-pub const Highlight = ui.Highlight;
+pub const SyntaxHighlight = ui.SyntaxHighlight;
 pub const Clipboard = ui.Clipboard;
 pub const Waker = ui.Waker;
 
@@ -157,17 +157,17 @@ pub const D3D11Renderer = gfx.D3D11Renderer;
 pub const D3D11Context = gfx.D3D11Context;
 pub const VulkanRenderer = gfx.VulkanRenderer;
 pub const VulkanContext = gfx.VulkanContext;
-pub const Platform = window.Platform;
-pub const BufferTransport = window.BufferTransport;
-pub const BufferSync = window.BufferSync;
-pub const FrameSync = window.FrameSync;
+pub const WindowPlatform = window.WindowPlatform;
+pub const WindowBufferTransport = window.WindowBufferTransport;
+pub const WindowBufferSync = window.WindowBufferSync;
+pub const WindowFrameSync = window.WindowFrameSync;
 pub const WindowDecorations = window.WindowDecorations;
 pub const Window = window.Window;
 pub const WaylandWindow = window.WaylandWindow;
 pub const MacWindow = window.MacWindow;
 pub const Win32Window = window.Win32Window;
 pub const NativeWindow = window.NativeWindow;
-pub const Controls = window.Controls;
+pub const WindowControls = window.WindowControls;
 
 test {
     _ = ui;

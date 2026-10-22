@@ -73,7 +73,7 @@ pub const Widget = struct {
 
 /// The pointer shape a widget asks for while the pointer is over it (or
 /// while it has captured the pointer).
-pub const Cursor = window_mod.Cursor;
+pub const PointerCursor = window_mod.PointerCursor;
 
 /// A focused text widget's state, for the platform's input method.
 pub const TextInputInfo = struct {
@@ -193,7 +193,7 @@ pub const VTable = struct {
     paint_over: ?*const fn (*const anyopaque, *Node, *Painter) void,
     event: ?*const fn (*const anyopaque, *Node, Event) bool,
     hit_test: ?*const fn (*const anyopaque, *Node, Point) bool,
-    cursor: ?*const fn (*const anyopaque, *Node, Point) ?Cursor,
+    cursor: ?*const fn (*const anyopaque, *Node, Point) ?PointerCursor,
     text_input: ?*const fn (*const anyopaque, *Node) ?TextInputInfo,
     /// What it is to assistive technologies (a screen reader), if anything
     /// (`pub fn accessible(self, n) ?accessibility.Info`).
@@ -270,7 +270,7 @@ fn makeVTable(comptime T: type) VTable {
         fn hitTest(ptr: *const anyopaque, n: *Node, p: Point) bool {
             return T.hitTest(self(ptr), n, p);
         }
-        fn cursor(ptr: *const anyopaque, n: *Node, p: Point) ?Cursor {
+        fn cursor(ptr: *const anyopaque, n: *Node, p: Point) ?PointerCursor {
             return T.cursor(self(ptr), n, p);
         }
         fn textInput(ptr: *const anyopaque, n: *Node) ?TextInputInfo {
@@ -336,12 +336,12 @@ const missing: Missing = .{};
 /// Where a widget is (from `Context.anchor`, as it is built), to open a menu
 /// from later, as a button's callback does. Kept in the widget's `State`,
 /// it is good for as long as the widget is there.
-pub const Anchor = struct {
+pub const WidgetAnchor = struct {
     node: ?*Node = null,
 
     /// Opens a menu of `items` (copied) just below the widget, as a
     /// dropdown's; nothing, if it was not taken while building a widget.
-    pub fn openMenu(a: Anchor, items: []const menu_mod.Item) void {
+    pub fn openMenu(a: WidgetAnchor, items: []const menu_mod.Item) void {
         const n = a.node orelse return;
         const pos = n.position();
         n.ui.openMenu(n, .{ pos[0], pos[1] + n.size.h }, items);
@@ -396,8 +396,8 @@ pub const Context = struct {
     }
 
     /// Where the widget being built is, to open a menu from later (from a
-    /// callback): see `Anchor`.
-    pub fn anchor(cx: *const Context) Anchor {
+    /// callback): see `WidgetAnchor`.
+    pub fn anchor(cx: *const Context) WidgetAnchor {
         return .{ .node = cx.node };
     }
 
@@ -441,7 +441,7 @@ pub const Context = struct {
 /// for a window's own).
 pub const BackendInfo = struct {
     /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
-    platform: window_mod.Platform = .headless,
+    platform: window_mod.WindowPlatform = .headless,
     /// The window system's protocol extensions used (for Wayland, the
     /// global interfaces bound).
     extensions: []const []const u8 = &.{},
@@ -449,7 +449,7 @@ pub const BackendInfo = struct {
     /// `d3d11`, `custom`).
     renderer: gfx.RenderBackend = .software,
     /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
-    keyboard: window_mod.Layout = .{},
+    keyboard: window_mod.KeyboardLayout = .{},
 
     pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
         for (info.extensions) |ext| {
@@ -463,11 +463,11 @@ pub const BackendInfo = struct {
 /// share).
 pub const WindowInfo = struct {
     /// Surface buffer transport (`wl_shm`, `linux_dmabuf`, `memory`, `swapchain`, `custom`).
-    buffer_transport: window_mod.BufferTransport = .memory,
+    buffer_transport: window_mod.WindowBufferTransport = .memory,
     /// Buffer synchronization mechanism (`none`, `implicit`, `linux_drm_syncobj_v1`).
-    buffer_sync: window_mod.BufferSync = .none,
+    buffer_sync: window_mod.WindowBufferSync = .none,
     /// Active frame pacing and vertical synchronization protocols.
-    frame_sync: window_mod.FrameSync = .{},
+    frame_sync: window_mod.WindowFrameSync = .{},
     /// The refresh rate of the display it is on, in Hz (from
     /// `wp_presentation`), or `0.0` if unknown.
     refresh_hz: f32 = 0.0,

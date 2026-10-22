@@ -10,26 +10,26 @@ const Color = gfx.Color;
 pub const settings_file = "/data/apps/.appearance";
 
 /// Whether the system uses the dark or light Material 3 colour scheme.
-pub const Mode = enum {
+pub const ThemeMode = enum {
     dark,
     light,
 
-    pub fn name(m: Mode) []const u8 {
+    pub fn name(m: ThemeMode) []const u8 {
         return switch (m) {
             .dark => "Dark",
             .light => "Light",
         };
     }
 
-    pub fn code(m: Mode) []const u8 {
+    pub fn code(m: ThemeMode) []const u8 {
         return @tagName(m);
     }
 
-    pub fn fromCode(text: []const u8) ?Mode {
-        return std.meta.stringToEnum(Mode, text);
+    pub fn fromCode(text: []const u8) ?ThemeMode {
+        return std.meta.stringToEnum(ThemeMode, text);
     }
 
-    pub fn scheme(m: Mode) Theme {
+    pub fn scheme(m: ThemeMode) Theme {
         return switch (m) {
             .dark => .dark,
             .light => .light,
@@ -39,7 +39,7 @@ pub const Mode = enum {
 
 /// Persistent appearance settings stored in `settings_file`.
 pub const Settings = struct {
-    theme: Mode = .dark,
+    theme: ThemeMode = .dark,
 
     pub fn parse(text: []const u8) Settings {
         var s: Settings = .{};
@@ -49,7 +49,7 @@ pub const Settings = struct {
             const key = tok.next() orelse continue;
             const val = tok.next() orelse continue;
             if (std.mem.eql(u8, key, "theme")) {
-                if (Mode.fromCode(val)) |m| s.theme = m;
+                if (ThemeMode.fromCode(val)) |m| s.theme = m;
             }
         }
         return s;
@@ -135,7 +135,7 @@ pub const Theme = struct {
     @"error": Color,
     /// Text and icons on `error`.
     on_error: Color,
-    /// The colours of code's parts (see `Highlight`).
+    /// The colours of code's parts (see `SyntaxHighlight`).
     syntax: Syntax,
     body_size: f32 = 14,
     label_size: f32 = 14,
@@ -203,7 +203,7 @@ pub const Theme = struct {
 };
 
 /// What a piece of code is, for its colour (plain text is `on_surface`).
-pub const Highlight = enum(u8) {
+pub const SyntaxHighlight = enum(u8) {
     plain,
     keyword,
     type,
@@ -231,7 +231,7 @@ pub const Syntax = struct {
     property: Color,
     comment: Color,
 
-    pub fn color(s: *const Syntax, h: Highlight, plain: Color) Color {
+    pub fn color(s: *const Syntax, h: SyntaxHighlight, plain: Color) Color {
         return switch (h) {
             .plain => plain,
             inline else => |tag| @field(s, @tagName(tag)),
@@ -242,10 +242,10 @@ pub const Syntax = struct {
 const testing = std.testing;
 
 test "appearance settings parse, format, save and load" {
-    try testing.expectEqual(Mode.dark, Settings.parse("").theme);
-    try testing.expectEqual(Mode.light, Settings.parse("theme light\n").theme);
-    try testing.expectEqual(Mode.dark, Settings.parse("theme dark\n").theme);
-    try testing.expectEqual(Mode.dark, Settings.parse("theme invalid\n").theme);
+    try testing.expectEqual(ThemeMode.dark, Settings.parse("").theme);
+    try testing.expectEqual(ThemeMode.light, Settings.parse("theme light\n").theme);
+    try testing.expectEqual(ThemeMode.dark, Settings.parse("theme dark\n").theme);
+    try testing.expectEqual(ThemeMode.dark, Settings.parse("theme invalid\n").theme);
 
     const io = testing.io;
     var tmp = testing.tmpDir(.{});
@@ -257,15 +257,15 @@ test "appearance settings parse, format, save and load" {
 
     var watch: Watch = .{ .path = path };
     try testing.expect(!watch.changed(io));
-    try testing.expectEqual(Mode.dark, loadSettingsFrom(io, path).theme);
+    try testing.expectEqual(ThemeMode.dark, loadSettingsFrom(io, path).theme);
 
     saveSettingsTo(io, path, .{ .theme = .light });
     try testing.expect(watch.changed(io));
     try testing.expect(!watch.changed(io));
-    try testing.expectEqual(Mode.light, loadSettingsFrom(io, path).theme);
+    try testing.expectEqual(ThemeMode.light, loadSettingsFrom(io, path).theme);
 
     try io.sleep(.fromMilliseconds(20), .awake);
     saveSettingsTo(io, path, .{ .theme = .dark });
     try testing.expect(watch.changed(io));
-    try testing.expectEqual(Mode.dark, loadSettingsFrom(io, path).theme);
+    try testing.expectEqual(ThemeMode.dark, loadSettingsFrom(io, path).theme);
 }

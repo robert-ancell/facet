@@ -400,7 +400,7 @@ pub const TextField = struct {
         return pos[0] >= n.size.w - toggle_pad and pos[0] < n.size.w and pos[1] >= 0 and pos[1] < n.size.h;
     }
 
-    pub fn cursor(self: *const TextField, n: *Node, pos: geometry.Point) ?widget.Cursor {
+    pub fn cursor(self: *const TextField, n: *Node, pos: geometry.Point) ?widget.PointerCursor {
         if (!self.enabled) return null;
         if (self.inToggle(n, pos)) return .pointer;
         return .text;

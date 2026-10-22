@@ -38,7 +38,7 @@ pub const Pressable = struct {
         focus.ring(n, p, self.focus_radius, false);
     }
 
-    pub fn cursor(self: *const Pressable, _: *Node, _: geometry.Point) ?widget.Cursor {
+    pub fn cursor(self: *const Pressable, _: *Node, _: geometry.Point) ?widget.PointerCursor {
         return if (self.on_press != null) .pointer else null;
     }
 

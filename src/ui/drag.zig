@@ -64,7 +64,7 @@ pub const Draggable = struct {
         start: ?Point = null,
     };
 
-    pub fn cursor(self: *const Draggable, n: *Node, _: Point) ?widget.Cursor {
+    pub fn cursor(self: *const Draggable, n: *Node, _: Point) ?widget.PointerCursor {
         if (n.ui.drag) |d| if (d.source == n) return .grabbing;
         return if (self.on_press != null) .pointer else .grab;
     }

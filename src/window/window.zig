@@ -1,6 +1,6 @@
 //! Window abstraction (`Window` vtable interface), input events (`InputEvent`),
-//! text input state (`TextInputState`), window controls (`Controls`), keyboard
-//! layout (`Layout`) and keymaps (`xkb`), and the built-in window backends:
+//! text input state (`TextInputState`), window controls (`WindowControls`), keyboard
+//! layout (`KeyboardLayout`) and keymaps (`xkb`), and the built-in window backends:
 //! a Wayland client (`WaylandWindow`), a macOS one (`MacWindow`) and a
 //! Windows one (`Win32Window`). `NativeWindow` is the one for the system
 //! being built for.
@@ -129,7 +129,7 @@ pub fn waitSources(io: std.Io, sources: []const Source, timeout_ns: u64) !void {
 /// The pointer shape the window shows (`Window.setCursor`). macOS has no
 /// shape for `wait`, `progress`, `help`, `nwse_resize` or `nesw_resize`, and
 /// shows the arrow for them.
-pub const Cursor = enum {
+pub const PointerCursor = enum {
     /// The arrow.
     default,
     /// A hand, over something that can be pressed (a link).
@@ -255,7 +255,7 @@ pub const InputEvent = union(enum) {
 };
 
 /// Windowing system / display server backend.
-pub const Platform = enum {
+pub const WindowPlatform = enum {
     /// No window system: the app has no window.
     headless,
     wayland,
@@ -266,7 +266,7 @@ pub const Platform = enum {
     /// A backend of the app's own that does not say.
     custom,
 
-    pub fn name(p: Platform) []const u8 {
+    pub fn name(p: WindowPlatform) []const u8 {
         return switch (p) {
             .headless => "Headless",
             .wayland => "Wayland",
@@ -279,7 +279,7 @@ pub const Platform = enum {
 };
 
 /// Surface buffer presentation mechanism.
-pub const BufferTransport = enum {
+pub const WindowBufferTransport = enum {
     /// Frames drawn on the CPU, in memory the window system takes (macOS).
     memory,
     /// Frames drawn on the CPU, in Wayland shared memory (`wl_shm`).
@@ -292,7 +292,7 @@ pub const BufferTransport = enum {
     /// A backend of the app's own that does not say.
     custom,
 
-    pub fn name(t: BufferTransport) []const u8 {
+    pub fn name(t: WindowBufferTransport) []const u8 {
         return switch (t) {
             .memory => "CPU Memory",
             .wl_shm => "wl_shm",
@@ -322,7 +322,7 @@ pub const WindowDecorations = enum {
 
 /// How the window system knows a GPU buffer's drawing is finished (and
 /// the window when it may draw in it again).
-pub const BufferSync = enum {
+pub const WindowBufferSync = enum {
     /// There is nothing to wait for: the buffers are in CPU memory
     /// (`wl_shm`, headless).
     none,
@@ -332,7 +332,7 @@ pub const BufferSync = enum {
     /// Explicit timeline points (`wp_linux_drm_syncobj_v1`). Linux only.
     linux_drm_syncobj_v1,
 
-    pub fn name(s: BufferSync) []const u8 {
+    pub fn name(s: WindowBufferSync) []const u8 {
         return switch (s) {
             .none => "None",
             .implicit => "Implicit (dma-buf fences)",
@@ -342,7 +342,7 @@ pub const BufferSync = enum {
 };
 
 /// Active frame pacing and vertical synchronization protocols on the surface.
-pub const FrameSync = packed struct(u8) {
+pub const WindowFrameSync = packed struct(u8) {
     /// Frames are shown at most once a refresh, without tearing.
     vsync: bool = false,
     /// The compositor says when to draw the next frame (`wl_surface.frame`).
@@ -410,10 +410,10 @@ pub const Window = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        platform: *const fn (ptr: *anyopaque) Platform,
-        bufferTransport: *const fn (ptr: *anyopaque) BufferTransport,
-        bufferSync: *const fn (ptr: *anyopaque) BufferSync,
-        frameSync: *const fn (ptr: *anyopaque) FrameSync,
+        platform: *const fn (ptr: *anyopaque) WindowPlatform,
+        bufferTransport: *const fn (ptr: *anyopaque) WindowBufferTransport,
+        bufferSync: *const fn (ptr: *anyopaque) WindowBufferSync,
+        frameSync: *const fn (ptr: *anyopaque) WindowFrameSync,
         refreshHz: *const fn (ptr: *anyopaque) f32,
         extensions: *const fn (ptr: *anyopaque) []const []const u8,
         decorations: *const fn (ptr: *anyopaque) WindowDecorations,
@@ -430,7 +430,7 @@ pub const Window = struct {
         isFullscreen: *const fn (ptr: *anyopaque) bool,
         isTiled: *const fn (ptr: *anyopaque) bool,
         isFramePending: *const fn (ptr: *anyopaque) bool,
-        setCursor: *const fn (ptr: *anyopaque, cursor: Cursor) void,
+        setCursor: *const fn (ptr: *anyopaque, cursor: PointerCursor) void,
         setMinSize: *const fn (ptr: *anyopaque, width: u32, height: u32) void,
         setRedraw: *const fn (ptr: *anyopaque, redraw: ?Redraw) void,
         setMaximized: *const fn (ptr: *anyopaque, on: bool) void,
@@ -445,7 +445,7 @@ pub const Window = struct {
         takeDrop: *const fn (ptr: *anyopaque) ?DroppedData,
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
-        layout: *const fn (ptr: *anyopaque) Layout,
+        layout: *const fn (ptr: *anyopaque) KeyboardLayout,
         watch: *const fn (ptr: *anyopaque, source: Source, on: bool) void,
         refreshNs: *const fn (ptr: *anyopaque) u64,
         applyConfigure: *const fn (ptr: *anyopaque) anyerror!?[2]u32,
@@ -487,26 +487,26 @@ pub const Window = struct {
             fn self(p: *anyopaque) *T {
                 return @ptrCast(@alignCast(p));
             }
-            fn platformFn(p: *anyopaque) Platform {
+            fn platformFn(p: *anyopaque) WindowPlatform {
                 if (@hasDecl(T, "platform")) {
-                    if (@TypeOf(T.platform) == Platform) return T.platform;
+                    if (@TypeOf(T.platform) == WindowPlatform) return T.platform;
                     return self(p).platform();
                 }
                 if (@hasField(T, "platform")) return self(p).platform;
                 return .custom;
             }
-            fn bufferTransportFn(p: *anyopaque) BufferTransport {
+            fn bufferTransportFn(p: *anyopaque) WindowBufferTransport {
                 if (@hasDecl(T, "bufferTransport")) return self(p).bufferTransport();
                 if (@hasDecl(T, "buffer_transport")) return T.buffer_transport;
                 if (@hasField(T, "buffer_transport")) return self(p).buffer_transport;
                 return .custom;
             }
-            fn bufferSyncFn(p: *anyopaque) BufferSync {
+            fn bufferSyncFn(p: *anyopaque) WindowBufferSync {
                 if (@hasDecl(T, "bufferSync")) return self(p).bufferSync();
                 if (@hasField(T, "buffer_sync")) return self(p).buffer_sync;
                 return .none;
             }
-            fn frameSyncFn(p: *anyopaque) FrameSync {
+            fn frameSyncFn(p: *anyopaque) WindowFrameSync {
                 if (@hasDecl(T, "frameSync")) return self(p).frameSync();
                 if (@hasField(T, "frame_sync")) return self(p).frame_sync;
                 return .{};
@@ -598,7 +598,7 @@ pub const Window = struct {
                 if (@hasField(T, "frame_pending")) return s.frame_pending;
                 return false;
             }
-            fn setCursorFn(p: *anyopaque, cursor: Cursor) void {
+            fn setCursorFn(p: *anyopaque, cursor: PointerCursor) void {
                 if (@hasDecl(T, "setCursor")) self(p).setCursor(cursor);
             }
             fn setMinSizeFn(p: *anyopaque, w: u32, h: u32) void {
@@ -652,7 +652,7 @@ pub const Window = struct {
             fn watchFn(p: *anyopaque, source: Source, on: bool) void {
                 if (@hasDecl(T, "watch")) self(p).watch(source, on);
             }
-            fn layoutFn(p: *anyopaque) Layout {
+            fn layoutFn(p: *anyopaque) KeyboardLayout {
                 if (@hasDecl(T, "layout")) return self(p).layout();
                 return .{};
             }
@@ -801,19 +801,19 @@ pub const Window = struct {
     }
 
     /// The windowing system the window is on (`.custom` if the backend does not say).
-    pub fn platform(w: Window) Platform {
+    pub fn platform(w: Window) WindowPlatform {
         return w.vtable.platform(w.ptr);
     }
     /// How frames reach the window system: shared memory, dmabufs or a swapchain.
-    pub fn bufferTransport(w: Window) BufferTransport {
+    pub fn bufferTransport(w: Window) WindowBufferTransport {
         return w.vtable.bufferTransport(w.ptr);
     }
     /// How the window system knows a GPU frame is finished being drawn.
-    pub fn bufferSync(w: Window) BufferSync {
+    pub fn bufferSync(w: Window) WindowBufferSync {
         return w.vtable.bufferSync(w.ptr);
     }
     /// The frame pacing protocols the window uses.
-    pub fn frameSync(w: Window) FrameSync {
+    pub fn frameSync(w: Window) WindowFrameSync {
         return w.vtable.frameSync(w.ptr);
     }
     /// The display's refresh rate in hertz, or 0 if unknown (see `refreshNs`).
@@ -896,7 +896,7 @@ pub const Window = struct {
         return w.vtable.isFramePending(w.ptr);
     }
     /// Sets the shape the pointer shows over the window.
-    pub fn setCursor(w: Window, cursor: Cursor) void {
+    pub fn setCursor(w: Window, cursor: PointerCursor) void {
         w.vtable.setCursor(w.ptr, cursor);
     }
     /// Sets the smallest size, in logical pixels, the user can resize the window to.
@@ -979,7 +979,7 @@ pub const Window = struct {
         w.vtable.watch(w.ptr, source, on);
     }
     /// The keyboard layout in use, from the Wayland keymap (empty elsewhere).
-    pub fn layout(w: Window) Layout {
+    pub fn layout(w: Window) KeyboardLayout {
         return w.vtable.layout(w.ptr);
     }
     /// The display's refresh period in nanoseconds, or 0 if unknown (see
@@ -1104,7 +1104,7 @@ pub const Display = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        platform: *const fn (ptr: *anyopaque) Platform,
+        platform: *const fn (ptr: *anyopaque) WindowPlatform,
         /// Null if it cannot open windows (`single`'s).
         openWindow: ?*const fn (ptr: *anyopaque, options: WindowOptions) anyerror!Window,
         poll: *const fn (ptr: *anyopaque) anyerror!void,
@@ -1125,7 +1125,7 @@ pub const Display = struct {
             fn self(p: *anyopaque) *T {
                 return @ptrCast(@alignCast(p));
             }
-            fn platformFn(_: *anyopaque) Platform {
+            fn platformFn(_: *anyopaque) WindowPlatform {
                 if (@hasDecl(T, "platform")) return T.platform;
                 return .custom;
             }
@@ -1185,7 +1185,7 @@ pub const Display = struct {
             fn w(p: *anyopaque) Window {
                 return Window.of(@as(*T, @ptrCast(@alignCast(p))));
             }
-            fn platformFn(p: *anyopaque) Platform {
+            fn platformFn(p: *anyopaque) WindowPlatform {
                 return w(p).platform();
             }
             fn pollFn(p: *anyopaque) anyerror!void {
@@ -1215,7 +1215,7 @@ pub const Display = struct {
     }
 
     /// The windowing system it is on (`.custom` if the backend does not say).
-    pub fn platform(d: Display) Platform {
+    pub fn platform(d: Display) WindowPlatform {
         return d.vtable.platform(d.ptr);
     }
     /// Whether it can open windows (`openWindow`).
@@ -1316,40 +1316,40 @@ pub const MetalFrame = WindowFrame(gfx.MetalTarget);
 pub const D3D11Frame = WindowFrame(gfx.D3D11Target);
 
 /// What an app's title bar does to its window (for the toolkit's TitleBar:
-/// `.on_close = .of(&controls, Controls.close)`, and so on).
-pub const Controls = struct {
+/// `.on_close = .of(&controls, WindowControls.close)`, and so on).
+pub const WindowControls = struct {
     win: ?Window = null,
     /// The close button was pressed: the window should be closed (taken by
     /// the app as the window system's own request is).
     close_requested: bool = false,
 
-    pub fn init(impl: anytype) Controls {
+    pub fn init(impl: anytype) WindowControls {
         return .{ .win = Window.from(impl) };
     }
 
-    pub fn close(c: *Controls) void {
+    pub fn close(c: *WindowControls) void {
         c.close_requested = true;
     }
 
     /// The minimize button: hide the window.
-    pub fn minimize(c: *Controls) void {
+    pub fn minimize(c: *WindowControls) void {
         if (c.win) |w| w.setMinimized();
     }
 
     /// The maximize button: fill the screen, or go back to the window's
     /// own size.
-    pub fn toggleMaximized(c: *Controls) void {
+    pub fn toggleMaximized(c: *WindowControls) void {
         if (c.win) |w| w.setMaximized(!w.isMaximized());
     }
 
     /// Toggle whether the window fills the entire display (fullscreen).
-    pub fn toggleFullscreen(c: *Controls) void {
+    pub fn toggleFullscreen(c: *WindowControls) void {
         if (c.win) |w| if (w.canFullscreen()) w.setFullscreen(!w.isFullscreen());
     }
 
     /// The title bar was pressed: drag the window (unless it fills the
     /// screen).
-    pub fn drag(c: *Controls) void {
+    pub fn drag(c: *WindowControls) void {
         if (c.win) |w| if (!w.isMaximized()) w.startMove();
     }
 };
@@ -1370,14 +1370,14 @@ pub const sys = @import("sys.zig");
 
 /// The keyboard layout in use: its name ("English (UK)") and XKB code
 /// ("gb"), from the keymap the compositor gave.
-pub const Layout = struct {
+pub const KeyboardLayout = struct {
     name_buf: [64]u8 = undefined,
     name_len: u8 = 0,
     code_buf: [32]u8 = undefined,
     code_len: u8 = 0,
 
-    pub fn init(name_: []const u8, code_: []const u8) Layout {
-        var l: Layout = .{};
+    pub fn init(name_: []const u8, code_: []const u8) KeyboardLayout {
+        var l: KeyboardLayout = .{};
         l.name_len = @intCast(@min(name_.len, l.name_buf.len));
         @memcpy(l.name_buf[0..l.name_len], name_[0..l.name_len]);
         l.code_len = @intCast(@min(code_.len, l.code_buf.len));
@@ -1386,11 +1386,11 @@ pub const Layout = struct {
     }
 
     /// Its name, or "" if no keymap has been given.
-    pub fn name(l: *const Layout) []const u8 {
+    pub fn name(l: *const KeyboardLayout) []const u8 {
         return l.name_buf[0..l.name_len];
     }
 
-    pub fn code(l: *const Layout) []const u8 {
+    pub fn code(l: *const KeyboardLayout) []const u8 {
         return l.code_buf[0..l.code_len];
     }
 };
@@ -1475,7 +1475,7 @@ test "a display opens its windows with their own options, on it" {
     var impl: Disp = .{};
     const d = Display.of(&impl);
     try testing.expect(d.canOpenWindows());
-    try testing.expectEqual(Platform.custom, d.platform());
+    try testing.expectEqual(WindowPlatform.custom, d.platform());
     const a = try d.openWindow(.{ .title = "a" });
     const b = try d.openWindow(.{ .title = "b", .size = .{ 30, 20 }, .parent = a });
     try testing.expectEqualStrings("a", impl.windows[0].title);

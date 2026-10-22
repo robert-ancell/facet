@@ -23,7 +23,7 @@ const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 const keymap = @import("keymap.zig");
 const menu = @import("menu.zig");
-const Highlight = @import("theme.zig").Highlight;
+const SyntaxHighlight = @import("theme.zig").SyntaxHighlight;
 
 const Node = widget.Node;
 const Event = widget.Event;
@@ -208,7 +208,7 @@ pub const TextArea = struct {
     /// as the text, and all `plain` to start with).
     highlighter: ?Highlighter = null,
 
-    pub const Highlighter = *const fn (text: []const u8, out: []Highlight) void;
+    pub const Highlighter = *const fn (text: []const u8, out: []SyntaxHighlight) void;
 
     pub const pad = 12;
 
@@ -229,7 +229,7 @@ pub const TextArea = struct {
         lines_width: f32 = -1,
         lines_doc: ?*Document = null,
         /// What each byte is, for the text's version (if highlighted).
-        colours: std.ArrayList(Highlight) = .empty,
+        colours: std.ArrayList(SyntaxHighlight) = .empty,
         colours_version: u64 = std.math.maxInt(u64),
         colours_doc: ?*Document = null,
         colours_by: ?Highlighter = null,
@@ -299,7 +299,7 @@ pub const TextArea = struct {
         return st;
     }
 
-    pub fn cursor(_: *const TextArea, _: *Node, _: Point) ?widget.Cursor {
+    pub fn cursor(_: *const TextArea, _: *Node, _: Point) ?widget.PointerCursor {
         return .text;
     }
 
@@ -399,7 +399,7 @@ pub const TextArea = struct {
 
     /// What each byte of the text is (again only if it changed), or null
     /// if it is not highlighted.
-    fn highlight(self: *const TextArea, n: *Node) ?[]const Highlight {
+    fn highlight(self: *const TextArea, n: *Node) ?[]const SyntaxHighlight {
         const h = self.highlighter orelse return null;
         const st = n.state(State);
         const d = self.doc;

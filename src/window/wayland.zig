@@ -19,7 +19,7 @@ pub const Clipboard = clipboard_mod.Clipboard;
 pub const DroppedData = clipboard_mod.DroppedData;
 pub const InputEvent = window_mod.InputEvent;
 pub const TextInputState = window_mod.TextInputState;
-pub const Cursor = window_mod.Cursor;
+pub const PointerCursor = window_mod.PointerCursor;
 const xkb = window_mod.xkb;
 const compose = window_mod.compose;
 
@@ -564,7 +564,7 @@ pub const WaylandDisplay = struct {
     /// A read of the connection, through `io`, that failed.
     read_error: ?wire.Error = null,
 
-    pub const platform: window_mod.Platform = .wayland;
+    pub const platform: window_mod.WindowPlatform = .wayland;
 
     /// Connects to the compositor named in `environ` (`WAYLAND_DISPLAY`
     /// under `XDG_RUNTIME_DIR`), doing its I/O (and waiting) through `io`.
@@ -680,7 +680,7 @@ pub const WaylandDisplay = struct {
 };
 
 pub const WaylandWindow = struct {
-    pub const platform: window_mod.Platform = .wayland;
+    pub const platform: window_mod.WindowPlatform = .wayland;
 
     pub fn usingDmabuf(w: *const WaylandWindow) bool {
         return w.dmabuf != null and w.dmabuf_dev != null and (w.dmabuf_argb8888 or w.dmabuf_xrgb8888);
@@ -717,16 +717,16 @@ pub const WaylandWindow = struct {
         w.updateExtensions();
     }
 
-    pub fn bufferTransport(w: *const WaylandWindow) window_mod.BufferTransport {
+    pub fn bufferTransport(w: *const WaylandWindow) window_mod.WindowBufferTransport {
         return if (w.usingDmabuf()) .linux_dmabuf else .wl_shm;
     }
 
-    pub fn bufferSync(w: *const WaylandWindow) window_mod.BufferSync {
+    pub fn bufferSync(w: *const WaylandWindow) window_mod.WindowBufferSync {
         if (w.usingDrmSyncobj()) return .linux_drm_syncobj_v1;
         return if (w.usingDmabuf()) .implicit else .none;
     }
 
-    pub fn frameSync(w: *const WaylandWindow) window_mod.FrameSync {
+    pub fn frameSync(w: *const WaylandWindow) window_mod.WindowFrameSync {
         return .{
             .vsync = w.vsync,
             .frame_callback = w.vsync,
@@ -813,7 +813,7 @@ pub const WaylandWindow = struct {
     cursor_shape_manager: ?client.Proxy = null,
     cursor_device: ?client.Proxy = null,
     cursor_shape: ?u32 = null,
-    app_cursor: Cursor = .default,
+    app_cursor: PointerCursor = .default,
 
     buffers: [max_buffers]?Buffer = @splat(null),
     back: ?usize = null,
@@ -1524,14 +1524,14 @@ pub const WaylandWindow = struct {
         return edges;
     }
 
-    pub fn setCursor(w: *WaylandWindow, cursor: Cursor) void {
+    pub fn setCursor(w: *WaylandWindow, cursor: PointerCursor) void {
         if (w.app_cursor == cursor) return;
         w.app_cursor = cursor;
         w.updateCursor();
     }
 
     /// `cursor`'s `wp_cursor_shape_device_v1.shape` code.
-    fn cursorShape(cursor: Cursor) u32 {
+    fn cursorShape(cursor: PointerCursor) u32 {
         const sh = p.wp_cursor_shape_device_v1.shape;
         return switch (cursor) {
             inline else => |c| @field(sh, @tagName(c)),
@@ -1811,7 +1811,7 @@ pub const WaylandWindow = struct {
     }
 
     /// The keyboard layout in use.
-    pub fn layout(w: *const WaylandWindow) window_mod.Layout {
+    pub fn layout(w: *const WaylandWindow) window_mod.KeyboardLayout {
         const km = &(w.keymap orelse return .{});
         return .init(km.layoutName(w.xkb_state), km.layoutCode(w.xkb_state));
     }
@@ -3129,7 +3129,7 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
         .io = std.testing.io,
         .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
-    try std.testing.expectEqual(window_mod.BufferTransport.wl_shm, win.bufferTransport());
+    try std.testing.expectEqual(window_mod.WindowBufferTransport.wl_shm, win.bufferTransport());
 
     var disp: client.Display = undefined;
     const mod_msg = [_]u32{ p.fourcc.argb8888, 0, 0 };
@@ -3147,7 +3147,7 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
         defer dev.close();
         win.dmabuf = .{ .id = 10 };
         win.dmabuf_dev = dev;
-        try std.testing.expectEqual(window_mod.BufferTransport.linux_dmabuf, win.bufferTransport());
+        try std.testing.expectEqual(window_mod.WindowBufferTransport.linux_dmabuf, win.bufferTransport());
 
         const alloc = try dev.alloc(64, 48, p.fourcc.argb8888);
         defer {
@@ -3191,7 +3191,7 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     win.updateExtensions();
 
     try std.testing.expect(win.vsync);
-    try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
+    try std.testing.expectEqual(window_mod.WindowBufferSync.linux_drm_syncobj_v1, win.bufferSync());
     const fs = win.frameSync();
     try std.testing.expect(fs.vsync);
     try std.testing.expect(fs.frame_callback);
@@ -3233,12 +3233,12 @@ test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only whi
         .io = std.testing.io,
         .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
-    try std.testing.expectEqual(window_mod.BufferSync.none, win.bufferSync());
+    try std.testing.expectEqual(window_mod.WindowBufferSync.none, win.bufferSync());
     win.vsync = false;
     try std.testing.expect(!win.frameSync().vsync);
     try std.testing.expect(!win.frameSync().frame_callback);
     win.syncobj_surface = .{ .id = 11 };
-    try std.testing.expectEqual(window_mod.BufferSync.linux_drm_syncobj_v1, win.bufferSync());
+    try std.testing.expectEqual(window_mod.WindowBufferSync.linux_drm_syncobj_v1, win.bufferSync());
 }
 
 test "xdg_toplevel.wm_capabilities says whether the window can be minimized, maximized and made fullscreen" {
