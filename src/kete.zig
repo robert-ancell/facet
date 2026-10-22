@@ -1,17 +1,4 @@
 //! Kete: a declarative UI toolkit for Zig, with the look of Material 3.
-//!
-//! * `ui` (and top-level re-exports): declarative widget tree,
-//!   widgets, layout, state, damage tracking, and input handling
-//! * `gfx`: 2D vector canvas (`Canvas`), glyph `Atlas`, `Image`, generic
-//!   `Renderer` interface, and built-in `SoftwareRenderer`, `OpenGlRenderer`,
-//!   `VulkanRenderer`, `MetalRenderer` (macOS) and `D3D11Renderer`
-//!   (Windows) backends
-//! * `window`: generic `Window` interface, `WindowControls`, `InputEvent`,
-//!   `Clipboard`, and the built-in backends: `WaylandWindow` (Linux),
-//!   `MacWindow` (macOS) and `Win32Window` (Windows), `NativeWindow` being
-//!   the one built for
-//! * `font`: pure-Zig OpenType/TrueType font parser, shaper, and rasterizer,
-//!   including bundled default Fira Sans and Twemoji Mozilla fallback fonts
 
 pub const ui = @import("ui");
 pub const gfx = @import("gfx");
