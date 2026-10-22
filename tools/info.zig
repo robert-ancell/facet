@@ -35,7 +35,7 @@ fn sectionHeading(cx: *kete.BuildContext, title: []const u8, subtitle: []const u
 fn buildReport(cx: *kete.BuildContext) kete.Widget {
     const t = cx.theme();
     const info = cx.backend();
-    const win = cx.window();
+    const win = cx.window() orelse return cx.make(kete.Text{ .text = "This UI is not in a window of an app" });
 
     const platform_desc = switch (info.platform) {
         .wayland => "Native Wayland protocol client (xdg_toplevel)",
@@ -45,7 +45,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
         .custom => "Custom window backend implementation",
     };
 
-    const transport_desc = switch (win.buffer_transport) {
+    const transport_desc = switch (win.bufferTransport()) {
         .linux_dmabuf => "Zero-copy GPU DMA-BUF via zwp_linux_dmabuf_v1",
         .memory => "CPU pixel buffer in memory the window system takes",
         .swapchain => "GPU presentation swapchain",
@@ -61,38 +61,38 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
         .custom => "Custom 2D rendering backend",
     };
 
-    const decorations_desc = switch (win.decorations) {
+    const decorations_desc = switch (win.decorations()) {
         .toolkit => "Toolkit TitleBar, drop shadows & rounded corners",
         .system => "Title bar and borders drawn by the window system",
         .none => "No window decorations (headless / offscreen)",
     };
 
-    const window_state = if (win.fullscreen)
+    const window_state = if (win.isFullscreen())
         "Fullscreen"
-    else if (win.maximized)
+    else if (win.isMaximized())
         "Maximized"
-    else if (win.tiled)
+    else if (win.isTiled())
         "Tiled"
-    else if (win.decorations == .toolkit)
+    else if (win.decorations() == .toolkit)
         "Floating (with toolkit shadow & rounded corners)"
     else
         "Floating";
 
-    const sync_text = if (win.refresh_hz > 0)
+    const sync_text = if (win.refreshHz() > 0)
         cx.fmt("Frame pacing: {s} ({d:.1} Hz)  ·  Buffer sync: {s}", .{
-            if (win.frame_sync.vsync) "VSync enabled" else "Uncapped",
-            win.refresh_hz,
-            win.buffer_sync.name(),
+            if (win.frameSync().vsync) "VSync enabled" else "Uncapped",
+            win.refreshHz(),
+            win.bufferSync().name(),
         })
     else
         cx.fmt("Frame pacing: {s}  ·  Buffer sync: {s}", .{
-            if (win.frame_sync.vsync) "VSync enabled" else "Uncapped",
-            win.buffer_sync.name(),
+            if (win.frameSync().vsync) "VSync enabled" else "Uncapped",
+            win.bufferSync().name(),
         });
 
-    const vsync_badge = if (win.refresh_hz > 0)
-        cx.fmt("{s} · {d:.0} Hz", .{ if (win.frame_sync.vsync) "VSync" else "Off", win.refresh_hz })
-    else if (win.frame_sync.vsync)
+    const vsync_badge = if (win.refreshHz() > 0)
+        cx.fmt("{s} · {d:.0} Hz", .{ if (win.frameSync().vsync) "VSync" else "Off", win.refreshHz() })
+    else if (win.frameSync().vsync)
         "VSync ON"
     else
         "VSync OFF";
@@ -187,7 +187,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                                             kete.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
                                         }),
                                     },
-                                    kete.Text{ .text = win.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    kete.Text{ .text = win.bufferTransport().name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
                                     kete.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
                                 }),
                             }),
@@ -237,9 +237,9 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     kete.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    kete.Chip{ .label = "linux_dmabuf", .selected = win.buffer_transport == .linux_dmabuf },
-                    kete.Chip{ .label = "Swapchain", .selected = win.buffer_transport == .swapchain },
-                    kete.Chip{ .label = "CPU Memory", .selected = win.buffer_transport == .memory },
+                    kete.Chip{ .label = "linux_dmabuf", .selected = win.bufferTransport() == .linux_dmabuf },
+                    kete.Chip{ .label = "Swapchain", .selected = win.bufferTransport() == .swapchain },
+                    kete.Chip{ .label = "CPU Memory", .selected = win.bufferTransport() == .memory },
                 }),
             },
             kete.Row{
@@ -248,9 +248,9 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     kete.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    kete.Chip{ .label = "Implicit", .selected = win.buffer_sync == .implicit },
-                    kete.Chip{ .label = "Explicit", .selected = win.buffer_sync == .explicit },
-                    kete.Chip{ .label = "None", .selected = win.buffer_sync == .none },
+                    kete.Chip{ .label = "Implicit", .selected = win.bufferSync() == .implicit },
+                    kete.Chip{ .label = "Explicit", .selected = win.bufferSync() == .explicit },
+                    kete.Chip{ .label = "None", .selected = win.bufferSync() == .none },
                 }),
             },
             kete.Row{
@@ -259,10 +259,10 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     kete.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    kete.Chip{ .label = "wl_surface.frame", .selected = win.frame_sync.frame_callback },
-                    kete.Chip{ .label = "wp_presentation", .selected = win.frame_sync.presentation_time },
-                    kete.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo },
-                    kete.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.timed_presentation },
+                    kete.Chip{ .label = "wl_surface.frame", .selected = win.frameSync().frame_callback },
+                    kete.Chip{ .label = "wp_presentation", .selected = win.frameSync().presentation_time },
+                    kete.Chip{ .label = "wp_fifo_v1", .selected = win.frameSync().fifo },
+                    kete.Chip{ .label = "wp_commit_timing_v1", .selected = win.frameSync().timed_presentation },
                 }),
             },
             kete.Row{
@@ -271,9 +271,9 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     kete.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    kete.Chip{ .label = "Toolkit", .selected = win.decorations == .toolkit },
-                    kete.Chip{ .label = "System", .selected = win.decorations == .system },
-                    kete.Chip{ .label = "None", .selected = win.decorations == .none },
+                    kete.Chip{ .label = "Toolkit", .selected = win.decorations() == .toolkit },
+                    kete.Chip{ .label = "System", .selected = win.decorations() == .system },
+                    kete.Chip{ .label = "None", .selected = win.decorations() == .none },
                 }),
             },
             kete.Row{
@@ -310,7 +310,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                             .supporting_text = cx.fmt("{s}  ·  {s}", .{ platform_desc, transport_desc }),
                             .leading_icon = .computer,
                             .trailing = cx.make(kete.Badge{
-                                .label = cx.fmt("{s} ({s})", .{ info.platform.name(), win.buffer_transport.name() }),
+                                .label = cx.fmt("{s} ({s})", .{ info.platform.name(), win.bufferTransport().name() }),
                                 .color = t.primary,
                             }),
                         },
@@ -326,7 +326,7 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                             .headline = "Window Decorations",
                             .supporting_text = decorations_desc,
                             .leading_icon = .widgets,
-                            .trailing = cx.make(kete.Badge{ .label = win.decorations.name(), .color = t.primary }),
+                            .trailing = cx.make(kete.Badge{ .label = win.decorations().name(), .color = t.primary }),
                         },
                         kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{
@@ -340,10 +340,10 @@ fn buildReport(cx: *kete.BuildContext) kete.Widget {
                             .headline = "Surface Resolution & HiDPI Scale",
                             .supporting_text = cx.fmt(
                                 "Logical: {d} × {d} px  ·  Physical buffer: {d} × {d} px",
-                                .{ win.logical_size[0], win.logical_size[1], win.physical_size[0], win.physical_size[1] },
+                                .{ win.size()[0], win.size()[1], win.size()[0] * win.scale(), win.size()[1] * win.scale() },
                             ),
                             .leading_icon = .fullscreen,
-                            .trailing_text = cx.fmt("{d}x scale", .{win.scale}),
+                            .trailing_text = cx.fmt("{d}x scale", .{win.scale()}),
                         },
                         kete.HorizontalDivider{ .inset = 16 },
                         kete.ListItem{

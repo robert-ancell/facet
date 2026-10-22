@@ -10,7 +10,6 @@ pub const Widget = ui.Widget;
 pub const BuildContext = ui.BuildContext;
 pub const WidgetAnchor = ui.WidgetAnchor;
 pub const BackendInfo = ui.BackendInfo;
-pub const WindowInfo = ui.WindowInfo;
 pub const WidgetNode = ui.WidgetNode;
 pub const Event = ui.Event;
 pub const PointerCursor = ui.PointerCursor;

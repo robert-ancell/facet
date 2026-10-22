@@ -447,16 +447,17 @@ pub const BuildContext = struct {
         return cx.ui.backend();
     }
 
-    /// How the widget's window is shown: its buffers (in memory, in dmabufs,
-    /// ...) and how they are synchronized and paced, its decorations, size,
-    /// scale, and state.
-    pub fn window(cx: *const BuildContext) WindowInfo {
-        return cx.ui.windowInfo();
+    /// The app's window the widget is in, to ask how it is shown (its size,
+    /// scale and state, how its frames are presented, who draws its
+    /// decorations) or to act on (`Window.setMaximized` and the like); null
+    /// if the UI is not an `App`'s (one run on its own).
+    pub fn window(cx: *const BuildContext) ?*runtime.App.Window {
+        return cx.ui.app_window;
     }
 };
 
-/// What the app runs on: the same for all its windows (see `WindowInfo`
-/// for a window's own).
+/// What the app runs on: the same for all its windows (see `Window` for a
+/// window's own).
 pub const BackendInfo = struct {
     /// The windowing system the app runs on (`wayland`, `headless`,
     /// `windows`, `macos`, `custom`).
@@ -480,45 +481,6 @@ pub const BackendInfo = struct {
         }
         return false;
     }
-};
-
-/// How a window is shown (see `BackendInfo` for what all the app's windows
-/// share).
-pub const WindowInfo = struct {
-    /// How the frames reach the window system (`memory`, `linux_dmabuf`,
-    /// `swapchain`, `custom`).
-    pub const BufferTransport = window_mod.WindowBufferTransport;
-    /// How the window system knows a GPU buffer is finished (`none`,
-    /// `implicit`, `explicit`).
-    pub const BufferSync = window_mod.WindowBufferSync;
-    /// How frames are paced and synchronized with the display.
-    pub const FrameSync = window_mod.WindowFrameSync;
-    /// Who draws a window's title bar and borders (`none`, `toolkit`,
-    /// `system`).
-    pub const Decorations = window_mod.WindowDecorations;
-
-    /// How the frames reach the window system.
-    buffer_transport: BufferTransport = .memory,
-    /// How the window system knows a GPU buffer is finished.
-    buffer_sync: BufferSync = .none,
-    /// How frames are paced and synchronized with the display.
-    frame_sync: FrameSync = .{},
-    /// The refresh rate of the display it is on, in Hz, or `0.0` if unknown.
-    refresh_hz: f32 = 0.0,
-    /// Who draws its title bar and borders.
-    decorations: Decorations = .none,
-    /// Logical window size in pixels.
-    logical_size: [2]u32 = .{ 0, 0 },
-    /// Physical target buffer size in pixels (`logical_size * scale`).
-    physical_size: [2]u32 = .{ 0, 0 },
-    /// HiDPI integer buffer scale factor.
-    scale: u32 = 1,
-    /// Whether the window fills the screen.
-    maximized: bool = false,
-    /// Whether the window covers the whole display.
-    fullscreen: bool = false,
-    /// Whether the window is tiled against other windows or the screen's edges.
-    tiled: bool = false,
 };
 
 pub const Edges = struct {

@@ -107,7 +107,6 @@ pub const Widget = widget.Widget;
 pub const BuildContext = widget.BuildContext;
 pub const WidgetAnchor = widget.WidgetAnchor;
 pub const BackendInfo = widget.BackendInfo;
-pub const WindowInfo = widget.WindowInfo;
 pub const WidgetNode = widget.WidgetNode;
 pub const Event = widget.Event;
 pub const PointerCursor = widget.PointerCursor;

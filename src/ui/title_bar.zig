@@ -29,7 +29,7 @@ const Constraints = geometry.Constraints;
 
 /// A window's title bar, drawn by the toolkit where the window system does
 /// not: its title, and buttons to minimize, maximize and close it. The toolkit
-/// adds it to a window itself (see `WindowInfo.decorations`), so apps do not
+/// adds it to a window itself (see `Window.decorations`), so apps do not
 /// make one.
 pub const TitleBar = struct {
     /// The text in the bar.
@@ -350,7 +350,7 @@ test "WindowUi automatically adds TitleBar when the toolkit draws the decoration
     try testing.expect(u.title_bar_root != null);
     try testing.expectEqual(@as(f32, TitleBar.height), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600 - TitleBar.height), u.root.?.size.h);
-    try testing.expectEqual(window_mod.WindowDecorations.toolkit, u.windowInfo().decorations);
+    try testing.expectEqual(window_mod.WindowDecorations.toolkit, u.decorations);
 
     // Clicking the automatic title bar's close button triggers controls.close_requested.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
@@ -367,7 +367,7 @@ test "WindowUi automatically adds TitleBar when the toolkit draws the decoration
     try testing.expect(u.title_bar_root == null);
     try testing.expectEqual(@as(f32, 0), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600), u.root.?.size.h);
-    try testing.expectEqual(window_mod.WindowDecorations.system, u.windowInfo().decorations);
+    try testing.expectEqual(window_mod.WindowDecorations.system, u.decorations);
 }
 
 fn findText(n: *Node) ?*Node {

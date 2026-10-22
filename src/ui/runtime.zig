@@ -376,6 +376,8 @@ pub const WindowUi = struct {
     win: ?window_mod.Window = null,
     /// What the window's title bar buttons do (set by `attachWindow`).
     controls: ?*window_mod.WindowControls = null,
+    /// The app's window it is the UI of (null when it is not an `App`'s).
+    app_window: ?*App.Window = null,
     /// Automatic title bar node (used when `decorations == .toolkit`).
     title_bar_root: ?*Node = null,
     /// The system's clipboard (the app gives it); without one, text is
@@ -607,25 +609,6 @@ pub const WindowUi = struct {
         if (comptime builtin.os.tag == .windows) return &.{};
         const wl = w.as(window_mod.WaylandWindow) orelse return &.{};
         return wl.waylandExtensions();
-    }
-
-    /// How its window is shown (see `widget.WindowInfo`).
-    pub fn windowInfo(ui: *const WindowUi) widget.WindowInfo {
-        const s = @max(ui.scale, 1);
-        const lsize = if (ui.win) |w| w.size() else ui.logical_size;
-        return .{
-            .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
-            .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
-            .frame_sync = if (ui.win) |w| w.frameSync() else .{},
-            .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
-            .decorations = ui.decorations,
-            .logical_size = lsize,
-            .physical_size = .{ lsize[0] * s, lsize[1] * s },
-            .scale = s,
-            .maximized = ui.maximized,
-            .fullscreen = ui.fullscreen,
-            .tiled = ui.tiled,
-        };
     }
 
     /// The pointer cursor shape requested by the currently dragged,
@@ -1961,6 +1944,7 @@ pub const App = struct {
         ui.theme = a.appearance.theme.scheme();
         ui.min_size_floor = options.min_size orelse .{ 0, 0 };
         ui.attachWindow(win, &w.controls);
+        ui.app_window = w;
         win.setRedraw(.{ .ctx = w, .f = Window.redraw });
         return w;
     }
@@ -2198,15 +2182,20 @@ pub const App = struct {
             w.dirty = true;
         }
 
-        /// The title the system shows for it ("" if it has none, or it is
-        /// closed).
-        pub fn title(w: *const Window) []const u8 {
-            if (w.closed) return "";
-            return w.win.title();
-        }
+        /// How the frames reach the window system (`memory`, `linux_dmabuf`,
+        /// `swapchain`, `custom`).
+        pub const BufferTransport = window_mod.WindowBufferTransport;
+        /// How the window system knows a GPU buffer is finished (`none`,
+        /// `implicit`, `explicit`).
+        pub const BufferSync = window_mod.WindowBufferSync;
+        /// How frames are paced and synchronized with the display.
+        pub const FrameSync = window_mod.WindowFrameSync;
+        /// Who draws a window's title bar and borders (`none`, `toolkit`,
+        /// `system`).
+        pub const Decorations = window_mod.WindowDecorations;
 
         /// Its size in logical pixels, `[width, height]` (zeros once it is
-        /// closed).
+        /// closed). Its buffer is this many times `scale()` across.
         pub fn size(w: *const Window) [2]u32 {
             if (w.closed) return .{ 0, 0 };
             return w.win.size();
@@ -2216,7 +2205,7 @@ pub const App = struct {
         /// once it is closed).
         pub fn scale(w: *const Window) u32 {
             if (w.closed) return 1;
-            return w.win.scale();
+            return @max(w.win.scale(), 1);
         }
 
         /// Sets the smallest size, in logical pixels, the user can resize it to.
@@ -2230,20 +2219,10 @@ pub const App = struct {
             return !w.closed and w.win.isMaximized();
         }
 
-        /// Whether the system can maximize it.
-        pub fn canMaximize(w: *const Window) bool {
-            return !w.closed and w.win.canMaximize();
-        }
-
         /// Makes it fill the screen (`on`), or go back to its own size.
         pub fn setMaximized(w: *Window, on: bool) void {
             if (w.closed) return;
             w.win.setMaximized(on);
-        }
-
-        /// Whether the system can minimize it.
-        pub fn canMinimize(w: *const Window) bool {
-            return !w.closed and w.win.canMinimize();
         }
 
         /// Hides it (to the dock or task bar); the system shows it again.
@@ -2257,15 +2236,40 @@ pub const App = struct {
             return !w.closed and w.win.isFullscreen();
         }
 
-        /// Whether the system can make it fullscreen.
-        pub fn canFullscreen(w: *const Window) bool {
-            return !w.closed and w.win.canFullscreen();
-        }
-
         /// Makes it cover the whole display (`on`), or go back to its own size.
         pub fn setFullscreen(w: *Window, on: bool) void {
             if (w.closed) return;
             w.win.setFullscreen(on);
+        }
+
+        /// Whether it is tiled against other windows or the screen's edges.
+        pub fn isTiled(w: *const Window) bool {
+            return !w.closed and w.win.isTiled();
+        }
+
+        /// Who draws its title bar and borders.
+        pub fn decorations(w: *const Window) Decorations {
+            return if (w.closed) .none else w.ui.decorations;
+        }
+
+        /// How its frames reach the window system.
+        pub fn bufferTransport(w: *const Window) BufferTransport {
+            return if (w.closed) .memory else w.win.bufferTransport();
+        }
+
+        /// How the window system knows a GPU buffer is finished.
+        pub fn bufferSync(w: *const Window) BufferSync {
+            return if (w.closed) .none else w.win.bufferSync();
+        }
+
+        /// How its frames are paced and synchronized with the display.
+        pub fn frameSync(w: *const Window) FrameSync {
+            return if (w.closed) .{} else w.win.frameSync();
+        }
+
+        /// The refresh rate of the display it is on, in Hz, or 0 if unknown.
+        pub fn refreshHz(w: *const Window) f32 {
+            return if (w.closed) 0 else w.win.refreshHz();
         }
 
         /// Draws `root` from now on.
