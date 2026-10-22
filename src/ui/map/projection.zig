@@ -17,14 +17,14 @@ pub const MapCoordinate = struct {
 };
 
 /// What a map view shows: the place at its centre, and how close.
-pub const Camera = struct {
+pub const MapCamera = struct {
     center: MapCoordinate = .{},
     /// At zoom z the flat map is 256 × 2^z pixels across, and the globe
     /// as far round its equator.
     zoom: f64 = 2,
 };
 
-pub const Projection = enum {
+pub const MapProjection = enum {
     /// A globe zoomed out (up to `globe_until`, or further in if the
     /// globe does not cover the view by then), becoming the flat map over
     /// the next zoom level.
@@ -108,7 +108,7 @@ pub fn direction(p: MapCoordinate) [3]f64 {
 
 /// How far a camera at `zoom` (in a view `size` big) is from the globe to
 /// the flat map: 0 on the globe, 1 on the flat map.
-pub fn flatness(zoom: f64, size: [2]f64, projection: Projection) f64 {
+pub fn flatness(zoom: f64, size: [2]f64, projection: MapProjection) f64 {
     if (projection == .flat) return 1;
     const t = math.clamp(zoom - globeUntil(size), 0, 1);
     return t * t * (3 - 2 * t);
@@ -118,8 +118,8 @@ pub fn flatness(zoom: f64, size: [2]f64, projection: Projection) f64 {
 /// it (`project`), and what is where (`unproject`).
 pub const View = struct {
     size: [2]f64,
-    camera: Camera,
-    projection: Projection,
+    camera: MapCamera,
+    projection: MapProjection,
     /// 0 on the globe, 1 on the flat map; between, part way.
     flat: f64,
     /// The flat map's width in pixels.
@@ -134,7 +134,7 @@ pub const View = struct {
     sin_lat: f64,
     cos_lat: f64,
 
-    pub fn init(camera: Camera, size: [2]f64, projection: Projection) View {
+    pub fn init(camera: MapCamera, size: [2]f64, projection: MapProjection) View {
         const lat = math.clamp(camera.center.lat, -max_lat, max_lat);
         const world = 256 * math.exp2(camera.zoom);
         const focal = focalOf(size);
@@ -284,7 +284,7 @@ fn solve2(j: [2][2]f64, e: [2]f64) ?[2]f64 {
 }
 
 /// `camera` with its centre at `w` on the flat map (and the same zoom).
-fn centered(camera: Camera, w: [2]f64) Camera {
+fn centered(camera: MapCamera, w: [2]f64) MapCamera {
     const lat_limit = toWorld(.{ .lat = max_lat })[1];
     return .{ .center = fromWorld(.{ w[0], math.clamp(w[1], lat_limit, 1 - lat_limit) }), .zoom = camera.zoom };
 }
@@ -293,7 +293,7 @@ fn centered(camera: Camera, w: [2]f64) Camera {
 /// `place` at `at` in the view: what dragging the map does, the place
 /// grabbed staying under the pointer. Off the globe's edge, as near as it
 /// can be.
-pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: MapCoordinate, at_in: [2]f64) Camera {
+pub fn moveTo(camera: MapCamera, size: [2]f64, projection: MapProjection, place: MapCoordinate, at_in: [2]f64) MapCamera {
     const v = View.init(camera, size, projection);
     var at = at_in;
     if (v.flat <= 0) {
@@ -338,7 +338,7 @@ pub fn moveTo(camera: Camera, size: [2]f64, projection: Projection, place: MapCo
 /// `camera` zoomed by `by` (in zoom levels, clamped to `min` to `max`)
 /// about `at` in the view: the place there stays there (if there is one;
 /// otherwise about the centre).
-pub fn zoomAbout(camera: Camera, size: [2]f64, projection: Projection, at: [2]f64, by: f64, min: f64, max: f64) Camera {
+pub fn zoomAbout(camera: MapCamera, size: [2]f64, projection: MapProjection, at: [2]f64, by: f64, min: f64, max: f64) MapCamera {
     const zoom = math.clamp(camera.zoom + by, min, max);
     const place = View.init(camera, size, projection).unproject(at) orelse return .{ .center = camera.center, .zoom = zoom };
     return moveTo(.{ .center = camera.center, .zoom = zoom }, size, projection, place, at);
@@ -384,8 +384,8 @@ test "what shows where is what is there, on the globe, the flat map and between"
 
 test "dragging keeps the place grabbed under the pointer" {
     const size: [2]f64 = .{ 800, 480 };
-    for ([_]Projection{ .globe, .flat }) |proj| for ([_]f64{ 2, 5.5, 9 }) |zoom| {
-        var cam: Camera = .{ .center = .{ .lat = 20, .lon = 10 }, .zoom = zoom };
+    for ([_]MapProjection{ .globe, .flat }) |proj| for ([_]f64{ 2, 5.5, 9 }) |zoom| {
+        var cam: MapCamera = .{ .center = .{ .lat = 20, .lon = 10 }, .zoom = zoom };
         const grab: [2]f64 = .{ 420, 230 };
         const place = View.init(cam, size, proj).unproject(grab).?;
         var at = grab;
@@ -404,7 +404,7 @@ test "dragging keeps the place grabbed under the pointer" {
 test "zooming about a point keeps the place there" {
     const size: [2]f64 = .{ 800, 480 };
     for ([_]f64{ 2, 4.8, 5.6, 7 }) |zoom| {
-        const cam: Camera = .{ .center = .{ .lat = -30, .lon = 150 }, .zoom = zoom };
+        const cam: MapCamera = .{ .center = .{ .lat = -30, .lon = 150 }, .zoom = zoom };
         const at: [2]f64 = .{ 500, 300 };
         const place = View.init(cam, size, .globe).unproject(at).?;
         const zoomed = zoomAbout(cam, size, .globe, at, 0.5, 0, 20);

@@ -16,7 +16,7 @@ const Point = tiles.MapVectorTile.Point;
 const Color = gfx.Color;
 
 /// How a label is drawn.
-pub const LabelStyle = struct {
+pub const MapLabelStyle = struct {
     size: f32 = 12,
     color: Color,
     /// An outline around the letters (to read over anything).
@@ -41,7 +41,7 @@ pub const Labels = struct {
 
     /// Draws `text` at `at` (in the view) unless it would overlap a label
     /// drawn already or go out of the view; whether it did.
-    pub fn place(l: *Labels, canvas: *gfx.Canvas, at: [2]f32, text: []const u8, style: LabelStyle) bool {
+    pub fn place(l: *Labels, canvas: *gfx.Canvas, at: [2]f32, text: []const u8, style: MapLabelStyle) bool {
         const f = l.font orelse return false;
         if (text.len == 0) return false;
         const fs: font.Style = .{ .font = f, .size = style.size };
@@ -300,7 +300,7 @@ pub const MapTilePainter = struct {
 
     /// A label at `p`, unless it would overlap one already drawn (or, on
     /// the globe, be near its edge, where it would be squeezed).
-    pub fn label(tp: *MapTilePainter, p: Point, text: []const u8, style: LabelStyle) void {
+    pub fn label(tp: *MapTilePainter, p: Point, text: []const u8, style: MapLabelStyle) void {
         const q = tp.project(p);
         if (!q.visible) return;
         if (tp.view.flat <= 0) {

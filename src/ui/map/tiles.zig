@@ -10,7 +10,7 @@
 //!
 //!     const Osm = struct {
 //!         buf: [64]u8 = undefined,
-//!         fn tile(s: *Osm, req: ui.MapSource.Request) ui.Tile {
+//!         fn tile(s: *Osm, req: ui.MapSource.Request) ui.MapTile {
 //!             const url = std.fmt.bufPrint(&s.buf, "https://tile.example.org/{d}/{d}/{d}.png", .{ req.id.z, req.id.x, req.id.y }) catch return .none;
 //!             return .{ .image = .{ .url = url } };
 //!         }
@@ -41,7 +41,7 @@ pub const MapTileId = struct {
 };
 
 /// What a source has for a tile.
-pub const Tile = union(enum) {
+pub const MapTile = union(enum) {
     /// Nothing: nothing is drawn there (the map's background shows).
     none,
     /// Not yet: a tile further out is drawn there meanwhile. The source
@@ -57,8 +57,8 @@ pub const Tile = union(enum) {
 /// Where a map's tiles come from: anything with a `tile` method.
 pub const MapSource = struct {
     ctx: *anyopaque,
-    tile_fn: *const fn (ctx: *anyopaque, req: Request) Tile,
-    /// The tiles' width (and height) in pixels: at `Camera.zoom` z, tiles
+    tile_fn: *const fn (ctx: *anyopaque, req: Request) MapTile,
+    /// The tiles' width (and height) in pixels: at `MapCamera.zoom` z, tiles
     /// of level z − log2(tile_size / 256) are drawn at about their size.
     tile_size: f32 = 256,
     /// The levels it has tiles for: zoomed further out, it is asked for
@@ -90,7 +90,7 @@ pub const MapSource = struct {
         return .{
             .ctx = @ptrCast(@constCast(ptr)),
             .tile_fn = struct {
-                fn call(ctx: *anyopaque, req: Request) Tile {
+                fn call(ctx: *anyopaque, req: Request) MapTile {
                     return @as(P, @ptrCast(@alignCast(ctx))).tile(req);
                 }
             }.call,
@@ -101,7 +101,7 @@ pub const MapSource = struct {
         };
     }
 
-    pub fn tile(s: MapSource, req: Request) Tile {
+    pub fn tile(s: MapSource, req: Request) MapTile {
         return s.tile_fn(s.ctx, req);
     }
 };

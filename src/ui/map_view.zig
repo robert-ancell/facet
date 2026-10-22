@@ -4,7 +4,7 @@
 //! it is a globe (as the `projection` says), turned by dragging, that
 //! becomes the flat map as it is zoomed in.
 //!
-//! Where it looks is a `Camera`: the app's (to move it, or show where it
+//! Where it looks is a `MapCamera`: the app's (to move it, or show where it
 //! is), or the view's own.
 //!
 //!     cx.make(ui.MapView{
@@ -39,20 +39,20 @@ const Callback = widget.Callback;
 const Painter = painter_mod.Painter;
 const Color = gfx.Color;
 
-pub const Camera = projection.Camera;
+pub const MapCamera = projection.MapCamera;
 pub const MapCoordinate = projection.MapCoordinate;
-pub const Projection = projection.Projection;
+pub const MapProjection = projection.MapProjection;
 pub const View = projection.View;
 pub const MapTileId = tiles.MapTileId;
-pub const Tile = tiles.Tile;
+pub const MapTile = tiles.MapTile;
 pub const MapSource = tiles.MapSource;
 pub const MapVectorTile = tiles.MapVectorTile;
 pub const MapStyle = style_mod.MapStyle;
 pub const MapTilePainter = tile_painter.MapTilePainter;
-pub const LabelStyle = tile_painter.LabelStyle;
+pub const MapLabelStyle = tile_painter.MapLabelStyle;
 
 /// How night is shaded on a map.
-pub const Night = struct {
+pub const MapNight = struct {
     /// Where the sun is overhead.
     sun: MapCoordinate,
     color: Color = .rgb(0x000814),
@@ -62,7 +62,7 @@ pub const Night = struct {
 
     /// Night with the sun where it is overhead at `unix_seconds` (seconds
     /// since 1970 UTC), the rest of it at its defaults.
-    pub fn at(unix_seconds: f64) Night {
+    pub fn at(unix_seconds: f64) MapNight {
         return .{ .sun = projection.subsolarPoint(unix_seconds) };
     }
 };
@@ -79,9 +79,9 @@ pub const MapView = struct {
     style: ?*const MapStyle = null,
     /// What it shows: the app's, which it moves, or its own if null
     /// (starting at `initial`).
-    camera: ?*Camera = null,
-    initial: Camera = .{},
-    projection: Projection = .globe,
+    camera: ?*MapCamera = null,
+    initial: MapCamera = .{},
+    projection: MapProjection = .globe,
     min_zoom: f64 = 0,
     max_zoom: f64 = 20,
     /// Called when it is moved or zoomed (by dragging, the wheel, or a
@@ -100,13 +100,13 @@ pub const MapView = struct {
     /// Night where the sun has set, from where it is overhead
     /// (`MapNight.at` gives it for a time), shaded on the globe (fading
     /// as the globe becomes the flat map); none if null.
-    night: ?Night = null,
+    night: ?MapNight = null,
     /// Its size, if not told how big to be.
     width: f32 = 480,
     height: f32 = 320,
 
     pub const State = struct {
-        own: ?Camera = null,
+        own: ?MapCamera = null,
         /// The place grabbed, while dragging.
         grab: ?MapCoordinate = null,
         /// The pointer's last moves (where, and when): how fast it was
@@ -118,7 +118,7 @@ pub const MapView = struct {
         last_ns: u64 = 0,
     };
 
-    fn cameraOf(self: *const MapView, st: *State) *Camera {
+    fn cameraOf(self: *const MapView, st: *State) *MapCamera {
         if (self.camera) |c| return c;
         if (st.own == null) st.own = self.initial;
         return &st.own.?;
@@ -129,7 +129,7 @@ pub const MapView = struct {
     }
 
     /// Sets the camera (kept in bounds), and says it moved.
-    fn moveTo(self: *const MapView, n: *Node, cam: Camera) void {
+    fn moveTo(self: *const MapView, n: *Node, cam: MapCamera) void {
         const c = self.cameraOf(n.state(State));
         c.* = .{
             .center = .{ .lat = std.math.clamp(cam.center.lat, -projection.max_lat, projection.max_lat), .lon = projection.wrapLon(cam.center.lon) },
@@ -478,7 +478,7 @@ pub const MapView = struct {
     /// each corner as dark as the sun is below the horizon there (none
     /// while it is up, darkening through twilight, and as dark as it gets
     /// 12° below). It fades as the globe becomes the flat map.
-    fn drawNight(c: *gfx.Canvas, v: *const View, night: Night, arena: std.mem.Allocator) void {
+    fn drawNight(c: *gfx.Canvas, v: *const View, night: MapNight, arena: std.mem.Allocator) void {
         const fade: f32 = @floatCast(1 - v.flat);
         if (fade <= 0 or night.opacity <= 0) return;
         const rings = 24;
