@@ -367,9 +367,9 @@ pub const DragActions = struct {
 };
 
 /// What the user did in the window, in `Window.takeInput`. The key, button,
-/// scroll and pointer events come from every window; so far, touch, locked
-/// pointer, text input, drag-and-drop and popup events come only from
-/// Wayland ones (macOS and Windows windows do not make them yet).
+/// scroll, pointer and popup events come from every window; so far, touch,
+/// locked pointer, text input and drag-and-drop events come only from Wayland
+/// ones (macOS and Windows windows do not make them yet).
 /// Positions are `[x, y]` in logical pixels from the window's top left.
 pub const InputEvent = union(enum) {
     /// The pointer moved to (or entered at) a position in the window.
