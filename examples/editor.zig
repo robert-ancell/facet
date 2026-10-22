@@ -20,7 +20,7 @@ const sample_code =
     \\}
 ;
 
-pub fn highlightZig(text: []const u8, out: []kete.SyntaxHighlight) void {
+pub fn highlightZig(text: []const u8, out: []kete.TextArea.Highlight) void {
     const keywords = [_][]const u8{
         "const", "var", "fn", "pub", "return", "if", "else", "for", "while", "struct", "enum",
     };

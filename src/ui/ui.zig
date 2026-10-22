@@ -140,9 +140,7 @@ pub const TextStyle = text.TextStyle;
 pub const TextAlign = text.TextAlign;
 
 pub const Theme = theme.Theme;
-pub const ThemeBrightness = theme.ThemeBrightness;
 pub const Themed = themed.Themed;
-pub const SyntaxHighlight = theme.SyntaxHighlight;
 pub const OutlinedButton = button.OutlinedButton;
 pub const FilledButton = button.FilledButton;
 pub const TonalButton = button.TonalButton;

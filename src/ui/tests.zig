@@ -2055,8 +2055,8 @@ const ProbeLeaf = struct {
 };
 
 test "the baseline schemes are Material's, and say which is dark" {
-    try testing.expectEqual(ui.ThemeBrightness.dark, ui.Theme.dark.brightness);
-    try testing.expectEqual(ui.ThemeBrightness.light, ui.Theme.light.brightness);
+    try testing.expectEqual(ui.Theme.Brightness.dark, ui.Theme.dark.brightness);
+    try testing.expectEqual(ui.Theme.Brightness.light, ui.Theme.light.brightness);
     try testing.expectEqual(gfx.Color.rgb(0xf2b8b5), ui.Theme.dark.@"error");
     try testing.expectEqual(gfx.Color.rgb(0x601410), ui.Theme.dark.on_error);
     try testing.expectEqual(gfx.Color.rgb(0xb3261e), ui.Theme.light.@"error");

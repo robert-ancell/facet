@@ -223,7 +223,11 @@ pub const TextArea = struct {
     /// as the text, and all `plain` to start with).
     highlighter: ?Highlighter = null,
 
-    pub const Highlighter = *const fn (text: []const u8, out: []SyntaxHighlight) void;
+    /// What a part of the text is, for its colour: `keyword`, `string`,
+    /// `comment` and so on, or `plain`.
+    pub const Highlight = SyntaxHighlight;
+    /// Says what each byte of `text` is, writing it to `out` (as long as `text`).
+    pub const Highlighter = *const fn (text: []const u8, out: []Highlight) void;
 
     pub const pad = 12;
 

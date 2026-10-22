@@ -31,9 +31,7 @@ pub const Callback = ui.Callback;
 pub const ValueCallback = ui.ValueCallback;
 pub const Painter = ui.Painter;
 pub const Theme = ui.Theme;
-pub const ThemeBrightness = ui.ThemeBrightness;
 pub const Themed = ui.Themed;
-pub const SyntaxHighlight = ui.SyntaxHighlight;
 pub const Waker = ui.Waker;
 
 pub const Size = ui.Size;

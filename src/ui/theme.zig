@@ -124,9 +124,13 @@ pub const ThemeBrightness = enum {
 /// A colour scheme, and text sizes in pixels. The colours are named for the
 /// roles in Material 3's colour system (`primary`, `surface_container`,
 /// `on_surface`...): the colour of something, and `on_` the colour of what is
-/// drawn on it. The app's (`WindowUi`'s) is the light or dark one, as the system asks; `Themed` gives the
-/// widgets below it another (changing a colour or two of `cx.theme()`, say).
+/// drawn on it. The app's (`WindowUi`'s) is the light or dark one, as the
+/// system asks; `Themed` gives the widgets below it another (changing a colour
+/// or two of `cx.theme()`, say).
 pub const Theme = struct {
+    /// Whether a theme is light or dark.
+    pub const Brightness = ThemeBrightness;
+
     /// Whether the scheme is light or dark.
     brightness: ThemeBrightness,
     /// The main colour: filled buttons, selected controls, focus.
@@ -157,7 +161,7 @@ pub const Theme = struct {
     @"error": Color,
     /// Text and icons on `error`.
     on_error: Color,
-    /// The colours of code's parts (see `SyntaxHighlight`).
+    /// The colours of code's parts (see `TextArea.Highlight`).
     syntax: Syntax,
     /// The size of body text, in pixels.
     body_size: f32 = 14,
