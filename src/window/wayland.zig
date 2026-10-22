@@ -1565,8 +1565,10 @@ pub const WaylandWindow = struct {
         w.cursor_shape = shape;
     }
 
-    pub fn startDrag(w: *WaylandWindow, mime_type: []const u8, bytes: []const u8, actions: u32) bool {
-        return w.clipboard.startDrag(w.surface, null, mime_type, bytes, actions);
+    pub fn startDrag(w: *WaylandWindow, mime_type: []const u8, bytes: []const u8, actions: window_mod.DragActions) bool {
+        // Wayland's `dnd_action`s: copy 1, move 2, ask 4.
+        const bits: u32 = @as(u32, @intFromBool(actions.copy)) | @as(u32, @intFromBool(actions.move)) << 1 | @as(u32, @intFromBool(actions.ask)) << 2;
+        return w.clipboard.startDrag(w.surface, null, mime_type, bytes, bits);
     }
 
     pub fn takeDrop(w: *WaylandWindow) ?DroppedData {

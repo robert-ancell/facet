@@ -356,9 +356,20 @@ pub const TextInputState = struct {
     }
 };
 
+/// What a receiver may do with what is dragged to it (see `Window.startDrag`).
+pub const DragActions = struct {
+    /// Make a copy of it.
+    copy: bool = false,
+    /// Take it from where it was dragged.
+    move: bool = false,
+    /// Ask the user which.
+    ask: bool = false,
+};
+
 /// What the user did in the window, in `Window.takeInput`. The key, button,
-/// scroll and pointer events come from every window; touch, locked pointer,
-/// text input, drag-and-drop and popup events come only from Wayland ones.
+/// scroll and pointer events come from every window; so far, touch, locked
+/// pointer, text input, drag-and-drop and popup events come only from
+/// Wayland ones (macOS and Windows windows do not make them yet).
 /// Positions are `[x, y]` in logical pixels from the window's top left.
 pub const InputEvent = union(enum) {
     /// The pointer moved to (or entered at) a position in the window.
@@ -381,11 +392,11 @@ pub const InputEvent = union(enum) {
     /// The window's touches were cancelled by the shell.
     touch_cancel,
     /// Relative pointer motion `[dx, dy]`, in logical pixels, for a locked
-    /// pointer (Wayland only).
+    /// pointer (not yet on macOS and Windows).
     relative_motion: [2]f32,
-    /// The pointer lock took effect (true), or ended (false) (Wayland only).
+    /// The pointer lock took effect (true), or ended (false) (not yet on macOS and Windows).
     pointer_locked: bool,
-    /// An input method committed UTF-8 text (`zwp_text_input_v3`: Wayland only).
+    /// An input method committed UTF-8 text (not yet on macOS and Windows).
     text_commit: struct {
         buf: [128]u8 = undefined,
         len: u8 = 0,
@@ -394,7 +405,7 @@ pub const InputEvent = union(enum) {
             return self.buf[0..self.len];
         }
     },
-    /// An input method updated its preedit string (`zwp_text_input_v3`).
+    /// An input method updated its preedit string, the text it is still composing.
     text_preedit: struct {
         buf: [128]u8 = undefined,
         len: u8 = 0,
@@ -407,7 +418,8 @@ pub const InputEvent = union(enum) {
     },
     /// An input method asked to delete bytes around the cursor.
     text_delete_surrounding: struct { before_length: u32, after_length: u32 },
-    /// Something being dragged entered the window at a position (Wayland only).
+    /// Something being dragged entered the window at a position (not yet on
+    /// macOS and Windows).
     drag_enter: [2]f32,
     /// Something being dragged moved to a position in the window.
     drag_motion: [2]f32,
@@ -624,7 +636,7 @@ pub const Window = struct {
         setFullscreen: *const fn (ptr: *anyopaque, on: bool) void,
         startMove: *const fn (ptr: *anyopaque) void,
         setTextInput: *const fn (ptr: *anyopaque, state: ?TextInputState) void,
-        startDrag: *const fn (ptr: *anyopaque, mime_type: []const u8, bytes: []const u8, actions: u32) bool,
+        startDrag: *const fn (ptr: *anyopaque, mime_type: []const u8, bytes: []const u8, actions: DragActions) bool,
         takeDrop: *const fn (ptr: *anyopaque) ?DroppedData,
         nextPresentationNs: *const fn (ptr: *anyopaque, now_ns: u64) u64,
         setPresentationTime: *const fn (ptr: *anyopaque, target_ns: u64) void,
@@ -813,7 +825,7 @@ pub const Window = struct {
             fn setTextInputFn(p: *anyopaque, state: ?TextInputState) void {
                 if (@hasDecl(T, "setTextInput")) self(p).setTextInput(state);
             }
-            fn startDragFn(p: *anyopaque, mime_type: []const u8, bytes: []const u8, actions: u32) bool {
+            fn startDragFn(p: *anyopaque, mime_type: []const u8, bytes: []const u8, actions: DragActions) bool {
                 if (@hasDecl(T, "startDrag")) return self(p).startDrag(mime_type, bytes, actions);
                 return false;
             }
@@ -1060,7 +1072,8 @@ pub const Window = struct {
         return w.vtable.isFullscreen(w.ptr);
     }
     /// Whether the window is tiled against other windows or the screen's edges, so it
-    /// has no rounded corners or shadow of its own (Wayland only; false elsewhere).
+    /// has no rounded corners or shadow of its own (false on macOS and Windows, which
+    /// do not report it yet).
     pub fn isTiled(w: Window) bool {
         return w.vtable.isTiled(w.ptr);
     }
@@ -1111,33 +1124,34 @@ pub const Window = struct {
         w.vtable.setFullscreen(w.ptr, on);
     }
     /// Starts moving the window with the pointer, for a title bar pressed by the
-    /// user. Does nothing unless a button is held. Wayland only: elsewhere the
-    /// system's own title bar moves the window.
+    /// user. Does nothing unless a button is held. Not yet on macOS and Windows,
+    /// where the system's own title bar moves the window.
     pub fn startMove(w: Window) void {
         w.vtable.startMove(w.ptr);
     }
     /// Tells the input method about the focused text widget (for composing text,
     /// an on-screen keyboard and where to put its candidates), or that none is
     /// focused if null. Commits come back as `text_commit` and `text_preedit` events.
-    /// Wayland only (`zwp_text_input_v3`): it does nothing elsewhere.
+    /// Not yet on macOS and Windows: it does nothing there.
     pub fn setTextInput(w: Window, state: ?TextInputState) void {
         w.vtable.setTextInput(w.ptr, state);
     }
     /// Starts dragging `bytes` of type `mime_type`, to be dropped on this window or
-    /// another. `actions` is a bit set of what the receiver may do with it (the
-    /// Wayland `dnd_action`s: copy 1, move 2, ask 4). Returns false if it could not
-    /// start (it has to follow a press). Wayland only: false elsewhere.
-    pub fn startDrag(w: Window, mime_type: []const u8, bytes: []const u8, actions: u32) bool {
+    /// another. `actions` is what the receiver may do with it. Returns false if it
+    /// could not start (it has to follow a press). Not yet on macOS and Windows:
+    /// false there.
+    pub fn startDrag(w: Window, mime_type: []const u8, bytes: []const u8, actions: DragActions) bool {
         return w.vtable.startDrag(w.ptr, mime_type, bytes, actions);
     }
     /// The data dropped on the window since the last call, or null if there is none
-    /// (always, except on Wayland).
+    /// (always, so far, except on Wayland).
     pub fn takeDrop(w: Window) ?DroppedData {
         return w.vtable.takeDrop(w.ptr);
     }
     /// Says the next frame shown is drawn for `target_ns` (in nanoseconds on the
     /// monotonic clock, as `nextPresentationNs` gives): a window that can, does not
-    /// show it before then (Wayland with `wp_commit_timing_v1`; ignored elsewhere).
+    /// show it before then (ignored by those that cannot: macOS and Windows, and
+    /// Wayland compositors without timed presentation).
     pub fn setPresentationTime(w: Window, target_ns: u64) void {
         w.vtable.setPresentationTime(w.ptr, target_ns);
     }
@@ -1152,7 +1166,8 @@ pub const Window = struct {
     pub fn watch(w: Window, source: Source, on: bool) void {
         w.vtable.watch(w.ptr, source, on);
     }
-    /// The keyboard layout in use, from the Wayland keymap (empty elsewhere).
+    /// The keyboard layout in use (empty on macOS and Windows, which do not
+    /// report it yet).
     pub fn layout(w: Window) KeyboardLayout {
         return w.vtable.layout(w.ptr);
     }
