@@ -127,7 +127,6 @@ pub const Align = @"align".Align;
 pub const Center = center.Center;
 pub const Row = flex.Row;
 pub const Column = flex.Column;
-pub const Flex = flex.Flex;
 pub const Axis = flex.Axis;
 pub const Expanded = expanded.Expanded;
 pub const Grid = grid.Grid;

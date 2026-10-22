@@ -60,7 +60,6 @@ pub const Align = ui.Align;
 pub const Center = ui.Center;
 pub const Row = ui.Row;
 pub const Column = ui.Column;
-pub const Flex = ui.Flex;
 pub const Axis = ui.Axis;
 pub const Expanded = ui.Expanded;
 pub const Grid = ui.Grid;

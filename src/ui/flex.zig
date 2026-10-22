@@ -1,5 +1,5 @@
-//! Row and Column (both `Flex`): children one after another, left to
-//! right or top to bottom.
+//! Row and Column: children one after another, left to right or top to
+//! bottom.
 
 const std = @import("std");
 const geometry = @import("geometry.zig");
@@ -61,7 +61,9 @@ pub const MainAxisSize = enum {
     max,
 };
 
+/// Children one after another, left to right.
 pub const Row = Flex(.horizontal);
+/// Children one after another, top to bottom.
 pub const Column = Flex(.vertical);
 
 /// A direction of layout: a `Row` is laid out along `.horizontal` and a
@@ -73,9 +75,8 @@ pub const Axis = enum {
     vertical,
 };
 
-/// Children one after another, left to right (`Row`) or top to bottom
-/// (`Column`).
-pub fn Flex(comptime axis: Axis) type {
+/// What `Row` and `Column` are: children one after another along `axis`.
+fn Flex(comptime axis: Axis) type {
     return struct {
         const Self = @This();
 
