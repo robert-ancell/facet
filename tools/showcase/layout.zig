@@ -216,7 +216,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
             }) }) },
         })),
         common.section(cx, "Grid", "Equal cells, as many to a row as fit", cx.makeAll(.{
-            facet.Grid{ .cell = .{ .w = 72, .h = 48 }, .spacing = 8, .children = &tiles },
+            facet.Grid.fixed(cx, &tiles, .{ .w = 72, .h = 48 }, 8),
         })),
         common.section(cx, "Layers and alignment", "An overlay stacks layers; each aligns its content in the space", cx.makeAll(.{
             facet.SizedBox{ .height = 170, .child = cx.make(facet.Overlay{ .children = &layers }) },

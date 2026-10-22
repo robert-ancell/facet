@@ -103,7 +103,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
 
     return common.page(cx, &.{
         common.section(cx, "Formats", "PNG, JPEG, GIF and WebP, decoded in the background (here from the bytes of files built in)", cx.makeAll(.{
-            facet.Grid{ .cell = .{ .w = 210, .h = 200 }, .spacing = 12, .children = &cards },
+            facet.Grid.fixed(cx, &cards, .{ .w = 210, .h = 200 }, 12),
         })),
         common.section(cx, "From memory", "Pixels the app has made, shown at once: at their size, smaller, and faded", cx.makeAll(.{
             facet.Row{ .spacing = 16, .cross_axis_alignment = .end, .children = cx.makeAll(.{

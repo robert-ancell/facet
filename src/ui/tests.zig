@@ -569,7 +569,7 @@ test "a grid puts as many cells in a row as fit" {
         fn f(cx: *Context) Widget {
             var cells: [7]Widget = undefined;
             for (&cells) |*c| c.* = cx.make(ui.Decorated{ .color = red });
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 250, .child = cx.make(ui.Grid{ .cell = .{ .w = 60, .h = 40 }, .spacing = 10, .children = &cells }) }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 250, .child = cx.make(ui.Grid.fixed(cx, &cells, .{ .w = 60, .h = 40 }, 10)) }) });
         }
     }.f;
     u.frame(400, 300, 0, Root(build){});
@@ -610,7 +610,7 @@ const VirtualApp = struct {
     items: *VirtualItems,
     in_scroll_view: bool = true,
     pub fn build(self: *const @This(), cx: *Context) Widget {
-        const grid = cx.make(ui.VirtualGrid{ .count = 100, .cell = .{ .w = 50, .h = 40 }, .spacing = 10, .item = .of(self.items, VirtualItems.item) });
+        const grid = cx.make(ui.Grid{ .count = 100, .cell = .{ .w = 50, .h = 40 }, .spacing = 10, .item = .of(self.items, VirtualItems.item) });
         return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = if (self.in_scroll_view) cx.make(ui.ScrollView{ .child = grid }) else grid }) });
     }
 };
@@ -649,7 +649,7 @@ test "a virtual grid makes only the rows that show, as it scrolls" {
 
     // Not in a scroll view: all of it shows.
     u.frame(400, 400, 3, VirtualApp{ .items = &items, .in_scroll_view = false });
-    try testing.expectEqual(@as(usize, 100), find(u.root.?, ui.VirtualGrid).?.childCount());
+    try testing.expectEqual(@as(usize, 100), find(u.root.?, ui.Grid).?.childCount());
 }
 
 const RevealApp = struct {

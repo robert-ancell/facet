@@ -95,12 +95,12 @@ pub const ListsAndDragDemo = struct {
                             .spacing = 8,
                             .children = cx.makeAll(.{
                                 facet.Text{
-                                    .text = "VirtualGrid (500 items — drag any card to the right):",
+                                    .text = "Grid (500 items — drag any card to the right):",
                                     .style = .{ .size = t.body_size, .color = t.on_surface_variant },
                                 },
                                 facet.Expanded{
                                     .child = cx.make(facet.ScrollView{
-                                        .child = cx.make(facet.VirtualGrid{
+                                        .child = cx.make(facet.Grid{
                                             .count = item_count,
                                             .cell = .{ .w = 150, .h = 52 },
                                             .spacing = 10,

@@ -111,7 +111,6 @@ pub const MenuItem = ui.MenuItem;
 pub const TitleBar = ui.TitleBar;
 pub const BarButton = ui.BarButton;
 pub const ScrollView = ui.ScrollView;
-pub const VirtualGrid = ui.VirtualGrid;
 pub const Icon = ui.Icon;
 pub const IconName = ui.IconName;
 pub const Image = ui.Image;

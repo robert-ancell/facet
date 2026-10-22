@@ -1,61 +1,165 @@
-//! Grid: children in rows of equal cells.
+//! Grid: a grid of many items all the same size, as many cells to a row as
+//! fit its width, of which only those that show are made. The items are
+//! made by a function, given their index, and only for the rows in view
+//! (and a row either side) of the scroll view it is in. `Grid.fixed` is a
+//! grid of widgets already made.
+//! Because every cell is the same size, how big the grid is, and where
+//! each item goes, is known without making them.
+//!
+//!     cx.make(ui.ScrollView{ .child = cx.make(ui.Grid{
+//!         .count = files.len,
+//!         .cell = .{ .w = 128, .h = 124 },
+//!         .item = .of(view, View.tile),
+//!     }) })
+//!
+//! The items made are those of the frame before (so they are built with
+//! the rest of the tree); if the scroll view shows other rows once laid
+//! out, they are made then. Items are matched to their nodes by index,
+//! unless the item has a key.
 
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 
 const Size = geometry.Size;
+const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Widget = widget.Widget;
 const Node = widget.WidgetNode;
+const Context = widget.Context;
 
-/// Children in rows of equal cells, left to right and top to bottom, as
-/// many to a row as fit its width (at least one).
 pub const Grid = struct {
-    children: []const Widget = &.{},
+    count: usize,
     cell: Size,
     /// Space between cells, across and down.
     spacing: f32 = 0,
+    item: ItemBuilder,
+    /// Rows made beyond those in view, above and below, so a little
+    /// scrolling needs nothing made.
+    extra_rows: usize = 1,
 
-    pub fn layout(self: *const Grid, n: *Node, c: Constraints) Size {
-        const count = n.childCount();
-        const gap = if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
-        const cw = @max(self.cell.w, 0);
-        const chh = @max(self.cell.h, 0);
-        const columns: usize = if (!c.boundedWidth())
-            @max(count, 1)
-        else
-            @max(1, @as(usize, @intFromFloat(@max(@floor((c.max_w + gap) / (cw + gap)), 0))));
-        const rows = (count + columns - 1) / columns;
-        for (n.children.items, 0..) |ch, i| {
-            _ = ch.layout(.tight(.{ .w = cw, .h = chh }));
-            const col: f32 = @floatFromInt(i % columns);
-            const row: f32 = @floatFromInt(i / columns);
-            ch.place(col * (cw + gap), row * (chh + gap));
-        }
-        const used_columns: f32 = @floatFromInt(@min(columns, count));
-        const r: f32 = @floatFromInt(rows);
-        return c.constrain(.{
-            .w = if (c.boundedWidth()) c.max_w else used_columns * (cw + gap) - (if (count > 0) gap else 0),
-            .h = r * (chh + gap) - (if (rows > 0) gap else 0),
-        });
+    /// A grid of `widgets` already made (they are copied into the frame's
+    /// arena, as `cx.make` copies a `children` slice).
+    pub fn fixed(cx: *Context, widgets: []const Widget, cell: Size, spacing: f32) Grid {
+        const copy = cx.arena.dupe(Widget, widgets) catch &[_]Widget{};
+        return .{ .count = copy.len, .cell = cell, .spacing = spacing, .item = .{ .ctx = @ptrCast(copy.ptr), .f = fixedItem } };
     }
 
-    pub fn minSize(self: *const Grid, n: *Node, c: Constraints) Size {
-        const count = n.childCount();
-        if (count == 0) return c.smallest();
-        const gap = if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
-        const cw = @max(self.cell.w, 0);
-        const chh = @max(self.cell.h, 0);
-        if (!c.boundedWidth() or n.ui.scrolling > 0) {
-            return c.constrain(.{ .w = cw, .h = chh });
+    fn fixedItem(ctx: *const anyopaque, _: *Context, i: usize) Widget {
+        const items: [*]const Widget = @ptrCast(@alignCast(ctx));
+        return items[i];
+    }
+
+    /// Makes item `index` (in the frame's arena, with `cx.make`).
+    pub const ItemBuilder = struct {
+        ctx: *const anyopaque,
+        f: *const fn (*const anyopaque, *Context, usize) Widget,
+
+        pub fn of(ptr: anytype, comptime f: fn (@TypeOf(ptr), *Context, usize) Widget) ItemBuilder {
+            const P = @TypeOf(ptr);
+            return .{ .ctx = @ptrCast(ptr), .f = struct {
+                fn call(ctx: *const anyopaque, cx: *Context, i: usize) Widget {
+                    return f(@as(P, @ptrCast(@alignCast(@constCast(ctx)))), cx, i);
+                }
+            }.call };
         }
-        const columns: usize = @max(1, @as(usize, @intFromFloat(@max(@floor((c.max_w + gap) / (cw + gap)), 0))));
-        const rows = (count + columns - 1) / columns;
+    };
+
+    pub const State = struct {
+        /// The items made: from `first` up to `end`.
+        first: usize = 0,
+        end: usize = 0,
+    };
+
+    /// The items made with the rest of the tree: those of the last frame.
+    pub fn children(self: *const Grid, cx: *Context, n: *Node) []const Widget {
+        const st = n.state(State);
+        st.end = @min(st.end, self.count);
+        st.first = @min(st.first, st.end);
+        return self.make(cx, st.*);
+    }
+
+    fn make(self: *const Grid, cx: *Context, st: State) []const Widget {
+        const out = cx.arena.alloc(Widget, st.end - st.first) catch return &.{};
+        for (out, st.first..) |*w, i| {
+            const item = self.item.f(self.item.ctx, cx, i);
+            w.* = if (item.key == null) item.withKey(i) else item;
+        }
+        return out;
+    }
+
+    fn gap(self: *const Grid) f32 {
+        return if (std.math.isFinite(self.spacing)) @max(self.spacing, 0) else 0;
+    }
+
+    fn columns(self: *const Grid, width: f32) usize {
+        if (!std.math.isFinite(width)) return @max(self.count, 1);
+        const cw = @max(self.cell.w, 0);
+        return @max(1, @as(usize, @intFromFloat(@max(@floor((width + self.gap()) / (cw + self.gap())), 0))));
+    }
+
+    pub fn layout(self: *const Grid, n: *Node, c: Constraints) Size {
+        const cols = self.columns(c.max_w);
+        const rows = (self.count + cols - 1) / cols;
+        const cw = @max(self.cell.w, 0);
+        const ch = @max(self.cell.h, 0);
+        const used: f32 = @floatFromInt(@min(cols, self.count));
         const r: f32 = @floatFromInt(rows);
-        return c.constrain(.{
-            .w = cw,
-            .h = r * (chh + gap) - (if (rows > 0) gap else 0),
-        });
+        const content: Size = .{
+            .w = if (c.boundedWidth()) c.max_w else used * (cw + self.gap()) - (if (self.count > 0) self.gap() else 0),
+            .h = r * (ch + self.gap()) - (if (rows > 0) self.gap() else 0),
+        };
+        const size = c.constrain(content);
+        n.size = size;
+        self.place(n, cols);
+        // In a scroll view, it says what shows once it is laid out (see
+        // `realize`); otherwise all of it is made.
+        if (n.ui.scrolling == 0) self.realize(n, .{ .x = 0, .y = 0, .w = content.w, .h = content.h });
+        return size;
+    }
+
+    pub fn minSize(self: *const Grid, _: *Node, c: Constraints) Size {
+        if (self.count == 0) return c.smallest();
+        const cw = @max(self.cell.w, 0);
+        const ch = @max(self.cell.h, 0);
+        return c.constrain(.{ .w = cw, .h = ch });
+    }
+
+    /// Lays out the items made, each in its cell.
+    fn place(self: *const Grid, n: *Node, cols: usize) void {
+        const st = n.state(State);
+        const cell: Size = .{ .w = @max(self.cell.w, 0), .h = @max(self.cell.h, 0) };
+        for (n.children.items, st.first..) |child, i| {
+            _ = child.layout(.tight(cell));
+            const col: f32 = @floatFromInt(i % cols);
+            const row: f32 = @floatFromInt(i / cols);
+            child.place(col * (cell.w + self.gap()), row * (cell.h + self.gap()));
+        }
+    }
+
+    /// `visible` (relative to the grid) is what shows: the items in the
+    /// rows it covers are made, if they are not already, and laid out.
+    pub fn realize(self: *const Grid, n: *Node, visible: Rect) void {
+        const cols = self.columns(n.size.w);
+        const pitch = @max(self.cell.h, 0) + self.gap();
+        var want: State = .{};
+        if (visible.h > 0 and visible.w > 0 and pitch > 0 and visible.y + visible.h > 0) {
+            const top: usize = @intFromFloat(@max(@floor(visible.y / pitch), 0));
+            const bottom: usize = @intFromFloat(@max(@ceil((visible.y + visible.h) / pitch), 0));
+            want.first = @min((top -| self.extra_rows) * cols, self.count);
+            want.end = @min((bottom + self.extra_rows) * cols, self.count);
+        }
+        const len = want.end - want.first;
+        const st = n.state(State);
+        if (std.meta.eql(st.*, want) and n.children.items.len == len) return;
+        st.* = want;
+        var cx: Context = .{ .ui = n.ui, .arena = n.ui.arena(), .node = n, .theme_ptr = n.theme_ptr };
+        n.reconcile(self.make(&cx, want));
+        if (n.children.items.len != len) {
+            // Out of memory: none rather than the wrong ones.
+            n.reconcile(&.{});
+            st.* = .{};
+        }
+        self.place(n, cols);
     }
 };

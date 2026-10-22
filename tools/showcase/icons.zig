@@ -64,7 +64,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                         cx.make(facet.Center{ .child = cx.make(facet.Text{ .text = "No icon has that in its name", .style = .{ .color = t.on_surface_variant } }) })
                     else
                         // A view for each search, so each starts at the top.
-                        cx.make(facet.ScrollView{ .child = cx.make(facet.Padding{ .padding = .all(8), .child = cx.make(facet.VirtualGrid{
+                        cx.make(facet.ScrollView{ .child = cx.make(facet.Padding{ .padding = .all(8), .child = cx.make(facet.Grid{
                             .count = s.match_count,
                             .cell = .{ .w = 104, .h = 76 },
                             .spacing = 4,

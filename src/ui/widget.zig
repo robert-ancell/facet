@@ -20,7 +20,7 @@
 //!   a `child: Widget` (or `?Widget`) or a `children: []const Widget`
 //!   field, or made by a `children` function taking the `Context` and the
 //!   node (for widgets that make only the children that show: see
-//!   `realize` and virtual_grid.zig).
+//!   `realize` and grid.zig).
 //!
 //! A node is a widget's place in the tree. Each frame the new widgets are
 //! matched to the nodes of the last (by position and type, or by key), so
