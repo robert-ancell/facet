@@ -152,10 +152,6 @@ pub const WindowBufferSync = window.WindowBufferSync;
 pub const WindowFrameSync = window.WindowFrameSync;
 pub const WindowDecorations = window.WindowDecorations;
 pub const Window = window.Window;
-pub const WaylandWindow = window.WaylandWindow;
-pub const MacWindow = window.MacWindow;
-pub const Win32Window = window.Win32Window;
-pub const NativeWindow = window.NativeWindow;
 pub const WindowControls = window.WindowControls;
 
 test {
