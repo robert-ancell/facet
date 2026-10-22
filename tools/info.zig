@@ -354,7 +354,7 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                             .headline = "Window State & Keyboard Layout",
                             .supporting_text = cx.fmt("State: {s}  ·  Keyboard: {s}", .{ window_state, info.keyboard.name() }),
                             .leading_icon = .keyboard,
-                            .trailing_text = info.keyboard.code(),
+                            .trailing_text = cx.fmt("{s}", .{info.keyboard.code()}),
                         },
                     }),
                 }),
