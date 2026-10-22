@@ -6,7 +6,7 @@
 //! being built for.
 //!
 //! Apps can either use a backend directly or implement custom window
-//! backends (e.g. X11, SDL, GLFW, Windows) via `Window.of(&impl)`.
+//! backends (for SDL or GLFW, say) via `Window.of(&impl)`.
 //!
 //! Windows are opened on a `Display` (the app's connection to the windowing
 //! system: `NativeDisplay` is the system's), and wait through it together.
@@ -427,8 +427,6 @@ pub const WindowPlatform = enum {
     headless,
     /// Wayland (`WaylandWindow`).
     wayland,
-    /// X11 (there is no built-in backend for it: a custom one can say so).
-    x11,
     /// Windows (`Win32Window`).
     windows,
     /// macOS (`MacWindow`).
@@ -440,7 +438,6 @@ pub const WindowPlatform = enum {
         return switch (p) {
             .headless => "Headless",
             .wayland => "Wayland",
-            .x11 => "X11",
             .windows => "Windows",
             .macos => "macOS",
             .custom => "Custom",

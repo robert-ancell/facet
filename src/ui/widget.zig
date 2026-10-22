@@ -458,7 +458,7 @@ pub const BuildContext = struct {
 /// What the app runs on: the same for all its windows (see `WindowInfo`
 /// for a window's own).
 pub const BackendInfo = struct {
-    /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
+    /// Windowing platform (`wayland`, `headless`, `windows`, `macos`, `custom`).
     platform: window_mod.WindowPlatform = .headless,
     /// The Wayland protocol extensions used: the global interfaces bound
     /// (none on other platforms).

@@ -40,7 +40,6 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
     const platform_desc = switch (info.platform) {
         .wayland => "Native Wayland protocol client (xdg_toplevel)",
         .headless => "Offscreen / headless surface",
-        .x11 => "X11 window system client",
         .windows => "Win32 window backend",
         .macos => "Cocoa / AppKit window backend",
         .custom => "Custom window backend implementation",
@@ -227,7 +226,6 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Platform:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
                     facet.Chip{ .label = "Wayland", .selected = info.platform == .wayland },
-                    facet.Chip{ .label = "X11", .selected = info.platform == .x11 },
                     facet.Chip{ .label = "Windows", .selected = info.platform == .windows },
                     facet.Chip{ .label = "macOS", .selected = info.platform == .macos },
                     facet.Chip{ .label = "Headless", .selected = info.platform == .headless },
