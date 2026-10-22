@@ -31,7 +31,7 @@ const Image = struct {
     pixels: []u32,
     img: gfx.software.Image,
 
-    fn init(u: *ui.Ui, w: u32, h: u32) !Image {
+    fn init(u: *ui.WindowUi, w: u32, h: u32) !Image {
         const pixels = try testing.allocator.alloc(u32, w * h);
         @memset(pixels, 0xff000000);
         const img: gfx.software.Image = .{ .pixels = pixels, .width = w, .height = h };
@@ -71,7 +71,7 @@ fn Root(comptime f: fn (*Context) Widget) type {
 
 test "an overflowing row is clipped, and striped along the edge it overflows" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -109,7 +109,7 @@ const Nonsense = struct {
 
 test "layouts that make no sense still lay out" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -162,7 +162,7 @@ const Counter = struct {
     }
 };
 
-fn click(u: *ui.Ui, n: *Node) void {
+fn click(u: *ui.WindowUi, n: *Node) void {
     const at = n.position();
     const p: ui.Point = .{ at[0] + n.size.w / 2, at[1] + n.size.h / 2 };
     u.pointerMotion(p);
@@ -172,7 +172,7 @@ fn click(u: *ui.Ui, n: *Node) void {
 
 test "buttons call back, state lasts between frames, and hovering tints" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     u.frame(300, 200, 0, Counter{});
     var buttons: std.ArrayList(*Node) = .empty;
@@ -245,7 +245,7 @@ const Keepers = struct {
 };
 
 test "keys keep state when siblings come and go, and dropped state is freed" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     freed = 0;
     u.frame(100, 100, 0, Keepers{ .ids = &.{ 1, 2, 3 } });
     u.frame(100, 100, 0, Keepers{ .ids = &.{ 3, 1 } });
@@ -261,7 +261,7 @@ test "keys keep state when siblings come and go, and dropped state is freed" {
 
 test "text wraps to fit, and a word that cannot is marked" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -285,7 +285,7 @@ test "text wraps to fit, and a word that cannot is marked" {
 }
 
 test "an overlay's top layer takes the pointer where it has something" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const S = struct {
         var below: u32 = 0;
@@ -324,7 +324,7 @@ const GpuView = struct {
 
 test "GPU draws go between the 2D layers, in the tree's order" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -344,7 +344,7 @@ test "GPU draws go between the 2D layers, in the tree's order" {
 }
 
 test "rows and columns align and space their children" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -405,7 +405,7 @@ const Controls = struct {
     }
 };
 
-fn clickAt(u: *ui.Ui, p: ui.Point) void {
+fn clickAt(u: *ui.WindowUi, p: ui.Point) void {
     u.pointerMotion(p);
     u.pointerButton(p, ui.btn_left, true);
     u.pointerButton(p, ui.btn_left, false);
@@ -413,7 +413,7 @@ fn clickAt(u: *ui.Ui, p: ui.Point) void {
 
 test "checkboxes, switches and radio buttons report changes, and their labels press them" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     u.frame(400, 400, 0, Controls{});
     var items: std.ArrayList(*Node) = .empty;
@@ -482,7 +482,7 @@ fn within(r: ui.Rect, outer: ui.Rect) bool {
 
 test "only what changed is damaged" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     u.frame(300, 200, 0, Label{ .text = "One" });
     // The first frame: everything.
@@ -531,7 +531,7 @@ const Maybe = struct {
 };
 
 test "a removed widget damages where it was" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     u.frame(200, 100, 0, Maybe{ .show = true });
     u.frame(200, 100, 1, Maybe{ .show = true });
@@ -550,7 +550,7 @@ const Keyed = struct {
 };
 
 test "GPU draws are damaged every frame, unless their key stays the same" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     u.frame(100, 100, 0, Keyed{ .key = null });
     u.frame(100, 100, 1, Keyed{ .key = null });
@@ -563,7 +563,7 @@ test "GPU draws are damaged every frame, unless their key stays the same" {
 }
 
 test "a grid puts as many cells in a row as fit" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -616,7 +616,7 @@ const LazyApp = struct {
 };
 
 test "a lazy grid makes only the rows that show, as it scrolls" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     var items: LazyItems = .{};
     u.frame(400, 400, 0, LazyApp{ .items = &items });
@@ -672,7 +672,7 @@ const LazyListItems = struct {
 };
 
 test "a lazy list's items are as wide as it, and one far down can be revealed" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     var items: LazyItems = .{};
     u.frame(400, 400, 0, LazyList{ .items = &items });
@@ -706,7 +706,7 @@ test "a lazy list's items are as wide as it, and one far down can be revealed" {
 
 test "icons are drawn from the icon font, in their box" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -744,7 +744,7 @@ test "icons are drawn from the icon font, in their box" {
 
 test "images fit the space given, keeping their shape, and text can have its own font" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     const pixels: [8]u32 = .{ 0xffff0000, 0xffff0000, 0xffff0000, 0xffff0000, 0xff0000ff, 0xff0000ff, 0xff0000ff, 0xff0000ff };
     const pic = gfx.Image.init(&pixels, 4, 2);
@@ -784,7 +784,7 @@ test "images fit the space given, keeping their shape, and text can have its own
 }
 
 test "a scroll view scrolls with the wheel and its bar, and paints only what shows" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const build = struct {
         fn f(cx: *Context) Widget {
@@ -857,7 +857,7 @@ test "a scroll view scrolls with the wheel and its bar, and paints only what sho
 }
 
 test "a scroll view scrolls to the widget it is told to reveal, once" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Reveal = struct {
         target: ?u64,
@@ -886,7 +886,7 @@ test "a scroll view scrolls to the widget it is told to reveal, once" {
 }
 
 test "a tap presses a button; a touch that moves over a list scrolls it, pressing nothing" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Count = struct {
         var presses: u32 = 0;
@@ -966,7 +966,7 @@ const DragTest = struct {
 
 test "dragging onto a target that takes it drops it there; a click is still a click" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     var dropped: ?usize = null;
     var clicked: u32 = 0;
@@ -1021,7 +1021,7 @@ test "dragging onto a target that takes it drops it there; a click is still a cl
 
 test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
 
     const Mode = enum { one, two, three };
@@ -1240,7 +1240,7 @@ test "sliders, dropdowns, dialogs, tooltips, chips, badges, tabs and rails" {
 
 test "widget cursor shapes reflect hovered and captured widgets" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
 
     var slider_val: f32 = 0.5;
@@ -1324,7 +1324,7 @@ test "widget cursor shapes reflect hovered and captured widgets" {
 
 test "zwp_text_input_v3 events commit text, render preedit, and delete surrounding bytes in TextField" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
 
     const FieldApp = struct {
@@ -1374,8 +1374,8 @@ test "zwp_text_input_v3 events commit text, render preedit, and delete surroundi
     try testing.expectEqualStrings("hell", tf_state.text());
 }
 
-test "Ui.createDefault loads bundled Fira Sans and Twemoji fallback fonts" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+test "WindowUi.createDefault loads bundled Fira Sans and Twemoji fallback fonts" {
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     try testing.expect(u.font != null);
     try testing.expect(u.font.?.fallback != null);
@@ -1390,7 +1390,7 @@ test "Ui.createDefault loads bundled Fira Sans and Twemoji fallback fonts" {
 }
 
 test "minimum window size is computed from widget tree and synchronized to window" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
     const MockWin = struct {
@@ -1441,7 +1441,7 @@ test "minimum window size is computed from widget tree and synchronized to windo
 }
 
 test "HiDPI scale factor renders text and shapes at physical buffer resolution while keeping logical layout" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     u.theme = .light;
 
@@ -1476,7 +1476,7 @@ test "HiDPI scale factor renders text and shapes at physical buffer resolution w
 }
 
 test "Context.backend reports platform, buffer transport, and renderer" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
     const expected_renderer: gfx.RenderBackend = if (u.shared.d3d11_renderer != null)
@@ -1558,7 +1558,7 @@ test "VulkanRenderer, OpenGlRenderer, and SoftwareRenderer render UI widgets and
 }
 
 fn vulkanOpenGlAndSoftware() !void {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     u.theme = .light;
 
@@ -1604,7 +1604,7 @@ fn vulkanOpenGlAndSoftware() !void {
     }
 }
 test "any window can show frames and give the clipboard, not only Wayland's" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
     const PlainWin = struct {
@@ -1695,7 +1695,7 @@ const PopupWin = struct {
 };
 
 test "menus and tooltips go in popups of their own when the window has them" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     u.attachRenderer(u.shared.software_renderer.renderer(), false);
     u.theme = .light;
@@ -1832,7 +1832,7 @@ const DmabufWin = struct {
 };
 
 test "frames are drawn straight into dmabufs when the renderer can, and the CPU way when it cannot" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     var r: DirectRenderer = .{};
     u.attachRenderer(gfx.Renderer.of(&r), false);
@@ -1866,7 +1866,7 @@ test "frames are drawn straight into dmabufs when the renderer can, and the CPU 
 }
 
 test "a GPU draw can also say how to draw straight into a GPU frame, which the CPU way ignores" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     u.attachRenderer(u.shared.software_renderer.renderer(), false);
     const Area = struct {
@@ -1905,7 +1905,7 @@ test "a GPU draw can also say how to draw straight into a GPU frame, which the C
 }
 
 test "an animated widget makes its child from how far through it is, and stops asking for frames at the end" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Anim = struct {
         t: f32 = -1,
@@ -1968,7 +1968,7 @@ test "an animated widget makes its child from how far through it is, and stops a
 }
 
 test "what a popup paints is told apart by its shapes, clips and images, and not at all with a GPU area" {
-    const hash = ui.Ui.paintedHash;
+    const hash = ui.WindowUi.paintedHash;
     const rect: gfx.Rect = .{ .x = 0, .y = 0, .w = 10, .h = 10 };
     var a = gfx.Canvas.init(testing.allocator);
     defer a.deinit();
@@ -2005,7 +2005,7 @@ test "what a popup paints is told apart by its shapes, clips and images, and not
 }
 
 test "Themed gives the widgets below it, and the menus they open, a theme of its own" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     // Notes the primary colour of the theme it is built and laid out in.
     const Probe = struct {
@@ -2083,7 +2083,7 @@ test "the baseline schemes are Material's, and say which is dark" {
 }
 
 /// Frames until no image is loading (or a few seconds have gone).
-fn frameUntilLoaded(u: *ui.Ui, root: anytype) !void {
+fn frameUntilLoaded(u: *ui.WindowUi, root: anytype) !void {
     for (0..5000) |i| {
         u.frame(200, 200, i, root);
         var any_loading = false;
@@ -2096,7 +2096,7 @@ fn frameUntilLoaded(u: *ui.Ui, root: anytype) !void {
 }
 
 test "an image loads in the background, showing what it is given meanwhile, or nothing" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     var pixels: [12 * 8]u32 = undefined;
     for (&pixels, 0..) |*p, i| p.* = 0xff000000 | @as(u32, @intCast(i)) * 0x010203;
@@ -2181,7 +2181,7 @@ test "an image loads in the background, showing what it is given meanwhile, or n
 }
 
 test "an image too big for the GPU is made smaller to fit" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const w = 3000;
     const h = 30;
@@ -2236,7 +2236,7 @@ const MapApp = struct {
 };
 
 test "a map view shows its source's tiles, flat or on a globe, and those further out while they come" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     var tiles: MapTiles = .{ .pictures = .{
         gfx.Image.init(&.{ 0xffff0000, 0xffff0000, 0xffff0000, 0xffff0000 }, 2, 2),
@@ -2280,7 +2280,7 @@ test "a map view shows its source's tiles, flat or on a globe, and those further
 }
 
 test "a map view is dragged and zoomed" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     var tiles: MapTiles = .{ .pictures = .{
         gfx.Image.init(&.{0xffff0000}, 1, 1),
@@ -2347,7 +2347,7 @@ const TwoBufferWin = struct {
 
 test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     u.attachRenderer(u.shared.software_renderer.renderer(), false);
     var win: TwoBufferWin = .{};
@@ -2377,7 +2377,7 @@ test "text drawn as the glyph atlas fills is drawn whole, in every buffer" {
 }
 
 test "an image shows a part of itself: of pixels in memory, or only that part loaded" {
-    const u = try ui.Ui.create(testing.allocator, testing.io, null);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     // Red above, blue below, 12 by 8.
     var pixels: [12 * 8]u32 = undefined;
@@ -2449,7 +2449,7 @@ const A11yApp = struct {
 
 test "the accessibility tree: roles, names, states and values of the widgets, and what describes them" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     var pressed: u32 = 0;
     var checked = false;
@@ -2552,14 +2552,14 @@ const FocusApp = struct {
     }
 };
 
-fn pressKey(u: *ui.Ui, root: anytype, code: u32, mods: struct { shift: bool = false, ctrl: bool = false }) void {
+fn pressKey(u: *ui.WindowUi, root: anytype, code: u32, mods: struct { shift: bool = false, ctrl: bool = false }) void {
     u.key(.{ .code = code, .pressed = true, .shift = mods.shift, .ctrl = mods.ctrl });
     u.key(.{ .code = code, .pressed = false, .shift = mods.shift, .ctrl = mods.ctrl });
     u.frame(400, 600, 0, root);
 }
 
 /// The widget of type `T` the focus is in (it, or one it is in).
-fn focusedIn(u: *ui.Ui, comptime T: type) bool {
+fn focusedIn(u: *ui.WindowUi, comptime T: type) bool {
     var at = u.focused;
     while (at) |n| : (at = n.parent) if (n.widget.is(T)) return true;
     return false;
@@ -2567,7 +2567,7 @@ fn focusedIn(u: *ui.Ui, comptime T: type) bool {
 
 test "Tab moves the keyboard's focus through what takes it, and keys use what has it" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     var pressed: u32 = 0;
     var checked = false;
@@ -2665,7 +2665,7 @@ const DialogApp = struct {
 
 test "an open dialog keeps the focus in it, and Escape dismisses it" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     var dismissed: u32 = 0;
     const app: DialogApp = .{ .dismissed = &dismissed };
@@ -2687,7 +2687,7 @@ test "an open dialog keeps the focus in it, and Escape dismisses it" {
 
 test "a menu opened from the keyboard has the focus, and gives it back" {
     const fira = try font.Font.init(fira_data);
-    const u = try ui.Ui.create(testing.allocator, testing.io, &fira);
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);
     defer u.destroy();
     var picked: usize = 0;
     const MenuApp = struct {
@@ -2721,7 +2721,7 @@ test "a menu opened from the keyboard has the focus, and gives it back" {
 test "a Waker woken by a task on the Io ends the wait for it" {
     if (!window.sys.is_linux) return error.SkipZigTest;
     const io = testing.io;
-    const u = try ui.Ui.createDefault(testing.allocator, io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, io);
     defer u.destroy();
     const waker = u.waker();
     const Task = struct {
@@ -2858,7 +2858,7 @@ test "an app's windows are closed as their options say, and it quits as its own 
 }
 
 test "makeAll makes each of a tuple's values a widget, taking widgets as they are" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const S = struct {
         var all: []const Widget = &.{};
@@ -2875,7 +2875,7 @@ test "makeAll makes each of a tuple's values a widget, taking widgets as they ar
 }
 
 test "an anchor opens a menu just below its widget, and one taken from no widget nothing" {
-    const u = try ui.Ui.createDefault(testing.allocator, testing.io);
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const S = struct {
         var anchor: ui.Anchor = .{};

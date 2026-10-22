@@ -40,7 +40,7 @@ const Point = geometry.Point;
 const Rect = geometry.Rect;
 const Constraints = geometry.Constraints;
 const Painter = painter_mod.Painter;
-const Ui = runtime.Ui;
+const WindowUi = runtime.WindowUi;
 
 pub const Widget = struct {
     ptr: *const anyopaque,
@@ -106,7 +106,7 @@ pub const Event = union(enum) {
     /// `touch`: a finger moved it (by exactly that much: a pan), rather
     /// than a wheel (whose notches may scroll further).
     scroll: struct { pos: Point, dx: f32, dy: f32, touch: bool = false },
-    /// It got the keyboard (`Ui.focus`), or lost it.
+    /// It got the keyboard (`WindowUi.focus`), or lost it.
     focus,
     blur,
     /// A key went down or up while it has the keyboard.
@@ -120,7 +120,7 @@ pub const Event = union(enum) {
     text_delete_surrounding: struct { before_length: u32, after_length: u32 },
     /// A menu is asked for at a point in it: the right button was pressed
     /// there, or the left held down there without moving. Returning true
-    /// says it showed one (`Ui.openMenu`).
+    /// says it showed one (`WindowUi.openMenu`).
     context: Point,
 
     pub const Key = struct {
@@ -128,7 +128,7 @@ pub const Event = union(enum) {
         code: u32,
         pressed: bool,
         /// The character it types, by the keymap (the window's, or
-        /// `Ui.loadKeymap`'s), if any: none while Control is held.
+        /// `WindowUi.loadKeymap`'s), if any: none while Control is held.
         char: ?u21 = null,
         /// Modifiers held.
         ctrl: bool = false,
@@ -351,7 +351,7 @@ pub const Anchor = struct {
 pub const Context = struct {
     /// The UI the widget is built in: its window's (its `theme`, the
     /// app's `io`, and what the app's windows share, as `shared`).
-    ui: *Ui,
+    ui: *WindowUi,
     /// The frame's arena, which `make`, `makeAll` and `fmt` allocate in:
     /// what is made in it lasts until the frame after next is built (so it
     /// is there while this frame is laid out, painted and handles input,
@@ -498,7 +498,7 @@ pub const Edges = struct {
 
 /// A widget's place in the tree, kept between frames.
 pub const Node = struct {
-    ui: *Ui,
+    ui: *WindowUi,
     widget: Widget,
     parent: ?*Node = null,
     state_ptr: ?*anyopaque = null,
@@ -650,7 +650,7 @@ pub const Node = struct {
 
     // --- Building -----------------------------------------------------------
 
-    pub fn create(ui: *Ui, w: Widget) ?*Node {
+    pub fn create(ui: *WindowUi, w: Widget) ?*Node {
         const n = ui.gpa.create(Node) catch return null;
         n.* = .{ .ui = ui, .widget = w };
         if (w.vtable.state) |ops| {

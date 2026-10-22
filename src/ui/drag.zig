@@ -1,7 +1,7 @@
 //! Dragging and dropping within a window. A `Draggable` is clicked as a
 //! `Pressable` is, but held down and moved (further than `slop`) it is
 //! dragged: a chip with its icon and label follows the pointer, above
-//! everything (`Ui.drag`), and the `DropTarget` under the pointer that
+//! everything (`WindowUi.drag`), and the `DropTarget` under the pointer that
 //! takes what is dragged is highlighted. Let go over it, the target is
 //! given the draggable's `data`; anywhere else, nothing happens.
 //!
@@ -34,12 +34,12 @@ const Painter = painter_mod.Painter;
 /// How far the pointer moves, held down, before it drags.
 pub const slop = 8;
 
-/// What is being dragged: kept by the `Ui` while it is.
+/// What is being dragged: kept by the `WindowUi` while it is.
 pub const Drag = struct {
     /// The draggable's node, and what it carries.
     source: *Node,
     data: usize,
-    /// The chip's (the `Ui`'s own copy).
+    /// The chip's (the `WindowUi`'s own copy).
     label: []u8,
     icon: ?icons.Icon,
     /// Where the pointer is, in the window.

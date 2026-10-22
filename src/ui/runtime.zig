@@ -1,6 +1,7 @@
-//! `Ui`: runs a widget tree. Each frame it builds the root widget (keeping
-//! the nodes and state that still match), lays it out to the window's
-//! size, and paints it; `render` then draws it through the active `gfx.Renderer`
+//! `WindowUi`: a window's UI, which runs its widget tree (what the app's
+//! windows share is `Shared`). Each frame it builds the root widget
+//! (keeping the nodes and state that still match), lays it out to the
+//! window's size, and paints it; `render` then draws it through the active `gfx.Renderer`
 //! (Software, OpenGL, Vulkan, or a custom backend).
 //! Pointer events go to the widgets under the pointer, and keys to the
 //! widget with the keyboard (`focus`). A menu (`openMenu`) is shown above
@@ -15,7 +16,7 @@
 //! Text is copied and pasted through `clipboard` (the system's, which the
 //! app or window gives), or within the app if there is none.
 //!
-//!     const ui = try Ui.createDefault(gpa, io);
+//!     const ui = try WindowUi.createDefault(gpa, io);
 //!     defer ui.destroy();
 //!     // Each frame:
 //!     ui.frame(width, height, now_ns, MyApp{ .title = "Hello" });
@@ -87,11 +88,11 @@ pub const Clipboard = struct {
     }
 };
 
-/// Wakes an app's windows (or a `Ui`) for a frame from any thread or task:
+/// Wakes an app's windows (or a `WindowUi`) for a frame from any thread or task:
 /// for work done in the background (a fetch started with `io.async`, say),
 /// once it has put what it made where the UI will find it. It neither
 /// blocks nor allocates, so it can be used from anywhere. From
-/// `Shared.waker` (an `App`'s `shared`) or `Ui.waker`; good for as long as
+/// `Shared.waker` (an `App`'s `shared`) or `WindowUi.waker`; good for as long as
 /// that is.
 pub const Waker = struct {
     wake_: ?sys.Wake = null,
@@ -103,7 +104,7 @@ pub const Waker = struct {
     }
 };
 
-/// What an app's windows share, each window's `Ui` drawing with it: the
+/// What an app's windows share, each window's `WindowUi` drawing with it: the
 /// fonts, the glyph atlas, the renderer, the images loaded, what wakes the
 /// UI (`Waker`), the accessibility bus, and the clipboard within the app.
 /// It does its I/O, and tells the time, through `io` (the app's).
@@ -138,8 +139,8 @@ pub const Shared = struct {
     a11y_next_id: u32 = accessibility.window_id,
     /// Text copied, when there is no system clipboard.
     local_clipboard: std.ArrayList(u8) = .empty,
-    /// The windows' UIs (made by `createUi`).
-    uis: std.ArrayList(*Ui) = .empty,
+    /// The windows' UIs (made by `createWindowUi`).
+    uis: std.ArrayList(*WindowUi) = .empty,
 
     /// What the app's windows share, with the given `font` (`null` for no
     /// text font; icons still use the bundled Material Icons font). The
@@ -221,8 +222,8 @@ pub const Shared = struct {
     }
 
     /// A window's UI, drawing with what is shared (destroy it before this).
-    pub fn createUi(s: *Shared) !*Ui {
-        const ui = try s.gpa.create(Ui);
+    pub fn createWindowUi(s: *Shared) !*WindowUi {
+        const ui = try s.gpa.create(WindowUi);
         errdefer s.gpa.destroy(ui);
         ui.* = .{
             .shared = s,
@@ -276,7 +277,9 @@ pub const Shared = struct {
     }
 };
 
-pub const Ui = struct {
+/// A window's UI: its widget tree, focus, input, menus and frames (see the
+/// top of this file).
+pub const WindowUi = struct {
     /// What the app's windows share (see `Shared`), and whether this UI
     /// made it for itself (`create`: a UI of its own, with no others).
     shared: *Shared,
@@ -441,40 +444,40 @@ pub const Ui = struct {
         }
     };
 
-    /// Creates a `Ui` of its own (a window's, with no other windows to
-    /// share with: see `Shared.createUi`) with the given `font` (`null` for
+    /// Creates a `WindowUi` of its own (a window's, with no other windows to
+    /// share with: see `Shared.createWindowUi`) with the given `font` (`null` for
     /// no text font; icons still use the bundled Material Icons font),
     /// drawn with the best renderer there is (see `Shared.create`).
     ///
     /// It does its I/O, and tells the time, through `io`: the app's (as
     /// from `std.process.Init`).
-    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*Ui {
+    pub fn create(gpa: std.mem.Allocator, io: std.Io, f: ?*const font.Font) !*WindowUi {
         return standalone(try Shared.create(gpa, io, f));
     }
 
-    /// Creates a `Ui` of its own using the bundled default Fira Sans and
+    /// Creates a `WindowUi` of its own using the bundled default Fira Sans and
     /// Twemoji Mozilla fallback fonts.
-    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*Ui {
+    pub fn createDefault(gpa: std.mem.Allocator, io: std.Io) !*WindowUi {
         return standalone(try Shared.createDefault(gpa, io));
     }
 
-    /// Creates a `Ui` of its own drawing text in the OpenType or TrueType
+    /// Creates a `WindowUi` of its own drawing text in the OpenType or TrueType
     /// font in `data` (which must outlive it), falling back to the bundled
     /// Twemoji Mozilla font for emoji.
-    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*Ui {
+    pub fn createWithFontData(gpa: std.mem.Allocator, io: std.Io, data: []const u8) !*WindowUi {
         return standalone(try Shared.createWithFontData(gpa, io, data));
     }
 
-    fn standalone(shared: *Shared) !*Ui {
+    fn standalone(shared: *Shared) !*WindowUi {
         errdefer shared.destroy();
-        const ui = try shared.createUi();
+        const ui = try shared.createWindowUi();
         ui.owns_shared = true;
         return ui;
     }
 
-    pub fn destroy(ui: *Ui) void {
+    pub fn destroy(ui: *WindowUi) void {
         const shared = ui.shared;
-        if (std.mem.indexOfScalar(*Ui, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
+        if (std.mem.indexOfScalar(*WindowUi, shared.uis.items, ui)) |i| _ = shared.uis.swapRemove(i);
         if (ui.tooltip_popup) |t| t.popup.close();
         if (ui.menu_popup) |m| m.popup.close();
         ui.closeMenu();
@@ -515,13 +518,13 @@ pub const Ui = struct {
     /// Attaches a custom or GPU `gfx.Renderer` (e.g. `OpenGlRenderer.renderer()`,
     /// `VulkanRenderer.renderer()`, or `gfx.Renderer.of(&my_backend)`): for
     /// all the app's windows (see `Shared.attachRenderer`).
-    pub fn attachRenderer(ui: *Ui, r: gfx.Renderer, take_ownership: bool) void {
+    pub fn attachRenderer(ui: *WindowUi, r: gfx.Renderer, take_ownership: bool) void {
         ui.shared.attachRenderer(r, take_ownership);
     }
 
     /// Connects the UI's clipboard, keyboard layout, and window state to
     /// `win` (either a `window.Window` or a pointer such as `*window.WaylandWindow`).
-    pub fn attachWindow(ui: *Ui, win: anytype, controls: ?*window_mod.Controls) void {
+    pub fn attachWindow(ui: *WindowUi, win: anytype, controls: ?*window_mod.Controls) void {
         const w = window_mod.Window.from(win);
         ui.win = w;
         ui.controls = controls;
@@ -531,7 +534,7 @@ pub const Ui = struct {
     /// Updates the UI's keyboard layout and window state from `win` (the
     /// one place they are copied from the window). A change to how the
     /// window is shown redraws all of it.
-    pub fn syncWindow(ui: *Ui, win: anytype) void {
+    pub fn syncWindow(ui: *WindowUi, win: anytype) void {
         const w = window_mod.Window.from(win);
         if (ui.loaded_keymap == null) ui.keyboard = w.layout();
         const fullscreen = w.isFullscreen();
@@ -555,12 +558,12 @@ pub const Ui = struct {
     /// True when the toolkit should automatically add a client-side `TitleBar`
     /// above the application's root widget (in a window with client-side
     /// decorations, when not fullscreen).
-    pub fn hasClientTitleBar(ui: *const Ui) bool {
+    pub fn hasClientTitleBar(ui: *const WindowUi) bool {
         return ui.win != null and ui.decorations == .client and !ui.fullscreen;
     }
 
     /// What the app runs on (see `widget.BackendInfo`).
-    pub fn backend(ui: *const Ui) widget.BackendInfo {
+    pub fn backend(ui: *const WindowUi) widget.BackendInfo {
         return .{
             .platform = if (ui.win) |w| w.platform() else .headless,
             .extensions = if (ui.win) |w| w.extensions() else &.{},
@@ -570,7 +573,7 @@ pub const Ui = struct {
     }
 
     /// How its window is shown (see `widget.WindowInfo`).
-    pub fn windowInfo(ui: *const Ui) widget.WindowInfo {
+    pub fn windowInfo(ui: *const WindowUi) widget.WindowInfo {
         const s = @max(ui.scale, 1);
         const lsize = if (ui.win) |w| w.size() else ui.logical_size;
         return .{
@@ -590,7 +593,7 @@ pub const Ui = struct {
 
     /// The pointer cursor shape requested by the currently dragged,
     /// captured, or hovered widget.
-    pub fn cursor(ui: *const Ui) widget.Cursor {
+    pub fn cursor(ui: *const WindowUi) widget.Cursor {
         if (ui.drag != null) return .grabbing;
         if (ui.captured) |cap| {
             if (cap.widget.vtable.cursor) |f| {
@@ -609,18 +612,18 @@ pub const Ui = struct {
     }
 
     /// Updates `win`'s cursor shape to match `ui.cursor()`.
-    pub fn syncCursor(ui: *const Ui, win: anytype) void {
+    pub fn syncCursor(ui: *const WindowUi, win: anytype) void {
         window_mod.Window.from(win).setCursor(ui.cursor());
     }
 
     /// Updates `win`'s minimum size to match `ui.min_size`.
-    pub fn syncMinSize(ui: *const Ui, win: anytype) void {
+    pub fn syncMinSize(ui: *const WindowUi, win: anytype) void {
         window_mod.Window.from(win).setMinSize(ui.min_size[0], ui.min_size[1]);
     }
 
     /// The input method state for the currently focused widget, or null
     /// when no text input widget is focused.
-    pub fn textInputState(ui: *const Ui) ?window_mod.TextInputState {
+    pub fn textInputState(ui: *const WindowUi) ?window_mod.TextInputState {
         const n = ui.focused orelse return null;
         const f = n.widget.vtable.text_input orelse return null;
         const info = f(n.widget.ptr, n) orelse return null;
@@ -644,40 +647,40 @@ pub const Ui = struct {
     }
 
     /// Synchronizes `win`'s input method state with the focused widget.
-    pub fn syncTextInput(ui: *const Ui, win: anytype) void {
+    pub fn syncTextInput(ui: *const WindowUi, win: anytype) void {
         window_mod.Window.from(win).setTextInput(ui.textInputState());
     }
 
     /// Something to wake the UI for a frame from another thread or task
     /// (it only marks it to be drawn if there are no fds left).
-    pub fn waker(ui: *Ui) Waker {
+    pub fn waker(ui: *WindowUi) Waker {
         return ui.shared.waker();
     }
 
     /// What is read when a `Waker` wakes it (to wait on with the window's),
     /// once there is a waker.
-    pub fn wakeSource(ui: *Ui) ?window_mod.Source {
+    pub fn wakeSource(ui: *WindowUi) ?window_mod.Source {
         return ui.shared.wakeSource();
     }
 
     /// Takes the wakes since the last time; true if there were any.
-    pub fn takeWakes(ui: *Ui) bool {
+    pub fn takeWakes(ui: *WindowUi) bool {
         return ui.shared.takeWakes();
     }
 
     /// Now, on the clock frames and input are timed on (`window.nowNs`).
-    pub fn clockNs(ui: *const Ui) u64 {
+    pub fn clockNs(ui: *const WindowUi) u64 {
         return window_mod.nowNs(ui.io);
     }
 
     /// The arena this frame's widgets are made in.
-    pub fn arena(ui: *Ui) std.mem.Allocator {
+    pub fn arena(ui: *WindowUi) std.mem.Allocator {
         return ui.arenas[@intCast(ui.frame_no % 2)].allocator();
     }
 
     /// Builds, lays out and paints a frame with `root` (a widget's value)
     /// filling a `width` by `height` window.
-    pub fn frame(ui: *Ui, width: u32, height: u32, now_ns: u64, root: anytype) void {
+    pub fn frame(ui: *WindowUi, width: u32, height: u32, now_ns: u64, root: anytype) void {
         ui.frame_no += 1;
         _ = ui.arenas[@intCast(ui.frame_no % 2)].reset(.retain_capacity);
         ui.now_ns = now_ns;
@@ -754,7 +757,7 @@ pub const Ui = struct {
     /// Offers the UI to assistive technologies (screen readers) over
     /// AT-SPI, if the desktop has its bus (and `NO_AT_BRIDGE` is not set).
     /// Without it, nothing is offered; it can be tried again.
-    pub fn enableAccessibility(ui: *Ui, environ: std.process.Environ) void {
+    pub fn enableAccessibility(ui: *WindowUi, environ: std.process.Environ) void {
         if (!has_atspi) return;
         if (ui.shared.a11y != null) return;
         if (envIs(environ, "NO_AT_BRIDGE", "1")) return;
@@ -765,7 +768,7 @@ pub const Ui = struct {
 
     /// The tree of the frame just made, offered (and what changed in it
     /// told), if it is offered at all.
-    fn updateAccessibility(ui: *Ui) void {
+    fn updateAccessibility(ui: *WindowUi) void {
         if (!has_atspi) return;
         const b = ui.shared.a11y orelse return;
         const root = ui.root orelse return;
@@ -789,7 +792,7 @@ pub const Ui = struct {
 
     /// Answers assistive technologies' calls; true if one did something
     /// (pressed a button), so a frame is needed.
-    pub fn dispatchAccessibility(ui: *Ui) bool {
+    pub fn dispatchAccessibility(ui: *WindowUi) bool {
         if (!has_atspi) return false;
         const b = ui.shared.a11y orelse return false;
         const acted = b.dispatch();
@@ -797,7 +800,7 @@ pub const Ui = struct {
         return acted;
     }
 
-    fn buildTitleBar(ui: *Ui) ?*Node {
+    fn buildTitleBar(ui: *WindowUi) ?*Node {
         if (!ui.hasClientTitleBar()) {
             if (ui.title_bar_root) |n| n.destroy();
             ui.title_bar_root = null;
@@ -817,7 +820,7 @@ pub const Ui = struct {
         return n;
     }
 
-    fn buildMenu(ui: *Ui, window: Size) ?*Node {
+    fn buildMenu(ui: *WindowUi, window: Size) ?*Node {
         ui.wanted_menu = null;
         const menu = ui.menu orelse {
             if (ui.menu_root) |n| n.destroy();
@@ -849,7 +852,7 @@ pub const Ui = struct {
         return n;
     }
 
-    fn buildDrag(ui: *Ui, window: Size) ?*Node {
+    fn buildDrag(ui: *WindowUi, window: Size) ?*Node {
         const d = ui.drag orelse {
             if (ui.drag_root) |n| n.destroy();
             ui.drag_root = null;
@@ -869,7 +872,7 @@ pub const Ui = struct {
         return n;
     }
 
-    fn buildTooltip(ui: *Ui, window: Size) ?*Node {
+    fn buildTooltip(ui: *WindowUi, window: Size) ?*Node {
         ui.wanted_tooltip = null;
         if (ui.menu == null and ui.drag == null) {
             for (ui.hovered.items) |target| {
@@ -900,7 +903,7 @@ pub const Ui = struct {
         return null;
     }
 
-    fn paint(ui: *Ui, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
+    fn paint(ui: *WindowUi, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
         ui.paintOnce(tb, r, drag, menu, tooltip, width, height);
         // The glyph atlas filled part way through, so some text is missing
         // glyphs: painted again with it empty, so that the frame is whole.
@@ -910,7 +913,7 @@ pub const Ui = struct {
         if (ui.atlas.full) ui.paintOnce(tb, r, drag, menu, tooltip, width, height);
     }
 
-    fn paintOnce(ui: *Ui, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
+    fn paintOnce(ui: *WindowUi, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
         ui.atlas.beginFrame();
         ui.canvases_used = 0;
         ui.segments.clearRetainingCapacity();
@@ -930,7 +933,7 @@ pub const Ui = struct {
     }
 
     /// Whether menus and tooltips go in popups of their own.
-    fn usesPopups(ui: *const Ui) bool {
+    fn usesPopups(ui: *const WindowUi) bool {
         const w = ui.win orelse return false;
         return w.supportsPopups();
     }
@@ -942,7 +945,7 @@ pub const Ui = struct {
     /// Opens and closes the popups for the menu and tooltip built this
     /// frame (closing first, the newest first, as the window system
     /// requires), and puts the menu and tooltip where their popups are.
-    fn syncPopups(ui: *Ui, menu: ?*Node, tooltip: ?*Node) void {
+    fn syncPopups(ui: *WindowUi, menu: ?*Node, tooltip: ?*Node) void {
         const w = ui.win orelse return;
         const stale = struct {
             fn f(layer: ?PopupLayer, wanted: ?window_mod.PopupPlacement) bool {
@@ -978,7 +981,7 @@ pub const Ui = struct {
 
     /// Paints a menu or tooltip on canvases of its own, its size, with its
     /// top left at the origin.
-    fn paintPopup(ui: *Ui, n: *Node, layer: *PopupLayer) void {
+    fn paintPopup(ui: *WindowUi, n: *Node, layer: *PopupLayer) void {
         layer.first = ui.segments.items.len;
         _ = ui.newCanvasSized(layer.placement.size);
         var p: Painter = .{ .ui = ui, .node = n, .origin = .{ -n.offset[0], -n.offset[1] }, .track_damage = false };
@@ -1011,7 +1014,7 @@ pub const Ui = struct {
 
     // --- Menus ------------------------------------------------------------------
 
-    pub fn openMenu(ui: *Ui, owner: *Node, at: Point, items: []const menu_mod.Item) void {
+    pub fn openMenu(ui: *WindowUi, owner: *Node, at: Point, items: []const menu_mod.Item) void {
         ui.closeMenu();
         ui.focusMenuWhenMade();
         const copy = ui.gpa.dupe(menu_mod.Item, items) catch return;
@@ -1019,14 +1022,14 @@ pub const Ui = struct {
         ui.needs_frame = true;
     }
 
-    pub fn openPopup(ui: *Ui, owner: *Node, at: Point, popup: PopupBuilder) void {
+    pub fn openPopup(ui: *WindowUi, owner: *Node, at: Point, popup: PopupBuilder) void {
         ui.closeMenu();
         ui.focusMenuWhenMade();
         ui.menu = .{ .content = .{ .popup = popup }, .at = at, .owner = owner };
         ui.needs_frame = true;
     }
 
-    pub fn closeMenu(ui: *Ui) void {
+    pub fn closeMenu(ui: *WindowUi) void {
         const menu = ui.menu orelse return;
         switch (menu.content) {
             .items => |items| ui.gpa.free(items),
@@ -1045,7 +1048,7 @@ pub const Ui = struct {
 
     /// A menu opened from the keyboard: it has the focus once it is made,
     /// and gives it back when it closes.
-    fn focusMenuWhenMade(ui: *Ui) void {
+    fn focusMenuWhenMade(ui: *WindowUi) void {
         if (!ui.focus_visible) return;
         ui.menu_focus_pending = true;
         ui.focus_before_menu = ui.focused;
@@ -1053,7 +1056,7 @@ pub const Ui = struct {
 
     // --- Dragging -----------------------------------------------------------------
 
-    pub fn startDrag(ui: *Ui, d: drag_mod.Drag) void {
+    pub fn startDrag(ui: *WindowUi, d: drag_mod.Drag) void {
         ui.endDrag(false);
         var drag = d;
         drag.label = ui.gpa.dupe(u8, d.label) catch return;
@@ -1062,7 +1065,7 @@ pub const Ui = struct {
         ui.moveDrag(d.pos);
     }
 
-    pub fn moveDrag(ui: *Ui, pos: Point) void {
+    pub fn moveDrag(ui: *WindowUi, pos: Point) void {
         const d = &(ui.drag orelse return);
         d.pos = pos;
         ui.drag_scratch.clearRetainingCapacity();
@@ -1071,7 +1074,7 @@ pub const Ui = struct {
         ui.needs_frame = true;
     }
 
-    pub fn endDrag(ui: *Ui, drop: bool) void {
+    pub fn endDrag(ui: *WindowUi, drop: bool) void {
         const d = ui.drag orelse return;
         ui.drag = null;
         ui.gpa.free(d.label);
@@ -1084,14 +1087,14 @@ pub const Ui = struct {
 
     // --- Copy and paste -----------------------------------------------------------
 
-    pub fn copyText(ui: *Ui, text: []const u8) void {
+    pub fn copyText(ui: *WindowUi, text: []const u8) void {
         if (ui.clipboard) |c| return c.vtable.copy(c.ptr, text);
         if (ui.win) |w| if (w.hasClipboard()) return w.copy(text);
         ui.shared.local_clipboard.clearRetainingCapacity();
         ui.shared.local_clipboard.appendSlice(ui.gpa, text) catch {};
     }
 
-    pub fn pasteText(ui: *Ui, owner: *Node, on_text: widget.ValueCallback([]const u8)) void {
+    pub fn pasteText(ui: *WindowUi, owner: *Node, on_text: widget.ValueCallback([]const u8)) void {
         ui.paste = .{ .owner = owner, .on_text = on_text };
         if (ui.clipboard) |c| return c.vtable.paste(c.ptr, .{ .ctx = ui, .f = pasted });
         if (ui.win) |w| if (w.hasClipboard()) return w.paste(.{ .ctx = ui, .f = pasted });
@@ -1099,7 +1102,7 @@ pub const Ui = struct {
     }
 
     fn pasted(ctx: *anyopaque, text: ?[]const u8) void {
-        const ui: *Ui = @ptrCast(@alignCast(ctx));
+        const ui: *WindowUi = @ptrCast(@alignCast(ctx));
         const p = ui.paste orelse return;
         ui.paste = null;
         if (text) |t| p.on_text.call(t);
@@ -1111,7 +1114,7 @@ pub const Ui = struct {
     pub const long_press_ns = 500 * std.time.ns_per_ms;
     pub const touch_slop = 8;
 
-    fn checkHold(ui: *Ui) void {
+    fn checkHold(ui: *WindowUi) void {
         const h = &(ui.hold orelse return);
         const since = h.since orelse {
             h.since = ui.now_ns;
@@ -1127,7 +1130,7 @@ pub const Ui = struct {
         }
     }
 
-    pub fn currentCanvas(ui: *Ui) *gfx.Canvas {
+    pub fn currentCanvas(ui: *WindowUi) *gfx.Canvas {
         if (ui.segments.items.len > 0) switch (ui.segments.items[ui.segments.items.len - 1]) {
             .canvas => |c| return c,
             .gpu => {},
@@ -1140,11 +1143,11 @@ pub const Ui = struct {
 
     var scratch_canvas: gfx.Canvas = .init(std.heap.page_allocator);
 
-    fn newCanvas(ui: *Ui) ?*gfx.Canvas {
+    fn newCanvas(ui: *WindowUi) ?*gfx.Canvas {
         return ui.newCanvasSized(ui.logical_size);
     }
 
-    fn newCanvasSized(ui: *Ui, size: [2]u32) ?*gfx.Canvas {
+    fn newCanvasSized(ui: *WindowUi, size: [2]u32) ?*gfx.Canvas {
         if (ui.canvases_used == ui.canvases.items.len) {
             const c = ui.gpa.create(gfx.Canvas) catch return null;
             c.* = .init(ui.gpa);
@@ -1160,19 +1163,19 @@ pub const Ui = struct {
         return c;
     }
 
-    pub fn addGpu(ui: *Ui, d: painter_mod.GpuDraw) void {
+    pub fn addGpu(ui: *WindowUi, d: painter_mod.GpuDraw) void {
         ui.segments.append(ui.gpa, .{ .gpu = d }) catch {};
     }
 
-    pub fn changed(ui: *const Ui) bool {
+    pub fn changed(ui: *const WindowUi) bool {
         return !ui.damage.frame.isEmpty();
     }
 
-    pub fn damaged(ui: *const Ui) []const geometry.Rect {
+    pub fn damaged(ui: *const WindowUi) []const geometry.Rect {
         return ui.damage.frame.slice();
     }
 
-    pub fn damagedViewports(ui: *const Ui, out: *[damage_mod.Region.max_rects]gfx.Viewport) []const gfx.Viewport {
+    pub fn damagedViewports(ui: *const WindowUi, out: *[damage_mod.Region.max_rects]gfx.Viewport) []const gfx.Viewport {
         const rects = ui.damaged();
         for (rects, out[0..rects.len]) |r, *v| v.* = .{
             .x = @intFromFloat(r.x),
@@ -1183,7 +1186,7 @@ pub const Ui = struct {
         return out[0..rects.len];
     }
 
-    pub fn repaint(ui: *const Ui, age: u32) damage_mod.Region {
+    pub fn repaint(ui: *const WindowUi, age: u32) damage_mod.Region {
         return ui.damage.repaint(age);
     }
 
@@ -1200,13 +1203,13 @@ pub const Ui = struct {
     /// Renders the last painted frame through `ui.shared.renderer` into `target`.
     /// `target` is a pointer to the renderer's target type (`*gfx.software.Image`
     /// for the software renderer); another type is `error.WrongTarget`.
-    pub fn render(ui: *Ui, target: anytype, damage: ?[]const gfx.Viewport) !void {
+    pub fn render(ui: *WindowUi, target: anytype, damage: ?[]const gfx.Viewport) !void {
         const r = ui.shared.renderer orelse return error.NoRenderer;
         try r.renderSegments(ui.canvases.items[0..ui.canvases_used], ui.segments.items[0..ui.main_segments], target, damage);
     }
 
     /// Draws the last painted frame into `img` on the CPU using `gfx.software`.
-    pub fn preview(ui: *Ui, img: gfx.software.Image) !void {
+    pub fn preview(ui: *WindowUi, img: gfx.software.Image) !void {
         var mutable_img = img;
         for (ui.segments.items) |s| switch (s) {
             .canvas => |c| try gfx.software.render(c, mutable_img),
@@ -1217,7 +1220,7 @@ pub const Ui = struct {
     /// The frame last painted, to present over `clear` (ARGB): the window's
     /// segments, and what changed in it (see `gfx.Frame`). It is good until
     /// the next `frame`.
-    pub fn framePacket(ui: *const Ui, clear: u32) gfx.Frame {
+    pub fn framePacket(ui: *const WindowUi, clear: u32) gfx.Frame {
         var f: gfx.Frame = .{
             .canvases = ui.canvases.items[0..ui.canvases_used],
             .segments = ui.segments.items[0..ui.main_segments],
@@ -1240,7 +1243,7 @@ pub const Ui = struct {
 
     /// If the last `frame` changed anything, renders only the damaged parts
     /// into `win` (a `window.Window`, or a pointer to a window) and presents it.
-    pub fn present(ui: *Ui, win: anytype, clear: u32) !bool {
+    pub fn present(ui: *WindowUi, win: anytype, clear: u32) !bool {
         const w = window_mod.Window.from(win);
         const popups = try ui.presentPopups();
         if (!ui.changed()) return popups;
@@ -1250,7 +1253,7 @@ pub const Ui = struct {
     }
 
     /// Draws the menu and tooltip popups (whole: they are small).
-    fn presentPopups(ui: *Ui) !bool {
+    fn presentPopups(ui: *WindowUi) !bool {
         var shown = false;
         for ([_]*?PopupLayer{ &ui.menu_popup, &ui.tooltip_popup }) |slot| {
             const layer = &(slot.* orelse continue);
@@ -1278,7 +1281,7 @@ pub const Ui = struct {
 
     // --- Input ------------------------------------------------------------------
 
-    pub fn handleInput(ui: *Ui, e: window_mod.InputEvent) void {
+    pub fn handleInput(ui: *WindowUi, e: window_mod.InputEvent) void {
         ui.inputs +%= 1;
         switch (e) {
             .motion => |pos| ui.pointerMotion(pos),
@@ -1332,14 +1335,14 @@ pub const Ui = struct {
         }
     }
 
-    pub fn takeInput(ui: *Ui, win: anytype) void {
+    pub fn takeInput(ui: *WindowUi, win: anytype) void {
         const w = window_mod.Window.from(win);
         ui.syncWindow(w);
         for (w.takeInput()) |e| ui.handleInput(e);
         ui.syncCursor(w);
     }
 
-    pub fn pointerMotion(ui: *Ui, pos: Point) void {
+    pub fn pointerMotion(ui: *WindowUi, pos: Point) void {
         ui.pointer = pos;
         ui.updateHover(pos);
         for (ui.hovered.items) |n| if (send(n, .{ .motion = local(n, pos) })) {
@@ -1356,12 +1359,12 @@ pub const Ui = struct {
     pub const multi_click_ns = 400 * std.time.ns_per_ms;
     pub const multi_click_slop = 6;
 
-    pub fn pointerButton(ui: *Ui, pos: Point, button: u32, pressed: bool) void {
+    pub fn pointerButton(ui: *WindowUi, pos: Point, button: u32, pressed: bool) void {
         ui.pointerButtonAt(pos, button, pressed, ui.clockNs());
     }
 
     /// `pointerButton`, at a time on the monotonic clock (`window.nowNs`).
-    pub fn pointerButtonAt(ui: *Ui, pos: Point, button: u32, pressed: bool, now_ns: u64) void {
+    pub fn pointerButtonAt(ui: *WindowUi, pos: Point, button: u32, pressed: bool, now_ns: u64) void {
         ui.pointer = pos;
         ui.updateHover(pos);
         ui.needs_frame = true;
@@ -1400,14 +1403,14 @@ pub const Ui = struct {
 
     // --- Touch ----------------------------------------------------------------------
 
-    pub fn touchDown(ui: *Ui, id: i32, pos: Point) void {
+    pub fn touchDown(ui: *WindowUi, id: i32, pos: Point) void {
         if (ui.touch != null) return;
         ui.touch = .{ .id = id, .start = pos, .last = pos };
         ui.pointerButton(pos, widget.btn_left, true);
         if (ui.captured) |n| ui.hold = .{ .node = n, .pos = pos };
     }
 
-    pub fn touchMotion(ui: *Ui, id: i32, pos: Point) void {
+    pub fn touchMotion(ui: *WindowUi, id: i32, pos: Point) void {
         const t = &(ui.touch orelse return);
         if (t.id != id) return;
         if (ui.swallow_release) return;
@@ -1430,7 +1433,7 @@ pub const Ui = struct {
         ui.pointerMotion(pos);
     }
 
-    pub fn touchUp(ui: *Ui, id: i32) void {
+    pub fn touchUp(ui: *WindowUi, id: i32) void {
         const t = ui.touch orelse return;
         if (t.id != id) return;
         if (!t.panning) ui.pointerButton(t.last, widget.btn_left, false);
@@ -1440,7 +1443,7 @@ pub const Ui = struct {
         ui.pointerLeave();
     }
 
-    pub fn touchCancel(ui: *Ui) void {
+    pub fn touchCancel(ui: *WindowUi) void {
         ui.cancelPress();
         ui.touch = null;
         ui.hold = null;
@@ -1448,7 +1451,7 @@ pub const Ui = struct {
         ui.pointerLeave();
     }
 
-    fn pan(ui: *Ui, at: Point, dx: f32, dy: f32) bool {
+    fn pan(ui: *WindowUi, at: Point, dx: f32, dy: f32) bool {
         ui.updateHover(at);
         for (ui.hovered.items) |n| if (send(n, .{ .scroll = .{ .pos = local(n, at), .dx = dx, .dy = dy, .touch = true } })) {
             ui.needs_frame = true;
@@ -1457,14 +1460,14 @@ pub const Ui = struct {
         return false;
     }
 
-    fn cancelPress(ui: *Ui) void {
+    fn cancelPress(ui: *WindowUi) void {
         const n = ui.captured orelse return;
         ui.captured = null;
         _ = send(n, .{ .release = .{ .pos = .{ -1, -1 }, .button = ui.captured_button, .inside = false } });
         ui.needs_frame = true;
     }
 
-    pub fn pointerScroll(ui: *Ui, pos: Point, dx: f32, dy: f32) void {
+    pub fn pointerScroll(ui: *WindowUi, pos: Point, dx: f32, dy: f32) void {
         ui.pointer = pos;
         ui.updateHover(pos);
         for (ui.hovered.items) |n| if (send(n, .{ .scroll = .{ .pos = local(n, pos), .dx = dx, .dy = dy } })) {
@@ -1473,7 +1476,7 @@ pub const Ui = struct {
         };
     }
 
-    pub fn focus(ui: *Ui, n: ?*Node) void {
+    pub fn focus(ui: *WindowUi, n: ?*Node) void {
         if (ui.focused == n) return;
         if (ui.focused) |old| _ = send(old, .blur);
         ui.focused = n;
@@ -1484,7 +1487,7 @@ pub const Ui = struct {
     /// Gives it a keymap of its own (XKB's text format), for keys from
     /// `keyEvent`: what they type, and the modifiers they change. (Keys from
     /// a window with a keymap come with what they type.)
-    pub fn loadKeymap(ui: *Ui, text: []const u8) !void {
+    pub fn loadKeymap(ui: *WindowUi, text: []const u8) !void {
         var km = try window_mod.xkb.Keymap.parse(ui.gpa, text);
         if (ui.loaded_keymap) |*old| old.deinit();
         ui.loaded_keymap = km;
@@ -1494,7 +1497,7 @@ pub const Ui = struct {
 
     /// A key went down or up: what it types, by `loaded_keymap` if it has
     /// one.
-    pub fn keyEvent(ui: *Ui, code: u32, pressed: bool) void {
+    pub fn keyEvent(ui: *WindowUi, code: u32, pressed: bool) void {
         const km = &(ui.loaded_keymap orelse return ui.key(.{ .code = code, .pressed = pressed }));
         const mods = ui.key_state.mods();
         const char = if (pressed) km.char(code, ui.key_state) else null;
@@ -1510,7 +1513,7 @@ pub const Ui = struct {
 
     /// A key went down or up, with what it types (if anything) and the
     /// modifiers held.
-    pub fn key(ui: *Ui, k: widget.Event.Key) void {
+    pub fn key(ui: *WindowUi, k: widget.Event.Key) void {
         switch (k.code) {
             // Modifiers only change what other keys do.
             keymap.left_shift, keymap.right_shift, keymap.left_ctrl, keymap.right_ctrl, keymap.right_alt => return,
@@ -1549,7 +1552,7 @@ pub const Ui = struct {
         }
     }
 
-    pub fn pointerLeave(ui: *Ui) void {
+    pub fn pointerLeave(ui: *WindowUi) void {
         ui.cancelPress();
         ui.hold = null;
         ui.swallow_release = false;
@@ -1560,7 +1563,7 @@ pub const Ui = struct {
         ui.needs_frame = true;
     }
 
-    fn updateHover(ui: *Ui, pos: Point) void {
+    fn updateHover(ui: *WindowUi, pos: Point) void {
         var path = ui.hover_scratch;
         path.clearRetainingCapacity();
         if (ui.menu != null) {
@@ -1596,7 +1599,7 @@ pub const Ui = struct {
         return .{ pos[0] - at[0], pos[1] - at[1] };
     }
 
-    fn overMenu(ui: *const Ui) bool {
+    fn overMenu(ui: *const WindowUi) bool {
         const m = ui.menu_root orelse return false;
         const pos = ui.pointer orelse return false;
         const x = pos[0] - m.offset[0];
@@ -1604,7 +1607,7 @@ pub const Ui = struct {
         return x >= 0 and y >= 0 and x < m.size.w and y < m.size.h;
     }
 
-    pub fn forget(ui: *Ui, n: *Node) void {
+    pub fn forget(ui: *WindowUi, n: *Node) void {
         if (ui.menu) |m| if (m.owner == n) ui.closeMenu();
         if (ui.drag) |*d| {
             if (d.source == n) ui.endDrag(false) else if (d.target == n) d.target = null;
@@ -1636,7 +1639,7 @@ fn envIs(environ: std.process.Environ, comptime key: []const u8, comptime value:
 
 /// A native toolkit app: its windows (the system's own, opened on a
 /// `window.NativeDisplay`, unless it is given a display), each with its
-/// `Controls` and a `Ui`, and what they share (`Shared`: the font, the
+/// `Controls` and a `WindowUi`, and what they share (`Shared`: the font, the
 /// renderer, the theme). The app runs them in a loop of its own:
 ///
 ///     const app = try App.init(gpa, io, environ, .{ .on_quit_request = .quit, .on_last_window_closed = .quit });
@@ -1718,12 +1721,12 @@ pub const App = struct {
     /// redrawn when something changes (see `App`).
     pub const Root = struct {
         ptr: *const anyopaque,
-        frame: *const fn (ptr: *const anyopaque, ui: *Ui, width: u32, height: u32, now_ns: u64) void,
+        frame: *const fn (ptr: *const anyopaque, ui: *WindowUi, width: u32, height: u32, now_ns: u64) void,
 
         pub fn of(root: anytype) Root {
             const T = @typeInfo(@TypeOf(root)).pointer.child;
             return .{ .ptr = @ptrCast(root), .frame = struct {
-                fn frame(p: *const anyopaque, ui: *Ui, width: u32, height: u32, now_ns: u64) void {
+                fn frame(p: *const anyopaque, ui: *WindowUi, width: u32, height: u32, now_ns: u64) void {
                     const r: *const T = @ptrCast(@alignCast(p));
                     ui.frame(width, height, now_ns, r.*);
                 }
@@ -1843,7 +1846,7 @@ pub const App = struct {
 
     fn adopt(a: *App, win: window_mod.Window, options: AddOptions) !*Window {
         try a.windows.ensureUnusedCapacity(a.gpa, 1);
-        const ui = try a.shared.createUi();
+        const ui = try a.shared.createWindowUi();
         errdefer ui.destroy();
         const w = try a.gpa.create(Window);
         w.* = .{
@@ -2034,7 +2037,7 @@ pub const App = struct {
         /// What its title bar's buttons do (see `window.Controls`).
         controls: window_mod.Controls,
         /// Its UI (destroyed when it is closed).
-        ui: *Ui,
+        ui: *WindowUi,
         root: Root,
         clear_color: ?u32 = null,
         on_close_request: OnCloseRequest = .ignore,

@@ -1,6 +1,6 @@
 //! Menu: Material 3's menu, a list of actions shown above everything else
 //! at a point (where the right button was pressed, say): see
-//! `Ui.openMenu`. Pressing an item closes the menu and does the action;
+//! `WindowUi.openMenu`. Pressing an item closes the menu and does the action;
 //! pressing anywhere else, or Escape, closes it. It goes down and to the
 //! right of the point, or up or to the left where there is no room, and
 //! stays in the window (`place`).
@@ -80,7 +80,7 @@ const MenuRow = struct {
         interaction: Interaction = .{},
         /// The action, and the UI (whose menu closes), from the last build.
         action: ?Callback = null,
-        ui: ?*@import("runtime.zig").Ui = null,
+        ui: ?*@import("runtime.zig").WindowUi = null,
 
         fn press(s: *State) void {
             // Closed first: the action may open another.

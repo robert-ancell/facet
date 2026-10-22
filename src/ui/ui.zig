@@ -219,7 +219,7 @@ pub const D3D11Area = d3d11_area.D3D11Area;
 
 pub const Painter = painter.Painter;
 pub const GpuArea = painter.GpuArea;
-pub const Ui = runtime.Ui;
+pub const WindowUi = runtime.WindowUi;
 pub const Shared = runtime.Shared;
 pub const App = runtime.App;
 pub const Clipboard = runtime.Clipboard;

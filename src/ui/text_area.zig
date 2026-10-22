@@ -825,9 +825,9 @@ test "lines wrap between words, or within one too long" {
 }
 
 test "typing into a text area, moving up and down, and copying" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     var d = try Document.init(testing.allocator, "first line\nsecond line");
@@ -840,7 +840,7 @@ test "typing into a text area, moving up and down, and copying" {
     };
     u.frame(500, 300, 0, App{ .doc = &d });
     const press = struct {
-        fn key(uu: *Ui, code: u32) void {
+        fn key(uu: *WindowUi, code: u32) void {
             uu.keyEvent(code, true);
             uu.keyEvent(code, false);
         }

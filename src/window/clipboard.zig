@@ -1,5 +1,5 @@
 //! The system's clipboard, for text, over Wayland (wl_data_device): what
-//! the toolkit's `Ui.clipboard` is given (`ui.Clipboard.of(&window.clipboard)`).
+//! the toolkit's `WindowUi.clipboard` is given (`ui.Clipboard.of(&window.clipboard)`).
 //!
 //! Copying makes a data source offering the text, set as the selection
 //! (the shell takes it only from the window with the keyboard, with the

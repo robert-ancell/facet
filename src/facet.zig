@@ -22,7 +22,7 @@ pub const icons = @import("icons");
 pub const window = @import("window");
 pub const wayland = @import("wayland");
 
-pub const Ui = ui.Ui;
+pub const WindowUi = ui.WindowUi;
 pub const Shared = ui.Shared;
 pub const App = ui.App;
 pub const Widget = ui.Widget;

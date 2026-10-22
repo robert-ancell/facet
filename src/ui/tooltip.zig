@@ -31,14 +31,14 @@ pub const Tooltip = struct {
         return n.child(0).minSize(c);
     }
 
-    /// Having an `event` handler puts `Tooltip` in `Ui.hovered` whenever
+    /// Having an `event` handler puts `Tooltip` in `WindowUi.hovered` whenever
     /// the pointer is over its child, without consuming any events.
     pub fn event(_: *const Tooltip, _: *Node, _: Event) bool {
         return false;
     }
 };
 
-/// The floating label shown by `Ui` for the hovered `Tooltip`.
+/// The floating label shown by `WindowUi` for the hovered `Tooltip`.
 pub const Bubble = struct {
     text: []const u8,
 

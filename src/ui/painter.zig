@@ -19,7 +19,7 @@ const runtime = @import("runtime.zig");
 const Point = geometry.Point;
 const Rect = geometry.Rect;
 const Node = widget.Node;
-const Ui = runtime.Ui;
+const WindowUi = runtime.WindowUi;
 
 /// Where a GPU draw goes, in the frame's pixels.
 pub const GpuArea = gfx.GpuArea;
@@ -33,7 +33,7 @@ pub const stripe_depth = 8;
 const stripe_period = 12;
 
 pub const Painter = struct {
-    ui: *Ui,
+    ui: *WindowUi,
     /// The node being painted, and its top left in the frame.
     node: *Node,
     origin: Point = .{ 0, 0 },

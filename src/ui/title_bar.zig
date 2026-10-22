@@ -4,7 +4,7 @@
 //! long for the bar ends in "…", and the bar is never narrower than its
 //! buttons either side of a "…".
 //!
-//! On Wayland with client-side decorations (`decorations == .client`), `Ui`
+//! On Wayland with client-side decorations (`decorations == .client`), `WindowUi`
 //! automatically adds `TitleBar` above the app's root widget; when the
 //! compositor provides server-side decorations (`decorations == .server`) or
 //! the window is fullscreen, no client-side `TitleBar` is added.
@@ -153,10 +153,10 @@ const DragArea = struct {
 const testing = std.testing;
 
 test "the title bar's buttons, and dragging it" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         closed: bool = false,
@@ -207,10 +207,10 @@ test "the title bar's buttons, and dragging it" {
 }
 
 test "double clicking the title bar toggles maximize, instead of dragging" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         drags: u32 = 0,
@@ -248,19 +248,19 @@ test "double clicking the title bar toggles maximize, instead of dragging" {
     try testing.expectEqual(@as(u32, 2), app.maximizes);
     // Presses too slow, or too far apart, are separate clicks.
     u.pointerButtonAt(at, btn_left, true, 3000 * ms);
-    u.pointerButtonAt(at, btn_left, true, 3000 * ms + Ui.multi_click_ns + 1);
-    const away: geometry.Point = .{ 400 + Ui.multi_click_slop + 1, 22 };
+    u.pointerButtonAt(at, btn_left, true, 3000 * ms + WindowUi.multi_click_ns + 1);
+    const away: geometry.Point = .{ 400 + WindowUi.multi_click_slop + 1, 22 };
     u.pointerMotion(away);
-    u.pointerButtonAt(away, btn_left, true, 3000 * ms + Ui.multi_click_ns + 100 * ms);
+    u.pointerButtonAt(away, btn_left, true, 3000 * ms + WindowUi.multi_click_ns + 100 * ms);
     try testing.expectEqual(@as(u32, 5), app.drags);
     try testing.expectEqual(@as(u32, 2), app.maximizes);
 }
 
 test "a fullscreen window has no title bar" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     var closed = false;
     const Root = struct {
@@ -292,10 +292,10 @@ test "a fullscreen window has no title bar" {
 }
 
 test "the title bar defaults to the UI's window controls" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     var controls: Controls = .{ .win = undefined };
     u.controls = &controls;
@@ -314,12 +314,12 @@ test "the title bar defaults to the UI's window controls" {
     try testing.expect(controls.close_requested);
 }
 
-test "Ui automatically adds TitleBar on Wayland with client-side decorations and omits it with server-side decorations" {
-    const Ui = @import("runtime.zig").Ui;
+test "WindowUi automatically adds TitleBar on Wayland with client-side decorations and omits it with server-side decorations" {
+    const WindowUi = @import("runtime.zig").WindowUi;
     const window_mod = @import("window");
     const font = @import("font");
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
 
     const MockWaylandWin = struct {
@@ -372,9 +372,9 @@ fn findText(n: *Node) ?*Node {
 }
 
 test "a long title ends in an ellipsis before the buttons, and the bar sets the window's minimum width" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const window_mod = @import("window");
-    const u = try Ui.createDefault(testing.allocator, testing.io);
+    const u = try WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
 
     const MockWin = struct {
@@ -431,9 +431,9 @@ test "a long title ends in an ellipsis before the buttons, and the bar sets the 
 }
 
 test "a window that cannot be minimized has no minimize button" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const window_mod = @import("window");
-    const u = try Ui.createDefault(testing.allocator, testing.io);
+    const u = try WindowUi.createDefault(testing.allocator, testing.io);
     defer u.destroy();
     const MockWin = struct {
         pub const platform: window_mod.Platform = .wayland;

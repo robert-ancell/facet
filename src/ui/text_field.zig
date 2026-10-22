@@ -6,8 +6,8 @@
 //! Text is selected by dragging over it, or with Shift and the arrow keys,
 //! Home or End (Ctrl+A: all of it). Ctrl+X cuts the selection, Ctrl+C
 //! copies it and Ctrl+V pastes over it, when the text comes (through the
-//! UI's clipboard: see `Ui.copyText` and `Ui.pasteText`); the right button, or holding the left down, shows a
-//! menu with the same (`Ui.openMenu`). An obscured field's text cannot be
+//! UI's clipboard: see `WindowUi.copyText` and `WindowUi.pasteText`); the right button, or holding the left down, shows a
+//! menu with the same (`WindowUi.openMenu`). An obscured field's text cannot be
 //! cut or copied.
 
 const a11y = @import("accessibility.zig");
@@ -73,7 +73,7 @@ pub const TextField = struct {
         dragging: bool = false,
         /// What the menu's actions (and pasting) need, from the widget as
         /// last seen.
-        ui: ?*@import("runtime.zig").Ui = null,
+        ui: ?*@import("runtime.zig").WindowUi = null,
         node: ?*Node = null,
         max_len: usize = capacity,
         obscure: bool = false,
@@ -696,9 +696,9 @@ fn charClassAt(text: []const u8, i: usize) CharClass {
 const testing = std.testing;
 
 test "typing into a text field" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     const Sink = struct {
@@ -759,9 +759,9 @@ test "typing into a text field" {
 }
 
 test "selecting, copying, cutting and pasting, with keys and the menu" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     // The system's clipboard, as the app gives it.
@@ -808,16 +808,16 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
     };
     var now: u64 = 0;
     const T = struct {
-        fn frame(uu: *Ui, s: *[3]Sink, n: *u64) void {
+        fn frame(uu: *WindowUi, s: *[3]Sink, n: *u64) void {
             n.* += 16 * std.time.ns_per_ms;
             uu.frame(500, 400, n.*, App{ .sinks = s });
         }
-        fn click(uu: *Ui, at: geometry.Point, button: u32) void {
+        fn click(uu: *WindowUi, at: geometry.Point, button: u32) void {
             uu.pointerMotion(at);
             uu.pointerButton(at, button, true);
             uu.pointerButton(at, button, false);
         }
-        fn keys(uu: *Ui, ctrl: bool, shift: bool, codes: []const u32) void {
+        fn keys(uu: *WindowUi, ctrl: bool, shift: bool, codes: []const u32) void {
             if (ctrl) uu.keyEvent(keymap.left_ctrl, true);
             if (shift) uu.keyEvent(keymap.left_shift, true);
             for (codes) |c| {
@@ -827,7 +827,7 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
             if (shift) uu.keyEvent(keymap.left_shift, false);
             if (ctrl) uu.keyEvent(keymap.left_ctrl, false);
         }
-        fn field(uu: *Ui, i: usize) *TextField.State {
+        fn field(uu: *WindowUi, i: usize) *TextField.State {
             var n = uu.root.?;
             while (!n.widget.is(Column)) n = n.children.items[0];
             return n.children.items[i].state(TextField.State);
@@ -947,8 +947,8 @@ test "selecting, copying, cutting and pasting, with keys and the menu" {
 }
 
 test "without the system's clipboard, text is copied within the app" {
-    const Ui = @import("runtime.zig").Ui;
-    const u = try Ui.create(testing.allocator, testing.io, null);
+    const WindowUi = @import("runtime.zig").WindowUi;
+    const u = try WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Got = struct {
         text: [8]u8 = undefined,
@@ -974,8 +974,8 @@ test "without the system's clipboard, text is copied within the app" {
 }
 
 test "a paste for a widget that has gone goes nowhere" {
-    const Ui = @import("runtime.zig").Ui;
-    const u = try Ui.create(testing.allocator, testing.io, null);
+    const WindowUi = @import("runtime.zig").WindowUi;
+    const u = try WindowUi.create(testing.allocator, testing.io, null);
     defer u.destroy();
     const Never = struct {
         sink: ?@import("runtime.zig").Clipboard.Sink = null,
@@ -1001,9 +1001,9 @@ test "a paste for a widget that has gone goes nowhere" {
 }
 
 test "a field asked for takes the keyboard by itself, once" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.us);
     var text: [64]u8 = undefined;
@@ -1036,9 +1036,9 @@ test "a field asked for takes the keyboard by itself, once" {
 }
 
 test "a UK keyboard types £ and €, and characters are edited whole" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     try u.loadKeymap(@import("window").xkb.testdata.gb_ru);
     var text: [64]u8 = undefined;
@@ -1060,7 +1060,7 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
     };
     u.frame(400, 200, 0, App{ .sink = &sink });
     const press = struct {
-        fn key(uu: *Ui, code: u32) void {
+        fn key(uu: *WindowUi, code: u32) void {
             uu.keyEvent(code, true);
             uu.keyEvent(code, false);
         }
@@ -1095,9 +1095,9 @@ test "a UK keyboard types £ and €, and characters are edited whole" {
 }
 
 test "a password field has a visibility toggle button on the right hand side" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
     const App = struct {
         pub fn build(_: *const @This(), cx: *widget.Context) widget.Widget {
@@ -1169,9 +1169,9 @@ test "initial text and max_len never split a multi-byte UTF-8 character" {
 }
 
 test "double click selects current word, triple click selects all, and selection is clipped to field bounds" {
-    const Ui = @import("runtime.zig").Ui;
+    const WindowUi = @import("runtime.zig").WindowUi;
     const f = try font.Font.init(font.default_font_data);
-    const u = try Ui.create(testing.allocator, testing.io, &f);
+    const u = try WindowUi.create(testing.allocator, testing.io, &f);
     defer u.destroy();
 
     const App = struct {
@@ -1209,12 +1209,12 @@ test "double click selects current word, triple click selects all, and selection
     u.pointerButtonAt(click_at, btn_left, false, 210 * ms);
     try testing.expect(st.selection() == null);
 
-    // Second click within Ui.multi_click_ns selects the word ("https").
+    // Second click within WindowUi.multi_click_ns selects the word ("https").
     u.pointerButtonAt(click_at, btn_left, true, 300 * ms);
     u.pointerButtonAt(click_at, btn_left, false, 310 * ms);
     try testing.expectEqual([2]usize{ 0, 5 }, st.selection().?);
 
-    // Third click within Ui.multi_click_ns selects all text.
+    // Third click within WindowUi.multi_click_ns selects all text.
     u.pointerButtonAt(click_at, btn_left, true, 400 * ms);
     u.pointerButtonAt(click_at, btn_left, false, 410 * ms);
     try testing.expectEqual([2]usize{ 0, st.len }, st.selection().?);
