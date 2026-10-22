@@ -54,7 +54,6 @@ pub const SizedBox = ui.SizedBox;
 pub const ConstrainedBox = ui.ConstrainedBox;
 pub const Padding = ui.Padding;
 pub const Align = ui.Align;
-pub const Center = ui.Center;
 pub const Row = ui.Row;
 pub const Column = ui.Column;
 pub const Axis = ui.Axis;

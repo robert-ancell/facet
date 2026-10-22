@@ -150,11 +150,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                     .spacing = 12,
                     .cross_axis_alignment = .stretch,
                     .children = cx.makeAll(.{
-                        facet.Center{ .child = cx.make(facet.Text{ .text = "Left", .style = .{ .color = t.on_surface } }) },
+                        facet.Align.center(cx.make(facet.Text{ .text = "Left", .style = .{ .color = t.on_surface } })),
                         facet.Divider{ .axis = .vertical },
-                        facet.Center{ .child = cx.make(facet.Text{ .text = "Middle", .style = .{ .color = t.on_surface } }) },
+                        facet.Align.center(cx.make(facet.Text{ .text = "Middle", .style = .{ .color = t.on_surface } })),
                         facet.Divider{ .axis = .vertical },
-                        facet.Center{ .child = cx.make(facet.Text{ .text = "Right", .style = .{ .color = t.on_surface } }) },
+                        facet.Align.center(cx.make(facet.Text{ .text = "Right", .style = .{ .color = t.on_surface } })),
                     }),
                 }),
             },
@@ -211,10 +211,10 @@ fn gridCell(s: *State, cx: *facet.Context, i: usize) facet.Widget {
         .padding = .all(4),
         .radius = 8,
         .on_press = choose(cx, &s.cell, i),
-        .child = cx.make(facet.Center{ .child = cx.make(facet.Text{
+        .child = cx.make(facet.Align.center(cx.make(facet.Text{
             .text = cx.fmt("{d}", .{i + 1}),
             .style = .{ .size = 13, .color = if (selected) t.on_surface else t.on_surface_variant },
             .wrap = false,
-        }) }),
+        }))),
     });
 }

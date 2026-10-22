@@ -6,7 +6,7 @@ const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
 const Badge = @import("badge.zig").Badge;
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
 const Divider = @import("divider.zig").Divider;
@@ -149,7 +149,7 @@ const TabItem = struct {
                     .height = TabBar.height,
                     .child = cx.make(Padding{
                         .padding = .symmetric(20, 0),
-                        .child = cx.make(Center{ .width_factor = 1, .height_factor = 1, .child = content }),
+                        .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = content }),
                     }),
                 }),
             }),

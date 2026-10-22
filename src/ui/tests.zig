@@ -125,7 +125,7 @@ test "layouts that make no sense still lay out" {
                     cx.make(ui.Row{ .children = cx.makeAll(.{ui.Row{ .children = cx.makeAll(.{ui.Text{ .text = "Row in a row" }}) }}) }),
                     ui.SizedBox{ .width = -5, .height = std.math.nan(f32) },
                     ui.Padding{ .padding = .all(1000), .child = cx.make(ui.Text{ .text = "Padded away" }) },
-                    ui.Center{ .child = cx.make(ui.Overlay{}) },
+                    ui.Align.center(cx.make(ui.Overlay{})),
                 }),
             });
         }
@@ -331,7 +331,7 @@ test "GPU draws go between the 2D layers, in the tree's order" {
             return cx.make(ui.Overlay{ .children = cx.makeAll(.{
                 ui.Decorated{ .color = red },
                 ui.Padding{ .padding = .all(10), .child = cx.make(GpuView{}) },
-                ui.Center{ .child = cx.make(ui.Text{ .text = "Over" }) },
+                ui.Align.center(cx.make(ui.Text{ .text = "Over" })),
             }) });
         }
     }.f;
@@ -732,7 +732,7 @@ test "images fit the space given, keeping their shape, and text can have its own
         pic: *const gfx.Image,
         width: f32,
         pub fn build(self: *const @This(), cx: *Context) Widget {
-            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = self.width, .height = 100, .child = cx.make(ui.Center{ .child = cx.make(ui.Image{ .source = .{ .image = self.pic } }) }) }) });
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = self.width, .height = 100, .child = cx.make(ui.Align.center(cx.make(ui.Image{ .source = .{ .image = self.pic } }))) }) });
         }
     };
     // Smaller than the space: as big as it is.

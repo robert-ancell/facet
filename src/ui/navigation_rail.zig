@@ -7,7 +7,7 @@ const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
 const Badge = @import("badge.zig").Badge;
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
 const Expanded = @import("expanded.zig").Expanded;
@@ -164,7 +164,7 @@ const RailDestination = struct {
             .child = cx.make(SizedBox{
                 .width = 56,
                 .height = 32,
-                .child = cx.make(Center{ .child = icon_widget }),
+                .child = cx.make(Align.center(icon_widget)),
             }),
         });
         return cx.make(Pressable{

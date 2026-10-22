@@ -84,7 +84,7 @@ const FetchView = struct {
             .fetched => |r| cx.fmt("{d} bytes, in {d} ms", .{ r.bytes, r.ms }),
             .failed => |why| cx.fmt("Failed: {s}", .{why}),
         };
-        return cx.make(facet.Center{ .child = cx.make(facet.Column{
+        return cx.make(facet.Align.center(cx.make(facet.Column{
             .main_axis_size = .min,
             .cross_axis_alignment = .center,
             .spacing = 16,
@@ -97,7 +97,7 @@ const FetchView = struct {
                     .on_press = if (status == .fetching) null else .of(self.fetch, Fetch.start),
                 },
             }),
-        }) });
+        })));
     }
 };
 

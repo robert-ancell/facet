@@ -17,35 +17,33 @@ pub const Counter = struct {
     };
 
     pub fn build(_: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
-        return cx.make(facet.Center{
-            .child = cx.make(facet.Column{
-                .main_axis_size = .min,
-                .cross_axis_alignment = .center,
-                .spacing = 16,
-                .children = cx.makeAll(.{
-                    facet.Text{
-                        .text = "Hello, Facet!",
-                    },
-                    facet.Text{
-                        .text = cx.fmt("Count: {d}", .{state.count}),
-                    },
-                    facet.Row{
-                        .main_axis_size = .min,
-                        .spacing = 12,
-                        .children = cx.makeAll(.{
-                            facet.OutlinedButton{
-                                .icon = .remove,
-                                .on_press = .of(state, State.decrement),
-                            },
-                            facet.FilledButton{
-                                .icon = .add,
-                                .on_press = .of(state, State.increment),
-                            },
-                        }),
-                    },
-                }),
+        return cx.make(facet.Align.center(cx.make(facet.Column{
+            .main_axis_size = .min,
+            .cross_axis_alignment = .center,
+            .spacing = 16,
+            .children = cx.makeAll(.{
+                facet.Text{
+                    .text = "Hello, Facet!",
+                },
+                facet.Text{
+                    .text = cx.fmt("Count: {d}", .{state.count}),
+                },
+                facet.Row{
+                    .main_axis_size = .min,
+                    .spacing = 12,
+                    .children = cx.makeAll(.{
+                        facet.OutlinedButton{
+                            .icon = .remove,
+                            .on_press = .of(state, State.decrement),
+                        },
+                        facet.FilledButton{
+                            .icon = .add,
+                            .on_press = .of(state, State.increment),
+                        },
+                    }),
+                },
             }),
-        });
+        })));
     }
 };
 

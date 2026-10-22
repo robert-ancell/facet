@@ -153,7 +153,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
         w.* = cx.make(facet.Decorated{
             .color = .rgb(swatches[i % swatches.len]),
             .radius = .all(6),
-            .child = cx.make(facet.Center{ .child = cx.make(facet.Text{ .text = cx.fmt("{d}", .{i + 1}), .style = .{ .color = .rgb(0xffffff) }, .wrap = false }) }),
+            .child = cx.make(facet.Align.center(cx.make(facet.Text{ .text = cx.fmt("{d}", .{i + 1}), .style = .{ .color = .rgb(0xffffff) }, .wrap = false }))),
         });
     }
 
@@ -232,7 +232,7 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                 facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(16), .child = box(cx, 3, 32, 16) }) },
                 facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .symmetric(32, 4), .child = box(cx, 3, 32, 16) }) },
             })),
-            common.labelled(cx, "Center", &.{strip(cx, 56, cx.make(facet.Center{ .child = box(cx, 4, 64, 20) }))}),
+            common.labelled(cx, "Center", &.{strip(cx, 56, cx.make(facet.Align.center(box(cx, 4, 64, 20))))}),
         }),
         common.section(cx, "Decoration", "Backgrounds, borders, and rounded corners, the same or each different", cx.makeAll(.{
             facet.Row{ .spacing = 12, .children = cx.makeAll(.{
@@ -259,11 +259,11 @@ pub fn build(cx: *facet.Context, s: *State) facet.Widget {
                     .child = cx.make(facet.SizedBox{ .width = 200, .height = 56, .child = cx.make(facet.Decorated{
                         .color = if (s.hover.pressed) t.primary else if (s.hover.hovered) t.primary_container else t.surface_container_highest,
                         .radius = .all(28),
-                        .child = cx.make(facet.Center{ .child = cx.make(facet.Text{
+                        .child = cx.make(facet.Align.center(cx.make(facet.Text{
                             .text = if (s.hover.pressed) "Pressing" else if (s.hover.hovered) "Hovering" else "Press me",
                             .style = .{ .color = if (s.hover.pressed) t.on_primary else t.on_surface },
                             .wrap = false,
-                        }) }),
+                        }))),
                     }) }),
                 },
                 common.status(cx, cx.fmt("Pressed {d} times", .{s.presses})),

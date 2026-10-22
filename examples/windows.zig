@@ -44,23 +44,21 @@ const MainView = struct {
     windows: *Windows,
 
     pub fn build(self: *const MainView, cx: *facet.Context) facet.Widget {
-        return cx.make(facet.Center{
-            .child = cx.make(facet.Column{
-                .main_axis_size = .min,
-                .cross_axis_alignment = .center,
-                .spacing = 16,
-                .children = cx.makeAll(.{
-                    facet.Text{
-                        .text = cx.fmt("{d} open of {d} opened", .{ self.windows.openCount(), self.windows.opened }),
-                    },
-                    facet.FilledButton{
-                        .label = "Open a window",
-                        .icon = .add,
-                        .on_press = .of(self.windows, Windows.open),
-                    },
-                }),
+        return cx.make(facet.Align.center(cx.make(facet.Column{
+            .main_axis_size = .min,
+            .cross_axis_alignment = .center,
+            .spacing = 16,
+            .children = cx.makeAll(.{
+                facet.Text{
+                    .text = cx.fmt("{d} open of {d} opened", .{ self.windows.openCount(), self.windows.opened }),
+                },
+                facet.FilledButton{
+                    .label = "Open a window",
+                    .icon = .add,
+                    .on_press = .of(self.windows, Windows.open),
+                },
             }),
-        });
+        })));
     }
 };
 
@@ -78,20 +76,18 @@ const Counter = struct {
     };
 
     pub fn build(_: *const Counter, cx: *facet.Context, state: *State) facet.Widget {
-        return cx.make(facet.Center{
-            .child = cx.make(facet.Column{
-                .main_axis_size = .min,
-                .cross_axis_alignment = .center,
-                .spacing = 16,
-                .children = cx.makeAll(.{
-                    facet.Text{ .text = cx.fmt("Count: {d}", .{state.count}) },
-                    facet.OutlinedButton{
-                        .label = "Count",
-                        .on_press = .of(state, State.increment),
-                    },
-                }),
+        return cx.make(facet.Align.center(cx.make(facet.Column{
+            .main_axis_size = .min,
+            .cross_axis_alignment = .center,
+            .spacing = 16,
+            .children = cx.makeAll(.{
+                facet.Text{ .text = cx.fmt("Count: {d}", .{state.count}) },
+                facet.OutlinedButton{
+                    .label = "Count",
+                    .on_press = .of(state, State.increment),
+                },
             }),
-        });
+        })));
     }
 };
 

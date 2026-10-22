@@ -6,7 +6,7 @@ const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
 const Decorated = @import("decorated.zig").Decorated;
 const FilledButton = @import("button.zig").FilledButton;
@@ -52,10 +52,7 @@ pub const Dialog = struct {
         var count: usize = 0;
 
         if (self.icon) |ic| {
-            items[count] = cx.make(Center{
-                .height_factor = 1,
-                .child = cx.make(Icon{ .icon = ic, .size = 28, .color = t.primary }),
-            });
+            items[count] = cx.make(Align{ .height_factor = 1, .child = cx.make(Icon{ .icon = ic, .size = 28, .color = t.primary }) });
             count += 1;
         }
 
@@ -135,7 +132,7 @@ pub const Dialog = struct {
                     .on_dismiss = self.on_dismiss,
                     .child = cx.make(Decorated{ .color = gfx.Color.argb(0x88000000) }),
                 },
-                Center{ .child = card },
+                Align.center(card),
             }),
         });
 

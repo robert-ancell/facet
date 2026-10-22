@@ -18,6 +18,11 @@ pub const Align = struct {
     height_factor: ?f32 = null,
     child: ?Widget = null,
 
+    /// `child` in the middle of the space.
+    pub fn center(child: Widget) Align {
+        return .{ .alignment = .center, .child = child };
+    }
+
     pub fn layout(self: *const Align, n: *Node, c: Constraints) Size {
         const s = if (n.childCount() > 0) n.child(0).layout(c.loosen()) else Size{};
         const size = c.constrain(.{

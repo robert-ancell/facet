@@ -6,7 +6,7 @@ const Node = @import("widget.zig").WidgetNode;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const Decorated = @import("decorated.zig").Decorated;
 const Border = @import("decorated.zig").Border;
 const Icon = @import("icon.zig").Icon;
@@ -102,13 +102,11 @@ pub const IconButton = struct {
                 .child = cx.make(SizedBox{
                     .width = self.size,
                     .height = self.size,
-                    .child = cx.make(Center{
-                        .child = cx.make(Icon{
-                            .icon = self.icon,
-                            .size = glyph_size,
-                            .color = fg,
-                        }),
-                    }),
+                    .child = cx.make(Align.center(cx.make(Icon{
+                        .icon = self.icon,
+                        .size = glyph_size,
+                        .color = fg,
+                    }))),
                 }),
             }),
         });

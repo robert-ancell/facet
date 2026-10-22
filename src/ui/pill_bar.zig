@@ -5,7 +5,7 @@ const a11y = @import("accessibility.zig");
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const Decorated = @import("decorated.zig").Decorated;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
@@ -96,7 +96,7 @@ pub const PillButton = struct {
             .radius = radius,
             .child = cx.make(SizedBox{ .height = height, .child = cx.make(Padding{
                 .padding = .symmetric(18, 0),
-                .child = cx.make(Center{ .width_factor = 1, .height_factor = 1, .child = inner }),
+                .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = inner }),
             }) }),
         }) });
     }

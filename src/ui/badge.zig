@@ -4,7 +4,7 @@
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
 const Padding = @import("padding.zig").Padding;
@@ -61,15 +61,11 @@ pub const Badge = struct {
                 .constraints = .{ .min_w = 18, .min_h = 18 },
                 .child = cx.make(Padding{
                     .padding = .symmetric(5, 1),
-                    .child = cx.make(Center{
-                        .width_factor = 1,
-                        .height_factor = 1,
-                        .child = cx.make(Text{
-                            .text = text,
-                            .style = .{ .size = 11, .color = fg },
-                            .wrap = false,
-                        }),
-                    }),
+                    .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = cx.make(Text{
+                        .text = text,
+                        .style = .{ .size = 11, .color = fg },
+                        .wrap = false,
+                    }) }),
                 }),
             }),
         });

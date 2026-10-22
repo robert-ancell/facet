@@ -7,7 +7,7 @@ const a11y = @import("accessibility.zig");
 const Node = @import("widget.zig").WidgetNode;
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const decorated = @import("decorated.zig");
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
@@ -209,7 +209,7 @@ fn buildButton(cx: *Context, state: anytype, b: anytype, look: Look) Widget {
                 .constraints = .{ .min_w = if (icon_only) height else 48, .min_h = height },
                 .child = cx.make(Padding{
                     .padding = .symmetric(h_pad, 0),
-                    .child = cx.make(Center{ .width_factor = 1, .height_factor = 1, .child = content }),
+                    .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = content }),
                 }),
             }),
         }),

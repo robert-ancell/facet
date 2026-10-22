@@ -7,7 +7,7 @@ const Node = @import("widget.zig").WidgetNode;
 const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
-const Center = @import("center.zig").Center;
+const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
 const Decorated = @import("decorated.zig").Decorated;
 const Border = @import("decorated.zig").Border;
@@ -109,9 +109,7 @@ pub const Chip = struct {
                     .child = cx.make(SizedBox{
                         .width = 20,
                         .height = 20,
-                        .child = cx.make(Center{
-                            .child = cx.make(Icon{ .icon = .close, .size = 16, .color = fg }),
-                        }),
+                        .child = cx.make(Align.center(cx.make(Icon{ .icon = .close, .size = 16, .color = fg }))),
                     }),
                 }),
             });
@@ -133,16 +131,12 @@ pub const Chip = struct {
                     .constraints = .{ .min_h = height },
                     .child = cx.make(Padding{
                         .padding = .{ .left = left_pad, .right = right_pad },
-                        .child = cx.make(Center{
-                            .width_factor = 1,
-                            .height_factor = 1,
-                            .child = cx.make(Row{
-                                .spacing = 6,
-                                .main_axis_size = .min,
-                                .cross_axis_alignment = .center,
-                                .children = parts[0..count],
-                            }),
-                        }),
+                        .child = cx.make(Align{ .width_factor = 1, .height_factor = 1, .child = cx.make(Row{
+                            .spacing = 6,
+                            .main_axis_size = .min,
+                            .cross_axis_alignment = .center,
+                            .children = parts[0..count],
+                        }) }),
                     }),
                 }),
             }),
