@@ -66,6 +66,75 @@ pub const Text = struct {
 
     const Laid = struct { lines: []const Line, style: font.Style };
 
+    /// What the last measurements of the text were, so that the same text
+    /// in the same font and width is not measured again each frame.
+    pub const State = struct {
+        /// The text the entries are for.
+        text: []u8 = &.{},
+        /// The last two measurements (the widths it is laid out in and
+        /// measured at differ).
+        entries: [2]Entry = .{ .{}, .{} },
+        /// Which entry the next measurement replaces.
+        next: u1 = 0,
+        gpa: ?std.mem.Allocator = null,
+
+        const Entry = struct {
+            valid: bool = false,
+            font: ?*const font.Font = null,
+            size: f32 = 0,
+            width: f32 = 0,
+            /// Each line's place in the text, and its width.
+            lines: []Span = &.{},
+        };
+
+        const Span = struct { start: u32, end: u32, width: f32 };
+
+        pub fn deinit(s: *State) void {
+            s.forget();
+        }
+
+        fn forget(s: *State) void {
+            const gpa = s.gpa orelse return;
+            for (&s.entries) |*e| {
+                gpa.free(e.lines);
+                e.* = .{};
+            }
+            gpa.free(s.text);
+            s.text = &.{};
+        }
+    };
+
+    /// `wrap` of the text in the width, as last measured if it was.
+    fn wrapped(self: *const Text, n: *Node, style: font.Style, width: f32) ![]Line {
+        const arena = n.ui.arena();
+        const st = n.state(State);
+        const gpa = n.ui.gpa;
+        st.gpa = gpa;
+        if (!std.mem.eql(u8, st.text, self.text)) {
+            st.forget();
+            st.text = gpa.dupe(u8, self.text) catch return wrap(arena, &n.ui.atlas.runs, style, self.text, width);
+        }
+        for (&st.entries) |*e| {
+            if (!e.valid or e.font != style.font or e.size != style.size or e.width != width) continue;
+            const lines = try arena.alloc(Line, e.lines.len);
+            for (lines, e.lines) |*l, span| l.* = .{ .text = self.text[span.start..span.end], .width = span.width };
+            return lines;
+        }
+        const lines = try wrap(arena, &n.ui.atlas.runs, style, self.text, width);
+        const e = &st.entries[st.next];
+        st.next +%= 1;
+        gpa.free(e.lines);
+        e.* = .{};
+        if (gpa.alloc(State.Span, lines.len)) |spans| {
+            for (spans, lines) |*span, l| {
+                const start = @intFromPtr(l.text.ptr) - @intFromPtr(self.text.ptr);
+                span.* = .{ .start = @intCast(start), .end = @intCast(start + l.text.len), .width = l.width };
+            }
+            e.* = .{ .valid = true, .font = style.font, .size = style.size, .width = width, .lines = spans };
+        } else |_| {}
+        return lines;
+    }
+
     fn fontStyle(self: *const Text, n: *const Node) ?font.Style {
         const f = self.style.font orelse n.ui.font orelse return null;
         const size = self.style.size orelse n.theme().body_size;
@@ -82,7 +151,7 @@ pub const Text = struct {
     pub fn layout(self: *const Text, n: *Node, c: Constraints) Size {
         const style = self.fontStyle(n) orelse return c.smallest();
         const arena = n.ui.arena();
-        const lines = wrap(arena, &n.ui.atlas.runs, style, self.text, if (self.wrap) c.max_w else geometry.inf) catch return c.smallest();
+        const lines = self.wrapped(n, style, if (self.wrap) c.max_w else geometry.inf) catch return c.smallest();
         if (self.ellipsis and c.boundedWidth()) for (lines) |*l| {
             if (l.width > c.max_w) l.* = ellipsize(arena, &n.ui.atlas.runs, style, l.text, c.max_w) catch l.*;
         };
@@ -98,11 +167,10 @@ pub const Text = struct {
 
     pub fn minSize(self: *const Text, n: *Node, c: Constraints) Size {
         const style = self.fontStyle(n) orelse return c.smallest();
-        const arena = n.ui.arena();
         // Wrapped, with no width to fit, it can be as narrow as its widest
         // word (never a whole paragraph on one line).
         const wrap_w = if (!self.wrap) geometry.inf else if (c.boundedWidth()) c.max_w else 0;
-        const lines = wrap(arena, &n.ui.atlas.runs, style, self.text, wrap_w) catch return c.smallest();
+        const lines = self.wrapped(n, style, wrap_w) catch return c.smallest();
         var widest: f32 = 0;
         if (self.ellipsis) {
             widest = if (self.text.len > 0) n.ui.atlas.runs.measure(style, ellipsis_text) else 0;

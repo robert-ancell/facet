@@ -3007,3 +3007,44 @@ test "a dropdown's options are menu items: icons, dividers and disabled choices,
     try testing.expectEqual(@as(usize, 3), picked);
     try testing.expect(u.menu == null);
 }
+
+test "text measured again only when its text, font or width changes" {
+    const u = try ui.WindowUi.createDefault(testing.allocator, testing.io);
+    defer u.destroy();
+    const S = struct {
+        var words: []const u8 = "one two three four";
+        var width: f32 = 400;
+        var size: f32 = 16;
+        fn build(cx: *Context) Widget {
+            return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = width, .child = cx.make(ui.Text{
+                .text = words,
+                .style = .{ .size = size },
+            }) }) });
+        }
+    };
+    const app = Root(S.build){};
+    u.frame(600, 400, 0, app);
+    const text = find(u.root.?, ui.Text).?;
+    const one_line = text.size;
+    const widest = text.content.?.w;
+    // The same again: the same size.
+    u.frame(600, 400, 1, app);
+    try testing.expectEqual(one_line, text.size);
+    try testing.expectEqual(widest, text.content.?.w);
+    // Narrower, it wraps.
+    S.width = 60;
+    u.frame(600, 400, 2, app);
+    try testing.expect(text.size.h > one_line.h);
+    // Back to the width it had: the old measurement.
+    S.width = 400;
+    u.frame(600, 400, 3, app);
+    try testing.expectEqual(one_line, text.size);
+    // Other words, and another size.
+    S.words = "one";
+    u.frame(600, 400, 4, app);
+    try testing.expect(text.content.?.w < widest);
+    S.words = "one two three four";
+    S.size = 32;
+    u.frame(600, 400, 5, app);
+    try testing.expect(text.content.?.w > widest);
+}
