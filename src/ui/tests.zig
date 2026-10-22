@@ -1508,13 +1508,13 @@ test "BuildContext.backend reports platform, buffer transport, and renderer" {
         u.frame(800, 600, 1, Probe{ .out = &info, .win = &win_info });
         try testing.expectEqual(window.WindowPlatform.wayland, info.platform);
         try testing.expectEqual(window.WindowDecorations.client, win_info.decorations);
-        try testing.expectEqual(window.WindowBufferTransport.wl_shm, win_info.buffer_transport);
+        try testing.expectEqual(window.WindowBufferTransport.memory, win_info.buffer_transport);
         try testing.expectEqual(window.WindowBufferSync.none, win_info.buffer_sync);
         try testing.expect(win_info.frame_sync.vsync);
         try testing.expect(win_info.frame_sync.frame_callback);
         try testing.expect(win_info.frame_sync.presentation_time);
-        try testing.expect(win_info.frame_sync.fifo_v1);
-        try testing.expect(!win_info.frame_sync.commit_timing_v1);
+        try testing.expect(win_info.frame_sync.fifo);
+        try testing.expect(!win_info.frame_sync.timed_presentation);
         try testing.expect(info.hasWaylandExtension("xdg_wm_base"));
         try testing.expect(info.hasWaylandExtension("wp_presentation"));
         try testing.expect(info.hasWaylandExtension("wp_fifo_manager_v1"));

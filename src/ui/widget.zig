@@ -447,9 +447,9 @@ pub const BuildContext = struct {
         return cx.ui.backend();
     }
 
-    /// How the widget's window is shown: its buffers (`wl_shm`,
-    /// `linux_dmabuf`, ...) and how they are synchronized and paced, its
-    /// decorations, size, scale, and state.
+    /// How the widget's window is shown: its buffers (in memory, in dmabufs,
+    /// ...) and how they are synchronized and paced, its decorations, size,
+    /// scale, and state.
     pub fn window(cx: *const BuildContext) WindowInfo {
         return cx.ui.windowInfo();
     }
@@ -481,14 +481,15 @@ pub const BackendInfo = struct {
 /// How a window is shown (see `BackendInfo` for what all the app's windows
 /// share).
 pub const WindowInfo = struct {
-    /// Surface buffer transport (`wl_shm`, `linux_dmabuf`, `memory`, `swapchain`, `custom`).
+    /// How the frames reach the window system (`memory`, `linux_dmabuf`,
+    /// `swapchain`, `custom`).
     buffer_transport: window_mod.WindowBufferTransport = .memory,
-    /// Buffer synchronization mechanism (`none`, `implicit`, `linux_drm_syncobj_v1`).
+    /// How the window system knows a GPU buffer is finished (`none`,
+    /// `implicit`, `explicit`).
     buffer_sync: window_mod.WindowBufferSync = .none,
-    /// Active frame pacing and vertical synchronization protocols.
+    /// How frames are paced and synchronized with the display.
     frame_sync: window_mod.WindowFrameSync = .{},
-    /// The refresh rate of the display it is on, in Hz (from
-    /// `wp_presentation`), or `0.0` if unknown.
+    /// The refresh rate of the display it is on, in Hz, or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
     /// Window decoration mode (`none`, `client`, `server`).
     decorations: window_mod.WindowDecorations = .none,

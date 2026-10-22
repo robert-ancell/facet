@@ -339,7 +339,7 @@ test "WindowUi automatically adds TitleBar on Wayland with client-side decoratio
 
     const MockWaylandWin = struct {
         pub const platform: window_mod.WindowPlatform = .wayland;
-        pub const buffer_transport: window_mod.WindowBufferTransport = .wl_shm;
+        pub const buffer_transport: window_mod.WindowBufferTransport = .memory;
         title: []const u8 = "Facet Test",
         decorations: window_mod.WindowDecorations = .client,
         width: u32 = 800,

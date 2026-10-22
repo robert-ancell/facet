@@ -450,10 +450,9 @@ pub const WindowPlatform = enum {
 
 /// Surface buffer presentation mechanism.
 pub const WindowBufferTransport = enum {
-    /// Frames drawn on the CPU, in memory the window system takes (macOS).
+    /// Frames drawn on the CPU, in memory the window system takes (shared
+    /// memory with the compositor on Wayland).
     memory,
-    /// Frames drawn on the CPU, in Wayland shared memory (`wl_shm`).
-    wl_shm,
     /// Frames drawn on the GPU into dmabufs the compositor takes (Linux).
     linux_dmabuf,
     /// Frames drawn on the GPU into the window's own swapchain (a Metal
@@ -465,7 +464,6 @@ pub const WindowBufferTransport = enum {
     pub fn name(t: WindowBufferTransport) []const u8 {
         return switch (t) {
             .memory => "CPU Memory",
-            .wl_shm => "wl_shm",
             .linux_dmabuf => "linux_dmabuf",
             .swapchain => "Swapchain",
             .custom => "Custom",
@@ -498,37 +496,42 @@ pub const WindowDecorations = enum {
 /// How the window system knows a GPU buffer's drawing is finished (and
 /// the window when it may draw in it again).
 pub const WindowBufferSync = enum {
-    /// There is nothing to wait for: the buffers are in CPU memory
-    /// (`wl_shm`, headless).
+    /// There is nothing to wait for: the buffers are in CPU memory.
     none,
     /// Fences the kernel keeps with each buffer (dmabuf implicit sync). Linux
     /// only.
     implicit,
-    /// Explicit timeline points (`wp_linux_drm_syncobj_v1`). Linux only.
-    linux_drm_syncobj_v1,
+    /// Explicit timeline points the window and the GPU signal (Linux DRM
+    /// syncobjs; `wp_linux_drm_syncobj_v1` on Wayland). Linux only.
+    explicit,
 
     pub fn name(s: WindowBufferSync) []const u8 {
         return switch (s) {
             .none => "None",
             .implicit => "Implicit (dma-buf fences)",
-            .linux_drm_syncobj_v1 => "wp_linux_drm_syncobj_v1",
+            .explicit => "Explicit (DRM syncobj)",
         };
     }
 };
 
-/// Active frame pacing and vertical synchronization protocols on the surface.
+/// How frames are paced and synchronized with the display, and what the
+/// window system offers for it. Only `vsync` is known everywhere; the rest
+/// are what Wayland compositors offer (and are false on other platforms).
 pub const WindowFrameSync = packed struct(u8) {
     /// Frames are shown at most once a refresh, without tearing.
     vsync: bool = false,
-    /// The compositor says when to draw the next frame (`wl_surface.frame`).
+    /// The window system says when to draw the next frame (Wayland's
+    /// `wl_surface.frame`).
     frame_callback: bool = false,
-    /// The compositor says when each frame was shown (`wp_presentation`).
+    /// The window system says when each frame was shown (Wayland's
+    /// `wp_presentation`).
     presentation_time: bool = false,
-    /// Each frame waits for the last to be shown, not replacing it (`wp_fifo_v1`).
-    fifo_v1: bool = false,
-    /// Frames can be set to be shown at a time (`wp_commit_timing_v1`: see
-    /// `Window.setPresentationTime`).
-    commit_timing_v1: bool = false,
+    /// Each frame waits for the last to be shown, not replacing it (Wayland's
+    /// `wp_fifo_v1`).
+    fifo: bool = false,
+    /// Frames can be set to be shown at a time (Wayland's
+    /// `wp_commit_timing_v1`: see `Window.setPresentationTime`).
+    timed_presentation: bool = false,
     /// Unused: it makes the struct a whole byte.
     _pad: u3 = 0,
 };
@@ -1000,7 +1003,8 @@ pub const Window = struct {
     pub fn frameSync(w: Window) WindowFrameSync {
         return w.vtable.frameSync(w.ptr);
     }
-    /// The display's refresh rate in hertz, or 0 if unknown (see `refreshNs`).
+    /// The refresh rate of the display the window is on, in hertz, or 0 if
+    /// unknown (see `refreshNs`).
     pub fn refreshHz(w: Window) f32 {
         return w.vtable.refreshHz(w.ptr);
     }

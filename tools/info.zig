@@ -47,9 +47,8 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
     };
 
     const transport_desc = switch (win.buffer_transport) {
-        .wl_shm => "Shared-memory buffers via wl_shm_pool",
         .linux_dmabuf => "Zero-copy GPU DMA-BUF via zwp_linux_dmabuf_v1",
-        .memory => "In-memory CPU pixel buffer",
+        .memory => "CPU pixel buffer in memory the window system takes",
         .swapchain => "GPU presentation swapchain",
         .custom => "Custom surface buffer transport",
     };
@@ -240,7 +239,6 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "wl_shm", .selected = win.buffer_transport == .wl_shm },
                     facet.Chip{ .label = "linux_dmabuf", .selected = win.buffer_transport == .linux_dmabuf },
                     facet.Chip{ .label = "Swapchain", .selected = win.buffer_transport == .swapchain },
                     facet.Chip{ .label = "CPU Memory", .selected = win.buffer_transport == .memory },
@@ -253,7 +251,7 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
                     facet.Chip{ .label = "Implicit", .selected = win.buffer_sync == .implicit },
-                    facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = win.buffer_sync == .linux_drm_syncobj_v1 },
+                    facet.Chip{ .label = "Explicit", .selected = win.buffer_sync == .explicit },
                     facet.Chip{ .label = "None", .selected = win.buffer_sync == .none },
                 }),
             },
@@ -265,8 +263,8 @@ fn buildReport(cx: *facet.BuildContext) facet.Widget {
                     facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
                     facet.Chip{ .label = "wl_surface.frame", .selected = win.frame_sync.frame_callback },
                     facet.Chip{ .label = "wp_presentation", .selected = win.frame_sync.presentation_time },
-                    facet.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo_v1 },
-                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.commit_timing_v1 },
+                    facet.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo },
+                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.timed_presentation },
                 }),
             },
             facet.Row{

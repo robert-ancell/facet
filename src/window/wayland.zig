@@ -730,11 +730,11 @@ pub const WaylandWindow = struct {
     }
 
     pub fn bufferTransport(w: *const WaylandWindow) window_mod.WindowBufferTransport {
-        return if (w.usingDmabuf()) .linux_dmabuf else .wl_shm;
+        return if (w.usingDmabuf()) .linux_dmabuf else .memory;
     }
 
     pub fn bufferSync(w: *const WaylandWindow) window_mod.WindowBufferSync {
-        if (w.usingDrmSyncobj()) return .linux_drm_syncobj_v1;
+        if (w.usingDrmSyncobj()) return .explicit;
         return if (w.usingDmabuf()) .implicit else .none;
     }
 
@@ -743,8 +743,8 @@ pub const WaylandWindow = struct {
             .vsync = w.vsync,
             .frame_callback = w.vsync,
             .presentation_time = w.presentation != null,
-            .fifo_v1 = w.fifo != null,
-            .commit_timing_v1 = w.commit_timer != null,
+            .fifo = w.fifo != null,
+            .timed_presentation = w.commit_timer != null,
         };
     }
 
@@ -3142,7 +3142,7 @@ test "WaylandWindow prefers linux_dmabuf over wl_shm when zwp_linux_dmabuf_v1 an
         .io = std.testing.io,
         .clipboard = .{ .gpa = std.testing.allocator, .io = std.testing.io },
     };
-    try std.testing.expectEqual(window_mod.WindowBufferTransport.wl_shm, win.bufferTransport());
+    try std.testing.expectEqual(window_mod.WindowBufferTransport.memory, win.bufferTransport());
 
     var disp: client.Display = undefined;
     const mod_msg = [_]u32{ p.fourcc.argb8888, 0, 0 };
@@ -3204,13 +3204,13 @@ test "WaylandWindow reports active Wayland extensions, synchronization protocols
     win.updateExtensions();
 
     try std.testing.expect(win.vsync);
-    try std.testing.expectEqual(window_mod.WindowBufferSync.linux_drm_syncobj_v1, win.bufferSync());
+    try std.testing.expectEqual(window_mod.WindowBufferSync.explicit, win.bufferSync());
     const fs = win.frameSync();
     try std.testing.expect(fs.vsync);
     try std.testing.expect(fs.frame_callback);
     try std.testing.expect(fs.presentation_time);
-    try std.testing.expect(fs.fifo_v1);
-    try std.testing.expect(fs.commit_timing_v1);
+    try std.testing.expect(fs.fifo);
+    try std.testing.expect(fs.timed_presentation);
 
     const exts = win.waylandExtensions();
     try std.testing.expectEqual(@as(usize, 5), exts.len);
@@ -3251,7 +3251,7 @@ test "WaylandWindow reports no buffer sync for wl_shm and explicit sync only whi
     try std.testing.expect(!win.frameSync().vsync);
     try std.testing.expect(!win.frameSync().frame_callback);
     win.syncobj_surface = .{ .id = 11 };
-    try std.testing.expectEqual(window_mod.WindowBufferSync.linux_drm_syncobj_v1, win.bufferSync());
+    try std.testing.expectEqual(window_mod.WindowBufferSync.explicit, win.bufferSync());
 }
 
 test "xdg_toplevel.wm_capabilities says whether the window can be minimized, maximized and made fullscreen" {
