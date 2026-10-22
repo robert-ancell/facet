@@ -7,7 +7,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const IconButton = @import("icon_button.zig").IconButton;
 const Overlay = @import("overlay.zig").Overlay;
 const Padding = @import("padding.zig").Padding;
@@ -96,7 +96,7 @@ pub const Snackbar = struct {
         else
             cx.make(ConstrainedBox{ .constraints = .{ .min_w = 240, .min_h = min_height }, .child = row });
 
-        const bar = cx.make(Decorated{
+        const bar = cx.make(RoundedBox{
             .color = t.surface_container_highest,
             .border_color = t.outline_variant,
             .radius = .all(8),

@@ -15,7 +15,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const painter_mod = @import("painter.zig");
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Padding = @import("padding.zig").Padding;
 const Row = @import("flex.zig").Row;
 const Icon = @import("icon.zig").Icon;
@@ -160,7 +160,7 @@ pub const Chip = struct {
     pub fn build(self: *const Chip, cx: *Context) Widget {
         const t = cx.theme();
         const text = cx.make(ConstrainedBox{ .constraints = .{ .max_w = 240 }, .child = cx.make(Text{ .text = self.label, .style = .{ .size = 15, .color = t.on_surface }, .wrap = false, .ellipsis = true }) });
-        return cx.make(Decorated{
+        return cx.make(RoundedBox{
             .color = t.secondary_container,
             .border_color = t.outline_variant,
             .radius = .all(16),

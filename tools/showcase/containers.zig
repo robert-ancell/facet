@@ -167,7 +167,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         common.section(cx, "Scrolling", "A scroll view moves what does not fit, with the wheel or by dragging its bar", cx.makeAll(.{
             facet.SizedBox{
                 .height = 180,
-                .child = cx.make(facet.Decorated{
+                .child = cx.make(facet.RoundedBox{
                     .border_color = t.outline_variant,
                     .radius = .all(8),
                     .child = cx.make(facet.ScrollView{ .child = scrollRows(cx, s) }),

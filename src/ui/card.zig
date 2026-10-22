@@ -4,7 +4,7 @@
 const gfx = @import("gfx");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
@@ -66,7 +66,7 @@ pub const Card = struct {
             .filled => if (self.selected) t.primary else null,
         };
 
-        const inner = cx.make(Decorated{
+        const inner = cx.make(RoundedBox{
             .color = bg,
             .border_color = border,
             .radius = .all(self.radius),

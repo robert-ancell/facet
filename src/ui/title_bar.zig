@@ -15,7 +15,7 @@ const WindowControls = @import("window").WindowControls;
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Column = @import("flex.zig").Column;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Row = @import("flex.zig").Row;
 const SizedBox = @import("sized_box.zig").SizedBox;
 const BarButton = @import("bar_button.zig").BarButton;
@@ -91,7 +91,7 @@ pub const TitleBar = struct {
             buttons[n] = cx.make(BarButton{ .on_press = f, .size = button_size, .icon = .close });
             n += 1;
         }
-        return cx.make(DragArea{ .on_drag = on_drag, .on_maximize = on_maximize, .child = cx.make(Decorated{ .color = t.surface_container, .child = cx.make(Bar{
+        return cx.make(DragArea{ .on_drag = on_drag, .on_maximize = on_maximize, .child = cx.make(RoundedBox{ .color = t.surface_container, .child = cx.make(Bar{
             .title = self.title,
             .children = cx.makeAll(.{
                 Text{ .text = self.title, .style = .{ .color = t.on_surface }, .wrap = false, .ellipsis = true },

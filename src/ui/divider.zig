@@ -3,7 +3,7 @@
 const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const Axis = @import("flex.zig").Axis;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Padding = @import("padding.zig").Padding;
 const SizedBox = @import("sized_box.zig").SizedBox;
 
@@ -22,7 +22,7 @@ pub const Divider = struct {
     color: ?gfx.Color = null,
 
     pub fn build(self: *const Divider, cx: *Context) Widget {
-        const line = cx.make(Decorated{ .color = self.color orelse cx.theme().outline_variant });
+        const line = cx.make(RoundedBox{ .color = self.color orelse cx.theme().outline_variant });
         const sized = cx.make(switch (self.axis) {
             .horizontal => SizedBox{ .height = self.thickness, .child = line },
             .vertical => SizedBox{ .width = self.thickness, .child = line },

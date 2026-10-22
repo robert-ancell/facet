@@ -9,7 +9,7 @@ const widget = @import("widget.zig");
 const Badge = @import("badge.zig").Badge;
 const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
@@ -87,7 +87,7 @@ pub const NavigationRail = struct {
         const w = self.width orelse if (self.extended) @as(f32, 190) else @as(f32, 80);
         return cx.make(SizedBox{
             .width = w,
-            .child = cx.make(Decorated{
+            .child = cx.make(RoundedBox{
                 .color = t.surface_container,
                 .child = cx.make(@import("scroll_view.zig").ScrollView{
                     .child = cx.make(Padding{
@@ -141,7 +141,7 @@ const RailDestination = struct {
             return cx.make(Pressable{
                 .on_press = self.on_press,
                 .interaction = &state.interaction,
-                .child = cx.make(Decorated{
+                .child = cx.make(RoundedBox{
                     .color = highlight,
                     .radius = .all(height / 2),
                     .child = cx.make(SizedBox{
@@ -167,7 +167,7 @@ const RailDestination = struct {
             });
         }
 
-        const pill = cx.make(Decorated{
+        const pill = cx.make(RoundedBox{
             .color = highlight,
             .radius = .all(16),
             .child = cx.make(SizedBox{

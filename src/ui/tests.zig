@@ -76,8 +76,8 @@ test "an overflowing row is clipped, and striped along the edge it overflows" {
     const build = struct {
         fn f(cx: *Context) Widget {
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 100, .height = 40, .child = cx.make(ui.Row{ .children = cx.makeAll(.{
-                ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = red }) },
-                ui.SizedBox{ .width = 80, .child = cx.make(ui.Decorated{ .color = blue }) },
+                ui.SizedBox{ .width = 80, .child = cx.make(ui.RoundedBox{ .color = red }) },
+                ui.SizedBox{ .width = 80, .child = cx.make(ui.RoundedBox{ .color = blue }) },
             }) }) }) });
         }
     }.f;
@@ -188,13 +188,13 @@ test "buttons call back, state lasts between frames, and hovering tints" {
     u.frame(300, 200, 1, Counter{});
     try testing.expectEqualStrings("Count 2", find(u.root.?, ui.Text).?.widget.as(ui.Text).?.text);
     // Still over the button: tinted.
-    try testing.expect(find(buttons.items[0], ui.Decorated).?.widget.as(ui.Decorated).?.color != null);
+    try testing.expect(find(buttons.items[0], ui.RoundedBox).?.widget.as(ui.RoundedBox).?.color != null);
 
     // The disabled button does nothing, and is not tinted.
     click(u, buttons.items[1]);
     u.frame(300, 200, 2, Counter{});
     try testing.expectEqual(@as(u32, 2), u.root.?.state(Counter.State).count);
-    try testing.expect(find(buttons.items[1], ui.Decorated).?.widget.as(ui.Decorated).?.color == null);
+    try testing.expect(find(buttons.items[1], ui.RoundedBox).?.widget.as(ui.RoundedBox).?.color == null);
 
     // Pressing, moving off and releasing is not a click.
     const b = buttons.items[0];
@@ -329,7 +329,7 @@ test "GPU draws go between the 2D layers, in the tree's order" {
     const build = struct {
         fn f(cx: *Context) Widget {
             return cx.make(ui.Overlay{ .children = cx.makeAll(.{
-                ui.Decorated{ .color = red },
+                ui.RoundedBox{ .color = red },
                 ui.Padding{ .padding = .all(10), .child = cx.make(GpuView{}) },
                 ui.Align.center(cx.make(ui.Text{ .text = "Over" })),
             }) });
@@ -525,7 +525,7 @@ const Maybe = struct {
     show: bool,
     pub fn build(self: *const Maybe, cx: *Context) Widget {
         return cx.make(ui.Column{ .children = if (self.show) cx.makeAll(.{
-            ui.SizedBox{ .width = 50, .height = 20, .child = cx.make(ui.Decorated{ .color = red }) },
+            ui.SizedBox{ .width = 50, .height = 20, .child = cx.make(ui.RoundedBox{ .color = red }) },
         }) else &.{} });
     }
 };
@@ -568,14 +568,14 @@ test "a grid puts as many cells in a row as fit" {
     const build = struct {
         fn f(cx: *Context) Widget {
             var cells: [7]Widget = undefined;
-            for (&cells) |*c| c.* = cx.make(ui.Decorated{ .color = red });
+            for (&cells) |*c| c.* = cx.make(ui.RoundedBox{ .color = red });
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 250, .child = cx.make(ui.Grid.fixed(cx, &cells, .{ .w = 60, .h = 40 }, 10)) }) });
         }
     }.f;
     u.frame(400, 300, 0, Root(build){});
     var cells: std.ArrayList(*Node) = .empty;
     defer cells.deinit(testing.allocator);
-    try findAll(u.root.?, ui.Decorated, &cells);
+    try findAll(u.root.?, ui.RoundedBox, &cells);
     // 250 wide: three 60-wide cells with 10 between (four would need 270).
     try testing.expectEqual(@as(usize, 7), cells.items.len);
     try testing.expectEqual(ui.Point{ 140, 0 }, cells.items[2].offset);
@@ -602,7 +602,7 @@ const VirtualItems = struct {
         items.made += 1;
         const p = cx.arena.create(Press) catch unreachable;
         p.* = .{ .items = items, .i = i };
-        return cx.make(ui.Pressable{ .on_press = .of(p, Press.f), .child = cx.make(ui.Decorated{ .color = if (i % 2 == 0) red else blue }) });
+        return cx.make(ui.Pressable{ .on_press = .of(p, Press.f), .child = cx.make(ui.RoundedBox{ .color = if (i % 2 == 0) red else blue }) });
     }
 };
 
@@ -769,7 +769,7 @@ test "a scroll view scrolls with the wheel and its bar, and paints only what sho
     const build = struct {
         fn f(cx: *Context) Widget {
             var rows: [20]Widget = undefined;
-            for (&rows, 0..) |*r, i| r.* = cx.make(ui.SizedBox{ .height = 50, .child = cx.make(ui.Decorated{ .color = if (i % 2 == 0) red else blue }) });
+            for (&rows, 0..) |*r, i| r.* = cx.make(ui.SizedBox{ .height = 50, .child = cx.make(ui.RoundedBox{ .color = if (i % 2 == 0) red else blue }) });
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = cx.make(ui.ScrollView{
                 .child = cx.make(ui.Column{ .cross_axis_alignment = .stretch, .children = &rows }),
             }) }) });
@@ -826,7 +826,7 @@ test "a scroll view scrolls with the wheel and its bar, and paints only what sho
     const short = struct {
         fn f(cx: *Context) Widget {
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = cx.make(ui.ScrollView{
-                .child = cx.make(ui.SizedBox{ .height = 100, .child = cx.make(ui.Decorated{ .color = red }) }),
+                .child = cx.make(ui.SizedBox{ .height = 100, .child = cx.make(ui.RoundedBox{ .color = red }) }),
             }) }) });
         }
     }.f;
@@ -843,7 +843,7 @@ test "a scroll view scrolls to the widget it is told to reveal, once" {
         target: ?u64,
         pub fn build(self: *const @This(), cx: *Context) Widget {
             var rows: [20]Widget = undefined;
-            for (&rows, 0..) |*r, i| r.* = cx.make(ui.SizedBox{ .height = 50, .child = cx.make(ui.Decorated{ .color = red }) }).withKey(i);
+            for (&rows, 0..) |*r, i| r.* = cx.make(ui.SizedBox{ .height = 50, .child = cx.make(ui.RoundedBox{ .color = red }) }).withKey(i);
             return cx.make(ui.Align{ .alignment = .top_left, .child = cx.make(ui.SizedBox{ .width = 200, .height = 300, .child = cx.make(ui.ScrollView{
                 .reveal = self.target,
                 .child = cx.make(ui.Column{ .cross_axis_alignment = .stretch, .children = &rows }),

@@ -28,7 +28,7 @@ pub const State = struct {
 
 /// A coloured box, `w` by `h`.
 fn box(cx: *facet.BuildContext, i: usize, w: ?f32, h: ?f32) facet.Widget {
-    return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.Decorated{
+    return cx.make(facet.SizedBox{ .width = w, .height = h, .child = cx.make(facet.RoundedBox{
         .color = .rgb(swatches[i % swatches.len]),
         .radius = .all(4),
     }) });
@@ -37,7 +37,7 @@ fn box(cx: *facet.BuildContext, i: usize, w: ?f32, h: ?f32) facet.Widget {
 /// `child` on a strip `height` high, showing the space it lays out in.
 fn strip(cx: *facet.BuildContext, height: f32, child: facet.Widget) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Expanded{ .child = cx.make(facet.SizedBox{ .height = height, .child = cx.make(facet.Decorated{
+    return cx.make(facet.Expanded{ .child = cx.make(facet.SizedBox{ .height = height, .child = cx.make(facet.RoundedBox{
         .color = t.surface_container,
         .radius = .all(6),
         .child = cx.make(facet.Padding{ .padding = .all(6), .child = child }),
@@ -80,7 +80,7 @@ const ThemePanel = struct {
 
     pub fn build(self: *const ThemePanel, cx: *facet.BuildContext) facet.Widget {
         const t = cx.theme();
-        return cx.make(facet.Decorated{
+        return cx.make(facet.RoundedBox{
             .color = t.surface,
             .border_color = t.outline_variant,
             .radius = .all(12),
@@ -110,7 +110,7 @@ const ThemePanel = struct {
 fn fruitPill(cx: *facet.BuildContext, name: []const u8, in_basket: bool) facet.Widget {
     const t = cx.theme();
     const fg = if (in_basket) t.on_primary_container else t.on_surface;
-    return cx.make(facet.Decorated{
+    return cx.make(facet.RoundedBox{
         .color = if (in_basket) t.primary_container else t.surface_container_highest,
         .radius = .all(16),
         .child = cx.make(facet.Padding{ .padding = .symmetric(12, 6), .child = cx.make(facet.Row{
@@ -150,7 +150,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 
     var tiles: [12]facet.Widget = undefined;
     for (&tiles, 0..) |*w, i| {
-        w.* = cx.make(facet.Decorated{
+        w.* = cx.make(facet.RoundedBox{
             .color = .rgb(swatches[i % swatches.len]),
             .radius = .all(6),
             .child = cx.make(facet.Align.center(cx.make(facet.Text{ .text = cx.fmt("{d}", .{i + 1}), .style = .{ .color = .rgb(0xffffff) }, .wrap = false }))),
@@ -163,11 +163,11 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         .{ .bottom_left, "bottom left" }, .{ .bottom_center, "bottom center" }, .{ .bottom_right, "bottom right" },
     };
     var layers: [alignments.len + 1]facet.Widget = undefined;
-    layers[0] = cx.make(facet.Decorated{ .color = t.surface_container, .radius = .all(8) });
+    layers[0] = cx.make(facet.RoundedBox{ .color = t.surface_container, .radius = .all(8) });
     for (layers[1..], alignments) |*w, a| {
         w.* = cx.make(facet.Align{ .alignment = a[0], .child = cx.make(facet.Padding{
             .padding = .all(8),
-            .child = cx.make(facet.Decorated{
+            .child = cx.make(facet.RoundedBox{
                 .color = t.primary_container,
                 .radius = .all(4),
                 .child = cx.make(facet.Padding{ .padding = .symmetric(8, 4), .child = cx.make(facet.Text{
@@ -228,20 +228,20 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                 facet.ConstrainedBox{ .constraints = .{ .max_w = 120 }, .child = cx.make(facet.Text{ .text = "At most 120 pixels wide, so this wraps", .style = .{ .size = 13, .color = t.on_surface } }) },
             })),
             common.labelled(cx, "Padding", cx.makeAll(.{
-                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(4), .child = box(cx, 3, 32, 16) }) },
-                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(16), .child = box(cx, 3, 32, 16) }) },
-                facet.Decorated{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .symmetric(32, 4), .child = box(cx, 3, 32, 16) }) },
+                facet.RoundedBox{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(4), .child = box(cx, 3, 32, 16) }) },
+                facet.RoundedBox{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .all(16), .child = box(cx, 3, 32, 16) }) },
+                facet.RoundedBox{ .color = t.surface_container_highest, .radius = .all(4), .child = cx.make(facet.Padding{ .padding = .symmetric(32, 4), .child = box(cx, 3, 32, 16) }) },
             })),
             common.labelled(cx, "Center", &.{strip(cx, 56, cx.make(facet.Align.center(box(cx, 4, 64, 20))))}),
         }),
         common.section(cx, "Decoration", "Backgrounds, borders, and rounded corners, the same or each different", cx.makeAll(.{
             facet.Row{ .spacing = 12, .children = cx.makeAll(.{
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(12) }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .all(24) }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .border_width = 2, .border_color = t.primary, .radius = .all(12) }) },
-                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.Decorated{ .color = t.primary_container, .border_width = 4, .border_color = t.outline, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .color = t.primary }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .color = t.primary, .radius = .all(12) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .color = t.primary, .radius = .all(24) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .color = t.primary, .radius = .{ .tl = 24, .br = 24 } }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .border_width = 2, .border_color = t.primary, .radius = .all(12) }) },
+                facet.SizedBox{ .width = 72, .height = 48, .child = cx.make(facet.RoundedBox{ .color = t.primary_container, .border_width = 4, .border_color = t.outline, .radius = .{ .tl = 4, .tr = 16, .br = 4, .bl = 16 } }) },
             }) },
         })),
         common.section(cx, "Themes", "Themed gives the widgets below it a theme of its own: here the opposite one, and one with colours changed", cx.makeAll(.{
@@ -256,7 +256,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                 facet.Pressable{
                     .on_press = .of(s, State.press),
                     .interaction = &s.hover,
-                    .child = cx.make(facet.SizedBox{ .width = 200, .height = 56, .child = cx.make(facet.Decorated{
+                    .child = cx.make(facet.SizedBox{ .width = 200, .height = 56, .child = cx.make(facet.RoundedBox{
                         .color = if (s.hover.pressed) t.primary else if (s.hover.hovered) t.primary_container else t.surface_container_highest,
                         .radius = .all(28),
                         .child = cx.make(facet.Align.center(cx.make(facet.Text{

@@ -9,7 +9,7 @@ const icons = @import("icons");
 const widget = @import("widget.zig");
 const Column = @import("flex.zig").Column;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Expanded = @import("expanded.zig").Expanded;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
@@ -135,7 +135,7 @@ pub const ListItem = struct {
         }
 
         const min_h: f32 = if (self.supporting_text.len > 0) two_line_height else one_line_height;
-        const body = cx.make(Decorated{
+        const body = cx.make(RoundedBox{
             .color = bg,
             .radius = .all(self.radius),
             .child = cx.make(ConstrainedBox{

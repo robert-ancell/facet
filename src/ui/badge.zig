@@ -6,7 +6,7 @@ const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Padding = @import("padding.zig").Padding;
 const SizedBox = @import("sized_box.zig").SizedBox;
 const Text = @import("text.zig").Text;
@@ -53,14 +53,14 @@ pub const Badge = struct {
             "";
 
         if (text.len == 0) {
-            return cx.make(Decorated{
+            return cx.make(RoundedBox{
                 .color = bg,
                 .radius = .all(4),
                 .child = cx.make(SizedBox{ .width = 8, .height = 8 }),
             });
         }
 
-        return cx.make(Decorated{
+        return cx.make(RoundedBox{
             .color = bg,
             .radius = .all(9),
             .child = cx.make(ConstrainedBox{

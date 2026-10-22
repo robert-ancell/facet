@@ -7,7 +7,7 @@ const facet = @import("facet");
 
 const Info = struct {
     pub fn build(_: *const Info, cx: *facet.BuildContext) facet.Widget {
-        return cx.make(facet.Decorated{
+        return cx.make(facet.RoundedBox{
             .color = cx.theme().surface,
             .child = cx.make(facet.ScrollView{
                 .child = cx.make(facet.Padding{

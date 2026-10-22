@@ -115,7 +115,7 @@ pub fn build(cx: *facet.BuildContext, s: *State, notes: *facet.TextDocument, cod
 
 fn aligned(cx: *facet.BuildContext, a: facet.TextAlign) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Expanded{ .child = cx.make(facet.Decorated{
+    return cx.make(facet.Expanded{ .child = cx.make(facet.RoundedBox{
         .color = t.surface_container,
         .radius = .all(6),
         .child = cx.make(facet.Padding{
@@ -129,7 +129,7 @@ fn area(cx: *facet.BuildContext, doc: *facet.TextDocument, highlighter: ?facet.T
     const t = cx.theme();
     return cx.make(facet.SizedBox{
         .height = height,
-        .child = cx.make(facet.Decorated{
+        .child = cx.make(facet.RoundedBox{
             .color = t.surface_container,
             .border_color = t.outline_variant,
             .radius = .all(8),

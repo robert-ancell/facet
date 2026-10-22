@@ -77,7 +77,7 @@ fn animation(cx: *facet.BuildContext, s: *State) []const facet.Widget {
         common.status(cx, "Each dot crosses in a second, eased differently"),
     }) });
     for (rows[1..][0..easings.len], &easings) |*row, *e| {
-        row.* = common.labelled(cx, e[0], cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.Decorated{
+        row.* = common.labelled(cx, e[0], cx.makeAll(.{facet.Expanded{ .child = cx.make(facet.RoundedBox{
             .color = t.surface_container,
             .radius = .all(14),
             .child = cx.make(facet.SizedBox{ .height = 28, .child = cx.make(facet.Padding{
@@ -106,7 +106,7 @@ fn animation(cx: *facet.BuildContext, s: *State) []const facet.Widget {
 fn dot(e: *const Named, cx: *facet.BuildContext, t: f32) facet.Widget {
     return cx.make(facet.Align{
         .alignment = .{ .x = e[1].lerp(@as(f32, -0.8), 0.8, t), .y = 0 },
-        .child = cx.make(facet.SizedBox{ .width = 20, .height = 20, .child = cx.make(facet.Decorated{
+        .child = cx.make(facet.SizedBox{ .width = 20, .height = 20, .child = cx.make(facet.RoundedBox{
             .color = cx.theme().primary,
             .radius = .all(10),
         }) }),
@@ -119,7 +119,7 @@ fn pulse(cx: *facet.BuildContext, t: f32) facet.Widget {
     const ease = facet.Easing.inOutSine;
     return cx.make(facet.Align{
         .alignment = .center_left,
-        .child = cx.make(facet.SizedBox{ .width = ease.lerp(@as(f32, 40), 240, t), .height = 28, .child = cx.make(facet.Decorated{
+        .child = cx.make(facet.SizedBox{ .width = ease.lerp(@as(f32, 40), 240, t), .height = 28, .child = cx.make(facet.RoundedBox{
             .color = ease.lerp(th.primary, th.@"error", t),
             .radius = .all(14),
         }) }),

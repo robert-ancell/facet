@@ -8,7 +8,7 @@ const icons = @import("icons");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const Column = @import("flex.zig").Column;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const FilledButton = @import("button.zig").FilledButton;
 const TextButton = @import("button.zig").TextButton;
 const Icon = @import("icon.zig").Icon;
@@ -119,7 +119,7 @@ pub const Dialog = struct {
         }
 
         const card = cx.make(SurfaceBlocker{
-            .child = cx.make(Decorated{
+            .child = cx.make(RoundedBox{
                 .color = t.surface_container_highest,
                 .border_color = t.outline_variant,
                 .radius = .all(20),
@@ -142,7 +142,7 @@ pub const Dialog = struct {
             .children = cx.makeAll(.{
                 Scrim{
                     .on_dismiss = self.on_dismiss,
-                    .child = cx.make(Decorated{ .color = gfx.Color.argb(0x88000000) }),
+                    .child = cx.make(RoundedBox{ .color = gfx.Color.argb(0x88000000) }),
                 },
                 Align.center(card),
             }),

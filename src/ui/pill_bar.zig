@@ -6,7 +6,7 @@ const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
@@ -98,7 +98,7 @@ pub const PillButton = struct {
             })
         else
             label_text;
-        return cx.make(Pressable{ .on_press = self.on_press, .interaction = &state.interaction, .child = cx.make(Decorated{
+        return cx.make(Pressable{ .on_press = self.on_press, .interaction = &state.interaction, .child = cx.make(RoundedBox{
             .color = bg,
             .radius = radius,
             .child = cx.make(SizedBox{ .height = height, .child = cx.make(Padding{

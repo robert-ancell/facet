@@ -7,7 +7,7 @@ const gfx = @import("gfx");
 const icons = @import("icons");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Icon = @import("icon.zig").Icon;
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
@@ -99,7 +99,7 @@ pub const IconButton = struct {
         return cx.make(Pressable{
             .on_press = self.on_press,
             .interaction = &state.interaction,
-            .child = cx.make(Decorated{
+            .child = cx.make(RoundedBox{
                 .color = bg,
                 .border_color = border,
                 .radius = .all(self.size / 2),

@@ -57,7 +57,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
             }) },
             facet.SizedBox{
                 .height = 340,
-                .child = cx.make(facet.Decorated{
+                .child = cx.make(facet.RoundedBox{
                     .border_color = t.outline_variant,
                     .radius = .all(8),
                     .child = if (s.match_count == 0)
@@ -76,7 +76,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
         common.section(cx, cx.fmt("“{s}”", .{@tagName(s.chosen)}), "The icon chosen, at sizes and in colours", cx.makeAll(.{
             facet.Row{ .spacing = 20, .cross_axis_alignment = .end, .children = &sizes },
             facet.Row{ .spacing = 16, .cross_axis_alignment = .center, .children = &tinted },
-            facet.Decorated{ .color = t.surface_container, .radius = .all(6), .child = cx.make(facet.Padding{
+            facet.RoundedBox{ .color = t.surface_container, .radius = .all(6), .child = cx.make(facet.Padding{
                 .padding = .symmetric(12, 8),
                 .child = cx.make(facet.Text{ .text = cx.fmt("cx.make(facet.Icon{{ .icon = .{f}, .size = 24 }})", .{std.zig.fmtId(@tagName(s.chosen))}), .style = .{ .size = 13, .color = t.on_surface } }),
             }) },

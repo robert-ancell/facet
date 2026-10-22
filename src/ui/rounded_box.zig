@@ -1,4 +1,4 @@
-//! Decorated: a rounded rectangle behind the child, filled, outlined or
+//! RoundedBox: a rounded rectangle behind the child, filled, outlined or
 //! both.
 
 const gfx = @import("gfx");
@@ -12,7 +12,7 @@ const Node = widget.WidgetNode;
 
 /// A rounded rectangle behind the child: filled, outlined, or both. It is
 /// the child's size, or as big as allowed without one.
-pub const Decorated = struct {
+pub const RoundedBox = struct {
     /// The fill (none, if null).
     color: ?gfx.Color = null,
     /// The colour of the outline (none, if null).
@@ -24,7 +24,7 @@ pub const Decorated = struct {
     /// The widget in it.
     child: ?Widget = null,
 
-    pub fn paint(self: *const Decorated, n: *Node, p: *Painter) void {
+    pub fn paint(self: *const RoundedBox, n: *Node, p: *Painter) void {
         const c = p.canvas();
         const r: gfx.Rect = .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h };
         if (self.color) |col| c.fillRoundedRect(r, self.radius, col);
@@ -32,7 +32,7 @@ pub const Decorated = struct {
     }
 
     /// Filled, it takes the pointer (what is under it cannot be clicked).
-    pub fn hitTest(self: *const Decorated, _: *Node, _: Point) bool {
+    pub fn hitTest(self: *const RoundedBox, _: *Node, _: Point) bool {
         return if (self.color) |col| col.a > 0 else false;
     }
 };

@@ -88,7 +88,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
 /// The cube, drawn with `api` by its widget (`Area`, as `facet.VulkanArea`).
 fn area(cx: *facet.BuildContext, s: *State, comptime Area: fn (type) type, comptime api: cube.Api, name: []const u8) facet.Widget {
     const t = cx.theme();
-    return cx.make(facet.Decorated{
+    return cx.make(facet.RoundedBox{
         .border_color = t.outline_variant,
         .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(Area(cube.Scene(api)){
             .scene = .{ .angle = s.angle, .tilt = s.tilt },
@@ -105,7 +105,7 @@ fn label(cx: *facet.BuildContext, text: []const u8) facet.Widget {
     const t = cx.theme();
     return cx.make(facet.Align{ .alignment = .top_left, .child = cx.make(facet.Padding{
         .padding = .all(10),
-        .child = cx.make(facet.Decorated{
+        .child = cx.make(facet.RoundedBox{
             .color = t.surface_container_highest.withAlpha(0.88),
             .radius = .all(6),
             .child = cx.make(facet.Padding{ .padding = .symmetric(10, 4), .child = cx.make(facet.Text{

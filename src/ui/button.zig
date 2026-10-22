@@ -9,7 +9,7 @@ const gfx = @import("gfx");
 const widget = @import("widget.zig");
 const Align = @import("align.zig").Align;
 const ConstrainedBox = @import("constrained_box.zig").ConstrainedBox;
-const decorated = @import("decorated.zig");
+const rounded_box = @import("rounded_box.zig");
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Padding = @import("padding.zig").Padding;
 const Pressable = @import("pressable.zig").Pressable;
@@ -23,7 +23,7 @@ const Widget = widget.Widget;
 const Context = widget.BuildContext;
 const Callback = widget.Callback;
 const Color = gfx.Color;
-const Decorated = decorated.Decorated;
+const RoundedBox = rounded_box.RoundedBox;
 
 /// Every button's height, and the size of its icons.
 pub const height = 40;
@@ -216,7 +216,7 @@ fn buildButton(cx: *Context, state: anytype, b: anytype, look: Look) Widget {
     return cx.make(Pressable{
         .on_press = b.on_press,
         .interaction = &state.interaction,
-        .child = cx.make(Decorated{
+        .child = cx.make(RoundedBox{
             .color = look.bg,
             .border_color = look.border,
             .radius = .all(height / 2),

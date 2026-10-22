@@ -107,7 +107,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
     return common.page(cx, &.{
         common.section(cx, "A slippy map", "Drag it, and zoom with the wheel or a double click; zoomed out, it is a globe", cx.makeAll(.{
             facet.SizedBox{ .height = 400, .child = cx.make(facet.Overlay{ .children = cx.makeAll(.{
-                facet.Decorated{
+                facet.RoundedBox{
                     .border_color = t.outline_variant,
                     .child = cx.make(facet.Padding{ .padding = .all(1), .child = cx.make(facet.MapView{
                         .source = source,
@@ -119,7 +119,7 @@ pub fn build(cx: *facet.BuildContext, s: *State) facet.Widget {
                         .max_zoom = max_zoom,
                     }) }),
                 },
-                facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.Decorated{
+                facet.Align{ .alignment = .top_right, .child = cx.make(facet.Padding{ .padding = .all(10), .child = cx.make(facet.RoundedBox{
                     .color = t.surface.withAlpha(0.9),
                     .radius = .all(20),
                     .child = cx.make(facet.Column{ .fill = false, .children = cx.makeAll(.{

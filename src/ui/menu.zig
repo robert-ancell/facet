@@ -16,7 +16,7 @@ const widget = @import("widget.zig");
 const focus_mod = @import("focus.zig");
 const PointerInteraction = @import("pressable.zig").PointerInteraction;
 const Pressable = @import("pressable.zig").Pressable;
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Divider = @import("divider.zig").Divider;
 const Icon = @import("icon.zig").Icon;
 const SizedBox = @import("sized_box.zig").SizedBox;
@@ -318,7 +318,7 @@ const MenuPanel = struct {
             else
                 cx.make(MenuRow{ .item = it, .menu = self.menu, .level = self.level, .index = i, .leading_slot = leading });
         }
-        return cx.make(Decorated{
+        return cx.make(RoundedBox{
             .color = t.surface_container,
             .border_color = t.outline_variant,
             .radius = .all(4),
@@ -483,7 +483,7 @@ const MenuRow = struct {
             .on_press = if (enabled) .of(state, State.press) else null,
             .interaction = &state.interaction,
             .focus_radius = 0,
-            .child = cx.make(Decorated{ .color = if (chosen) t.secondary_container else null, .child = cx.make(Decorated{ .color = fill, .child = cx.make(SizedBox{
+            .child = cx.make(RoundedBox{ .color = if (chosen) t.secondary_container else null, .child = cx.make(RoundedBox{ .color = fill, .child = cx.make(SizedBox{
                 .height = item_height,
                 .child = cx.make(Padding{ .padding = .symmetric(12, 0), .child = cx.make(Row{ .spacing = 12, .children = parts[0..count] }) }),
             }) }) }),

@@ -198,7 +198,7 @@ pub const Showcase = struct {
             }),
         });
 
-        return cx.make(facet.Decorated{
+        return cx.make(facet.RoundedBox{
             .color = t.surface,
             .child = feedback.wrap(cx, &s.feedback, body),
         });

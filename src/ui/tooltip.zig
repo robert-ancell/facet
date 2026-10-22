@@ -4,7 +4,7 @@
 const std = @import("std");
 const geometry = @import("geometry.zig");
 const widget = @import("widget.zig");
-const Decorated = @import("decorated.zig").Decorated;
+const RoundedBox = @import("rounded_box.zig").RoundedBox;
 const Padding = @import("padding.zig").Padding;
 const Text = @import("text.zig").Text;
 
@@ -48,7 +48,7 @@ pub const Bubble = struct {
 
     pub fn build(self: *const Bubble, cx: *Context) Widget {
         const t = cx.theme();
-        return cx.make(Decorated{
+        return cx.make(RoundedBox{
             .color = t.surface_container_highest,
             .border_color = t.outline_variant,
             .radius = .all(6),
