@@ -1,5 +1,6 @@
 //! Reports the windowing, buffer, synchronization and rendering backends
-//! facet picks on this system, live from `cx.backend()` (`zig build run-info`).
+//! facet picks on this system, live from `cx.backend()` and `cx.window()`
+//! (`zig build run-info`).
 
 const std = @import("std");
 const facet = @import("facet");
@@ -34,6 +35,7 @@ fn sectionHeading(cx: *facet.Context, title: []const u8, subtitle: []const u8) f
 fn buildReport(cx: *facet.Context) facet.Widget {
     const t = cx.theme();
     const info = cx.backend();
+    const win = cx.window();
 
     const platform_desc = switch (info.platform) {
         .wayland => "Native Wayland protocol client (xdg_toplevel)",
@@ -44,7 +46,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
         .custom => "Custom window backend implementation",
     };
 
-    const transport_desc = switch (info.buffer_transport) {
+    const transport_desc = switch (win.buffer_transport) {
         .wl_shm => "Shared-memory buffers via wl_shm_pool",
         .linux_dmabuf => "Zero-copy GPU DMA-BUF via zwp_linux_dmabuf_v1",
         .memory => "In-memory CPU pixel buffer",
@@ -61,38 +63,38 @@ fn buildReport(cx: *facet.Context) facet.Widget {
         .custom => "Custom 2D rendering backend",
     };
 
-    const decorations_desc = switch (info.decorations) {
+    const decorations_desc = switch (win.decorations) {
         .client => "Toolkit TitleBar, drop shadows & rounded corners (CSD)",
         .server => "Compositor / window manager frame (zxdg_decoration_v1 SSD)",
         .none => "No window decorations (headless / offscreen)",
     };
 
-    const window_state = if (info.fullscreen)
+    const window_state = if (win.fullscreen)
         "Fullscreen"
-    else if (info.maximized)
+    else if (win.maximized)
         "Maximized"
-    else if (info.tiled)
+    else if (win.tiled)
         "Tiled"
-    else if (info.decorations == .client)
+    else if (win.decorations == .client)
         "Floating (with CSD shadow & rounded corners)"
     else
         "Floating";
 
-    const sync_text = if (info.refresh_hz > 0)
+    const sync_text = if (win.refresh_hz > 0)
         cx.fmt("Frame pacing: {s} ({d:.1} Hz)  ·  Buffer sync: {s}", .{
-            if (info.frame_sync.vsync) "VSync enabled" else "Uncapped",
-            info.refresh_hz,
-            info.buffer_sync.name(),
+            if (win.frame_sync.vsync) "VSync enabled" else "Uncapped",
+            win.refresh_hz,
+            win.buffer_sync.name(),
         })
     else
         cx.fmt("Frame pacing: {s}  ·  Buffer sync: {s}", .{
-            if (info.frame_sync.vsync) "VSync enabled" else "Uncapped",
-            info.buffer_sync.name(),
+            if (win.frame_sync.vsync) "VSync enabled" else "Uncapped",
+            win.buffer_sync.name(),
         });
 
-    const vsync_badge = if (info.refresh_hz > 0)
-        cx.fmt("{s} · {d:.0} Hz", .{ if (info.frame_sync.vsync) "VSync" else "Off", info.refresh_hz })
-    else if (info.frame_sync.vsync)
+    const vsync_badge = if (win.refresh_hz > 0)
+        cx.fmt("{s} · {d:.0} Hz", .{ if (win.frame_sync.vsync) "VSync" else "Off", win.refresh_hz })
+    else if (win.frame_sync.vsync)
         "VSync ON"
     else
         "VSync OFF";
@@ -143,7 +145,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
             sectionHeading(
                 cx,
                 "Active Runtime Backend",
-                "Live windowing platform, surface buffer transport, window decorations, and 2D renderer reported by cx.backend()",
+                "Live windowing platform, surface buffer transport, window decorations, and 2D renderer reported by cx.backend() and cx.window()",
             ),
             facet.Row{
                 .spacing = 16,
@@ -187,7 +189,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                                             facet.Text{ .text = "Buffer Transport", .style = .{ .size = 13, .color = t.on_surface_variant }, .wrap = false },
                                         }),
                                     },
-                                    facet.Text{ .text = info.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
+                                    facet.Text{ .text = win.buffer_transport.name(), .style = .{ .size = 20, .color = t.on_surface }, .wrap = false },
                                     facet.Text{ .text = transport_desc, .style = .{ .size = 13, .color = t.on_surface_variant } },
                                 }),
                             }),
@@ -238,10 +240,10 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Surface Buffers:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "wl_shm", .selected = info.buffer_transport == .wl_shm },
-                    facet.Chip{ .label = "linux_dmabuf", .selected = info.buffer_transport == .linux_dmabuf },
-                    facet.Chip{ .label = "Swapchain", .selected = info.buffer_transport == .swapchain },
-                    facet.Chip{ .label = "CPU Memory", .selected = info.buffer_transport == .memory },
+                    facet.Chip{ .label = "wl_shm", .selected = win.buffer_transport == .wl_shm },
+                    facet.Chip{ .label = "linux_dmabuf", .selected = win.buffer_transport == .linux_dmabuf },
+                    facet.Chip{ .label = "Swapchain", .selected = win.buffer_transport == .swapchain },
+                    facet.Chip{ .label = "CPU Memory", .selected = win.buffer_transport == .memory },
                 }),
             },
             facet.Row{
@@ -250,9 +252,9 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Buffer Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Implicit", .selected = info.buffer_sync == .implicit },
-                    facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = info.buffer_sync == .linux_drm_syncobj_v1 },
-                    facet.Chip{ .label = "None", .selected = info.buffer_sync == .none },
+                    facet.Chip{ .label = "Implicit", .selected = win.buffer_sync == .implicit },
+                    facet.Chip{ .label = "wp_linux_drm_syncobj_v1", .selected = win.buffer_sync == .linux_drm_syncobj_v1 },
+                    facet.Chip{ .label = "None", .selected = win.buffer_sync == .none },
                 }),
             },
             facet.Row{
@@ -261,10 +263,10 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Frame Sync:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "wl_surface.frame", .selected = info.frame_sync.frame_callback },
-                    facet.Chip{ .label = "wp_presentation", .selected = info.frame_sync.presentation_time },
-                    facet.Chip{ .label = "wp_fifo_v1", .selected = info.frame_sync.fifo_v1 },
-                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = info.frame_sync.commit_timing_v1 },
+                    facet.Chip{ .label = "wl_surface.frame", .selected = win.frame_sync.frame_callback },
+                    facet.Chip{ .label = "wp_presentation", .selected = win.frame_sync.presentation_time },
+                    facet.Chip{ .label = "wp_fifo_v1", .selected = win.frame_sync.fifo_v1 },
+                    facet.Chip{ .label = "wp_commit_timing_v1", .selected = win.frame_sync.commit_timing_v1 },
                 }),
             },
             facet.Row{
@@ -273,9 +275,9 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                 .cross_axis_alignment = .center,
                 .children = cx.makeAll(.{
                     facet.Text{ .text = "Decorations:", .style = .{ .size = 14, .color = t.on_surface_variant }, .wrap = false },
-                    facet.Chip{ .label = "Client-side (CSD)", .selected = info.decorations == .client },
-                    facet.Chip{ .label = "Server-side (SSD)", .selected = info.decorations == .server },
-                    facet.Chip{ .label = "None", .selected = info.decorations == .none },
+                    facet.Chip{ .label = "Client-side (CSD)", .selected = win.decorations == .client },
+                    facet.Chip{ .label = "Server-side (SSD)", .selected = win.decorations == .server },
+                    facet.Chip{ .label = "None", .selected = win.decorations == .none },
                 }),
             },
             facet.Row{
@@ -312,7 +314,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                             .supporting_text = cx.fmt("{s}  ·  {s}", .{ platform_desc, transport_desc }),
                             .leading_icon = .computer,
                             .trailing = cx.make(facet.Badge{
-                                .label = cx.fmt("{s} ({s})", .{ info.platform.name(), info.buffer_transport.name() }),
+                                .label = cx.fmt("{s} ({s})", .{ info.platform.name(), win.buffer_transport.name() }),
                                 .color = t.primary,
                             }),
                         },
@@ -328,7 +330,7 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                             .headline = "Window Decorations",
                             .supporting_text = decorations_desc,
                             .leading_icon = .widgets,
-                            .trailing = cx.make(facet.Badge{ .label = info.decorations.name(), .color = t.primary }),
+                            .trailing = cx.make(facet.Badge{ .label = win.decorations.name(), .color = t.primary }),
                         },
                         facet.Divider{ .inset = 16 },
                         facet.ListItem{
@@ -342,10 +344,10 @@ fn buildReport(cx: *facet.Context) facet.Widget {
                             .headline = "Surface Resolution & HiDPI Scale",
                             .supporting_text = cx.fmt(
                                 "Logical: {d} × {d} px  ·  Physical buffer: {d} × {d} px",
-                                .{ info.logical_size[0], info.logical_size[1], info.physical_size[0], info.physical_size[1] },
+                                .{ win.logical_size[0], win.logical_size[1], win.physical_size[0], win.physical_size[1] },
                             ),
                             .leading_icon = .fullscreen,
-                            .trailing_text = cx.fmt("{d}x scale", .{info.scale}),
+                            .trailing_text = cx.fmt("{d}x scale", .{win.scale}),
                         },
                         facet.Divider{ .inset = 16 },
                         facet.ListItem{

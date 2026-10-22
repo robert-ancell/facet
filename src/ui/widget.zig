@@ -422,32 +422,55 @@ pub const Context = struct {
         cx.ui.needs_frame = true;
     }
 
-    /// Information about the active windowing platform, surface buffer
-    /// transport (`wl_shm`, `linux_dmabuf`, ...), and 2D rendering backend
-    /// (`software`, `opengl`, `vulkan`, ...).
+    /// What the app runs on: the windowing platform, its extensions, the
+    /// 2D renderer (`software`, `opengl`, `vulkan`, ...), and the keyboard's
+    /// layout.
     pub fn backend(cx: *const Context) BackendInfo {
         return cx.ui.backend();
     }
+
+    /// How the widget's window is shown: its buffers (`wl_shm`,
+    /// `linux_dmabuf`, ...) and how they are synchronized and paced, its
+    /// decorations, size, scale, and state.
+    pub fn window(cx: *const Context) WindowInfo {
+        return cx.ui.windowInfo();
+    }
 };
 
-/// Describes the active windowing platform, surface buffer transport,
-/// synchronization protocols, and rendering backend for the UI.
+/// What the app runs on: the same for all its windows (see `WindowInfo`
+/// for a window's own).
 pub const BackendInfo = struct {
     /// Windowing platform (`wayland`, `headless`, `x11`, `windows`, `macos`, `custom`).
     platform: window_mod.Platform = .headless,
+    /// The window system's protocol extensions used (for Wayland, the
+    /// global interfaces bound).
+    extensions: []const []const u8 = &.{},
+    /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `metal`,
+    /// `d3d11`, `custom`).
+    renderer: gfx.RenderBackend = .software,
+    /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
+    keyboard: window_mod.Layout = .{},
+
+    pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
+        for (info.extensions) |ext| {
+            if (std.mem.eql(u8, ext, ext_name)) return true;
+        }
+        return false;
+    }
+};
+
+/// How a window is shown (see `BackendInfo` for what all the app's windows
+/// share).
+pub const WindowInfo = struct {
     /// Surface buffer transport (`wl_shm`, `linux_dmabuf`, `memory`, `swapchain`, `custom`).
     buffer_transport: window_mod.BufferTransport = .memory,
     /// Buffer synchronization mechanism (`none`, `implicit`, `linux_drm_syncobj_v1`).
     buffer_sync: window_mod.BufferSync = .none,
     /// Active frame pacing and vertical synchronization protocols.
     frame_sync: window_mod.FrameSync = .{},
-    /// Display refresh rate in Hz (from `wp_presentation`), or `0.0` if unknown.
+    /// The refresh rate of the display it is on, in Hz (from
+    /// `wp_presentation`), or `0.0` if unknown.
     refresh_hz: f32 = 0.0,
-    /// The window system's protocol extensions the window uses (for
-    /// Wayland, the global interfaces bound).
-    extensions: []const []const u8 = &.{},
-    /// 2D UI rendering backend (`software`, `opengl`, `vulkan`, `custom`).
-    renderer: gfx.RenderBackend = .software,
     /// Window decoration mode (`none`, `client`, `server`).
     decorations: window_mod.Decorations = .none,
     /// Logical window size in pixels.
@@ -456,19 +479,10 @@ pub const BackendInfo = struct {
     physical_size: [2]u32 = .{ 0, 0 },
     /// HiDPI integer buffer scale factor.
     scale: u32 = 1,
-    /// The keyboard layout in use (`.name()` "English (UK)", `.code()` "gb").
-    keyboard: window_mod.Layout = .{},
     /// Window state flags.
     maximized: bool = false,
     fullscreen: bool = false,
     tiled: bool = false,
-
-    pub fn hasExtension(info: BackendInfo, ext_name: []const u8) bool {
-        for (info.extensions) |ext| {
-            if (std.mem.eql(u8, ext, ext_name)) return true;
-        }
-        return false;
-    }
 };
 
 pub const Edges = struct {

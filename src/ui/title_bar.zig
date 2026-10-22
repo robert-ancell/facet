@@ -345,7 +345,7 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     try testing.expect(u.title_bar_root != null);
     try testing.expectEqual(@as(f32, TitleBar.height), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600 - TitleBar.height), u.root.?.size.h);
-    try testing.expectEqual(window_mod.Decorations.client, u.backend().decorations);
+    try testing.expectEqual(window_mod.Decorations.client, u.windowInfo().decorations);
 
     // Clicking the automatic title bar's close button triggers controls.close_requested.
     const at: geometry.Point = .{ 800 - 8 - 17, 22 };
@@ -362,7 +362,7 @@ test "Ui automatically adds TitleBar on Wayland with client-side decorations and
     try testing.expect(u.title_bar_root == null);
     try testing.expectEqual(@as(f32, 0), u.root.?.offset[1]);
     try testing.expectEqual(@as(f32, 600), u.root.?.size.h);
-    try testing.expectEqual(window_mod.Decorations.server, u.backend().decorations);
+    try testing.expectEqual(window_mod.Decorations.server, u.windowInfo().decorations);
 }
 
 fn findText(n: *Node) ?*Node {

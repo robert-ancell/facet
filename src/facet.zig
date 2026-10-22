@@ -29,6 +29,7 @@ pub const Widget = ui.Widget;
 pub const Context = ui.Context;
 pub const Anchor = ui.Anchor;
 pub const BackendInfo = ui.BackendInfo;
+pub const WindowInfo = ui.WindowInfo;
 pub const Node = ui.Node;
 pub const Event = ui.Event;
 pub const Cursor = ui.Cursor;

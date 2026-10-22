@@ -559,24 +559,29 @@ pub const Ui = struct {
         return ui.win != null and ui.decorations == .client and !ui.fullscreen;
     }
 
-    /// Returns information about the active windowing platform, surface buffer
-    /// transport, synchronization protocols, and 2D rendering backend.
+    /// What the app runs on (see `widget.BackendInfo`).
     pub fn backend(ui: *const Ui) widget.BackendInfo {
+        return .{
+            .platform = if (ui.win) |w| w.platform() else .headless,
+            .extensions = if (ui.win) |w| w.extensions() else &.{},
+            .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
+            .keyboard = ui.keyboard,
+        };
+    }
+
+    /// How its window is shown (see `widget.WindowInfo`).
+    pub fn windowInfo(ui: *const Ui) widget.WindowInfo {
         const s = @max(ui.scale, 1);
         const lsize = if (ui.win) |w| w.size() else ui.logical_size;
         return .{
-            .platform = if (ui.win) |w| w.platform() else .headless,
             .buffer_transport = if (ui.win) |w| w.bufferTransport() else .memory,
             .buffer_sync = if (ui.win) |w| w.bufferSync() else .none,
             .frame_sync = if (ui.win) |w| w.frameSync() else .{},
             .refresh_hz = if (ui.win) |w| w.refreshHz() else 0.0,
-            .extensions = if (ui.win) |w| w.extensions() else &.{},
-            .renderer = if (ui.shared.renderer) |r| r.backend() else .software,
             .decorations = ui.decorations,
             .logical_size = lsize,
             .physical_size = .{ lsize[0] * s, lsize[1] * s },
             .scale = s,
-            .keyboard = ui.keyboard,
             .maximized = ui.maximized,
             .fullscreen = ui.fullscreen,
             .tiled = ui.tiled,
