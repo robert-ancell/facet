@@ -2450,7 +2450,7 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     // presentational, as ARIA has a button's), the check box, the slider,
     // the two icon buttons (named by what describes them), and the field;
     // the hidden text not at all.
-    const want = [_]struct { ui.AccessibleRole, []const u8, usize }{
+    const want = [_]struct { ui.Accessible.Role, []const u8, usize }{
         .{ .heading, "Settings", 1 }, .{ .paragraph, "", 0 },   .{ .button, "OK", 0 },
         .{ .checkbox, "Wi-Fi", 0 },   .{ .slider, "", 0 },      .{ .button, "Zoom in", 0 },
         .{ .button, "remove", 0 },    .{ .textbox, "Name", 0 },
@@ -2467,7 +2467,7 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
     try testing.expectEqualStrings("Remove it", objs[objs[0].children[6]].info.description);
     // States and values; actions do what pressing does.
     const check_box = &objs[objs[0].children[3]];
-    try testing.expectEqual(ui.AccessibleTristate.false, check_box.info.checked.?);
+    try testing.expectEqual(ui.Accessible.Tristate.false, check_box.info.checked.?);
     check_box.info.activate.?.call();
     try testing.expect(checked);
     const slider = &objs[objs[0].children[4]];
@@ -2490,7 +2490,7 @@ test "the accessibility tree: roles, names, states and values of the widgets, an
         testing.allocator.destroy(again);
     }
     for (objs, again.objects) |a, b| try testing.expectEqual(a.id, b.id);
-    try testing.expectEqual(ui.AccessibleTristate.true, again.objects[again.objects[0].children[3]].info.checked.?);
+    try testing.expectEqual(ui.Accessible.Tristate.true, again.objects[again.objects[0].children[3]].info.checked.?);
 }
 
 const FocusApp = struct {
@@ -2619,7 +2619,7 @@ test "Tab moves the keyboard's focus through what takes it, and keys use what ha
     const objs = tree.objects;
     try testing.expect(objs[objs[0].children[2]].focusable);
     const f = tree.focused.?;
-    try testing.expectEqual(ui.AccessibleRole.radio, objs[f].info.role);
+    try testing.expectEqual(ui.Accessible.Role.radio, objs[f].info.role);
     try testing.expect(objs[f].focused);
     try testing.expect(!objs[objs[0].children[2]].focused);
 }

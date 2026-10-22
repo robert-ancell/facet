@@ -37,7 +37,7 @@ const Callback = widget.Callback;
 const Rect = geometry.Rect;
 
 /// What an object is: WAI-ARIA 1.2's roles (the concrete ones).
-pub const Role = enum {
+pub const RoleKind = enum {
     alert,
     alertdialog,
     application,
@@ -123,7 +123,7 @@ pub const Role = enum {
 
     /// Whether ARIA says the role's children are presentational: part of
     /// it (its name comes from them), not objects of their own.
-    pub fn childrenPresentational(r: Role) bool {
+    pub fn childrenPresentational(r: RoleKind) bool {
         return switch (r) {
             .button, .checkbox, .img, .math, .menuitemcheckbox, .menuitemradio, .meter, .option, .progressbar, .radio, .scrollbar, .separator, .slider, .@"switch", .tab => true,
             else => false,
@@ -132,7 +132,7 @@ pub const Role = enum {
 };
 
 /// ARIA's tristate (`aria-checked`, `aria-pressed`).
-pub const Tristate = enum {
+pub const TristateKind = enum {
     /// Off, unchecked or not pressed.
     false,
     /// On, checked or pressed.
@@ -141,13 +141,13 @@ pub const Tristate = enum {
     /// are only partly checked).
     mixed,
 
-    pub fn of(v: bool) Tristate {
+    pub fn of(v: bool) TristateKind {
         return if (v) .true else .false;
     }
 };
 
 /// What a popup it opens is (`aria-haspopup`).
-pub const Popup = enum {
+pub const PopupKind = enum {
     /// A menu of actions.
     menu,
     /// A list of options to choose from.
@@ -162,7 +162,7 @@ pub const Popup = enum {
 
 /// Whether an object lies across or up and down (`aria-orientation`): a
 /// slider, a scrollbar, a separator, a tab list.
-pub const Orientation = enum {
+pub const OrientationKind = enum {
     /// Across.
     horizontal,
     /// Up and down.
@@ -193,7 +193,7 @@ pub const ValueSetter = struct {
 /// and what kete adds (its text, its action).
 pub const Info = struct {
     /// What it is.
-    role: Role,
+    role: RoleKind,
     // Its name and description.
     /// Its name, for assistive technologies (`aria-label`).
     label: []const u8 = "",
@@ -207,15 +207,15 @@ pub const Info = struct {
     keyshortcuts: []const u8 = "",
     // States.
     /// Whether it is checked (`aria-checked`).
-    checked: ?Tristate = null,
+    checked: ?TristateKind = null,
     /// A toggle button's (a `button` with it is one).
-    pressed: ?Tristate = null,
+    pressed: ?TristateKind = null,
     /// Whether it is selected (`aria-selected`).
     selected: ?bool = null,
     /// Whether what it controls is shown (`aria-expanded`).
     expanded: ?bool = null,
     /// What kind of popup it opens (`aria-haspopup`).
-    haspopup: ?Popup = null,
+    haspopup: ?PopupKind = null,
     /// Whether it cannot be used (`aria-disabled`).
     disabled: bool = false,
     /// Whether it can be read but not changed (`aria-readonly`).
@@ -231,7 +231,7 @@ pub const Info = struct {
     /// Whether a text box takes more than one line (`aria-multiline`).
     multiline: bool = false,
     /// Whether it lies across or up and down (`aria-orientation`).
-    orientation: ?Orientation = null,
+    orientation: ?OrientationKind = null,
     /// A heading's level (1 to 6), or a tree item's.
     level: ?u8 = null,
     // A range's value.
@@ -263,8 +263,17 @@ pub const Info = struct {
 /// Its fields are ARIA's states and properties (each one set replaces the
 /// widgets'), and kete's own (as `Info`'s).
 pub const Accessible = struct {
+    /// What something is (`button`, `heading`, `img`...), as ARIA names its roles.
+    pub const Role = RoleKind;
+    /// On, off or between (`aria-checked`, `aria-pressed`).
+    pub const Tristate = TristateKind;
+    /// What kind of popup something opens.
+    pub const Popup = PopupKind;
+    /// Which way something lies.
+    pub const Orientation = OrientationKind;
+
     /// What it is; null to describe the widgets in it instead.
-    role: ?Role = null,
+    role: ?RoleKind = null,
     /// Its name, for assistive technologies (`aria-label`).
     label: ?[]const u8 = null,
     /// A longer description of it (`aria-description`).
@@ -276,15 +285,15 @@ pub const Accessible = struct {
     /// The keyboard shortcuts that act on it (`aria-keyshortcuts`).
     keyshortcuts: ?[]const u8 = null,
     /// Whether it is checked (`aria-checked`).
-    checked: ?Tristate = null,
+    checked: ?TristateKind = null,
     /// Whether a toggle button is pressed (`aria-pressed`).
-    pressed: ?Tristate = null,
+    pressed: ?TristateKind = null,
     /// Whether it is selected (`aria-selected`).
     selected: ?bool = null,
     /// Whether what it controls is shown (`aria-expanded`).
     expanded: ?bool = null,
     /// What kind of popup it opens (`aria-haspopup`).
-    haspopup: ?Popup = null,
+    haspopup: ?PopupKind = null,
     /// Whether it cannot be used (`aria-disabled`).
     disabled: ?bool = null,
     /// Whether it can be read but not changed (`aria-readonly`).
@@ -300,7 +309,7 @@ pub const Accessible = struct {
     /// Whether a text box takes more than one line (`aria-multiline`).
     multiline: ?bool = null,
     /// Whether it lies across or up and down (`aria-orientation`).
-    orientation: ?Orientation = null,
+    orientation: ?OrientationKind = null,
     /// A heading's level (1 to 6), or a tree item's (`aria-level`).
     level: ?u8 = null,
     /// A range's value (`aria-valuenow`).
