@@ -259,6 +259,49 @@ test "keys keep state when siblings come and go, and dropped state is freed" {
     try testing.expectEqual(@as(u32, 3), freed);
 }
 
+test "unkeyed siblings keep their state when a different widget is inserted before them" {
+    // Regression test: inserting a widget of a different type at position 0
+    // must not cause unkeyed same-type siblings at positions 1+ to steal each
+    // other's state.
+    const UnkeyedKeepers = struct {
+        show_extra: bool,
+        ids: []const u32,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            const n = self.ids.len + @intFromBool(self.show_extra);
+            var children = cx.arena.alloc(Widget, n) catch return cx.make(ui.SizedBox.empty);
+            var at: usize = 0;
+            // When show_extra=true put a Counter (different vtable) at front.
+            if (self.show_extra) {
+                children[at] = cx.make(Counter{});
+                at += 1;
+            }
+            for (self.ids) |id| {
+                // No withKey: these are unkeyed.
+                children[at] = cx.make(Keeper{ .id = id });
+                at += 1;
+            }
+            return cx.make(ui.Column{ .children = children });
+        }
+    };
+    const u = try ui.WindowUi.create(testing.allocator, testing.io, null);
+    defer u.destroy();
+    freed = 0;
+    // Frame 1: [Keeper(1), Keeper(2)] — initialises state with ids 1 and 2.
+    u.frame(100, 100, 0, UnkeyedKeepers{ .show_extra = false, .ids = &.{ 1, 2 } });
+    // Frame 2: [Counter, Keeper(1), Keeper(2)] — Counter has a different vtable
+    // so the two Keepers must still match their original nodes (id=1, id=2),
+    // not shift-match (id=2, fresh).
+    u.frame(100, 100, 1, UnkeyedKeepers{ .show_extra = true, .ids = &.{ 1, 2 } });
+    var keepers: std.ArrayList(*Node) = .empty;
+    defer keepers.deinit(testing.allocator);
+    try findAll(u.root.?, Keeper, &keepers);
+    try testing.expectEqual(@as(usize, 2), keepers.items.len);
+    try testing.expectEqual(@as(u32, 1), keepers.items[0].state(Keeper.State).id);
+    try testing.expectEqual(@as(u32, 2), keepers.items[1].state(Keeper.State).id);
+    // The Counter node is new — the two Keepers are reused, none freed yet.
+    try testing.expectEqual(@as(u32, 0), freed);
+}
+
 test "text wraps to fit, and a word that cannot is marked" {
     const fira = try font.Font.init(fira_data);
     const u = try ui.WindowUi.create(testing.allocator, testing.io, &fira);

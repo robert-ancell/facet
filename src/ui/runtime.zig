@@ -711,7 +711,7 @@ pub const WindowUi = struct {
         ui.damage.begin(ui.frame_no, width * s, height * s);
         var cx: Context = .{ .ui = ui, .arena = ui.arena() };
         const w = cx.make(root);
-        if (ui.root) |r| if (r.widget.vtable != w.vtable) {
+        if (ui.root) |r| if (r.widget.vtable != w.vtable or r.widget.key != w.key) {
             r.destroy();
             ui.root = null;
         };

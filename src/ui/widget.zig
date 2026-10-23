@@ -757,7 +757,7 @@ pub const WidgetNode = struct {
         // The widget each new child gets.
         const matched: []Widget = arena.alloc(Widget, widgets.len) catch &.{};
         n.children.ensureTotalCapacity(gpa, widgets.len) catch {};
-        for (widgets, 0..) |w, i| {
+        for (widgets) |w| {
             if (n.children.items.len == matched.len) break;
             var found: ?usize = null;
             if (used.len == old.items.len) {
@@ -766,8 +766,11 @@ pub const WidgetNode = struct {
                         found = j;
                         break;
                     };
-                } else if (i < old.items.len and !used[i] and old.items[i].widget.vtable == w.vtable and old.items[i].widget.key == null) {
-                    found = i;
+                } else {
+                    for (old.items, 0..) |o, j| if (!used[j] and o.widget.vtable == w.vtable and o.widget.key == null) {
+                        found = j;
+                        break;
+                    };
                 }
             }
             const node = if (found) |j| old.items[j] else WidgetNode.create(n.ui, w) orelse continue;
