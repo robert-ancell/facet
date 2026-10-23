@@ -1154,13 +1154,56 @@ pub const WaylandWindow = struct {
         if (w.dmabuf_dev) |*dev| dev.close();
         if (w.display) |d| {
             // The connection stays (the display's), with the other windows
-            // on it: this one's surface goes, and nothing more of it is
-            // told what comes.
-            for ([_]?client.Proxy{ w.toplevel_decoration, w.toplevel, w.xdg_surface, w.surface }, [_]u16{
+            // on it: this one's surface, seat devices, and bound globals go,
+            // and nothing more of it is told what comes.
+            for ([_]?client.Proxy{
+                w.locked_pointer,
+                w.relative_pointer,
+                w.cursor_device,
+                w.text_input,
+                w.keyboard,
+                w.pointer,
+                w.touch,
+                w.seat,
+                w.toplevel_decoration,
+                w.toplevel,
+                w.xdg_surface,
+                w.wm_base,
+                w.surface,
+                w.presentation,
+                w.dmabuf,
+                w.decoration_manager,
+                w.cursor_shape_manager,
+                w.fifo_manager,
+                w.commit_timing_manager,
+                w.drm_syncobj_manager,
+                w.pointer_constraints,
+                w.relative_pointer_manager,
+                w.text_input_manager,
+            }, [_]u16{
+                p.zwp_locked_pointer_v1.request.destroy,
+                p.zwp_relative_pointer_v1.request.destroy,
+                p.wp_cursor_shape_device_v1.request.destroy,
+                p.zwp_text_input_v3.request.destroy,
+                p.wl_keyboard.request.release,
+                p.wl_pointer.request.release,
+                p.wl_touch.request.release,
+                p.wl_seat.request.release,
                 p.zxdg_toplevel_decoration_v1.request.destroy,
                 p.xdg_toplevel.request.destroy,
                 p.xdg_surface.request.destroy,
+                p.xdg_wm_base.request.destroy,
                 p.wl_surface.request.destroy,
+                p.wp_presentation.request.destroy,
+                p.zwp_linux_dmabuf_v1.request.destroy,
+                p.zxdg_decoration_manager_v1.request.destroy,
+                p.wp_cursor_shape_manager_v1.request.destroy,
+                p.wp_fifo_manager_v1.request.destroy,
+                p.wp_commit_timing_manager_v1.request.destroy,
+                p.wp_linux_drm_syncobj_manager_v1.request.destroy,
+                p.zwp_pointer_constraints_v1.request.destroy,
+                p.zwp_relative_pointer_manager_v1.request.destroy,
+                p.zwp_text_input_manager_v3.request.destroy,
             }) |obj, opcode| if (obj) |o| if (o.id != 0) {
                 if (o.request(opcode)) |m0| {
                     var m = m0;
@@ -1168,6 +1211,9 @@ pub const WaylandWindow = struct {
                 } else |_| {}
             };
             w.conn.forgetAll(w);
+            if (w.keyboard) |kb| if (kb.id != 0) {
+                w.conn.setListener(kb.id, .{ .ptr = null, .handler = drainKeyboardEvent }) catch {};
+            };
             w.conn.flush() catch {};
             d.forget(w);
         } else {
@@ -2720,13 +2766,19 @@ pub const WaylandWindow = struct {
         }
     }
 
+    fn drainKeyboardEvent(_: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
+        if (opcode == p.wl_keyboard.event.keymap) {
+            if (r.fd() catch null) |fd| _ = linux.close(fd);
+        }
+    }
+
     pub fn keyboardEvent(ptr: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
         const w: *WaylandWindow = @ptrCast(@alignCast(ptr.?));
         switch (opcode) {
             p.wl_keyboard.event.keymap => {
-                _ = r.uint() catch return;
                 const fd = r.fd() catch return;
                 defer _ = linux.close(fd);
+                _ = r.uint() catch return;
                 const size = r.uint() catch return;
                 if (keymapFrom(w.gpa, fd, size)) |km| {
                     if (w.keymap) |*old| old.deinit();

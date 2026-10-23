@@ -58,6 +58,7 @@ pub const Clipboard = struct {
     /// What it waits and reads through (the connection's, from `attach`).
     io: std.Io = undefined,
     conn: *client.Display = undefined,
+    attached: bool = false,
     device: ?client.Proxy = null,
     manager: ?client.Proxy = null,
     seat: ?client.Proxy = null,
@@ -125,6 +126,7 @@ pub const Clipboard = struct {
     /// Starts using the data device of `seat`, if the shell has one.
     pub fn attach(c: *Clipboard, conn: *client.Display, manager: ?client.Proxy, seat: ?client.Proxy) !void {
         c.conn = conn;
+        c.attached = true;
         c.io = conn.conn.io;
         c.manager = manager;
         c.seat = seat;
@@ -139,12 +141,31 @@ pub const Clipboard = struct {
     pub fn deinit(c: *Clipboard) void {
         c.cancelPaste();
         c.cancelDrop();
-        c.gpa.free(c.text);
-        c.text = &.{};
-        c.gpa.free(c.drag_data);
-        c.drag_data = &.{};
-        c.gpa.free(c.drag_mime);
-        c.drag_mime = &.{};
+        c.dropSource();
+        c.dropDragSource();
+        if (c.offer) |old| {
+            c.destroyOffer(old);
+            if (c.incoming == old) c.incoming = null;
+            c.offer = null;
+            c.offer_mime = null;
+        }
+        if (c.incoming) |old| {
+            c.destroyOffer(old);
+            c.incoming = null;
+            c.incoming_mime = null;
+        }
+        if (c.device) |dev| {
+            if (dev.request(p.wl_data_device.request.release)) |m0| {
+                var m = m0;
+                m.end();
+            } else |_| {}
+            c.conn.forget(dev.id);
+            c.device = null;
+        }
+        if (c.attached) {
+            c.conn.forgetAll(c);
+            c.attached = false;
+        }
         c.gpa.free(c.last_drop_data);
         c.last_drop_data = &.{};
     }
@@ -467,7 +488,7 @@ pub const Clipboard = struct {
                 var m = m0;
                 m.end();
             } else |_| {}
-            c.conn.forget(s.id);
+            c.conn.setListener(s.id, .{ .ptr = null, .handler = drainSourceEvent }) catch c.conn.forget(s.id);
         }
         c.source = null;
         c.gpa.free(c.text);
@@ -480,13 +501,19 @@ pub const Clipboard = struct {
                 var m = m0;
                 m.end();
             } else |_| {}
-            c.conn.forget(s.id);
+            c.conn.setListener(s.id, .{ .ptr = null, .handler = drainSourceEvent }) catch c.conn.forget(s.id);
         }
         c.drag_source = null;
         c.gpa.free(c.drag_data);
         c.drag_data = &.{};
         c.gpa.free(c.drag_mime);
         c.drag_mime = &.{};
+    }
+
+    fn drainSourceEvent(_: ?*anyopaque, _: *client.Display, _: u32, opcode: u16, r: *wire.Reader) void {
+        if (opcode == p.wl_data_source.event.send) {
+            if (r.fd() catch null) |fd| _ = linux.close(fd);
+        }
     }
 
     fn destroyOffer(c: *Clipboard, id: u32) void {
@@ -654,15 +681,18 @@ pub const Clipboard = struct {
 
     fn sourceEvent(ptr: ?*anyopaque, _: *client.Display, id: u32, opcode: u16, r: *wire.Reader) void {
         const c: *Clipboard = @ptrCast(@alignCast(ptr.?));
+        if (opcode == p.wl_data_source.event.send) {
+            const fd = r.fd() catch return;
+            defer _ = linux.close(fd);
+            _ = r.string() catch return;
+            const source = c.source orelse return;
+            if (source.id != id) return;
+            c.writeAll(fd, c.text);
+            return;
+        }
         const source = c.source orelse return;
         if (source.id != id) return;
         switch (opcode) {
-            p.wl_data_source.event.send => {
-                _ = r.string() catch return;
-                const fd = r.fd() catch return;
-                defer _ = linux.close(fd);
-                c.writeAll(fd, c.text);
-            },
             p.wl_data_source.event.cancelled => c.dropSource(),
             else => {},
         }
@@ -670,18 +700,21 @@ pub const Clipboard = struct {
 
     fn dragSourceEvent(ptr: ?*anyopaque, _: *client.Display, id: u32, opcode: u16, r: *wire.Reader) void {
         const c: *Clipboard = @ptrCast(@alignCast(ptr.?));
+        if (opcode == p.wl_data_source.event.send) {
+            const fd = r.fd() catch return;
+            defer _ = linux.close(fd);
+            _ = r.string() catch return;
+            const source = c.drag_source orelse return;
+            if (source.id != id) return;
+            c.writeAll(fd, c.drag_data);
+            return;
+        }
         const source = c.drag_source orelse return;
         if (source.id != id) return;
         switch (opcode) {
             p.wl_data_source.event.target => {
                 const mime = r.string() catch return;
                 c.drag_accepted = mime != null;
-            },
-            p.wl_data_source.event.send => {
-                _ = r.string() catch return;
-                const fd = r.fd() catch return;
-                defer _ = linux.close(fd);
-                c.writeAll(fd, c.drag_data);
             },
             p.wl_data_source.event.dnd_drop_performed => {
                 c.drag_dropped = true;

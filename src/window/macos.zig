@@ -216,6 +216,7 @@ pub const MacWindow = struct {
         const opts: u64 = 0x01 | 0x02 | 0x80 | 0x200; // entered/exited, moved, always, in visible rect
         const area = msg(Id, tracking, "initWithRect:options:owner:userInfo:", .{ rect, opts, w.view, @as(Id, null) });
         msg(void, w.view, "addTrackingArea:", .{area});
+        msg(void, area, "release", .{});
         msg(void, w.win, "setContentView:", .{w.view});
 
         w.delegate = msg(Id, delegateClass(), "new", .{});
@@ -256,6 +257,8 @@ pub const MacWindow = struct {
         w.setRedraw(null);
         msg(void, w.win, "setDelegate:", .{@as(Id, null)});
         msg(void, w.win, "close", .{});
+        objc.setOwner(w.delegate, null);
+        objc.setOwner(w.view, null);
         msg(void, w.delegate, "release", .{});
         msg(void, w.view, "release", .{});
         msg(void, w.win, "release", .{});
