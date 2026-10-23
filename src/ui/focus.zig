@@ -61,7 +61,9 @@ fn findWidget(n: *Node, comptime T: type) ?*Node {
 }
 
 /// The last open dialog in the tree (the one in front), if any.
+/// Only considers nodes that were laid out in the current frame.
 pub fn topDialog(n: *Node) ?*Node {
+    if (n.laid_out != n.ui.frame_no) return null;
     var found: ?*Node = null;
     if (n.widget.as(@import("dialog.zig").Dialog)) |d| if (d.open) {
         found = n;

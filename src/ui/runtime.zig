@@ -754,6 +754,19 @@ pub const WindowUi = struct {
         const d = ui.buildDrag(window);
         const tt = ui.buildTooltip(window);
         ui.syncPopups(m, tt);
+        // If a modal dialog is open and focus is outside it, move focus to the
+        // first focusable inside the dialog (or blur entirely if there is none).
+        // This ensures "modal" is enforced: the background stays inert.
+        if (ui.menu == null) if (focus_mod.scope(ui)) |dialog_scope| {
+            const outside = if (ui.focused) |f| !focus_mod.within(f, dialog_scope) else false;
+            if (outside) {
+                if (focus_mod.first(dialog_scope)) |first| {
+                    focus_mod.show(ui, first);
+                } else {
+                    ui.focus(null);
+                }
+            }
+        };
         ui.paint(tb, r, d, m, tt, w_px, h_px);
         if (tb) |n| ui.damage.sweep(n);
         ui.damage.sweep(r);
@@ -1636,8 +1649,13 @@ pub const WindowUi = struct {
         // Control and a key is a shortcut, not typing.
         if (!k.pressed or k.ctrl) e.char = null;
         // To what has the focus, then what that is in, until one takes it.
+        // If a modal dialog is open, only deliver to widgets inside its scope.
+        const modal_scope: ?*Node = if (ui.menu == null) focus_mod.scope(ui) else null;
         var at = ui.focused;
-        while (at) |n| : (at = n.parent) if (send(n, .{ .key = e })) return;
+        while (at) |n| : (at = n.parent) {
+            if (modal_scope) |s| if (!focus_mod.within(n, s)) break;
+            if (send(n, .{ .key = e })) return;
+        }
         if (!k.pressed) return;
         switch (k.key) {
             // Escape dismisses the dialog in front.
