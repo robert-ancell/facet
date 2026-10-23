@@ -96,7 +96,7 @@ pub const Writer = struct {
     /// and dict entries): its elements follow, then `endArray`.
     pub fn beginArray(w: *Writer, elem_align: usize) Array {
         w.uint32(0);
-        const len_at = w.buf.items.len - 4;
+        const len_at = if (w.failed) 0 else w.buf.items.len - 4;
         w.pad(elem_align);
         return .{ .len_at = len_at, .start = w.buf.items.len };
     }
@@ -132,7 +132,7 @@ pub const Reader = struct {
     }
 
     fn take(r: *Reader, n: usize) Error![]const u8 {
-        if (r.at + n > r.data.len) return error.Malformed;
+        if (n > r.data.len - r.at) return error.Malformed;
         r.at += n;
         return r.data[r.at - n .. r.at];
     }
@@ -176,6 +176,7 @@ pub const Reader = struct {
         const len = try r.uint32();
         const s = try r.take(len);
         if (try r.byte() != 0) return error.Malformed;
+        if (std.mem.indexOfScalar(u8, s, 0) != null) return error.Malformed;
         return s;
     }
 
@@ -183,6 +184,7 @@ pub const Reader = struct {
         const len = try r.byte();
         const s = try r.take(len);
         if (try r.byte() != 0) return error.Malformed;
+        if (std.mem.indexOfScalar(u8, s, 0) != null) return error.Malformed;
         return s;
     }
 
@@ -190,7 +192,7 @@ pub const Reader = struct {
     pub fn array(r: *Reader, elem_align: usize) Error!usize {
         const len = try r.uint32();
         try r.alignTo(elem_align);
-        if (r.at + len > r.data.len) return error.Malformed;
+        if (len > r.data.len - r.at) return error.Malformed;
         return r.at + len;
     }
 
@@ -250,15 +252,25 @@ pub fn alignOf(c: u8) usize {
 fn typeLength(sig: []const u8) Error!usize {
     if (sig.len == 0) return error.Malformed;
     switch (sig[0]) {
+        'y', 'b', 'n', 'q', 'i', 'u', 'x', 't', 'd', 'h', 's', 'o', 'g', 'v' => return 1,
         'a' => return 1 + try typeLength(sig[1..]),
-        '(', '{' => {
-            const close: u8 = if (sig[0] == '(') ')' else '}';
+        '(' => {
             var i: usize = 1;
-            while (i < sig.len and sig[i] != close) i += try typeLength(sig[i..]);
-            if (i >= sig.len) return error.Malformed;
+            while (i < sig.len and sig[i] != ')') i += try typeLength(sig[i..]);
+            if (i == 1 or i >= sig.len) return error.Malformed;
             return i + 1;
         },
-        else => return 1,
+        '{' => {
+            if (sig.len < 4) return error.Malformed;
+            switch (sig[1]) {
+                'y', 'b', 'n', 'q', 'i', 'u', 'x', 't', 'd', 'h', 's', 'o', 'g' => {},
+                else => return error.Malformed,
+            }
+            const val_len = try typeLength(sig[2..]);
+            if (2 + val_len >= sig.len or sig[2 + val_len] != '}') return error.Malformed;
+            return 2 + val_len + 1;
+        },
+        else => return error.Malformed,
     }
 }
 
@@ -334,9 +346,9 @@ pub fn messageLength(data: []const u8) Error!?usize {
     if (data[0] != 'l') return error.Malformed;
     const body_len = std.mem.readInt(u32, data[4..8], .little);
     const fields_len = std.mem.readInt(u32, data[12..16], .little);
-    const total = std.mem.alignForward(usize, 16 + @as(usize, fields_len), 8) + body_len;
+    const total = std.mem.alignForward(u64, 16 + @as(u64, fields_len), 8) + body_len;
     if (total > 128 << 20) return error.Malformed;
-    return total;
+    return @intCast(total);
 }
 
 /// The message in `data` (all of it), its fields and body slices of it.
@@ -355,22 +367,49 @@ pub fn decode(data: []const u8) Error!Message {
         try r.beginStruct();
         const code = try r.byte();
         const sig = try r.signature();
-        if (sig.len != 1) {
-            _ = try r.skip(sig);
-            continue;
-        }
+        if (code == 0) return error.Malformed;
         switch (code) {
-            1 => h.path = try r.string(),
-            2 => h.interface = try r.string(),
-            3 => h.member = try r.string(),
-            4 => h.error_name = try r.string(),
-            5 => h.reply_serial = try r.uint32(),
-            6 => h.destination = try r.string(),
-            7 => h.sender = try r.string(),
-            8 => h.signature = try r.signature(),
-            else => _ = try r.skip(sig),
+            1 => {
+                if (!std.mem.eql(u8, sig, "o")) return error.Malformed;
+                h.path = try r.string();
+            },
+            2 => {
+                if (!std.mem.eql(u8, sig, "s")) return error.Malformed;
+                h.interface = try r.string();
+            },
+            3 => {
+                if (!std.mem.eql(u8, sig, "s")) return error.Malformed;
+                h.member = try r.string();
+            },
+            4 => {
+                if (!std.mem.eql(u8, sig, "s")) return error.Malformed;
+                h.error_name = try r.string();
+            },
+            5 => {
+                if (!std.mem.eql(u8, sig, "u")) return error.Malformed;
+                h.reply_serial = try r.uint32();
+            },
+            6 => {
+                if (!std.mem.eql(u8, sig, "s")) return error.Malformed;
+                h.destination = try r.string();
+            },
+            7 => {
+                if (!std.mem.eql(u8, sig, "s")) return error.Malformed;
+                h.sender = try r.string();
+            },
+            8 => {
+                if (!std.mem.eql(u8, sig, "g")) return error.Malformed;
+                h.signature = try r.signature();
+                var s = h.signature;
+                while (s.len > 0) s = s[try typeLength(s)..];
+            },
+            else => {
+                const rest = try r.skip(sig);
+                if (rest.len != 0) return error.Malformed;
+            },
         }
     }
+    if (r.at != end) return error.Malformed;
     try r.alignTo(8);
     if (r.at + body_len != len) return error.Malformed;
     return .{ .header = h, .body = data[r.at..len] };
@@ -387,6 +426,7 @@ pub const Connection = struct {
     io: std.Io,
     fd: linux.fd_t,
     serial: u32 = 0,
+    closed: bool = false,
     /// The name the bus gave it.
     unique_name: []u8 = &.{},
     /// Bytes read, not yet a whole message.
@@ -438,15 +478,27 @@ pub const Connection = struct {
     /// Sends a message's bytes (waiting, through `io`, while the socket is
     /// full).
     pub fn send(c: *Connection, bytes: []const u8) Error!void {
+        if (c.closed) return error.Closed;
         var at: usize = 0;
         while (at < bytes.len) {
             const data = [_][]const u8{bytes[at..]};
             const result = c.io.operateTimeout(.{ .file_write_streaming = .{ .file = c.file(), .data = &data } }, seconds(1)) catch |e| return switch (e) {
                 error.Timeout => error.Timeout,
                 error.Canceled => error.Canceled,
-                else => error.Closed,
+                else => {
+                    c.closed = true;
+                    return error.Closed;
+                },
             };
-            at += result.file_write_streaming catch return error.Closed;
+            const written = result.file_write_streaming catch {
+                c.closed = true;
+                return error.Closed;
+            };
+            if (written == 0) {
+                c.closed = true;
+                return error.Closed;
+            }
+            at += written;
         }
     }
 
@@ -457,14 +509,22 @@ pub const Connection = struct {
     /// The read that waits for what comes next, through `io`: for an
     /// event loop to wait on it with others (see `window.Source`), giving
     /// `readDone` what it read.
-    pub fn readOperation(c: *Connection) std.Io.Operation {
+    pub fn readOperation(c: *Connection) ?std.Io.Operation {
+        if (c.closed) return null;
         c.read_vec = .{&c.read_buf};
         return .{ .file_read_streaming = .{ .file = c.file(), .data = &c.read_vec } };
     }
 
     /// Keeps what a `readOperation` read (for `next`).
     pub fn readDone(c: *Connection, result: std.Io.Operation.Result) void {
-        const n = result.file_read_streaming catch return;
+        const n = result.file_read_streaming catch |err| {
+            if (err != error.WouldBlock and err != error.Canceled) c.closed = true;
+            return;
+        };
+        if (n == 0) {
+            c.closed = true;
+            return;
+        }
         c.in.appendSlice(c.gpa, c.read_buf[0..n]) catch {};
     }
 
@@ -499,10 +559,14 @@ pub const Connection = struct {
                 }
                 c.queued.append(c.gpa, bytes) catch c.gpa.free(bytes);
             }
-            const result = c.io.operateTimeout(c.readOperation(), .{ .deadline = deadline }) catch |e| return switch (e) {
+            const op = c.readOperation() orelse return error.Closed;
+            const result = c.io.operateTimeout(op, .{ .deadline = deadline }) catch |e| return switch (e) {
                 error.Timeout => error.Timeout,
                 error.Canceled => error.Canceled,
-                else => error.Closed,
+                else => {
+                    c.closed = true;
+                    return error.Closed;
+                },
             };
             c.readDone(result);
         }
@@ -524,16 +588,23 @@ pub const Connection = struct {
                 c.in.shrinkRetainingCapacity(c.in.items.len - len);
                 return m;
             };
+            if (c.closed) return error.Closed;
             var buf: [4096]u8 = undefined;
             const rc = linux.read(c.fd, &buf, buf.len);
             switch (linux.errno(rc)) {
                 .SUCCESS => {
-                    if (rc == 0) return error.Closed;
+                    if (rc == 0) {
+                        c.closed = true;
+                        return error.Closed;
+                    }
                     try c.in.appendSlice(c.gpa, buf[0..rc]);
                 },
                 .AGAIN => return null,
                 .INTR => {},
-                else => return error.Closed,
+                else => {
+                    c.closed = true;
+                    return error.Closed;
+                },
             }
         }
     }
@@ -714,6 +785,10 @@ test "messages are encoded and decoded, header fields and body" {
     try testing.expectEqualStrings("Name", try r.string());
     // Broken ones are refused.
     try testing.expectError(error.Malformed, decode(bytes[0 .. bytes.len - 1]));
+    var bad_skip: Reader = .{ .data = &[_]u8{ 8, 0, 0, 0, 0, 0, 0, 0 } };
+    try testing.expectError(error.Malformed, bad_skip.skip("a()"));
+    try testing.expectError(error.Malformed, bad_skip.skip("a{}"));
+    try testing.expectError(error.Malformed, bad_skip.skip("a)"));
 }
 
 test "addresses are unescaped" {

@@ -71,6 +71,7 @@ pub const Bridge = struct {
         var r = m.reader();
         try r.beginStruct();
         b.parent_bus = try gpa.dupe(u8, try r.string());
+        errdefer gpa.free(b.parent_bus);
         b.parent_path = try gpa.dupe(u8, try r.string());
         return b;
     }
@@ -139,8 +140,15 @@ pub const Bridge = struct {
             const v1 = o.info.valuenow orelse 0;
             if (v0 != v1) b.event(o.id, "org.a11y.atspi.Event.Object", "PropertyChange", "accessible-value", 0, .{ .double = v1 });
             if (was.info.text != null and o.info.text != null and !std.mem.eql(u8, was.info.text.?, o.info.text.?)) {
-                b.event(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "delete", 0, .{ .string = was.info.text.? });
-                b.event(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "insert", 0, .{ .string = o.info.text.? });
+                const old_tx = was.info.text.?;
+                const new_tx = o.info.text.?;
+                const old_len: i32 = @intCast(std.unicode.utf8CountCodepoints(old_tx) catch old_tx.len);
+                const new_len: i32 = @intCast(std.unicode.utf8CountCodepoints(new_tx) catch new_tx.len);
+                b.eventDetail(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "delete", 0, old_len, .{ .string = old_tx });
+                b.eventDetail(o.id, "org.a11y.atspi.Event.Object", "TextChanged", "insert", 0, new_len, .{ .string = new_tx });
+            }
+            if (o.info.caret != was.info.caret) {
+                if (o.info.caret) |c| b.event(o.id, "org.a11y.atspi.Event.Object", "TextCaretMoved", "", @intCast(c), .none);
             }
             // States: each AT-SPI state that changed.
             const s0 = atspiStates(was);
@@ -199,12 +207,16 @@ pub const Bridge = struct {
     /// An AT-SPI event: a signal from object `id` (0: the app), (`kind`,
     /// `detail1`, 0, `any`, no properties).
     fn event(b: *Bridge, id: u32, interface: []const u8, member: []const u8, kind: []const u8, detail1: i32, any: Any) void {
+        b.eventDetail(id, interface, member, kind, detail1, 0, any);
+    }
+
+    fn eventDetail(b: *Bridge, id: u32, interface: []const u8, member: []const u8, kind: []const u8, detail1: i32, detail2: i32, any: Any) void {
         var path_buf: [64]u8 = undefined;
         var w: Writer = .{ .gpa = b.gpa };
         defer w.deinit();
         w.string(kind);
         w.int32(detail1);
-        w.int32(0);
+        w.int32(detail2);
         switch (any) {
             .none => {
                 w.variant("i");
@@ -755,15 +767,38 @@ pub const Bridge = struct {
         if (eq(u8, member, "GetStringAtOffset") or eq(u8, member, "GetTextAtOffset") or eq(u8, member, "GetTextBeforeOffset") or eq(u8, member, "GetTextAfterOffset")) {
             const at = try r.int32();
             const unit = try r.uint32();
+            const is_before = eq(u8, member, "GetTextBeforeOffset");
+            const is_after = eq(u8, member, "GetTextAfterOffset");
             // Characters (granularity 0, or boundary 0) as they are;
             // words and the rest: the word, or all of it.
             var start: i32 = 0;
             var end: i32 = count;
-            if (unit == 0 and eq(u8, member, "GetStringAtOffset")) {
-                start = at;
-                end = at + 1;
+            if (unit == 0) {
+                if (is_before) {
+                    if (at > 0 and at <= count) {
+                        start = at - 1;
+                        end = at;
+                    } else {
+                        start = 0;
+                        end = 0;
+                    }
+                } else if (is_after) {
+                    if (at >= 0 and at + 1 < count) {
+                        start = at + 1;
+                        end = at + 2;
+                    } else {
+                        start = count;
+                        end = count;
+                    }
+                } else if (at >= 0 and at < count) {
+                    start = at;
+                    end = at + 1;
+                } else {
+                    start = 0;
+                    end = 0;
+                }
             } else if (unit == 1 or (unit == 2 and !eq(u8, member, "GetStringAtOffset"))) {
-                const bounds = wordAt(tx, at);
+                const bounds = if (is_before) wordBefore(tx, at) else if (is_after) wordAfter(tx, at) else wordAt(tx, at);
                 start = bounds[0];
                 end = bounds[1];
             }
@@ -857,6 +892,53 @@ fn wordAt(s: []const u8, at: i32) [2]i32 {
     return .{ if (in_word) word_start else ci, ci };
 }
 
+/// The word before the word at character `at` of `s`.
+fn wordBefore(s: []const u8, at: i32) [2]i32 {
+    const cur = wordAt(s, at);
+    var ci: i32 = 0;
+    var i: usize = 0;
+    var in_word = false;
+    var word_start: i32 = 0;
+    var prev: [2]i32 = .{ 0, 0 };
+    while (i < s.len) : (ci += 1) {
+        const space = s[i] == ' ' or s[i] == '\n' or s[i] == '\t';
+        if (!space and !in_word) {
+            word_start = ci;
+            in_word = true;
+        }
+        if (space and in_word) {
+            in_word = false;
+            if (ci <= cur[0]) prev = .{ word_start, ci } else break;
+        }
+        i += std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+    }
+    if (in_word and ci <= cur[0]) prev = .{ word_start, ci };
+    return prev;
+}
+
+/// The word after the word at character `at` of `s`.
+fn wordAfter(s: []const u8, at: i32) [2]i32 {
+    const cur = wordAt(s, at);
+    var ci: i32 = 0;
+    var i: usize = 0;
+    var in_word = false;
+    var word_start: i32 = 0;
+    while (i < s.len) : (ci += 1) {
+        const space = s[i] == ' ' or s[i] == '\n' or s[i] == '\t';
+        if (!space and !in_word) {
+            word_start = ci;
+            in_word = true;
+        }
+        if (space and in_word) {
+            in_word = false;
+            if (word_start >= cur[1]) return .{ word_start, ci };
+        }
+        i += std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+    }
+    if (in_word and word_start >= cur[1]) return .{ word_start, ci };
+    return .{ ci, ci };
+}
+
 /// The object path of object `id`.
 fn pathOf(id: u32, buf: []u8) []const u8 {
     return std.fmt.bufPrint(buf, object_prefix ++ "{d}", .{id}) catch unreachable;
@@ -865,7 +947,11 @@ fn pathOf(id: u32, buf: []u8) []const u8 {
 /// The accessibility bus's address, as the session bus's `org.a11y.Bus`
 /// says.
 fn busAddress(gpa: std.mem.Allocator, io: std.Io, environ: std.process.Environ) ![]u8 {
-    const session = environ.getPosix("DBUS_SESSION_BUS_ADDRESS") orelse return error.ConnectFailed;
+    var addr_buf: [256]u8 = undefined;
+    const session = environ.getPosix("DBUS_SESSION_BUS_ADDRESS") orelse blk: {
+        const runtime = environ.getPosix("XDG_RUNTIME_DIR") orelse return error.ConnectFailed;
+        break :blk std.fmt.bufPrint(&addr_buf, "unix:path={s}/bus", .{runtime}) catch return error.ConnectFailed;
+    };
     const conn = try dbus.Connection.open(gpa, io, session);
     defer conn.close();
     const reply = try conn.callWait("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress", "", "", 3000);
@@ -1195,6 +1281,10 @@ test "text is cut by characters, and words found" {
     try testing.expectEqualStrings("", slice("héllo", 4, 2));
     try testing.expectEqual([2]i32{ 6, 11 }, wordAt("hello world again", 7));
     try testing.expectEqual([2]i32{ 0, 5 }, wordAt("hello world", 2));
+    try testing.expectEqual([2]i32{ 0, 5 }, wordBefore("hello world again", 7));
+    try testing.expectEqual([2]i32{ 0, 0 }, wordBefore("hello world again", 2));
+    try testing.expectEqual([2]i32{ 12, 17 }, wordAfter("hello world again", 7));
+    try testing.expectEqual([2]i32{ 17, 17 }, wordAfter("hello world again", 14));
 }
 
 /// A peer of the bridge in tests: the other end of its connection.
