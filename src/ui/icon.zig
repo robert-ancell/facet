@@ -57,6 +57,10 @@ pub const Icon = struct {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
+    pub fn minSize(self: *const Icon, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
     pub fn paint(self: *const Icon, n: *Node, p: *Painter) void {
         // In the middle of the space given, at most as big as it.
         const s = @min(self.size, @min(n.size.w, n.size.h));

@@ -17,6 +17,10 @@ pub const WaveCanvas = struct {
         return c.constrain(.{ .w = 340, .h = 200 });
     }
 
+    pub fn minSize(_: *const WaveCanvas, _: *kete.WidgetNode, c: kete.Constraints) kete.Size {
+        return c.constrain(.{ .w = 340, .h = 200 });
+    }
+
     pub fn paint(self: *const WaveCanvas, n: *kete.WidgetNode, p: *kete.Painter) void {
         const state = n.state(State);
         if (self.animate) {

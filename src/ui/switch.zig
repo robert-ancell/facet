@@ -124,6 +124,10 @@ pub const SwitchMark = struct {
         return c.constrain(.{ .w = width, .h = target });
     }
 
+    pub fn minSize(_: *const SwitchMark, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = width, .h = target });
+    }
+
     pub fn paint(self: *const SwitchMark, n: *Node, p: *Painter) void {
         const t = n.theme();
         const c = p.canvas();

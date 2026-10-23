@@ -157,6 +157,10 @@ pub const RadioMark = struct {
         return c.constrain(.{ .w = target, .h = target });
     }
 
+    pub fn minSize(_: *const RadioMark, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = target, .h = target });
+    }
+
     pub fn paint(self: *const RadioMark, n: *Node, p: *Painter) void {
         const t = n.theme();
         const c = p.canvas();

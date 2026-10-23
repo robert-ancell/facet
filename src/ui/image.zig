@@ -121,6 +121,10 @@ pub const Picture = struct {
         return c.constrain(.{ .w = @round(w * scale), .h = @round(h * scale) });
     }
 
+    pub fn minSize(self: *const Picture, n: *Node, c: Constraints) Size {
+        return self.layout(n, c);
+    }
+
     pub fn paint(self: *const Picture, n: *Node, p: *Painter) void {
         const part = self.part orelse return p.canvas().drawImage(self.image, .{ .x = 0, .y = 0, .w = n.size.w, .h = n.size.h }, self.opacity);
         const iw: f32 = @floatFromInt(self.image.width);

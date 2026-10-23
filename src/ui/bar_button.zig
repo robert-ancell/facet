@@ -54,6 +54,10 @@ const Mark = struct {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
+    pub fn minSize(self: *const Mark, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
     pub fn paint(self: *const Mark, n: *Node, p: *Painter) void {
         const t = n.theme();
         const c = p.canvas();

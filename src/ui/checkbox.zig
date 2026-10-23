@@ -103,6 +103,10 @@ pub const CheckboxMark = struct {
         return c.constrain(.{ .w = target, .h = target });
     }
 
+    pub fn minSize(_: *const CheckboxMark, _: *Node, c: Constraints) Size {
+        return c.constrain(.{ .w = target, .h = target });
+    }
+
     pub fn paint(self: *const CheckboxMark, n: *Node, p: *Painter) void {
         const t = n.theme();
         const c = p.canvas();

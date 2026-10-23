@@ -32,6 +32,10 @@ pub const Spinner = struct {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
+    pub fn minSize(self: *const Spinner, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
     pub fn paint(self: *const Spinner, n: *widget.WidgetNode, p: *painter.Painter) void {
         n.ui.needs_frame = true;
         const t: f32 = @floatCast(@as(f64, @floatFromInt(n.ui.now_ns % (12 * std.time.ns_per_s))) / std.time.ns_per_s);

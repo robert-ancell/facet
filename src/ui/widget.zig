@@ -346,6 +346,10 @@ const Missing = struct {
     pub fn layout(_: *const Missing, _: *WidgetNode, c: Constraints) Size {
         return c.smallest();
     }
+
+    pub fn minSize(_: *const Missing, _: *WidgetNode, c: Constraints) Size {
+        return c.smallest();
+    }
 };
 const missing: Missing = .{};
 

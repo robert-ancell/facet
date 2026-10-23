@@ -77,6 +77,10 @@ pub const QrCode = struct {
         return c.constrain(.{ .w = self.size, .h = self.size });
     }
 
+    pub fn minSize(self: *const QrCode, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
     pub fn paint(self: *const QrCode, n: *widget.WidgetNode, p: *painter.Painter) void {
         const st = n.state(State);
         const h = std.hash.Fnv1a_64.hash(self.text);
