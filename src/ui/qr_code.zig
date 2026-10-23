@@ -73,15 +73,9 @@ pub const QrCode = struct {
         return .{ .role = .img, .label = "QR code", .description = self.text };
     }
 
-    pub fn layout(self: *const QrCode, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
-        return c.constrain(.{ .w = self.size, .h = self.size });
-    }
-
-    pub fn minSize(self: *const QrCode, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
-        return c.constrain(.{ .w = self.size, .h = self.size });
-    }
-
-    pub fn paint(self: *const QrCode, n: *widget.WidgetNode, p: *painter.Painter) void {
+    pub fn layout(self: *const QrCode, n: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
+        // Re-encode only when the text changes; this runs once per frame (before
+        // paint) so encode() is never called inside the paint path.
         const st = n.state(State);
         const h = std.hash.Fnv1a_64.hash(self.text);
         if (!st.valid or st.hash != h or st.len != self.text.len) {
@@ -90,6 +84,15 @@ pub const QrCode = struct {
             st.matrix = encode(self.text);
             st.valid = true;
         }
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
+    pub fn minSize(self: *const QrCode, _: *widget.WidgetNode, c: geometry.Constraints) geometry.Size {
+        return c.constrain(.{ .w = self.size, .h = self.size });
+    }
+
+    pub fn paint(_: *const QrCode, n: *widget.WidgetNode, p: *painter.Painter) void {
+        const st = n.state(State);
         const matrix = &(st.matrix orelse return);
         const canvas = p.canvas();
         const box_size = @min(n.size.w, n.size.h);
