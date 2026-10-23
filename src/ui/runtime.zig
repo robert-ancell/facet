@@ -801,8 +801,16 @@ pub const WindowUi = struct {
         };
         const title = if (ui.win) |w| w.title() else "";
         const size: [2]f32 = .{ @floatFromInt(ui.logical_size[0]), @floatFromInt(ui.logical_size[1]) };
-        const tree = accessibility.build(ui.gpa, root, extra[0..n], title, size, ui.focused, ui.a11y_window_id, &ui.shared.a11y_next_id) catch return;
         const old = ui.a11y_tree;
+        const tree = accessibility.build(ui.gpa, root, extra[0..n], title, size, ui.focused, ui.a11y_window_id, &ui.shared.a11y_next_id) catch {
+            if (old) |t| {
+                b.remove(t);
+                t.deinit();
+                ui.gpa.destroy(t);
+                ui.a11y_tree = null;
+            }
+            return;
+        };
         b.update(old, tree);
         ui.a11y_tree = tree;
         if (old) |t| {
@@ -1399,9 +1407,14 @@ pub const WindowUi = struct {
     pub fn pointerMotion(ui: *WindowUi, pos: Point) void {
         ui.pointer = pos;
         ui.updateHover(pos);
-        for (ui.hovered.items) |n| if (send(n, .{ .motion = local(n, pos) })) {
-            ui.needs_frame = true;
-        };
+        var i: usize = 0;
+        while (i < ui.hovered.items.len) {
+            const n = ui.hovered.items[i];
+            if (send(n, .{ .motion = local(n, pos) })) {
+                ui.needs_frame = true;
+            }
+            if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+        }
         if (ui.captured) |n| if (std.mem.indexOfScalar(*Node, ui.hovered.items, n) == null) {
             if (send(n, .{ .motion = local(n, pos) })) ui.needs_frame = true;
         };
@@ -1438,12 +1451,26 @@ pub const WindowUi = struct {
                 @abs(pos[1] - last.pos[1]) <= multi_click_slop) last.clicks +| 1 else 1 else 1;
             ui.last_press = .{ .ns = now_ns, .pos = pos, .button = button, .clicks = clicks };
             if (ui.focused) |f| if (std.mem.indexOfScalar(*Node, ui.hovered.items, f) == null) ui.focus(null);
-            if (button == .right) for (ui.hovered.items) |n| if (send(n, .{ .context = local(n, pos) })) return;
-            for (ui.hovered.items) |n| if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button, .clicks = clicks } })) {
-                ui.captured = n;
-                ui.captured_button = button;
-                return;
-            };
+            if (button == .right) {
+                var i: usize = 0;
+                while (i < ui.hovered.items.len) {
+                    const n = ui.hovered.items[i];
+                    if (send(n, .{ .context = local(n, pos) })) return;
+                    if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+                }
+            }
+            var i: usize = 0;
+            while (i < ui.hovered.items.len) {
+                const n = ui.hovered.items[i];
+                if (send(n, .{ .press = .{ .pos = local(n, pos), .button = button, .clicks = clicks } })) {
+                    if (std.mem.indexOfScalar(*Node, ui.hovered.items, n) != null) {
+                        ui.captured = n;
+                        ui.captured_button = button;
+                    }
+                    return;
+                }
+                if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+            }
         } else if (ui.swallow_release) {
             ui.swallow_release = false;
             ui.hold = null;
@@ -1512,10 +1539,15 @@ pub const WindowUi = struct {
 
     fn pan(ui: *WindowUi, at: Point, dx: f32, dy: f32) bool {
         ui.updateHover(at);
-        for (ui.hovered.items) |n| if (send(n, .{ .scroll = .{ .pos = local(n, at), .dx = dx, .dy = dy, .touch = true } })) {
-            ui.needs_frame = true;
-            return true;
-        };
+        var i: usize = 0;
+        while (i < ui.hovered.items.len) {
+            const n = ui.hovered.items[i];
+            if (send(n, .{ .scroll = .{ .pos = local(n, at), .dx = dx, .dy = dy, .touch = true } })) {
+                ui.needs_frame = true;
+                return true;
+            }
+            if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+        }
         return false;
     }
 
@@ -1530,10 +1562,15 @@ pub const WindowUi = struct {
     pub fn pointerScroll(ui: *WindowUi, pos: Point, dx: f32, dy: f32) void {
         ui.pointer = pos;
         ui.updateHover(pos);
-        for (ui.hovered.items) |n| if (send(n, .{ .scroll = .{ .pos = local(n, pos), .dx = dx, .dy = dy } })) {
-            ui.needs_frame = true;
-            return;
-        };
+        var i: usize = 0;
+        while (i < ui.hovered.items.len) {
+            const n = ui.hovered.items[i];
+            if (send(n, .{ .scroll = .{ .pos = local(n, pos), .dx = dx, .dy = dy } })) {
+                ui.needs_frame = true;
+                return;
+            }
+            if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+        }
     }
 
     /// Gives the keyboard focus to `n` (or to none), telling the nodes losing and gaining it.
@@ -1621,36 +1658,49 @@ pub const WindowUi = struct {
         ui.hold = null;
         ui.swallow_release = false;
         ui.pointer = null;
-        for (ui.hovered.items) |n| _ = send(n, .leave);
+        var i: usize = 0;
+        while (i < ui.hovered.items.len) {
+            const n = ui.hovered.items[i];
+            _ = send(n, .leave);
+            if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+        }
         ui.hovered.clearRetainingCapacity();
         if (ui.win) |win| ui.syncCursor(win);
         ui.needs_frame = true;
     }
 
     fn updateHover(ui: *WindowUi, pos: Point) void {
-        var path = ui.hover_scratch;
-        path.clearRetainingCapacity();
+        ui.hover_scratch.clearRetainingCapacity();
         if (ui.menu != null) {
-            if (ui.menu_root) |m| _ = m.hitTest(.{ pos[0] - m.offset[0], pos[1] - m.offset[1] }, &path);
+            if (ui.menu_root) |m| _ = m.hitTest(.{ pos[0] - m.offset[0], pos[1] - m.offset[1] }, &ui.hover_scratch);
         } else {
             var hit = false;
             if (ui.title_bar_root) |tb| {
-                hit = tb.hitTest(.{ pos[0] - tb.offset[0], pos[1] - tb.offset[1] }, &path);
+                hit = tb.hitTest(.{ pos[0] - tb.offset[0], pos[1] - tb.offset[1] }, &ui.hover_scratch);
             }
             if (!hit) {
-                if (ui.root) |r| _ = r.hitTest(.{ pos[0] - r.offset[0], pos[1] - r.offset[1] }, &path);
+                if (ui.root) |r| _ = r.hitTest(.{ pos[0] - r.offset[0], pos[1] - r.offset[1] }, &ui.hover_scratch);
             }
         }
-        for (ui.hovered.items) |n| if (std.mem.indexOfScalar(*Node, path.items, n) == null) {
-            _ = send(n, .leave);
-            ui.needs_frame = true;
-        };
-        for (path.items) |n| if (std.mem.indexOfScalar(*Node, ui.hovered.items, n) == null) {
-            _ = send(n, .enter);
-            ui.needs_frame = true;
-        };
-        ui.hover_scratch = ui.hovered;
-        ui.hovered = path;
+        var i: usize = 0;
+        while (i < ui.hovered.items.len) {
+            const n = ui.hovered.items[i];
+            if (std.mem.indexOfScalar(*Node, ui.hover_scratch.items, n) == null) {
+                _ = send(n, .leave);
+                ui.needs_frame = true;
+            }
+            if (i < ui.hovered.items.len and ui.hovered.items[i] == n) i += 1;
+        }
+        i = 0;
+        while (i < ui.hover_scratch.items.len) {
+            const n = ui.hover_scratch.items[i];
+            if (std.mem.indexOfScalar(*Node, ui.hovered.items, n) == null) {
+                _ = send(n, .enter);
+                ui.needs_frame = true;
+            }
+            if (i < ui.hover_scratch.items.len and ui.hover_scratch.items[i] == n) i += 1;
+        }
+        std.mem.swap(std.ArrayList(*Node), &ui.hovered, &ui.hover_scratch);
     }
 
     fn send(n: *Node, e: Event) bool {
@@ -1685,6 +1735,7 @@ pub const WindowUi = struct {
         if (ui.focused == n) ui.focused = null;
         if (ui.focus_before_menu == n) ui.focus_before_menu = null;
         if (std.mem.indexOfScalar(*Node, ui.hovered.items, n)) |i| _ = ui.hovered.orderedRemove(i);
+        if (std.mem.indexOfScalar(*Node, ui.hover_scratch.items, n)) |i| _ = ui.hover_scratch.orderedRemove(i);
     }
 };
 
@@ -1764,6 +1815,8 @@ pub const App = struct {
     watching_wake: bool = false,
     /// Whether the display waits on the accessibility bus.
     watching_a11y: bool = false,
+    /// Inside `step`: destroyed windows are swept when `step` finishes.
+    stepping: bool = false,
     /// Each frame's timings written to stderr (`KETE_TRACE=1`).
     trace: bool = false,
 
@@ -2005,6 +2058,11 @@ pub const App = struct {
     /// meanwhile; `error.Canceled` if this task is canceled.
     pub fn step(a: *App, idle_timeout_ns: u64) !bool {
         if (a.quitting) return false;
+        a.stepping = true;
+        defer {
+            a.stepping = false;
+            a.sweepDestroyedWindows();
+        }
         // Woken when an image is loaded, as by the windows' events.
         if (!a.watching_images) if (a.shared.images.waitSource()) |src| {
             a.display.watch(src, true);
@@ -2059,7 +2117,12 @@ pub const App = struct {
             if (asked or pressed) switch (w.on_close_request) {
                 .ignore => {},
                 .close => w.close(),
-                .call => |c| c.call(w),
+                .call => |c| {
+                    w.busy = true;
+                    c.call(w);
+                    w.busy = false;
+                    if (w.closed) w.release();
+                },
             };
             if (w.closed) continue;
             if (try w.win.applyConfigure() != null) w.dirty = true;
@@ -2086,6 +2149,20 @@ pub const App = struct {
             if (!w.closed) try w.draw();
         }
         return !a.quitting;
+    }
+
+    fn sweepDestroyedWindows(a: *App) void {
+        var i: usize = 0;
+        while (i < a.windows.items.len) {
+            const w = a.windows.items[i];
+            if (w.destroyed and !w.busy and !w.drawing) {
+                w.release();
+                _ = a.windows.orderedRemove(i);
+                a.gpa.destroy(w);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     /// Hands each window's input to its UI (its widgets' callbacks are
@@ -2126,6 +2203,7 @@ pub const App = struct {
         clear_color: ?u32 = null,
         on_close_request: OnCloseRequest = .ignore,
         closed: bool = false,
+        destroyed: bool = false,
         /// Closed while its UI was handling input or drawing: it is let go
         /// when that is done.
         busy: bool = false,
@@ -2169,8 +2247,10 @@ pub const App = struct {
 
         /// Closes it (if it is open), and frees its handle.
         pub fn destroy(w: *Window) void {
+            w.destroyed = true;
             w.close();
             const a = w.app;
+            if (w.busy or w.drawing or a.stepping) return;
             if (std.mem.indexOfScalar(*Window, a.windows.items, w)) |i| _ = a.windows.orderedRemove(i);
             a.gpa.destroy(w);
         }
@@ -2356,3 +2436,60 @@ pub const App = struct {
         }
     };
 };
+
+test "forgetting a hovered node during pointer dispatch is memory-safe" {
+    const f = try font.Font.init(font.default_font_data);
+    const ui = try WindowUi.create(std.testing.allocator, std.testing.io, &f);
+    defer ui.destroy();
+
+    const Watcher = struct {
+        child: ?Widget = null,
+        target: *?*Node,
+        leaves: *usize,
+
+        pub fn layout(_: *const @This(), n: *Node, c: Constraints) Size {
+            const s = c.constrain(.{ .w = 100, .h = 100 });
+            if (n.childCount() > 0) _ = n.child(0).layout(.tight(s));
+            return s;
+        }
+
+        pub fn event(self: *const @This(), n: *Node, e: Event) bool {
+            switch (e) {
+                .leave => {
+                    self.leaves.* += 1;
+                    if (self.target.*) |t| {
+                        self.target.* = null;
+                        n.ui.forget(t);
+                    }
+                },
+                else => {},
+            }
+            return false;
+        }
+    };
+
+    var target: ?*Node = null;
+    var leaves: usize = 0;
+    const S = struct {
+        target: *?*Node,
+        leaves: *usize,
+        pub fn build(self: *const @This(), cx: *Context) Widget {
+            return cx.make(Watcher{
+                .target = self.target,
+                .leaves = self.leaves,
+                .child = cx.make(Watcher{
+                    .target = self.target,
+                    .leaves = self.leaves,
+                }),
+            });
+        }
+    };
+    ui.frame(200, 100, 0, S{ .target = &target, .leaves = &leaves });
+    ui.pointerMotion(.{ 10, 50 });
+    try std.testing.expectEqual(@as(usize, 2), ui.hovered.items.len);
+    // When hovered.items[0] handles .leave, it forgets hovered.items[0] mid-iteration.
+    target = ui.hovered.items[0];
+    ui.pointerLeave();
+    try std.testing.expectEqual(@as(usize, 0), ui.hovered.items.len);
+    try std.testing.expectEqual(@as(usize, 2), leaves);
+}
