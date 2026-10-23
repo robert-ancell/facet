@@ -95,7 +95,12 @@ pub const Atlas = struct {
                 // A texel of space around each, so nothing bleeds in.
                 const w = b.width + 1;
                 const h = b.height + 1;
-                if (w > width or h > height) return a.fail();
+                if (w > width or h > height) {
+                    // Too large to ever fit: cache a zero-size entry so this
+                    // is not retried, without poisoning the atlas for others.
+                    a.map.put(a.gpa, key, e) catch {};
+                    return e;
+                }
                 if (a.shelf_x + w > width) {
                     a.shelf_y += a.shelf_h;
                     a.shelf_x = 0;
@@ -147,7 +152,13 @@ test "glyphs are packed once, and a full atlas starts again" {
     try testing.expect(a.dirty != null);
     // Spaces take no room.
     try testing.expectEqual(@as(u16, 0), a.glyph(&f, f.glyphIndex(' '), 32, 0).?.w);
-    // Huge glyphs fill it up: later ones are refused until the next frame.
+    // A glyph that is intrinsically too large for the atlas must not poison it:
+    // the atlas must not be marked full, and the next normal glyph must still fit.
+    const huge = a.glyph(&f, f.glyphIndex('A'), 10000, 0);
+    try testing.expect(huge == null or huge.?.w == 0); // skipped, not rendered
+    try testing.expect(!a.full); // atlas not poisoned
+    try testing.expect(a.glyph(&f, f.glyphIndex('B'), 32, 0) != null); // normal glyphs still work
+    // Filling with many large-but-fitting glyphs eventually exhausts shelf space.
     var n: u16 = 1;
     while (a.glyph(&f, n, 300, 0) != null) n += 1;
     try testing.expect(a.full);
@@ -155,3 +166,4 @@ test "glyphs are packed once, and a full atlas starts again" {
     try testing.expect(!a.full);
     try testing.expect(a.glyph(&f, f.glyphIndex('A'), 32, 0) != null);
 }
+
