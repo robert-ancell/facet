@@ -510,7 +510,7 @@ pub const Canvas = struct {
     pub fn drawImage(c: *Canvas, img: *const Image, dest_in: Rect, alpha: f32) void {
         const r = c.moved(dest_in);
         if (r.w <= 0 or r.h <= 0 or alpha <= 0 or img.width == 0 or img.height == 0) return;
-        c.note(.image, r, .{ img.id, alpha }, "");
+        c.note(.image, r, .{ img.id, alpha, r }, "");
         const b = c.batchForImage(img, r) orelse return;
         const corners = [4][4]f32{ .{ r.x, r.y, 0, 0 }, .{ r.x + r.w, r.y, 1, 0 }, .{ r.x + r.w, r.y + r.h, 1, 1 }, .{ r.x, r.y + r.h, 0, 1 } };
         var verts: [4][shaders.text_floats]f32 = undefined;
