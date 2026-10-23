@@ -122,6 +122,8 @@ pub const Cache = struct {
     }
 
     fn start(c: *Cache, source: Source, region: ?Region, key: []const u8, now_ns: u64) !*Entry {
+        const io = c.io orelse return error.NoIo;
+        if (c.shared == null) c.shared = try Shared.create(io);
         const e = try alloc.create(Entry);
         errdefer alloc.destroy(e);
         e.* = .{ .key = try alloc.dupe(u8, key), .last_used_ns = now_ns };
@@ -130,8 +132,10 @@ pub const Cache = struct {
         errdefer _ = c.entries.remove(e.key);
         const job = try alloc.create(Job);
         errdefer alloc.destroy(job);
+        const job_key = try alloc.dupe(u8, key);
+        errdefer alloc.free(job_key);
         job.* = .{
-            .key = try alloc.dupe(u8, key),
+            .key = job_key,
             .region = region,
             .what = switch (source) {
                 .image => unreachable,
@@ -140,7 +144,6 @@ pub const Cache = struct {
                 .bytes => |b| .{ .bytes = try alloc.dupe(u8, b) },
             },
         };
-        if (c.shared == null) c.shared = try Shared.create(c.io orelse return error.NoIo);
         c.shared.?.add(job) catch {
             job.deinit();
             e.status = .failed;
@@ -216,7 +219,7 @@ const Job = struct {
 const Decoded = gfx.png.Decoded;
 
 /// The loads waiting and done, shared by the UI and the workers (tasks
-/// in `group`), and the HTTP client they share.
+/// in `group`).
 const Shared = struct {
     io: std.Io,
     mutex: std.atomic.Mutex = .unlocked,
@@ -225,7 +228,6 @@ const Shared = struct {
     workers: u8 = 0,
     closed: bool = false,
     group: std.Io.Group = .init,
-    http: ?*std.http.Client = null,
     /// Readable when a load is done.
     wake: sys.Wake,
 
@@ -272,15 +274,13 @@ const Shared = struct {
         for (s.done.items) |j| j.deinit();
         s.pending.deinit(alloc);
         s.done.deinit(alloc);
-        if (s.http) |h| {
-            h.deinit();
-            alloc.destroy(h);
-        }
         s.wake.deinit();
         alloc.destroy(s);
     }
 
     fn work(s: *Shared) void {
+        var http: ?std.http.Client = null;
+        defer if (http) |*h| h.deinit();
         while (true) {
             s.lock();
             if (s.pending.items.len == 0 or s.closed) {
@@ -289,7 +289,7 @@ const Shared = struct {
             }
             const job = s.pending.orderedRemove(0);
             s.unlock();
-            job.result = load(job, s);
+            job.result = load(job, s, &http);
             s.lock();
             if (s.closed) {
                 job.deinit();
@@ -299,32 +299,20 @@ const Shared = struct {
             s.unlock();
         }
     }
-
-    /// The HTTP client, made for the first URL (on the `Io`).
-    fn httpClient(s: *Shared) ?*std.http.Client {
-        s.lock();
-        defer s.unlock();
-        if (s.http == null) {
-            const h = alloc.create(std.http.Client) catch return null;
-            h.* = .{ .allocator = alloc, .io = s.io };
-            s.http = h;
-        }
-        return s.http;
-    }
 };
 
 /// Fetches and decodes a job's image (in a worker).
-fn load(job: *const Job, s: *Shared) ?Decoded {
+fn load(job: *const Job, s: *Shared, http: *?std.http.Client) ?Decoded {
     const data: []u8 = switch (job.what) {
         .bytes => |b| return decodeFit(b, job.region),
         .file => |p| readFile(s.io, p) orelse return null,
-        .url => |u| fetch(u, s) orelse return null,
+        .url => |u| fetch(u, s, http) orelse return null,
     };
     defer alloc.free(data);
     return decodeFit(data, job.region);
 }
 
-fn fetch(url: []const u8, s: *Shared) ?[]u8 {
+fn fetch(url: []const u8, s: *Shared, http: *?std.http.Client) ?[]u8 {
     if (std.mem.startsWith(u8, url, "file://")) {
         const path = percentDecoded(url["file://".len..]) orelse return null;
         defer alloc.free(path);
@@ -332,7 +320,8 @@ fn fetch(url: []const u8, s: *Shared) ?[]u8 {
     }
     if (std.mem.startsWith(u8, url, "data:")) return dataUrl(url);
     if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-        return httpGet(s.httpClient() orelse return null, url);
+        if (http.* == null) http.* = .{ .allocator = alloc, .io = s.io };
+        return httpGet(&http.*.?, url);
     }
     return null;
 }
