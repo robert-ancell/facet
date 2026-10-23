@@ -1505,7 +1505,8 @@ pub const OffscreenContext = struct {
     ) !void {
         const vp = area.viewport;
         if (vp.width == 0 or vp.height == 0) return;
-        const sc = if (area.scissor) |s| vp.intersect(s) orelse return else vp;
+        const full: Viewport = .{ .width = target.width, .height = target.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return else vp) orelse return;
 
         try self.drawResolved(vp, clear_color, samples, user_ctx, render_fn);
 
@@ -1527,14 +1528,12 @@ pub const OffscreenContext = struct {
         );
 
         const dst_stride = target.rowStride();
+        const dst_x: usize = @intCast(sc.x);
         for (0..sc.height) |row| {
             const dst_y: usize = @intCast(sc.y + @as(i32, @intCast(row)));
-            if (dst_y >= target.height) break;
-            const dst_x: usize = @intCast(@max(sc.x, 0));
-            const copy_w = @min(@as(usize, sc.width), target.width -| dst_x);
             const gl_row = sc.height - 1 - row;
-            const src_row = self.scratch.items[gl_row * sc.width ..][0..copy_w];
-            @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..copy_w], src_row);
+            const src_row = self.scratch.items[gl_row * sc.width ..][0..sc.width];
+            @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..sc.width], src_row);
         }
     }
 };

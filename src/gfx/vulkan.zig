@@ -1463,6 +1463,7 @@ const Owned2DContext = struct {
     import_clock: u64 = 0,
     /// Pictures drawn on other APIs (OpenGL), imported to copy in.
     sources: [max_imports]?SourceImport = @splat(null),
+    retired_sources: std.ArrayList(RetiredSource) = .empty,
     /// Drawing a window's frame (`drawFrame`): the shader, pipelines that
     /// round its corners (`mask`) and put its shadow under it (`under`),
     /// and the vertices.
@@ -1477,6 +1478,11 @@ const Owned2DContext = struct {
     const frame_vertices = (4 + 4 * 2) * 6;
 
     const max_imports = 8;
+
+    const RetiredSource = struct {
+        img: VkImage,
+        mem: VkDeviceMemory,
+    };
 
     const SourceImport = struct {
         id: u64,
@@ -1784,6 +1790,11 @@ const Owned2DContext = struct {
             self.vk.FreeMemory(self.device, src.mem, null);
             slot.* = null;
         };
+        for (self.retired_sources.items) |src| {
+            self.vk.DestroyImage(self.device, src.img, null);
+            self.vk.FreeMemory(self.device, src.mem, null);
+        }
+        self.retired_sources.deinit(self.gpa);
         if (self.dmabuf) |d| if (self.fence != VK_NULL_HANDLE) d.DestroyFence(self.device, self.fence, null);
         self.destroyFrame();
         if (self.direct_pass != VK_NULL_HANDLE) self.vk.DestroyRenderPass(self.device, self.direct_pass, null);
@@ -2390,6 +2401,11 @@ const Owned2DContext = struct {
         const fences = [1]VkFence{self.fence};
         const waited = d.WaitForFences(self.device, 1, &fences, 1, std.time.ns_per_s);
         _ = d.ResetFences(self.device, 1, &fences);
+        for (self.retired_sources.items) |src| {
+            self.vk.DestroyImage(self.device, src.img, null);
+            self.vk.FreeMemory(self.device, src.mem, null);
+        }
+        self.retired_sources.clearRetainingCapacity();
         if (waited != .success) return error.VkWaitForFencesFailed;
     }
 
@@ -2438,7 +2454,7 @@ const Owned2DContext = struct {
                     // Recorded into this frame (outside the render pass), on
                     // this device: no copy through the CPU.
                     self.vk.CmdEndRenderPass(self.cmd);
-                    const frame: DirectFrame = .{ .device = self.device, .cmd = self.cmd, .image = im.img, .origin = origin, .copy_ctx = self, .copy_dmabuf = copyDmabuf };
+                    const frame: DirectFrame = .{ .device = self.device, .cmd = self.cmd, .image = im.img, .origin = origin, .width = t.content[0], .height = t.content[1], .copy_ctx = self, .copy_dmabuf = copyDmabuf };
                     const drawn = try direct(g.ctx, .vulkan, &frame, g.area);
                     self.beginDirectPass(im, t);
                     if (drawn) continue;
@@ -2519,8 +2535,7 @@ const Owned2DContext = struct {
         }
         const slot = free orelse blk: {
             const o = oldest.?;
-            self.vk.DestroyImage(self.device, o.*.?.img, null);
-            self.vk.FreeMemory(self.device, o.*.?.mem, null);
+            try self.retired_sources.append(self.gpa, .{ .img = o.*.?.img, .mem = o.*.?.mem });
             o.* = null;
             break :blk o;
         };
@@ -2536,7 +2551,11 @@ const Owned2DContext = struct {
         const self: *Owned2DContext = @ptrCast(@alignCast(ctx));
         const s = self.importSource(src) catch return false;
         const vp = area.viewport;
-        const sc = if (area.scissor) |c| vp.intersect(c) orelse return true else vp;
+        const clipped = if (area.scissor) |c| vp.intersect(c) orelse return true else vp;
+        const sc = if (frame.width > 0 and frame.height > 0)
+            (Viewport{ .width = frame.width, .height = frame.height }).intersect(clipped) orelse return true
+        else
+            clipped;
         const color = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         const range: VkImageSubresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR };
         const before = [2]VkImageMemoryBarrier{
@@ -2836,6 +2855,8 @@ pub const DirectFrame = struct {
     image: VkImage,
     /// Where the frame's top left is in the image (inside the shadow).
     origin: [2]i32,
+    width: u32 = 0,
+    height: u32 = 0,
     /// For draws on another API: copies the part of `src` (a picture of
     /// `area`'s viewport) within `area` into the frame, or returns false if
     /// it cannot be imported.
@@ -3562,7 +3583,8 @@ pub const OffscreenContext = struct {
     ) !void {
         const vp = area.viewport;
         if (vp.width == 0 or vp.height == 0) return;
-        const sc = if (area.scissor) |s| vp.intersect(s) orelse return else vp;
+        const full: Viewport = .{ .width = target.width, .height = target.height };
+        const sc = full.intersect(if (area.scissor) |s| vp.intersect(s) orelse return else vp) orelse return;
 
         try self.ensureTargets(vp.width, vp.height, samples);
         self.width = vp.width;
@@ -3621,16 +3643,14 @@ pub const OffscreenContext = struct {
         if (self.vk.QueueSubmit(self.queue, 1, &submits, VK_NULL_HANDLE) != .success) return error.VkQueueSubmitFailed;
         _ = self.vk.QueueWaitIdle(self.queue);
 
-        const local_x: usize = @intCast(@max(sc.x - vp.x, 0));
-        const local_y: usize = @intCast(@max(sc.y - vp.y, 0));
+        const local_x: usize = @intCast(sc.x - vp.x);
+        const local_y: usize = @intCast(sc.y - vp.y);
         const dst_stride = target.rowStride();
+        const dst_x: usize = @intCast(sc.x);
         for (0..sc.height) |row| {
             const dst_y: usize = @intCast(sc.y + @as(i32, @intCast(row)));
-            if (dst_y >= target.height) break;
-            const dst_x: usize = @intCast(@max(sc.x, 0));
-            const copy_w = @min(@as(usize, sc.width), target.width -| dst_x);
-            const src_row = self.readback_map[(local_y + row) * vp.width + local_x ..][0..copy_w];
-            @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..copy_w], src_row);
+            const src_row = self.readback_map[(local_y + row) * vp.width + local_x ..][0..sc.width];
+            @memcpy(target.pixels[dst_y * dst_stride + dst_x ..][0..sc.width], src_row);
         }
     }
 
@@ -3650,7 +3670,11 @@ pub const OffscreenContext = struct {
         if (frame.device != self.device) return false;
         const vp = area.viewport;
         if (vp.width == 0 or vp.height == 0) return true;
-        const sc = if (area.scissor) |s| vp.intersect(s) orelse return true else vp;
+        const clipped = if (area.scissor) |s| vp.intersect(s) orelse return true else vp;
+        const sc = if (frame.width > 0 and frame.height > 0)
+            (Viewport{ .width = frame.width, .height = frame.height }).intersect(clipped) orelse return true
+        else
+            clipped;
 
         try self.ensureTargets(vp.width, vp.height, samples);
         self.width = vp.width;
