@@ -691,17 +691,20 @@ pub const TextArea = struct {
     }
 
     /// The character boundary in `l` nearest `x`.
+    /// Uses a single forward Layout pass accumulating advance widths (O(N)).
     fn offsetInLine(self: *const TextArea, s: font.Style, l: Line, x: f32) usize {
         const text = self.doc.text();
         var best = l.start;
         var best_d = @abs(x);
-        var i = l.start;
-        while (i < l.end) {
-            i += std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
-            i = @min(i, l.end);
-            const dist = @abs(font.measure(s, text[l.start..i]) - x);
+        var lay = font.Layout.init(s, text[l.start..l.end], 0);
+        while (lay.next()) |_| {
+            // `lay.at` is the byte index into the slice text[l.start..l.end]
+            // after consuming the current codepoint, so l.start + lay.at is
+            // the byte boundary in the document text just after this glyph.
+            const boundary = l.start + lay.at;
+            const dist = @abs(lay.x - x);
             if (dist < best_d) {
-                best = i;
+                best = boundary;
                 best_d = dist;
             }
         }
@@ -747,34 +750,37 @@ fn wrapText(gpa: std.mem.Allocator, out: *std.ArrayList(Line), s: font.Style, te
 
 fn wrapLine(gpa: std.mem.Allocator, out: *std.ArrayList(Line), s: font.Style, text: []const u8, from: usize, to: usize, width: f32) void {
     var start = from;
-    while (true) {
-        if (font.measure(s, text[start..to]) <= width) {
+    while (start <= to) {
+        // Single forward pass: walk every glyph once, tracking the last space
+        // break that still fits and the last character boundary that fits.
+        var lay = font.Layout.init(s, text[start..to], 0);
+        var brk: ?usize = null; // byte boundary after the last fitting space
+        var fit: usize = start; // last character boundary whose cumulative width <= width
+        var fits_all = true;
+        while (lay.next()) |item| {
+            // item.x  = pen x *before* this glyph's advance (cumulative width so far)
+            // lay.x   = pen x *after*  this glyph's advance
+            // lay.at  = byte offset into text[start..to] just after this glyph
+            const boundary = start + lay.at;
+            // Original logic: for a space at byte i, record brk=i+1 iff
+            //   measure(text[start..i]) <= width, i.e. the text up to (not
+            //   including) the space fits. That equals item.x <= width.
+            if (text[start + lay.at - 1] == ' ' and item.x <= width) {
+                brk = boundary;
+            }
+            if (lay.x > width) {
+                fits_all = false;
+                break;
+            }
+            fit = boundary;
+        }
+        if (fits_all) {
             out.append(gpa, .{ .start = start, .end = to }) catch return;
             return;
         }
-        // The last space that still fits: break after it.
-        var brk: ?usize = null;
-        var i = start;
-        while (i < to) : (i += 1) {
-            if (text[i] != ' ') continue;
-            if (font.measure(s, text[start..i]) > width) break;
-            brk = i + 1;
-        }
-        // No space fits: as many characters as fit (one, at least).
-        const end = brk orelse blk: {
-            var j = start;
-            var fit = start;
-            while (j < to) {
-                j += std.unicode.utf8ByteSequenceLength(text[j]) catch 1;
-                j = @min(j, to);
-                if (font.measure(s, text[start..j]) > width and fit > start) break;
-                fit = j;
-            }
-            break :blk fit;
-        };
+        const end: usize = brk orelse (if (fit > start) fit else start + (std.unicode.utf8ByteSequenceLength(text[start]) catch 1));
         out.append(gpa, .{ .start = start, .end = end }) catch return;
         start = end;
-        if (start >= to) return;
     }
 }
 

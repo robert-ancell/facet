@@ -680,18 +680,38 @@ pub const TextField = struct {
     }
 
     /// The character boundary nearest `x` (in the widget).
+    /// Uses a single forward Layout pass accumulating advance widths (O(N)).
     fn cursorAt(self: *const TextField, n: *const Node, x: f32) usize {
         const st = n.state(State);
         const style = self.fontStyle(n) orelse return st.len;
         const scroll = self.updateScroll(n, style, st);
+        var buf: [capacity * dot.len]u8 = undefined;
+        const display = self.shown(st, &buf, st.text());
+        // `origin` is the pixel x of the start of the text in the widget.
+        const origin: f32 = pad - scroll;
+        // Check the left edge (byte 0) first.
         var best: usize = 0;
-        var best_d = std.math.inf(f32);
-        for (0..st.len + 1) |i| {
-            // Only between characters.
-            if (i < st.len and st.buf[i] & 0xc0 == 0x80) continue;
-            const d = @abs(pad - scroll + self.xOf(style, st, i) - x);
+        var best_d = @abs(origin - x);
+        var display_at: usize = 0; // byte offset into `display`
+        var doc_at: usize = 0; // corresponding byte offset into st.buf
+        var lay = font.Layout.init(style, display, 0);
+        while (lay.next()) |_| {
+            // lay.at is the byte boundary in `display` just after this glyph.
+            // Advance doc_at by the same number of codepoints (they correspond
+            // 1-to-1; for an obscured field each dot maps to one source char).
+            if (self.isObscured(st)) {
+                // Each dot.len bytes in display == one codepoint in the source.
+                const dots_consumed = (lay.at - display_at) / dot.len;
+                for (0..dots_consumed) |_| {
+                    doc_at += std.unicode.utf8ByteSequenceLength(st.buf[doc_at]) catch 1;
+                }
+            } else {
+                doc_at = lay.at;
+            }
+            display_at = lay.at;
+            const d = @abs(origin + lay.x - x);
             if (d < best_d) {
-                best = i;
+                best = doc_at;
                 best_d = d;
             }
         }
