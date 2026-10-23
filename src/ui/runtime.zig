@@ -1802,10 +1802,8 @@ pub const App = struct {
     on_last_window_closed: OnLastWindowClosed = .ignore,
     /// `quit` was called: `step` returns false.
     quitting: bool = false,
-    /// The theme the app is set to (from the system's settings, or `setTheme`).
-    appearance: theme_mod.Settings = .{},
-    /// Watches the settings for a change of theme.
-    theme_watch: theme_mod.Watch = .{},
+    /// The theme the app is set to (from the system, or `setTheme`).
+    theme: theme_mod.ThemeMode = .dark,
     /// The system's appearance (dark or not) when last seen, for windows
     /// that say (macOS): the theme follows it when it changes.
     system_dark: ?bool = null,
@@ -1924,10 +1922,8 @@ pub const App = struct {
             .app_id = options.app_id,
             .on_quit_request = options.on_quit_request,
             .on_last_window_closed = options.on_last_window_closed,
-            .appearance = theme_mod.loadSettings(io),
             .trace = envIs(environ, "KETE_TRACE", "1"),
         };
-        _ = a.theme_watch.changed(io);
         return a;
     }
 
@@ -1994,7 +1990,7 @@ pub const App = struct {
         a.windows.appendAssumeCapacity(w);
         a.open_windows += 1;
         if (a.followSystem()) a.applyTheme();
-        ui.theme = a.appearance.theme.scheme();
+        ui.theme = a.theme.scheme();
         ui.min_size_floor = options.min_size orelse .{ 0, 0 };
         ui.attachWindow(win, &w.controls);
         ui.app_window = w;
@@ -2017,22 +2013,21 @@ pub const App = struct {
         } else return false;
         if (a.system_dark == dark) return false;
         a.system_dark = dark;
-        a.appearance.theme = if (dark) .dark else .light;
+        a.theme = if (dark) .dark else .light;
         return true;
     }
 
     /// Gives every window's UI the app's theme, and redraws them.
     fn applyTheme(a: *App) void {
         for (a.windows.items) |w| if (!w.closed) {
-            w.ui.theme = a.appearance.theme.scheme();
+            w.ui.theme = a.theme.scheme();
             w.dirty = true;
         };
     }
 
     /// Sets the theme (light or dark) of all its windows.
     pub fn setTheme(a: *App, mode: theme_mod.ThemeMode) void {
-        a.appearance.theme = mode;
-        _ = a.theme_watch.changed(a.io);
+        a.theme = mode;
         a.applyTheme();
     }
 
@@ -2094,10 +2089,6 @@ pub const App = struct {
         if (has_atspi) if (a.shared.a11y) |b| if (b.dispatch()) {
             all = true;
         };
-        if (a.theme_watch.changed(a.io)) {
-            a.appearance = theme_mod.loadSettings(a.io);
-            a.applyTheme();
-        }
         if (a.followSystem()) a.applyTheme();
         if (a.display.takeQuitRequest()) switch (a.on_quit_request) {
             .ignore => {},

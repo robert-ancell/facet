@@ -1,13 +1,10 @@
 //! Theme: a colour scheme (the light and dark ones, with the colour roles
-//! of Material 3), text sizes, and persistent appearance settings.
+//! of Material 3) and text sizes.
 
 const std = @import("std");
 const gfx = @import("gfx");
 
 const Color = gfx.Color;
-
-/// Default path where persistent appearance settings can be stored.
-pub const settings_file = "/data/apps/.appearance";
 
 /// Whether the system uses the dark or light colour scheme.
 pub const ThemeMode = enum {
@@ -36,80 +33,6 @@ pub const ThemeMode = enum {
             .dark => .dark,
             .light => .light,
         };
-    }
-};
-
-/// Persistent appearance settings stored in `settings_file`.
-pub const Settings = struct {
-    theme: ThemeMode = .dark,
-
-    pub fn parse(text: []const u8) Settings {
-        var s: Settings = .{};
-        var lines = std.mem.tokenizeScalar(u8, text, '\n');
-        while (lines.next()) |line| {
-            var tok = std.mem.tokenizeAny(u8, line, " \t\r");
-            const key = tok.next() orelse continue;
-            const val = tok.next() orelse continue;
-            if (std.mem.eql(u8, key, "theme")) {
-                if (ThemeMode.fromCode(val)) |m| s.theme = m;
-            }
-        }
-        return s;
-    }
-
-    pub fn formatBuf(s: Settings, buf: []u8) []const u8 {
-        return std.mem.print(buf, "theme {s}\n", .{s.theme.code()}) catch "";
-    }
-};
-
-/// The settings in `settings_file` (read through `io`), or the defaults.
-pub fn loadSettings(io: std.Io) Settings {
-    return loadSettingsFrom(io, settings_file);
-}
-
-pub fn loadSettingsFrom(io: std.Io, path: []const u8) Settings {
-    var buf: [128]u8 = undefined;
-    const text = std.Io.Dir.cwd().readFile(io, path, &buf) catch return .{};
-    return Settings.parse(text);
-}
-
-pub fn saveSettings(io: std.Io, s: Settings) void {
-    std.Io.Dir.cwd().createDirPath(io, std.fs.path.dirname(settings_file).?) catch {};
-    saveSettingsTo(io, settings_file, s);
-}
-
-pub fn saveSettingsTo(io: std.Io, path: []const u8, s: Settings) void {
-    var buf: [128]u8 = undefined;
-    const content = s.formatBuf(&buf);
-    if (content.len == 0) return;
-    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = content }) catch {};
-}
-
-/// Notices `path` (defaulting to `settings_file`) being created, replaced, or
-/// modified (looked at through `io`).
-pub const Watch = struct {
-    path: []const u8 = settings_file,
-    stamp: ?Stamp = null,
-    initialized: bool = false,
-
-    /// What tells one version of the file from another.
-    const Stamp = struct { inode: std.Io.File.INode, size: u64, mtime: i96 };
-
-    /// Whether `path` changed since the last call (false on the first call).
-    pub fn changed(w: *Watch, io: std.Io) bool {
-        const now: ?Stamp = if (std.Io.Dir.cwd().statFile(io, w.path, .{})) |st|
-            .{ .inode = st.inode, .size = st.size, .mtime = st.mtime.nanoseconds }
-        else |_|
-            null;
-        defer {
-            w.stamp = now;
-            w.initialized = true;
-        }
-        if (!w.initialized) return false;
-        if (w.stamp == null and now == null) return false;
-        const before = w.stamp orelse return true;
-        const after = now orelse return true;
-        return !std.meta.eql(before, after);
     }
 };
 
@@ -274,34 +197,3 @@ pub const Syntax = struct {
         };
     }
 };
-
-const testing = std.testing;
-
-test "appearance settings parse, format, save and load" {
-    try testing.expectEqual(ThemeMode.dark, Settings.parse("").theme);
-    try testing.expectEqual(ThemeMode.light, Settings.parse("theme light\n").theme);
-    try testing.expectEqual(ThemeMode.dark, Settings.parse("theme dark\n").theme);
-    try testing.expectEqual(ThemeMode.dark, Settings.parse("theme invalid\n").theme);
-
-    const io = testing.io;
-    var tmp = testing.tmpDir(.{});
-    defer tmp.cleanup();
-    var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const root = dir_buf[0..try tmp.dir.realPathFile(io, ".", &dir_buf)];
-    var path_buf: [std.fs.max_path_bytes + 32]u8 = undefined;
-    const path = try std.fmt.bufPrint(&path_buf, "{s}/appearance", .{root});
-
-    var watch: Watch = .{ .path = path };
-    try testing.expect(!watch.changed(io));
-    try testing.expectEqual(ThemeMode.dark, loadSettingsFrom(io, path).theme);
-
-    saveSettingsTo(io, path, .{ .theme = .light });
-    try testing.expect(watch.changed(io));
-    try testing.expect(!watch.changed(io));
-    try testing.expectEqual(ThemeMode.light, loadSettingsFrom(io, path).theme);
-
-    try io.sleep(.fromMilliseconds(20), .awake);
-    saveSettingsTo(io, path, .{ .theme = .dark });
-    try testing.expect(watch.changed(io));
-    try testing.expectEqual(ThemeMode.dark, loadSettingsFrom(io, path).theme);
-}
