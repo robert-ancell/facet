@@ -298,7 +298,9 @@ pub const Font = struct {
             } else if (cp > end) {
                 lo = mid + 1;
             } else {
-                return @truncate(try read(u32, t, rec + 8) + (cp - start));
+                const g = std.math.add(u32, try read(u32, t, rec + 8), cp - start) catch return error.Malformed;
+                if (g > std.math.maxInt(u16)) return missing_glyph;
+                return @intCast(g);
             }
         }
         return missing_glyph;
@@ -312,6 +314,7 @@ pub const Font = struct {
 
     /// Left side bearing in font units.
     pub fn leftSideBearing(f: *const Font, glyph: u16) i16 {
+        if (glyph >= f.num_glyphs) return 0;
         if (glyph < f.num_hmetrics) return read(i16, f.hmtx, @as(usize, glyph) * 4 + 2) catch 0;
         const at = @as(usize, f.num_hmetrics) * 4 + (@as(usize, glyph) - f.num_hmetrics) * 2;
         return read(i16, f.hmtx, at) catch 0;
@@ -333,12 +336,14 @@ pub const Font = struct {
     pub fn boundingBox(f: *const Font, glyph: u16) ?Box {
         const g = f.glyphData(glyph) catch return null;
         if (g.len < 10) return null;
-        return .{
+        const box: Box = .{
             .x_min = read(i16, g, 2) catch return null,
             .y_min = read(i16, g, 4) catch return null,
             .x_max = read(i16, g, 6) catch return null,
             .y_max = read(i16, g, 8) catch return null,
         };
+        if (box.x_min > box.x_max or box.y_min > box.y_max) return null;
+        return box;
     }
 
     /// Emits the glyph's outline, transformed by `t`, to `sink`, which has

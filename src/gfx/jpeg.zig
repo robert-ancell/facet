@@ -73,6 +73,7 @@ const Huffman = struct {
             const len = i + 1;
             h.delta[len] = @as(i32, @intCast(k)) - @as(i32, @intCast(code));
             for (0..counts[i]) |_| {
+                if (code >= @as(u32, 1) << @intCast(len)) return error.Malformed;
                 if (len <= 9) {
                     const shift: u4 = @intCast(9 - len);
                     const first = code << shift;
@@ -81,7 +82,6 @@ const Huffman = struct {
                 code += 1;
                 k += 1;
             }
-            if (code > @as(u32, 1) << @intCast(len)) return error.Malformed;
             h.maxcode[len] = code << @intCast(16 - len);
             code <<= 1;
         }
@@ -445,10 +445,11 @@ const Decoder = struct {
     /// over.
     fn nextRestart(d: *Decoder) Error!void {
         d.resetBits();
+        const before = d.at;
         const m = try d.marker();
         if (m < 0xd0 or m > 0xd7) {
             // Missing: carry on from it.
-            d.at -= 2;
+            d.at = before;
         }
         for (d.comps[0..d.ncomps]) |*c| c.dc_pred = 0;
         d.eobrun = 0;
@@ -944,6 +945,10 @@ test "baseline, progressive, subsampled, grey, CMYK and restart-marked JPEGs dec
 
 test "broken JPEGs are refused, and none crash" {
     try testing.expectError(error.Malformed, decode(testing.allocator, "not a jpeg"));
+    var bad_counts: [16]u8 = @splat(0);
+    bad_counts[0] = 3; // At most 2 codes of length 1 exist.
+    const syms: [3]u8 = .{ 0, 1, 2 };
+    try testing.expectError(error.Malformed, Huffman.build(bad_counts, &syms));
     const good = @embedFile("testdata/gradient_progressive.jpg");
     // Cut short anywhere, or with bytes changed: an error or a picture,
     // never a crash.

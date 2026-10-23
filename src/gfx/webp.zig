@@ -399,6 +399,7 @@ fn entropyImage(a: std.mem.Allocator, b: *BitReader, w: u32, h: u32, main: bool)
     const cache_size: usize = if (cache_bits > 0) @as(usize, 1) << cache_bits else 0;
     const groups = try a.alloc(Group, groups_n);
     for (groups) |*g| {
+        if (b.eos) return error.Malformed;
         g[0] = try readPrefix(a, b, 256 + 24 + cache_size);
         g[1] = try readPrefix(a, b, 256);
         g[2] = try readPrefix(a, b, 256);
