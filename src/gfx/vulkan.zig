@@ -3624,6 +3624,20 @@ pub const OffscreenContext = struct {
 
         self.vk.CmdEndRenderPass(self.cmd);
 
+        // Barrier: the render pass's finalLayout transitions resolve_img to
+        // TRANSFER_SRC_OPTIMAL, but its COLOR_ATTACHMENT write must be visible
+        // to the TRANSFER read below.  Without this barrier the copy may race
+        // the rasteriser on tiling GPUs (and triggers Vulkan validation errors).
+        const resolve_barrier = [1]VkImageMemoryBarrier{.{
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            .image = self.resolve_img,
+            .subresourceRange = .{ .aspectMask = VK_IMAGE_ASPECT_COLOR },
+        }};
+        self.vk.CmdPipelineBarrier(self.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, null, 0, null, 1, &resolve_barrier);
+
         const copy_region = [1]VkBufferImageCopy{.{
             .imageExtent = .{ .width = vp.width, .height = vp.height, .depth = 1 },
         }};
@@ -3635,6 +3649,7 @@ pub const OffscreenContext = struct {
             1,
             &copy_region,
         );
+
 
         if (self.vk.EndCommandBuffer(self.cmd) != .success) return error.VkEndCommandBufferFailed;
 

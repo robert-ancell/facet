@@ -88,7 +88,9 @@ pub const Cache = struct {
         var key_buf: [std.fs.max_path_bytes + 64]u8 = undefined;
         const key = keyOf(source, region, &key_buf);
         if (c.entries.get(key)) |e| {
-            e.last_used_ns = now_ns;
+            // Only refresh the liveness timestamp for entries that are actually
+            // usable; failed entries must expire so that evict() can remove them.
+            if (e.status != .failed) e.last_used_ns = now_ns;
             return switch (e.status) {
                 .loading => .loading,
                 .ready => .{ .ready = &e.image },
@@ -118,7 +120,15 @@ pub const Cache = struct {
             @memcpy(buf[len..][0..where.len], where);
             return buf[0 .. len + where.len];
         }
-        return std.fmt.bufPrint(buf, "{s}{s}", .{ base, where }) catch base;
+        return std.fmt.bufPrint(buf, "{s}{s}", .{ base, where }) catch blk: {
+            // Key too long for the buffer (e.g. a very long data: URL with a
+            // region suffix).  Hash base+region so different regions of the
+            // same source still get distinct cache entries.
+            var h = std.hash.Wyhash.init(0);
+            h.update(base);
+            h.update(where);
+            break :blk std.fmt.bufPrint(buf, ":h:{x}", .{h.final()}) catch unreachable;
+        };
     }
 
     fn start(c: *Cache, source: Source, region: ?Region, key: []const u8, now_ns: u64) !*Entry {
@@ -427,15 +437,27 @@ fn shrink(img: Decoded, max: u32) !Decoded {
         for (0..w) |x| {
             const x0 = x * img.width / w;
             const x1 = @max(x0 + 1, (x + 1) * img.width / w);
-            var sum: [4]u64 = @splat(0);
+            // Accumulate RGB weighted by alpha so that fully-transparent
+            // pixels (0x00000000) do not bleed dark fringes into neighbours.
+            var sum_b: u64 = 0;
+            var sum_g: u64 = 0;
+            var sum_r: u64 = 0;
+            var sum_a: u64 = 0;
             for (y0..y1) |sy| for (x0..x1) |sx| {
                 const p = img.pixels[sy * img.width + sx];
-                for (&sum, 0..) |*s, i| s.* += (p >> @intCast(i * 8)) & 0xff;
+                const a = (p >> 24) & 0xff;
+                sum_b += (p & 0xff) * a;
+                sum_g += ((p >> 8) & 0xff) * a;
+                sum_r += ((p >> 16) & 0xff) * a;
+                sum_a += a;
             };
             const count = (y1 - y0) * (x1 - x0);
-            var px: u32 = 0;
-            for (sum, 0..) |s, i| px |= @as(u32, @intCast(s / count)) << @intCast(i * 8);
-            out[y * w + x] = px;
+            const out_a: u32 = @intCast(sum_a / count);
+            out[y * w + x] = if (sum_a == 0) 0 else
+                (out_a << 24) |
+                (@as(u32, @intCast(sum_r / sum_a)) << 16) |
+                (@as(u32, @intCast(sum_g / sum_a)) << 8) |
+                @as(u32, @intCast(sum_b / sum_a));
         }
     }
     return .{ .pixels = out, .width = w, .height = h };
