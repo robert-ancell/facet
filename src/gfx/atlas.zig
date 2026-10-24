@@ -174,4 +174,3 @@ test "glyphs are packed once, and a full atlas starts again" {
     try testing.expect(!a.full);
     try testing.expect(a.glyph(&f, f.glyphIndex('A'), 32, 0) != null);
 }
-
