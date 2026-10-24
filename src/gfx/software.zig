@@ -445,17 +445,33 @@ inline fn blendOver(dst: u32, r: f32, g: f32, b: f32, a: f32) u32 {
     const sa: u32 = @intFromFloat(@round(alpha * 255.0));
     if (sa == 0) return dst;
     if (sa == 255) return 0xff000000 | (sr << 16) | (sg << 8) | sb;
-    const dr = (dst >> 16) & 0xff;
-    const dg = (dst >> 8) & 0xff;
-    const db = dst & 0xff;
     const da = (dst >> 24) & 0xff;
     const inv_a = 255 - sa;
-    const out_r = (sr * sa + dr * inv_a + 127) / 255;
-    const out_g = (sg * sa + dg * inv_a + 127) / 255;
-    const out_b = (sb * sa + db * inv_a + 127) / 255;
-    const out_a = (sa * 255 + da * inv_a + 127) / 255;
-    return (out_a << 24) | (out_r << 16) | (out_g << 8) | out_b;
+    if (da == 255) {
+        // Fast path: opaque destination → result is always fully opaque,
+        // and premultiplied == straight so the simpler integer formula applies.
+        const out_r = (sr * sa + ((dst >> 16) & 0xff) * inv_a + 127) / 255;
+        const out_g = (sg * sa + ((dst >> 8) & 0xff) * inv_a + 127) / 255;
+        const out_b = (sb * sa + (dst & 0xff) * inv_a + 127) / 255;
+        return 0xff000000 | (out_r << 16) | (out_g << 8) | out_b;
+    }
+    // General case: Porter-Duff "over" with straight alpha.  The previous
+    // integer formula used `dr * inv_a` instead of `dr * da * inv_a / 255`,
+    // which is only correct when da=255 (handled above).
+    const sa_f = alpha;
+    const da_f = @as(f32, @floatFromInt(da)) / 255.0;
+    const out_a_f = sa_f + da_f * (1.0 - sa_f);
+    if (out_a_f <= 0.0) return 0;
+    const da_inv_sa = da_f * (1.0 - sa_f);
+    const out_r_f = (std.math.clamp(r, 0.0, 1.0) * sa_f + @as(f32, @floatFromInt((dst >> 16) & 0xff)) / 255.0 * da_inv_sa) / out_a_f;
+    const out_g_f = (std.math.clamp(g, 0.0, 1.0) * sa_f + @as(f32, @floatFromInt((dst >> 8) & 0xff)) / 255.0 * da_inv_sa) / out_a_f;
+    const out_b_f = (std.math.clamp(b, 0.0, 1.0) * sa_f + @as(f32, @floatFromInt(dst & 0xff)) / 255.0 * da_inv_sa) / out_a_f;
+    return (@as(u32, @intFromFloat(@round(out_a_f * 255.0))) << 24) |
+        (@as(u32, @intFromFloat(@round(std.math.clamp(out_r_f, 0.0, 1.0) * 255.0))) << 16) |
+        (@as(u32, @intFromFloat(@round(std.math.clamp(out_g_f, 0.0, 1.0) * 255.0))) << 8) |
+        @as(u32, @intFromFloat(@round(std.math.clamp(out_b_f, 0.0, 1.0) * 255.0)));
 }
+
 
 /// Writes the image as a binary PPM.
 pub fn writePpm(img: Image, writer: anytype) !void {

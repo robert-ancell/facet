@@ -320,11 +320,14 @@ pub const Layout = struct {
         const b0 = text[at];
         if (b0 < 0x80) return .{ .cp = b0, .next_at = at + 1 };
         const len = std.unicode.utf8ByteSequenceLength(b0) catch 1;
-        const cp: u21 = if (at + len <= text.len)
-            std.unicode.utf8Decode(text[at..][0..len]) catch 0xfffd
-        else
-            0xfffd;
-        return .{ .cp = cp, .next_at = @min(at + len, text.len) };
+        if (at + len <= text.len) {
+            if (std.unicode.utf8Decode(text[at..][0..len])) |cp| {
+                return .{ .cp = cp, .next_at = at + len };
+            } else |_| {}
+        }
+        // Invalid or truncated sequence: emit U+FFFD and advance by 1 byte
+        // only, so that any valid bytes immediately following are not lost.
+        return .{ .cp = 0xfffd, .next_at = at + 1 };
     }
 
     pub fn next(l: *Layout) ?Item {
@@ -349,8 +352,10 @@ pub const Layout = struct {
                     }
                 }
                 if (f.num_ccmp_lookups > 0 and l.at < l.text.len and glyph != opentype.missing_glyph) {
-                    var next_cps: [8]u21 = undefined;
-                    var next_ends: [8]usize = undefined;
+                    // Read up to 12 raw codepoints ahead (longer than 8
+                    // to accommodate sequences with FE0F/200D transparents).
+                    var next_cps: [12]u21 = undefined;
+                    var next_ends: [12]usize = undefined;
                     var next_len: usize = 0;
                     var scan = l.at;
                     while (next_len < next_cps.len) {
@@ -360,16 +365,34 @@ pub const Layout = struct {
                         scan = nd.next_at;
                         next_len += 1;
                     }
+                    // Build next_glyphs, treating default-ignorable codepoints
+                    // (U+FE0F, U+FE0E, U+200D) specially per the OpenType spec:
+                    //   • If the codepoint has a glyph → include it as a component.
+                    //     (e.g. keycaps: 1️⃣ needs FE0F as a ligature component)
+                    //   • If the codepoint is ignorable AND has no glyph → skip it.
+                    //     (e.g. 🏳️‍🌈: U+200D/ZWJ has no glyph, skip to reach 🌈)
+                    //   • If the codepoint is non-ignorable AND has no glyph → stop.
+                    // Track the raw index in next_cps for each included glyph so that
+                    // l.at is advanced past all skipped transparents after a match.
                     var next_glyphs: [8]u16 = undefined;
+                    var real_glyph_raw_idx: [8]usize = undefined;
                     var valid_len: usize = 0;
-                    while (valid_len < next_len) : (valid_len += 1) {
-                        const ng = f.glyphIndex(next_cps[valid_len]);
-                        if (ng == opentype.missing_glyph) break;
+                    for (next_cps[0..next_len], 0..) |cp, i| {
+                        const is_ignorable = cp == 0xfe0e or cp == 0xfe0f or cp == 0x200d;
+                        const ng = f.glyphIndex(cp);
+                        if (ng == opentype.missing_glyph) {
+                            if (is_ignorable) continue; // skip: ignorable with no glyph
+                            break; // stop: non-ignorable with no glyph
+                        }
+                        if (valid_len >= next_glyphs.len) break;
+                        real_glyph_raw_idx[valid_len] = i;
                         next_glyphs[valid_len] = ng;
+                        valid_len += 1;
                     }
+
                     if (f.ligature(glyph, next_glyphs[0..valid_len])) |lig| {
                         glyph = lig.glyph;
-                        l.at = next_ends[lig.consumed - 1];
+                        l.at = next_ends[real_glyph_raw_idx[lig.consumed - 1]];
                     } else if (f != l.style.font and wants_emoji and f.colorLayers(glyph) == null) {
                         f = l.style.font;
                         glyph = f.glyphIndex(d.cp);
