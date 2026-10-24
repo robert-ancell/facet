@@ -439,6 +439,17 @@ pub const WindowUi = struct {
     min_size: [2]u32 = .{ 1, 1 },
     /// Optional explicit floor for `min_size` (e.g. from `App.Options.min_size`).
     min_size_floor: [2]u32 = .{ 0, 0 },
+    /// Incremented in `Node.reconcile` each time the widget tree's child list
+    /// changes (nodes added, removed, or reordered).  Used to skip the full
+    /// `minSize` traversal when the tree is structurally stable.
+    build_version: u64 = 0,
+    /// The `build_version` when the cached raw minimums were last computed.
+    /// Initialised to `maxInt` so the very first frame always computes them.
+    min_size_version: u64 = std.math.maxInt(u64),
+    /// Cached result of `r.minSize(.unbounded)` from the last structural change.
+    cached_raw_min: Size = .{},
+    /// Cached result of `tb.minSize(.unbounded)` from the last structural change.
+    cached_tb_min: Size = .{},
     /// What changed in the last frame (and the frames before).
     damage: damage_mod.Tracker = .{},
     /// Counts nodes as they are painted (their order is part of what they
@@ -720,12 +731,20 @@ pub const WindowUi = struct {
         r.theme_ptr = null;
         r.build(w);
         const tb = ui.buildTitleBar();
-        const tb_min: Size = if (tb) |t| t.minSize(.unbounded) else .{};
+        // The title-bar height is a constant; only the minimum width (and the
+        // root's minimum size) need the expensive traversal, which we skip when
+        // the tree structure has not changed since we last computed them.
         const tb_min_h: f32 = if (tb != null) title_bar_mod.TitleBar.height else 0;
-        const min = r.minSize(.unbounded);
+        if (ui.min_size_version != ui.build_version) {
+            ui.cached_raw_min = r.minSize(.unbounded);
+            ui.cached_tb_min = if (tb) |t| t.minSize(.unbounded) else .{};
+            ui.min_size_version = ui.build_version;
+        }
+        // Always reapply the floor: it is set at window creation but may be
+        // changed by the caller between frames (and in tests it often is).
         ui.min_size = .{
-            @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(min.w, tb_min.w, 1))))),
-            @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(min.h + tb_min_h, 1))))),
+            @max(ui.min_size_floor[0], @as(u32, @intFromFloat(@ceil(@max(ui.cached_raw_min.w, ui.cached_tb_min.w, 1))))),
+            @max(ui.min_size_floor[1], @as(u32, @intFromFloat(@ceil(@max(ui.cached_raw_min.h + tb_min_h, 1))))),
         };
         var w_px = width;
         var h_px = height;
@@ -953,6 +972,11 @@ pub const WindowUi = struct {
     }
 
     fn paint(ui: *WindowUi, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
+        // Sweep the run cache once per logical frame.  Doing it here (rather
+        // than inside paintOnce) means the retry pass on atlas-full does not
+        // sweep again and evict runs that the first pass already marked `used`
+        // but the second pass has not yet re-reached.
+        ui.atlas.beginFrame();
         ui.paintOnce(tb, r, drag, menu, tooltip, width, height);
         // The glyph atlas filled part way through, so some text is missing
         // glyphs: painted again with it empty, so that the frame is whole.
@@ -963,7 +987,7 @@ pub const WindowUi = struct {
     }
 
     fn paintOnce(ui: *WindowUi, tb: ?*Node, r: *Node, drag: ?*Node, menu: ?*Node, tooltip: ?*Node, width: u32, height: u32) void {
-        ui.atlas.beginFrame();
+        ui.atlas.beginPass();
         ui.canvases_used = 0;
         ui.segments.clearRetainingCapacity();
         const s = @max(ui.scale, 1);

@@ -66,9 +66,17 @@ pub const Atlas = struct {
         a.gpa.free(a.pixels);
     }
 
-    /// Call before recording a frame's text.
+    /// Call once per logical frame, before any painting pass, to drop
+    /// shaped-text runs that were not used since the last frame.
     pub fn beginFrame(a: *Atlas) void {
         a.runs.sweep();
+        a.beginPass();
+    }
+
+    /// Call at the start of each painting pass (including atlas-full retries).
+    /// If the atlas filled during the previous pass, clears it so the next pass
+    /// can pack glyphs from scratch.  Does NOT sweep the run cache.
+    pub fn beginPass(a: *Atlas) void {
         if (!a.full) return;
         a.map.clearRetainingCapacity();
         @memset(a.pixels, 0);

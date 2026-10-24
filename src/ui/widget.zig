@@ -744,6 +744,8 @@ pub const WidgetNode = struct {
         }
         const gpa = n.ui.gpa;
         const arena = n.ui.arena();
+        // Signal that the tree structure changed so WindowUi.frame recomputes min_size.
+        n.ui.build_version +%= 1;
         // The old children, aside (the list's memory is reused).
         const old_items: []*WidgetNode = arena.dupe(*WidgetNode, n.children.items) catch blk: {
             for (n.children.items) |o| o.destroy();
