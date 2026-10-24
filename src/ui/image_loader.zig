@@ -453,8 +453,7 @@ fn shrink(img: Decoded, max: u32) !Decoded {
             };
             const count = (y1 - y0) * (x1 - x0);
             const out_a: u32 = @intCast(sum_a / count);
-            out[y * w + x] = if (sum_a == 0) 0 else
-                (out_a << 24) |
+            out[y * w + x] = if (sum_a == 0) 0 else (out_a << 24) |
                 (@as(u32, @intCast(sum_r / sum_a)) << 16) |
                 (@as(u32, @intCast(sum_g / sum_a)) << 8) |
                 @as(u32, @intCast(sum_b / sum_a));

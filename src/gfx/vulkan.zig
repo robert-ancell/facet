@@ -3650,7 +3650,6 @@ pub const OffscreenContext = struct {
             &copy_region,
         );
 
-
         if (self.vk.EndCommandBuffer(self.cmd) != .success) return error.VkEndCommandBufferFailed;
 
         const cmds = [1]VkCommandBuffer{self.cmd};

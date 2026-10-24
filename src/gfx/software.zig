@@ -472,7 +472,6 @@ inline fn blendOver(dst: u32, r: f32, g: f32, b: f32, a: f32) u32 {
         @as(u32, @intFromFloat(@round(std.math.clamp(out_b_f, 0.0, 1.0) * 255.0)));
 }
 
-
 /// Writes the image as a binary PPM.
 pub fn writePpm(img: Image, writer: anytype) !void {
     try writer.print("P6\n{d} {d}\n255\n", .{ img.width, img.height });
